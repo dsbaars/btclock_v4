@@ -1,0 +1,15 @@
+# BTClock Rev A — Lolin S3 Mini, 4 MB flash (0x400000)
+# Layout matches production partition.csv except app0/app1 are trimmed
+# by 32 KiB so app1 starts on a clean 64 KiB (0x10000) MMU-page boundary,
+# and LittleFS is rounded up 1 KiB (411→412 KiB) so coredump starts on a
+# 0x1000-aligned offset.
+#
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000
+otadata,  data, ota,     0xe000,   0x2000
+app0,     app,  ota_0,   0x10000,  0x1B0000
+app1,     app,  ota_1,   0x1C0000, 0x1B0000
+spiffs,   data, spiffs,  0x370000, 0x67000
+coredump, data, coredump,0x3D7000, 0x10000
+# 0x3E7000..0x400000 (~100 KiB) intentionally unused — reserved for
+# future partition growth without reflashing a new table.

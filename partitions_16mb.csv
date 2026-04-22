@@ -1,0 +1,12 @@
+# BTClock V8 prototype — 16 MB flash (0x1000000)
+# Layout matches production partition_16mb.csv. Both app offsets are
+# 64 KiB-aligned. LittleFS stays at 2 MiB as in production. Fully
+# uses the 16 MiB flash with no tail waste.
+#
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x5000
+otadata,  data, ota,     0xe000,   0x2000
+app0,     app,  ota_0,   0x10000,  0x6F0000
+app1,     app,  ota_1,   0x700000, 0x6F0000
+spiffs,   data, spiffs,  0xDF0000, 0x200000
+coredump, data, coredump,0xFF0000, 0x10000

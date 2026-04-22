@@ -1,0 +1,4 @@
+# Rev A: Lolin S3 Mini → 4 MB flash, no frontlight, no BH1750.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_4mb.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions_4mb.csv"

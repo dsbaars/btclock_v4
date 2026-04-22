@@ -1,0 +1,457 @@
+#include "font.hpp"
+
+#include <cstring>
+#include <new>
+#include <string>
+#include <vector>
+
+#include "esp_heap_caps.h"
+#include "esp_log.h"
+#include "stb_truetype.h"
+
+namespace btclock {
+namespace {
+constexpr const char* kTag = "fonts";
+
+// --- UTF-8 decoding ---
+//
+// Text passed around is UTF-8 (narrow string literals default to UTF-8 on
+// every compiler this project uses). Decode a single codepoint and
+// advance `p`. On malformed input, advances one byte and returns U+FFFD.
+int NextCodepoint(const char*& p) {
+  const uint8_t c = static_cast<uint8_t>(*p);
+  if (c < 0x80) { ++p; return c; }
+  if ((c & 0xE0) == 0xC0 && (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80) {
+    const int cp = ((c & 0x1F) << 6) |
+                    (static_cast<uint8_t>(p[1]) & 0x3F);
+    p += 2;
+    return cp;
+  }
+  if ((c & 0xF0) == 0xE0 &&
+      (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
+      (static_cast<uint8_t>(p[2]) & 0xC0) == 0x80) {
+    const int cp = ((c & 0x0F) << 12) |
+                    ((static_cast<uint8_t>(p[1]) & 0x3F) << 6) |
+                    (static_cast<uint8_t>(p[2]) & 0x3F);
+    p += 3;
+    return cp;
+  }
+  if ((c & 0xF8) == 0xF0 &&
+      (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
+      (static_cast<uint8_t>(p[2]) & 0xC0) == 0x80 &&
+      (static_cast<uint8_t>(p[3]) & 0xC0) == 0x80) {
+    const int cp = ((c & 0x07) << 18) |
+                    ((static_cast<uint8_t>(p[1]) & 0x3F) << 12) |
+                    ((static_cast<uint8_t>(p[2]) & 0x3F) << 6) |
+                    (static_cast<uint8_t>(p[3]) & 0x3F);
+    p += 4;
+    return cp;
+  }
+  ++p;
+  return 0xFFFD;
+}
+
+}  // namespace
+
+// --- Landscape framebuffer helpers ---
+
+void ClearFb(LandscapeFb& fb, bool white) {
+  std::memset(fb.native_fb, white ? 0xFF : 0x00,
+              static_cast<size_t>(fb.native_stride) *
+                  static_cast<size_t>(fb.native_height));
+}
+
+// Map a logical (lx, ly) through the rotation into native (nx, ny) and
+// write the bit.
+void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
+  const int nw = fb.native_width;
+  const int nh = fb.native_height;
+  // Bounds-check in logical coords first so a 250x128 landscape target
+  // and a 128x250 portrait target behave identically.
+  if (lx < 0 || lx >= LogicalWidth(fb)) return;
+  if (ly < 0 || ly >= LogicalHeight(fb)) return;
+
+  int nx = 0, ny = 0;
+  switch (fb.rotation) {
+    case Rotation::k0:
+      nx = lx;           ny = ly;               break;
+    case Rotation::k90Cw:
+      nx = nw - 1 - ly;  ny = lx;               break;
+    case Rotation::k180:
+      nx = nw - 1 - lx;  ny = nh - 1 - ly;      break;
+    case Rotation::k90Ccw:
+      nx = ly;           ny = nh - 1 - lx;      break;
+  }
+  const int byte_idx = ny * fb.native_stride + (nx >> 3);
+  const uint8_t bit = static_cast<uint8_t>(1U << (7 - (nx & 7)));
+  if (white) {
+    fb.native_fb[byte_idx] |= bit;
+  } else {
+    fb.native_fb[byte_idx] &= static_cast<uint8_t>(~bit);
+  }
+}
+
+// --- Font ---
+
+Font::Font(const uint8_t* ttf_data, size_t ttf_size)
+    : ttf_(ttf_data), ttf_size_(ttf_size) {
+  auto* info = new stbtt_fontinfo();
+  if (stbtt_InitFont(info, ttf_data,
+                     stbtt_GetFontOffsetForIndex(ttf_data, 0)) == 0) {
+    ESP_LOGE(kTag, "stbtt_InitFont failed");
+    delete info;
+    return;
+  }
+  info_ = info;
+  ESP_LOGI(kTag, "font loaded %u bytes", static_cast<unsigned>(ttf_size));
+}
+
+Font::GlyphMetrics Font::GetMetrics(int codepoint, float pixel_height) const {
+  GlyphMetrics m = {};
+  if (info_ == nullptr) return m;
+  auto* info = static_cast<stbtt_fontinfo*>(info_);
+  const float scale = stbtt_ScaleForPixelHeight(info, pixel_height);
+  int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  stbtt_GetCodepointBitmapBox(info, codepoint, scale, scale, &x0, &y0, &x1, &y1);
+  int advance = 0, lsb = 0;
+  stbtt_GetCodepointHMetrics(info, codepoint, &advance, &lsb);
+  m.w = x1 - x0;
+  m.h = y1 - y0;
+  m.xoff = x0;
+  m.yoff = y0;
+  m.advance = static_cast<int>(advance * scale);
+  return m;
+}
+
+void Font::RenderGlyph(int codepoint, float pixel_height, uint8_t* out,
+                       int w, int h) const {
+  if (info_ == nullptr) return;
+  auto* info = static_cast<stbtt_fontinfo*>(info_);
+  const float scale = stbtt_ScaleForPixelHeight(info, pixel_height);
+  stbtt_MakeCodepointBitmap(info, out, w, h, w, scale, scale, codepoint);
+}
+
+int Font::AscentPx(float pixel_height) const {
+  if (info_ == nullptr) return 0;
+  auto* info = static_cast<stbtt_fontinfo*>(info_);
+  const float scale = stbtt_ScaleForPixelHeight(info, pixel_height);
+  int ascent = 0, descent = 0, line_gap = 0;
+  stbtt_GetFontVMetrics(info, &ascent, &descent, &line_gap);
+  return static_cast<int>(ascent * scale);
+}
+
+Font::ReferenceBox Font::GetReferenceBox(const char* chars,
+                                         float pixel_height) const {
+  ReferenceBox rb = {};
+  if (chars == nullptr) return rb;
+  const char* p = chars;
+  while (*p) {
+    const int cp = NextCodepoint(p);
+    const auto m = GetMetrics(cp, pixel_height);
+    if (m.w <= 0 || m.h <= 0) continue;
+    const int above = -m.yoff;            // positive if glyph extends above baseline
+    const int below = m.yoff + m.h;       // positive if glyph extends below baseline
+    if (above > rb.above_baseline) rb.above_baseline = above;
+    if (below > rb.below_baseline) rb.below_baseline = below;
+  }
+  return rb;
+}
+
+// --- Text rendering ---
+
+namespace {
+
+// Scratch buffer for the biggest glyph we expect to rasterize. Lives in
+// PSRAM so it doesn't eat internal RAM.
+constexpr size_t kMaxGlyphBytes = 200 * 200;   // 40 KB
+uint8_t* glyph_buf() {
+  static uint8_t* buf = nullptr;
+  if (buf == nullptr) {
+    buf = static_cast<uint8_t*>(
+        heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_SPIRAM));
+    if (buf == nullptr) {
+      ESP_LOGE(kTag, "glyph PSRAM alloc failed, falling back to internal");
+      buf = static_cast<uint8_t*>(heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_8BIT));
+    }
+  }
+  return buf;
+}
+
+}  // namespace
+
+int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
+                      const char* text, const Font& font,
+                      float pixel_height, bool white_text) {
+  int pen_x = x;
+  uint8_t* buf = glyph_buf();
+  const char* p = text;
+  while (*p) {
+    const int cp = NextCodepoint(p);
+    const auto m = font.GetMetrics(cp, pixel_height);
+    if (m.w > 0 && m.h > 0 && buf != nullptr) {
+      const size_t need = static_cast<size_t>(m.w) * m.h;
+      if (need <= kMaxGlyphBytes) {
+        font.RenderGlyph(cp, pixel_height, buf, m.w, m.h);
+        const int top_left_x = pen_x + m.xoff;
+        const int top_left_y = y_baseline + m.yoff;
+        for (int dy = 0; dy < m.h; ++dy) {
+          for (int dx = 0; dx < m.w; ++dx) {
+            const uint8_t a = buf[dy * m.w + dx];
+            if (a >= 128) {
+              SetPixelLandscape(fb, top_left_x + dx, top_left_y + dy,
+                                white_text);
+            }
+          }
+        }
+      }
+    }
+    pen_x += m.advance;
+  }
+  return pen_x - x;
+}
+
+int MeasureTextWidth(const char* text, const Font& font,
+                     float pixel_height) {
+  int total = 0;
+  const char* p = text;
+  while (*p) {
+    const int cp = NextCodepoint(p);
+    total += font.GetMetrics(cp, pixel_height).advance;
+  }
+  return total;
+}
+
+// Trim the leading xoff of the first glyph and trailing (advance - w - xoff)
+// of the last, so we measure the *ink* width (bitmap coverage) rather than
+// the pen-advance width. Centering with advance leaves uneven visual
+// margins; centering with ink centers the visible strokes.
+float FitTextPx(const char* text, const Font& font, float max_px,
+                float min_px, int target_w) {
+  for (float px = max_px; px >= min_px; px -= 0.5f) {
+    if (MeasureInkWidth(text, font, px, nullptr) <= target_w) return px;
+  }
+  return min_px;
+}
+
+int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
+                    int* left_bearing_out) {
+  int ink_left = 0;
+  int ink_right = 0;
+  int pen = 0;
+  bool first = true;
+  const char* p = text;
+  while (*p) {
+    const int cp = NextCodepoint(p);
+    const auto m = font.GetMetrics(cp, pixel_height);
+    if (m.w > 0 && m.h > 0) {
+      const int gl = pen + m.xoff;
+      const int gr = gl + m.w;
+      if (first) { ink_left = gl; first = false; }
+      if (gr > ink_right) ink_right = gr;
+    }
+    pen += m.advance;
+  }
+  if (first) {
+    if (left_bearing_out) *left_bearing_out = 0;
+    return 0;
+  }
+  if (left_bearing_out) *left_bearing_out = ink_left;
+  return ink_right - ink_left;
+}
+
+namespace {
+
+// Centre one line horizontally (ink-width based) with a baseline derived
+// from `ref_box` sitting inside a region [y_top, y_top + region_h].
+void DrawLineCentered(LandscapeFb& fb, int panel_w, int y_top, int region_h,
+                      const char* text, const Font::ReferenceBox& ref_box,
+                      const Font& font, float pixel_height,
+                      bool white_text) {
+  int left_bearing = 0;
+  const int ink_w = MeasureInkWidth(text, font, pixel_height, &left_bearing);
+  const int x_origin = (panel_w - ink_w) / 2 - left_bearing;
+
+  const int ref_h = ref_box.above_baseline + ref_box.below_baseline;
+  const int ref_top = y_top + (region_h - ref_h) / 2;
+  const int y_baseline = ref_top + ref_box.above_baseline;
+
+  DrawTextLandscape(fb, x_origin, y_baseline, text, font, pixel_height,
+                    white_text);
+}
+
+void FillRect(LandscapeFb& fb, int x, int y, int w, int h, bool white) {
+  for (int dy = 0; dy < h; ++dy) {
+    for (int dx = 0; dx < w; ++dx) {
+      SetPixelLandscape(fb, x + dx, y + dy, white);
+    }
+  }
+}
+
+// Pill-ended horizontal bar: corners rounded with the given radius.
+// Radius clamped to min(w/2, h/2).
+void FillRoundRect(LandscapeFb& fb, int x, int y, int w, int h, int r,
+                   bool white) {
+  if (r < 0) r = 0;
+  if (r > h / 2) r = h / 2;
+  if (r > w / 2) r = w / 2;
+  if (r == 0) { FillRect(fb, x, y, w, h, white); return; }
+  // Middle strip: full-height rectangle between the two rounded ends.
+  FillRect(fb, x + r, y, w - 2 * r, h, white);
+  // Side strips (between the corner arcs): full-width minus corners.
+  FillRect(fb, x, y + r, r, h - 2 * r, white);
+  FillRect(fb, x + w - r, y + r, r, h - 2 * r, white);
+  // Four corner arcs.
+  for (int dy = 0; dy <= r; ++dy) {
+    for (int dx = 0; dx <= r; ++dx) {
+      if (dx * dx + dy * dy <= r * r) {
+        SetPixelLandscape(fb, x + r - dx, y + r - dy, white);             // TL
+        SetPixelLandscape(fb, x + w - r - 1 + dx, y + r - dy, white);     // TR
+        SetPixelLandscape(fb, x + r - dx, y + h - r - 1 + dy, white);     // BL
+        SetPixelLandscape(fb, x + w - r - 1 + dx, y + h - r - 1 + dy, white); // BR
+      }
+    }
+  }
+}
+
+}  // namespace
+
+void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
+                      const char* text, const char* ref_chars,
+                      const Font& font, float pixel_height,
+                      bool white_text) {
+  const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
+  DrawLineCentered(fb, panel_w, /*y_top=*/0, /*region_h=*/panel_h, text,
+                   rb, font, pixel_height, white_text);
+}
+
+void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
+                bool (*get_module)(int, int, const void*),
+                const void* ctx, bool white_bg) {
+  if (size <= 0) return;
+  // Pick the biggest integer module size that fits both dimensions.
+  const int max_dim = panel_w < panel_h ? panel_w : panel_h;
+  int mod_px = max_dim / size;
+  if (mod_px <= 0) mod_px = 1;
+  const int qr_px = size * mod_px;
+  const int x0 = (panel_w - qr_px) / 2;
+  const int y0 = (panel_h - qr_px) / 2;
+
+  for (int my = 0; my < size; ++my) {
+    for (int mx = 0; mx < size; ++mx) {
+      const bool dark = get_module(mx, my, ctx);
+      const bool white = white_bg ? !dark : dark;
+      for (int dy = 0; dy < mod_px; ++dy) {
+        for (int dx = 0; dx < mod_px; ++dx) {
+          SetPixelLandscape(fb, x0 + mx * mod_px + dx,
+                            y0 + my * mod_px + dy, white);
+        }
+      }
+    }
+  }
+}
+
+void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
+                  const char* text,
+                  const Font& regular, const Font& bold,
+                  float pixel_height, bool white_text) {
+  // Split into lines, stripping '\r' and collapsing '*' markers per
+  // line (whole-line bold, matching the existing firmware's parser).
+  struct Line {
+    std::string text;
+    bool is_bold;
+  };
+  std::vector<Line> lines;
+  std::string cur;
+  auto flush = [&](bool last) {
+    Line l;
+    l.text = cur;
+    l.is_bold = false;
+    if (!l.text.empty() && l.text[0] == '*') {
+      l.is_bold = true;
+      std::string filtered;
+      filtered.reserve(l.text.size());
+      for (char c : l.text) if (c != '*') filtered.push_back(c);
+      // Trim trailing spaces (the "*Hostname*:" case leaves no trailing
+      // space, but "*SSID: *" would leave one).
+      while (!filtered.empty() && (filtered.back() == ' ' || filtered.back() == '\t'))
+        filtered.pop_back();
+      l.text = std::move(filtered);
+    }
+    lines.push_back(std::move(l));
+    cur.clear();
+    (void)last;
+  };
+  for (const char* p = text; *p; ++p) {
+    if (*p == '\r') continue;
+    if (*p == '\n') { flush(false); continue; }
+    cur.push_back(*p);
+  }
+  flush(true);
+
+  // Vertical layout: each line occupies `line_h` px; total height is
+  // lines.size() * line_h. Centre the block on the panel.
+  const float line_h = pixel_height * 1.15f;
+  const int block_h = static_cast<int>(lines.size() * line_h);
+  const int ascent = regular.AscentPx(pixel_height);
+  int y = (panel_h - block_h) / 2 + ascent;
+
+  for (const auto& line : lines) {
+    if (line.text.empty()) {
+      y += static_cast<int>(line_h);
+      continue;
+    }
+    const Font& f = line.is_bold ? bold : regular;
+    int lb = 0;
+    const int ink_w = MeasureInkWidth(line.text.c_str(), f, pixel_height, &lb);
+    const int x = (panel_w - ink_w) / 2 - lb;
+    DrawTextLandscape(fb, x, y, line.text.c_str(), f, pixel_height,
+                      white_text);
+    y += static_cast<int>(line_h);
+  }
+}
+
+void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
+                   const char* top_text, const char* bottom_text,
+                   const char* ref_chars, const Font& font,
+                   float pixel_height, bool white_text) {
+  // Layout mirrors the existing firmware's splitText
+  // (src/lib/drivers/epd/epd.cpp): a 6 px pill-ended separator at the
+  // panel vertical centre, each text's reference box offset by `kGap`
+  // from the centre line, and the separator as wide as the narrower of
+  // the two ink widths.
+  constexpr int kGap = 12;           // pixels between centre and text edge
+  constexpr int kLineThickness = 6;
+  constexpr int kLineRadius = 3;
+
+  const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
+  const int centre_y = panel_h / 2;
+
+  // Top text: place its baseline so the reference box's lowest point
+  // (below_baseline extent) sits exactly `kGap` above centre_y.
+  const int top_baseline = centre_y - kGap - rb.below_baseline;
+  // Bottom text: baseline so the reference box's highest point starts
+  // `kGap` below centre_y.
+  const int bottom_baseline = centre_y + kGap + rb.above_baseline;
+
+  int top_lb = 0, bot_lb = 0;
+  const int top_ink_w = MeasureInkWidth(top_text, font, pixel_height, &top_lb);
+  const int bot_ink_w = MeasureInkWidth(bottom_text, font, pixel_height, &bot_lb);
+  const int top_x = (panel_w - top_ink_w) / 2 - top_lb;
+  const int bot_x = (panel_w - bot_ink_w) / 2 - bot_lb;
+
+  DrawTextLandscape(fb, top_x, top_baseline, top_text, font, pixel_height,
+                    white_text);
+  DrawTextLandscape(fb, bot_x, bottom_baseline, bottom_text, font, pixel_height,
+                    white_text);
+
+  // Separator: as wide as the shorter ink width (matching production).
+  const int line_w = top_ink_w < bot_ink_w ? top_ink_w : bot_ink_w;
+  if (line_w > 0) {
+    const int line_x = (panel_w - line_w) / 2;
+    const int line_y = centre_y - kLineThickness / 2;
+    FillRoundRect(fb, line_x, line_y, line_w, kLineThickness, kLineRadius,
+                  white_text);
+  }
+}
+
+}  // namespace btclock

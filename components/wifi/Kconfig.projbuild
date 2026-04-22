@@ -1,0 +1,16 @@
+menu "BTClock PoC WiFi"
+
+config POC_WIFI_SSID
+    string "WiFi SSID"
+    default ""
+    help
+        WiFi SSID to connect to. Set with `idf.py menuconfig`; the sdkconfig
+        file is gitignored so credentials don't end up in the repo.
+
+config POC_WIFI_PASSWORD
+    string "WiFi password"
+    default ""
+    help
+        WPA2-PSK password for POC_WIFI_SSID. Leave empty for open networks.
+
+endmenu

@@ -1,0 +1,27 @@
+# The real custom command to gzip portal.html has to live outside the
+# early-expansion pass (add_custom_command isn't scriptable). The path
+# below is referenced unconditionally so EMBED_FILES stays stable in
+# both passes; the command that produces it only runs during the build.
+set(_PORTAL_SRC "${CMAKE_CURRENT_LIST_DIR}/assets/portal.html")
+set(_PORTAL_GZ "${CMAKE_CURRENT_BINARY_DIR}/portal.html.gz")
+
+idf_component_register(
+    SRCS "provisioning_server.cpp" "dns_hijack.cpp"
+    INCLUDE_DIRS "include"
+    REQUIRES esp_http_server wifi prefs esp_wifi lwip esp_app_format
+    EMBED_FILES "${_PORTAL_GZ}"
+)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    # Serve portal with Content-Encoding: gzip — ~65 % flash saving vs raw.
+    add_custom_command(
+        OUTPUT "${_PORTAL_GZ}"
+        COMMAND gzip -n -9 -c "${_PORTAL_SRC}" > "${_PORTAL_GZ}"
+        DEPENDS "${_PORTAL_SRC}"
+        COMMENT "Gzipping portal.html"
+        VERBATIM
+    )
+    add_custom_target(portal_gz DEPENDS "${_PORTAL_GZ}")
+    add_dependencies(${COMPONENT_LIB} portal_gz)
+endif()

@@ -1,0 +1,39 @@
+#include "fonts_app.hpp"
+
+#include <cstddef>
+
+namespace btclock {
+
+namespace {
+size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
+  return static_cast<size_t>(b - a);
+}
+}  // namespace
+
+AppFonts::AppFonts()
+    : antonio_(kAntonioTtf, SizeBetween(kAntonioTtf, kAntonioTtfEnd)),
+      oswald_(kOswaldTtf, SizeBetween(kOswaldTtf, kOswaldTtfEnd)),
+      oswald_bold_(kOswaldBoldTtf,
+                   SizeBetween(kOswaldBoldTtf, kOswaldBoldTtfEnd)),
+      dejavu_(kDejaVuTtf, SizeBetween(kDejaVuTtf, kDejaVuTtfEnd)),
+      dejavu_bold_(kDejaVuBoldTtf,
+                   SizeBetween(kDejaVuBoldTtf, kDejaVuBoldTtfEnd)),
+      sats_symbol_(kSatoshiSymbolTtf,
+                   SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)) {}
+
+FontBundle AppFonts::Bundle(FontFamily f) const {
+  switch (f) {
+    case FontFamily::kAntonio:
+      // Antonio has no separate bold in the current asset set. Use
+      // Antonio for both slots — the markdown '*bold*' marker still
+      // parses but renders in the same weight.
+      return {&antonio_, &antonio_};
+    case FontFamily::kOswald:
+      return {&oswald_, &oswald_bold_};
+    case FontFamily::kDejaVu:
+      return {&dejavu_, &dejavu_bold_};
+  }
+  return {&dejavu_, &dejavu_bold_};
+}
+
+}  // namespace btclock
