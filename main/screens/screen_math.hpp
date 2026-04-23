@@ -9,6 +9,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 namespace btclock {
 
@@ -74,5 +76,27 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
 // Right-justify a 64-bit unsigned integer into `digits[slots]`. Same
 // blank-pad / leading-truncate rules as FormatDigits for uint32_t.
 void FormatDigits64(uint64_t v, char* digits, std::size_t slots);
+
+// K/M/B/T/Q suffix form of an integer, e.g. 1_020_825_000_000 → "1.02T".
+// `num_characters` is the total width budget (including the suffix
+// letter): the more space, the more decimal places are packed in. When
+// `mow_mode` is set, the thousands scale jumps directly to "M" (MOW
+// units); otherwise "K" is used below 1e6. Ports
+// lib/btclock/utils.cpp::formatNumberWithSuffix without any on-device
+// FreeRTOS dependencies so host tests can exercise it directly.
+std::string FormatNumberWithSuffix(uint64_t num, int num_characters = 4,
+                                   bool mow_mode = false);
+
+// Block-height screen layout: when the decimal form of `height` needs
+// at least `panels` digits (7 on a 7-panel board) the "BLOCK/HEIGHT"
+// label is dropped and every panel carries a digit — otherwise panel 0
+// is the label and the remaining panels hold right-justified digits.
+// Matches old firmware lib/btclock/data_handler.cpp parseBlockHeight.
+inline bool BlockHeightDropsLabel(uint32_t height, std::size_t panels) {
+  char buf[16];
+  const int len = std::snprintf(buf, sizeof(buf), "%u",
+                                static_cast<unsigned>(height));
+  return len >= 0 && static_cast<std::size_t>(len) >= panels;
+}
 
 }  // namespace btclock

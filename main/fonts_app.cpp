@@ -4,6 +4,17 @@
 
 namespace btclock {
 
+#ifdef BTCLOCK_WASM_BUILD
+// Under WASM the generator emits explicit array + size variables, so
+// we just pass them straight through.
+AppFonts::AppFonts()
+    : antonio_(kAntonioTtf, kAntonioTtfSize),
+      oswald_(kOswaldTtf, kOswaldTtfSize),
+      oswald_bold_(kOswaldBoldTtf, kOswaldBoldTtfSize),
+      dejavu_(kDejaVuTtf, kDejaVuTtfSize),
+      dejavu_bold_(kDejaVuBoldTtf, kDejaVuBoldTtfSize),
+      sats_symbol_(kSatoshiSymbolTtf, kSatoshiSymbolTtfSize) {}
+#else
 namespace {
 size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
   return static_cast<size_t>(b - a);
@@ -20,6 +31,7 @@ AppFonts::AppFonts()
                    SizeBetween(kDejaVuBoldTtf, kDejaVuBoldTtfEnd)),
       sats_symbol_(kSatoshiSymbolTtf,
                    SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)) {}
+#endif
 
 FontBundle AppFonts::Bundle(FontFamily f) const {
   switch (f) {

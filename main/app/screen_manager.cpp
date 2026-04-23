@@ -1,12 +1,14 @@
 #include "app/screen_manager.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <ctime>
 #include <utility>
 
 #include "esp_log.h"
 
 #include "screens/common.hpp"
+#include "screens/panel_texts.hpp"
 
 namespace btclock {
 namespace {
@@ -35,7 +37,8 @@ const char* KindName(ScreenType k) {
 
 ScreenManager::ScreenManager(int64_t now_ms,
                              std::vector<std::string> currencies)
-    : currencies_(std::move(currencies)), last_change_ms_(now_ms) {
+    : currencies_(std::move(currencies)) {
+  rot_.last_change_ms = now_ms;
   assert(!currencies_.empty());
 }
 
@@ -69,7 +72,7 @@ bool ScreenManager::SetSlot(size_t slot, int64_t now_ms) {
   if (n == 0) return false;
   slot_ = slot % n;
   dirty_ = true;
-  last_change_ms_ = now_ms;
+  rot_.Restart(now_ms);
   ESP_LOGI(kTag, "set → slot %zu", slot_);
   return true;
 }
@@ -90,7 +93,7 @@ bool ScreenManager::SetCurrency(const std::string& ccy, int64_t now_ms) {
 bool ScreenManager::NextScreen(int64_t now_ms) {
   slot_ = (slot_ + 1) % slot_count();
   dirty_ = true;
-  last_change_ms_ = now_ms;
+  rot_.Restart(now_ms);
   ESP_LOGI(kTag, "next → slot %zu (%s %s)", slot_,
            KindName(current_kind()), current_currency().c_str());
   return true;
@@ -99,16 +102,19 @@ bool ScreenManager::NextScreen(int64_t now_ms) {
 bool ScreenManager::PrevScreen(int64_t now_ms) {
   slot_ = (slot_ + slot_count() - 1) % slot_count();
   dirty_ = true;
-  last_change_ms_ = now_ms;
+  rot_.Restart(now_ms);
   ESP_LOGI(kTag, "prev → slot %zu", slot_);
   return true;
 }
 
 bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
-  if (now_ms - last_change_ms_ < period_ms) return false;
+  // Pause + deadline decision lives on RotationTimer so it's pinned
+  // by host tests. Mirrors the old firmware's /api/action/pause —
+  // stops the rotate esp_timer without touching any data source.
+  if (!rot_.ShouldAdvance(now_ms, period_ms)) return false;
   slot_ = (slot_ + 1) % slot_count();
   dirty_ = true;
-  last_change_ms_ = now_ms;
+  rot_.Restart(now_ms);
   ESP_LOGI(kTag, "auto-rotate → slot %zu (%s %s)", slot_,
            KindName(current_kind()), current_currency().c_str());
   return true;
@@ -125,8 +131,17 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
       const auto* p = snap.PriceOf(current_currency());
       return p != nullptr && *p != last_rendered_price_;
     }
-    case ScreenType::kBlockFeeRate:
-      return snap.block_fee && *snap.block_fee != last_rendered_fee_;
+    case ScreenType::kBlockFeeRate: {
+      // Prefer the precise double when available; fall back to the
+      // integer. Compare with a small epsilon so floating-point noise
+      // on an otherwise-identical value doesn't force a refresh.
+      constexpr double kFeeEpsilon = 1e-3;
+      double fee = -1.0;
+      if (snap.block_fee_precise) fee = *snap.block_fee_precise;
+      else if (snap.block_fee) fee = static_cast<double>(*snap.block_fee);
+      if (fee < 0.0) return false;
+      return std::fabs(fee - last_rendered_fee_) > kFeeEpsilon;
+    }
     case ScreenType::kClock: {
       // Minute-granularity clock — the main loop's poll tick drives
       // re-render decisions: "render when the minute has flipped".
@@ -196,11 +211,17 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       }
       break;
     case ScreenType::kBlockFeeRate: {
-      // -1 means "no value yet" — passed through to the renderer so it
-      // paints blank digit panels instead of lying about the data state.
-      const int32_t fee = snap.block_fee ? *snap.block_fee : -1;
+      // Prefer the precise double (blockfee2 / nostr d=medianFee) when
+      // present; otherwise fall back to the rounded integer from the
+      // `blockfee` subscription. -1 means "no value yet" — passed
+      // through to the renderer so it paints blank digit panels instead
+      // of lying about the data state.
+      double fee;
+      if (snap.block_fee_precise) fee = *snap.block_fee_precise;
+      else if (snap.block_fee) fee = static_cast<double>(*snap.block_fee);
+      else fee = -1.0;
       RenderFeeRateScreen(panels, fb, fonts, fee,
-                          force_full ? -1 : last_rendered_fee_);
+                          force_full ? -1.0 : last_rendered_fee_);
       last_rendered_fee_ = fee;
       break;
     }
@@ -257,6 +278,37 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   }
   dirty_ = false;
   ESP_LOGI(kTag, "render slot=%zu full=%d", slot_, force_full ? 1 : 0);
+
+  // Refresh the per-panel text mirror for /api/status data[]. Cheap
+  // string arithmetic only; safe to do every render. Callers that want
+  // the mirror read it via last_panel_texts(). The real wall-clock
+  // is re-sampled inside here for the clock screen so the mirror
+  // matches what the renderer just painted.
+  PanelTextInputs pti;
+  pti.kind = kind;
+  pti.currency = ccy;
+  pti.block_height = snap.block_height;
+  if (snap.block_fee_precise) pti.block_fee_sats_vb = *snap.block_fee_precise;
+  else if (snap.block_fee) pti.block_fee_sats_vb =
+      static_cast<double>(*snap.block_fee);
+  if (const auto* p = snap.PriceOf(ccy)) pti.price = *p;
+  if (kind == ScreenType::kClock) {
+    // Match the renderer's clock-time source: localtime at render.
+    // Guards against the unsynced-NTP fallback are done inside
+    // BuildPanelTexts → ComputeClockLayout.
+    time_t t;
+    std::time(&t);
+    pti.clock_valid = (t >= kMinPlausibleEpoch);
+    if (pti.clock_valid) {
+      struct tm tm_now {};
+      localtime_r(&t, &tm_now);
+      pti.hour = tm_now.tm_hour;
+      pti.minute = tm_now.tm_min;
+      pti.mday = tm_now.tm_mday;
+      pti.month = tm_now.tm_mon + 1;
+    }
+  }
+  last_panel_texts_ = BuildPanelTexts(pti, N);
 }
 
 template void ScreenManager::Render<7>(

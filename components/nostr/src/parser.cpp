@@ -13,10 +13,12 @@
 #include "nostr/parser.hpp"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
 
+#include "data_core/snapshot.hpp"
 #include "nostr/event.hpp"
 
 namespace btclock {
@@ -371,6 +373,85 @@ bool ExtractZapBolt11(const Event& ev, std::string& bolt11) {
   if (v.empty()) return false;
   bolt11 = v;
   return true;
+}
+
+namespace {
+
+// Parse a whole-number decimal string (no sign, no exponent). Returns
+// true and writes `out` on success. Leading/trailing whitespace is
+// rejected — the publisher emits bare "870124" values.
+bool ParseDecimalU32(const std::string& s, uint32_t& out) {
+  if (s.empty()) return false;
+  uint64_t v = 0;
+  for (char c : s) {
+    if (c < '0' || c > '9') return false;
+    v = v * 10 + static_cast<uint64_t>(c - '0');
+    if (v > 0xFFFFFFFFULL) return false;
+  }
+  out = static_cast<uint32_t>(v);
+  return true;
+}
+
+// Parse a decimal number (possibly fractional, e.g. "12.75") into a
+// double. Accepts only a leading sign, digits, and at most one '.';
+// rejects exponents and whitespace. Stricter than strtod so malformed
+// publisher output fails closed rather than coming through as 0.
+bool ParseDecimalDouble(const std::string& s, double& out) {
+  if (s.empty()) return false;
+  size_t i = 0;
+  if (s[i] == '+' || s[i] == '-') ++i;
+  bool any_digit = false;
+  bool seen_dot = false;
+  for (; i < s.size(); ++i) {
+    const char c = s[i];
+    if (c >= '0' && c <= '9') {
+      any_digit = true;
+    } else if (c == '.' && !seen_dot) {
+      seen_dot = true;
+    } else {
+      return false;
+    }
+  }
+  if (!any_digit) return false;
+  char* end = nullptr;
+  out = std::strtod(s.c_str(), &end);
+  return end == s.c_str() + s.size();
+}
+
+}  // namespace
+
+bool ParseNip78Content(const std::string& d_tag, const std::string& content,
+                       DataSnapshot& out) {
+  if (d_tag == "blockheight") {
+    uint32_t h = 0;
+    if (!ParseDecimalU32(content, h)) return false;
+    out.block_height = h;
+    return true;
+  }
+  if (d_tag == "medianFee") {
+    double d = 0;
+    if (!ParseDecimalDouble(content, d)) return false;
+    out.block_fee_precise = d;
+    // Round-half-away-from-zero matches the publisher's upstream
+    // integer-fee behaviour (blockfee vs blockfee2 in NOSTR.md).
+    out.block_fee = static_cast<int32_t>(d < 0 ? std::ceil(d - 0.5)
+                                                : std::floor(d + 0.5));
+    return true;
+  }
+  // Price slot: "price:<CCY>". Currency code is the remainder after the
+  // prefix; we don't validate the code (publisher already whitelists it
+  // to a known set and new codes auto-provision per NOSTR.md).
+  static constexpr const char kPricePrefix[] = "price:";
+  constexpr size_t kPricePrefixLen = sizeof(kPricePrefix) - 1;
+  if (d_tag.size() > kPricePrefixLen &&
+      d_tag.compare(0, kPricePrefixLen, kPricePrefix) == 0) {
+    if (content.empty()) return false;
+    const std::string ccy = d_tag.substr(kPricePrefixLen);
+    if (ccy.empty()) return false;
+    out.prices[ccy] = content;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace nostr

@@ -58,6 +58,72 @@ class FrontlightIface {
   virtual Status GetStatus() const = 0;
 };
 
+// Do-Not-Disturb surface. The webserver component stays free of the
+// dnd component (and its NVS + mutex deps) by routing all DND reads
+// and writes through this interface. main.cpp wires it to the
+// process-wide btclock::dnd::Dnd singleton. Nullptr -> /api/dnd/*
+// endpoints respond 503 and /api/status emits the off/false stub.
+class DndIface {
+ public:
+  struct Status {
+    bool enabled = false;         // manual "force on now" flag
+    bool time_enabled = false;    // schedule gate
+    uint8_t start_hour = 0;
+    uint8_t start_minute = 0;
+    uint8_t end_hour = 0;
+    uint8_t end_minute = 0;
+    bool active = false;          // current wall-clock query
+  };
+  virtual ~DndIface() = default;
+  virtual Status GetStatus() const = 0;
+  virtual void SetEnabled(bool enabled) = 0;
+};
+
+// Screen-rotation timer control — lets /api/action/pause and
+// /api/action/timer_restart reach the main-loop ScreenManager without
+// the webserver component having to depend on main/. Concrete
+// adapter in main.cpp forwards to the ScreenManager instance.
+class TimerIface {
+ public:
+  virtual ~TimerIface() = default;
+  virtual bool IsPaused() const = 0;
+  virtual void SetPaused(bool paused) = 0;
+  virtual void Restart() = 0;
+};
+
+// NeoPixel-side counterpart to FrontlightIface. Keeps the webserver
+// component independent of `main/app/led_controller.hpp` (which drags
+// FreeRTOS + RMT + NVS into every TU that includes it). `main.cpp`
+// wires up a thin adapter that forwards these calls to the controller's
+// namespace-level functions.
+//
+// Semantics mirror the old firmware's /api/lights surface:
+//   - GetStatus: read the current per-pixel mirror + master prefs.
+//   - SetSolidColor: paint every pixel the same colour; 0 = off.
+//   - SetPixels: per-pixel RGB; `count` clamped to the strip width.
+//   - SetDisabled: global mute flag (persisted to NVS).
+//   - TriggerIdentify: fire the identify effect (rapid multi-colour).
+class LedsIface {
+ public:
+  struct Status {
+    uint8_t brightness = 0;
+    uint32_t block_flash_color = 0;
+    bool disabled = false;
+    bool flash_on_update = false;
+    // Per-pixel colour mirror. `pixel_count` is the filled prefix.
+    uint32_t pixels[8] = {0};
+    uint32_t pixel_count = 0;
+  };
+  virtual ~LedsIface() = default;
+  virtual Status GetStatus() const = 0;
+  virtual void SetSolidColor(uint32_t rgb) = 0;
+  virtual void SetPixels(const uint32_t* rgb_array, uint32_t count) = 0;
+  virtual void SetDisabled(bool disabled) = 0;
+  virtual void SetBrightness(uint8_t value) = 0;
+  virtual void SetBlockFlashColor(uint32_t rgb) = 0;
+  virtual void TriggerIdentify() = 0;
+};
+
 // Commands the HTTP task posts to the main task. `arg` is command-
 // specific (e.g. slot index for kShowScreen). Keep this trivially
 // copyable — we xQueueSend it by value.
@@ -88,14 +154,43 @@ class ControlServer {
     // `actCurrencies` and to size price arrays in /api/status.
     std::vector<std::string> currencies;
     // Number of EPD panels — drives the size of /api/status `data`.
-    // The array itself is static ("") until a screen-text mirror is
-    // wired up; this only governs length.
+    // The array contents come from ScreenManager via LiveStatus's
+    // `panel_texts`; this keeps the length pinned even before the
+    // first render has populated that mirror.
     size_t num_screens = 0;
     // Human-readable hardware label, e.g. "Rev B", "V8".
     std::string hw_name;
     // Optional frontlight hook. Nullptr on boards without a PCA9685
     // backlight (Rev A, V8); /api/frontlight/* then responds 503.
     FrontlightIface* frontlight = nullptr;
+    // NeoPixel control surface. Nullptr if the LED subsystem failed to
+    // initialise — /api/lights/* will 503 in that case. Every BTClock
+    // board ships with WS2812B strips so this is expected to be set.
+    LedsIface* leds = nullptr;
+    // DND control surface. Nullptr -> /api/dnd/* returns 503 and the
+    // /api/status `dnd` block reports the inactive stub.
+    DndIface* dnd = nullptr;
+    // Screen-rotation timer. Nullptr -> /api/action/pause and
+    // /api/action/timer_restart respond 503.
+    TimerIface* timer = nullptr;
+
+    // Full rotatable-screen catalogue used by /api/settings. Order
+    // here is the fallback rotation order (the WebUI shows this as
+    // the default before the user customises). Id/name map entries
+    // mirror ScreenMapping in the old firmware.
+    struct ScreenEntry {
+      int id;
+      std::string name;
+    };
+    std::vector<ScreenEntry> screens_catalog;
+    // Fonts + pools + currencies the renderer and data-source layer
+    // support. Drives the "availableFonts" / "availablePools" /
+    // "availableCurrencies" arrays in GET /api/settings so the WebUI
+    // can populate its dropdowns. `currencies` above is the *active*
+    // subset; `available_currencies` is the full set.
+    std::vector<std::string> available_fonts;
+    std::vector<std::string> available_pools;
+    std::vector<std::string> available_currencies;
   };
 
   explicit ControlServer(Config cfg);
@@ -122,6 +217,10 @@ class ControlServer {
     int32_t slot_count = 1;
     bool timer_running = true;
     std::string currency;  // "" for block screen
+    // Per-panel text mirror for /api/status `data[]`. Length should be
+    // `num_screens` when populated. Empty means the first render hasn't
+    // happened yet; HandleStatus falls back to empty strings then.
+    std::vector<std::string> panel_texts;
   };
   void PublishStatus(const LiveStatus& status);
 
@@ -143,8 +242,21 @@ class ControlServer {
   static esp_err_t TrampolineFrontlightStatus(httpd_req_t* req);
   static esp_err_t TrampolineFrontlightBrightness(httpd_req_t* req);
   static esp_err_t TrampolineWifiTxPower(httpd_req_t* req);
+  static esp_err_t TrampolineUploadWebui(httpd_req_t* req);
+  static esp_err_t TrampolineLightsStatus(httpd_req_t* req);
+  static esp_err_t TrampolineLightsColor(httpd_req_t* req);
+  static esp_err_t TrampolineLightsOff(httpd_req_t* req);
+  static esp_err_t TrampolineLightsSet(httpd_req_t* req);
+  static esp_err_t TrampolineSettingsGet(httpd_req_t* req);
+  static esp_err_t TrampolineSettingsPatch(httpd_req_t* req);
+  static esp_err_t TrampolineDndStatus(httpd_req_t* req);
+  static esp_err_t TrampolineDndEnable(httpd_req_t* req);
+  static esp_err_t TrampolineDndDisable(httpd_req_t* req);
+  static esp_err_t TrampolineActionPause(httpd_req_t* req);
+  static esp_err_t TrampolineActionTimerRestart(httpd_req_t* req);
   static esp_err_t TrampolineNotImplemented(httpd_req_t* req);
   static esp_err_t TrampolineOptions(httpd_req_t* req);
+  static esp_err_t TrampolineStatic(httpd_req_t* req);
 
   esp_err_t HandleStatus(httpd_req_t* req);
   esp_err_t HandleSystemStatus(httpd_req_t* req);
@@ -163,6 +275,19 @@ class ControlServer {
   esp_err_t HandleFrontlightStatus(httpd_req_t* req);
   esp_err_t HandleFrontlightBrightness(httpd_req_t* req);
   esp_err_t HandleWifiTxPower(httpd_req_t* req);
+  esp_err_t HandleUploadWebui(httpd_req_t* req);
+  esp_err_t HandleLightsStatus(httpd_req_t* req);
+  esp_err_t HandleLightsColor(httpd_req_t* req);
+  esp_err_t HandleLightsOff(httpd_req_t* req);
+  esp_err_t HandleLightsSet(httpd_req_t* req);
+  esp_err_t HandleSettingsGet(httpd_req_t* req);
+  esp_err_t HandleSettingsPatch(httpd_req_t* req);
+  esp_err_t HandleDndStatus(httpd_req_t* req);
+  esp_err_t HandleDndEnable(httpd_req_t* req);
+  esp_err_t HandleDndDisable(httpd_req_t* req);
+  esp_err_t HandleActionPause(httpd_req_t* req);
+  esp_err_t HandleActionTimerRestart(httpd_req_t* req);
+  esp_err_t HandleStatic(httpd_req_t* req);
 
   bool PostCommand(const ControlCommand& cmd);
   static void ApplyCors(httpd_req_t* req);

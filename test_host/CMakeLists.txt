@@ -26,6 +26,7 @@ add_executable(btclock_host_tests
     main.cpp
     test_control_validators.cpp
     test_frontlight_fade.cpp
+    test_mime.cpp
     test_net_util.cpp
     test_partitions.cpp
     test_screen_ref_chars.cpp
@@ -41,10 +42,24 @@ add_executable(btclock_host_tests
     test_mining_pool_ckpool.cpp
     test_mining_pool_gobrrr.cpp
     test_screen_math.cpp
+    test_webui_upload_bounds.cpp
+    test_timezone.cpp
+    test_led_curves.cpp
+    test_led_color_parse.cpp
+    test_datahandler_parity.cpp
+    test_settings_api.cpp
+    test_dnd.cpp
+    test_screen_rotation.cpp
+    test_panel_texts.cpp
     ../main/app/frontlight_fader.cpp
+    ../main/app/led_curves.cpp
     ../main/screens/screen_math.cpp
+    ../main/screens/panel_texts.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
+    ../components/webserver/mime.cpp
+    ../components/settings/settings_api.cpp
+    ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
 )
 
@@ -53,6 +68,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../main
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/webserver/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_data/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/nostr/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/tls_gate/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_common/include
@@ -63,6 +79,10 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_public_pool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_ckpool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_gobrrr/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_fs/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/timezone/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/settings/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
 )
 
 find_package(Threads REQUIRED)

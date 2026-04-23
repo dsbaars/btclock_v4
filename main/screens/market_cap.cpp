@@ -10,6 +10,13 @@ namespace btclock {
 // string, no suffix scaling. Currency follows the currently-selected
 // rotation currency because isCurrencySpecific(SCREEN_MARKET_CAP) is
 // true in the old firmware — we don't hard-code USD.
+//
+// CAVEAT — silent truncation: any real market cap overflows 6 digit
+// panels (USD supply * price already > 1e12 today). Old firmware's
+// small-char 3-digit-group layout and bigChars suffix layout are both
+// still deferred. Tracked as btclock_v3_fci-0v9; parity-test text
+// helpers verify both layouts (RenderMarketCapBigChars /
+// RenderMarketCapSmallChars in test_datahandler_parity.cpp).
 
 template <size_t N>
 void RenderMarketCapScreen(

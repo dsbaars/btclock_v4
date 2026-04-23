@@ -173,7 +173,31 @@ void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h,
                 bool (*get_module)(int x, int y, const void* ctx),
                 const void* ctx, bool white_bg);
 
-// Embedded TTFs (provided by CMake EMBED_FILES).
+// Embedded TTFs.
+//
+// On device these are provided by ESP-IDF's EMBED_FILES (see
+// components/fonts/CMakeLists.txt): the linker exposes
+// _binary_<Name>_ttf_start / _end symbols for each asset, and the decls
+// below use asm() labels to pick those up.
+//
+// Under the WASM host build (tools/wasm/build.sh) no such linker magic
+// exists. A generator script (tools/wasm/gen_font_blobs.py) emits a
+// parallel source file that defines real kAntonioTtf + kAntonioTtfSize
+// arrays/constants. We pick one or the other via BTCLOCK_WASM_BUILD.
+#ifdef BTCLOCK_WASM_BUILD
+extern const uint8_t kAntonioTtf[];
+extern const size_t kAntonioTtfSize;
+extern const uint8_t kOswaldTtf[];
+extern const size_t kOswaldTtfSize;
+extern const uint8_t kOswaldBoldTtf[];
+extern const size_t kOswaldBoldTtfSize;
+extern const uint8_t kDejaVuTtf[];
+extern const size_t kDejaVuTtfSize;
+extern const uint8_t kDejaVuBoldTtf[];
+extern const size_t kDejaVuBoldTtfSize;
+extern const uint8_t kSatoshiSymbolTtf[];
+extern const size_t kSatoshiSymbolTtfSize;
+#else
 extern const uint8_t kAntonioTtf[] asm("_binary_Antonio_ttf_start");
 extern const uint8_t kAntonioTtfEnd[] asm("_binary_Antonio_ttf_end");
 extern const uint8_t kOswaldTtf[] asm("_binary_Oswald_ttf_start");
@@ -190,5 +214,6 @@ extern const uint8_t kSatoshiSymbolTtf[] asm(
     "_binary_SatoshiSymbol_ttf_start");
 extern const uint8_t kSatoshiSymbolTtfEnd[] asm(
     "_binary_SatoshiSymbol_ttf_end");
+#endif
 
 }  // namespace btclock

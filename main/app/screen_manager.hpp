@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "app/rotation_timer.hpp"
 #include "data_core/snapshot.hpp"
 #include "epd_ssd1680.hpp"
 #include "fonts_app.hpp"
@@ -81,7 +82,23 @@ class ScreenManager {
 
   // If `period_ms` has elapsed since the last navigation/rotation, step
   // to the next slot and return true. Data pushes do not reset timer.
+  // No-op while `IsPaused()` — the data pipeline keeps running but the
+  // screen holds its current slot, matching the old firmware's
+  // pause-timer semantics.
   bool MaybeAutoRotate(int64_t now_ms, int64_t period_ms);
+
+  // Freeze / resume auto-rotation. Button-driven Next/Prev still
+  // works while paused so the user can step manually. Pause does not
+  // stop data-source updates; the current slot still re-renders when
+  // its bound data changes.
+  void SetPaused(bool paused) { rot_.paused = paused; }
+  bool IsPaused() const { return rot_.paused; }
+
+  // Reset the auto-rotate deadline so the next MaybeAutoRotate() call
+  // needs a full `period_ms` to elapse before advancing. Used by
+  // /api/action/timer_restart to keep the current slot on-screen for
+  // another full period from "now". Does not change slot or dirty.
+  void RestartTimer(int64_t now_ms) { rot_.Restart(now_ms); }
 
   // Decide whether the current slot should be re-rendered against
   // `snap`. True if dirty (navigation just happened) or if the snapshot
@@ -101,6 +118,16 @@ class ScreenManager {
               const AppFonts& fonts,
               const DataSnapshot& snap);
 
+  // Per-panel text mirror of the current slot's on-EPD content, kept in
+  // sync by Render(). Same shape the old firmware's /api/status `data[]`
+  // produced: label in slot 0, digit / separator chars in the tail,
+  // unit text in the last slot when applicable. Empty until the first
+  // Render() call — /api/status handlers fall back to per-panel empties
+  // in that case. See screens/panel_texts.hpp for the layout rules.
+  const std::vector<std::string>& last_panel_texts() const {
+    return last_panel_texts_;
+  }
+
  private:
   // Currency-agnostic slots that stack ahead of the per-currency
   // slots. Block=0, Clock=1, Halving=2, BitcoinSupply=3.
@@ -116,11 +143,13 @@ class ScreenManager {
   std::vector<std::string> currencies_;
   size_t slot_ = 0;
   bool dirty_ = true;                 // first render is always full-refresh
-  int64_t last_change_ms_ = 0;
+  // Pause flag + last-advance timestamp live on RotationTimer so the
+  // auto-rotate decision is a single pure-logic call (host-testable).
+  RotationTimer rot_;
   uint32_t last_seen_height_ = 0;     // snapshot-side tracking (LED flash)
   uint32_t last_rendered_height_ = 0; // screen-side tracking (digit diff)
   std::string last_rendered_price_;   // shared Moscow-time + price diff
-  int32_t last_rendered_fee_ = -1;    // fee-rate screen diff (-1 = unknown)
+  double last_rendered_fee_ = -1.0;   // fee-rate screen diff (<0 = unknown)
   // Market-cap diff: price *and* height both feed into the output,
   // so we remember the last height that drove a cap render (distinct
   // from last_rendered_height_, which is the block-height-screen diff).
@@ -132,6 +161,10 @@ class ScreenManager {
   int last_rendered_clock_min_ = -1;
   int last_rendered_clock_mday_ = -1;
   int last_rendered_clock_mon_ = -1;
+  // Text mirror refreshed on every Render(). Populated via
+  // screens/panel_texts.hpp, consumed by ControlServer::HandleStatus
+  // through the `get_panel_texts` callback wired in main.cpp.
+  std::vector<std::string> last_panel_texts_;
 };
 
 }  // namespace btclock

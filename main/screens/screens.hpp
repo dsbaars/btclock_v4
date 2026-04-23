@@ -14,23 +14,18 @@
 #include <memory>
 #include <string>
 
+// Under the WASM preview build the real EpdPanel/RefreshKind defs come
+// from tools/wasm/wasm_panel.hpp (a shim the build script puts on the
+// include path). On device we use the real driver header.
+#ifdef BTCLOCK_WASM_BUILD
+#include "wasm_panel.hpp"
+#else
 #include "epd_ssd1680.hpp"
+#endif
 #include "fonts_app.hpp"
+#include "screens/screen_kind.hpp"
 
 namespace btclock {
-
-// Which top-level screen is currently being displayed. Screen rotation
-// and button navigation cycle through these.
-enum class ScreenType : uint8_t {
-  kBlockHeight,
-  kMoscowTime,
-  kBtcPrice,
-  kBlockFeeRate,
-  kClock,
-  kHalving,
-  kBitcoinSupply,
-  kMarketCap,
-};
 
 // --- Block height ---
 // Panel 0 = "BLOCK/HEIGHT" split-text label, panels 1..N-1 = one digit.
@@ -76,21 +71,21 @@ void RenderBtcPriceScreen(
     const char* symbol_utf8 = "");
 
 // --- Block fee rate ---
-// Panel 0 = "FEE/RATE" split-text label, panels 1..N-1 = integer
-// median-mempool-fee digits (sats/vB), right-justified. Pass
-// `prev_fee_sats_vb = -1` to force a full refresh; otherwise pass the
-// previously-rendered integer so only the digit panels whose glyph
-// changed get a partial refresh. Pass `fee_sats_vb = -1` when no value
-// has been received yet — the digit panels paint blank rather than '0'.
-// The old firmware also renders a "sat/vB" unit on the last panel; we
-// skip that here (no unit glyph yet; see fee_rate_layout.hpp).
+// Panel 0 = "FEE/RATE" split-text label, panels 1..N-2 = median-mempool-
+// fee digits (sats/vB, right-justified; "X.YY" when fractional fits,
+// integer otherwise — see fee_rate_layout.hpp for the full rule). Panel
+// N-1 = "sat/vB" unit text. Pass `prev_fee_sats_vb < 0` to force a full
+// refresh; otherwise pass the previously-rendered value so only digit
+// panels whose glyph changed repaint. Pass `fee_sats_vb < 0` when no
+// value has been received yet — the digit panels paint blank rather
+// than '0'.
 template <size_t N>
 void RenderFeeRateScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
-    int32_t fee_sats_vb,
-    int32_t prev_fee_sats_vb = -1);
+    double fee_sats_vb,
+    double prev_fee_sats_vb = -1.0);
 
 // --- Wall-clock HH:MM ---
 // Panel 0 = dd/mm date label (split-text). Remaining panels carry

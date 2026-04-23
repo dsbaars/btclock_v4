@@ -21,6 +21,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 #include "app/frontlight_fader.hpp"
 #include "freertos/FreeRTOS.h"
@@ -122,6 +123,18 @@ class FrontlightController {
   void SetLuxThreshold(uint32_t lux) { lux_threshold_ = lux; }
   uint32_t lux_threshold() const { return lux_threshold_; }
 
+  // Install a predicate the controller consults before acting on Post.
+  // When true, kOn / kSetBrightness / kBlockFlash / kZapFlash are
+  // silently dropped and an immediate kOff is enqueued so the backlight
+  // fades to black. Pointed at the DND subsystem from main.cpp;
+  // std::function keeps the dnd component out of the frontlight
+  // controller's include graph. Thread-safety: predicate is swapped
+  // atomically; callers that set this more than once race on
+  // interleaved updates (not a concern — only wired at boot).
+  void SetActiveSuppressor(std::function<bool()> predicate) {
+    suppressor_ = std::move(predicate);
+  }
+
   // Feed the latest ambient-light reading. Safe to call from any task;
   // enqueues kOn/kOff as needed. No-op when ambient_auto_off() is
   // false, or when the reading is < 0 (sensor error sentinel).
@@ -160,6 +173,10 @@ class FrontlightController {
   // be tidier but we only need eventual consistency here.
   volatile bool ambient_enabled_ = true;
   volatile uint32_t lux_threshold_ = frontlight::kDefaultLuxThreshold;
+
+  // DND predicate. Set once at boot, read from both the caller thread
+  // (inside Post) and the controller task. Nullptr = no gating.
+  std::function<bool()> suppressor_;
 };
 
 }  // namespace btclock

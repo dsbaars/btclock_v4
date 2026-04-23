@@ -128,6 +128,58 @@ TEST_CASE("ComputeClockLayout returns all-blanks when not valid") {
   for (int i = 0; i < 6; ++i) CHECK(l.digits[i] == ' ');
 }
 
+// ----- FormatNumberWithSuffix -----
+
+TEST_CASE("FormatNumberWithSuffix ports old firmware output (no suffix)") {
+  // Sub-thousand values: no suffix at all.
+  CHECK(btclock::FormatNumberWithSuffix(0) == "0");
+  CHECK(btclock::FormatNumberWithSuffix(42) == "42");
+  CHECK(btclock::FormatNumberWithSuffix(999) == "999");
+}
+
+TEST_CASE("FormatNumberWithSuffix adds K/M/B/T at each decade") {
+  // Decimal packing follows the available-character budget (default 4):
+  // "1K" fits in 2 → pack one decimal digit to "1.0K".
+  CHECK(btclock::FormatNumberWithSuffix(1000) == "1.0K");
+  // budget=4: "1020825000000" → "1T" fits in 2, pack decimals to "1.0T".
+  CHECK(btclock::FormatNumberWithSuffix(1020825000000ULL, 4) == "1.0T");
+  // budget=5: same number → "1.02T" (one more decimal).
+  CHECK(btclock::FormatNumberWithSuffix(1020825000000ULL, 5) == "1.02T");
+  // Supply: 19.687M BTC at block 840000.
+  CHECK(btclock::FormatNumberWithSuffix(19687500ULL, 5) == "19.7M");
+}
+
+TEST_CASE("FormatNumberWithSuffix MOW mode uses M across the thousands") {
+  // MOW = million-of-wotsits — jumps straight to "M" below 1M.
+  CHECK(btclock::FormatNumberWithSuffix(0, 4, true) == "0M");
+  // 93600 in MOW with budget 5 → truncated ".093" * M → "0.093M".
+  // The truncation shape follows old firmware's std::to_string + substr.
+  const auto mow_93600 = btclock::FormatNumberWithSuffix(93600, 5, true);
+  CHECK(mow_93600.back() == 'M');
+}
+
+// ----- BlockHeightDropsLabel -----
+
+TEST_CASE("BlockHeightDropsLabel keeps label for 6-digit heights") {
+  CHECK_FALSE(btclock::BlockHeightDropsLabel(999999u, 7));
+  CHECK_FALSE(btclock::BlockHeightDropsLabel(1u, 7));
+  CHECK_FALSE(btclock::BlockHeightDropsLabel(0u, 7));
+}
+
+TEST_CASE("BlockHeightDropsLabel drops label at 7-digit rollover") {
+  // Mainnet passed block 900000 long ago; 1_000_000 is the point the
+  // label must vanish or we silently lose the leading "1".
+  CHECK(btclock::BlockHeightDropsLabel(1000000u, 7));
+  CHECK(btclock::BlockHeightDropsLabel(1234567u, 7));
+}
+
+TEST_CASE("BlockHeightDropsLabel scales with panel count") {
+  // 8-panel boards keep the label until 8 digits — future-proofed for
+  // the v8 variant.
+  CHECK_FALSE(btclock::BlockHeightDropsLabel(1000000u, 8));
+  CHECK(btclock::BlockHeightDropsLabel(10000000u, 8));
+}
+
 TEST_CASE("ComputeClockLayout handles midnight and 23:59 edges") {
   const auto midnight = btclock::ComputeClockLayout(true, 0, 0, 5);
   CHECK(midnight.digits[0] == '0');

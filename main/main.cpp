@@ -14,6 +14,7 @@
 // Board variant comes from -DPOC_BOARD=REV_A|REV_B|V8 at build time.
 
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -35,6 +36,7 @@
 #include "buttons.hpp"
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
+#include "dnd/dnd.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -52,11 +54,16 @@
 #include "lwip/inet.h"
 #include "mcp23017.hpp"
 #include "net_util.hpp"
+#include "nostr/nostr_data_source.hpp"
+#include "nostr/relay_client.hpp"
+#include "nostr/subscription_manager.hpp"
+#include "nostr/zap_listener.hpp"
 #include "pca9685.hpp"
 #include "prefs.hpp"
 #include "provisioning_server.hpp"
 #include "provisioning_ui.hpp"
 #include "sdkconfig.h"
+#include "timezone/timezone.hpp"
 #include "wifi.hpp"
 
 namespace {
@@ -141,6 +148,10 @@ extern "C" void app_main() {
            static_cast<unsigned>(esp_get_free_heap_size()));
 
   btclock::InitLeds(kNeopixel, kNeopixelCount);
+  // DND predicate goes in before the first effect post so the boot
+  // rainbow is gated too if the user has DND currently armed.
+  btclock::SetLedActiveSuppressor(
+      [] { return btclock::dnd::Instance().IsActive(); });
   btclock::PostLedEvent(btclock::LedEvent::kSetBoot);
 
   // --- I2C bus + peripherals ---
@@ -190,6 +201,10 @@ extern "C" void app_main() {
     pca->SetOutputEnable(true);
     frontlight = std::make_unique<btclock::FrontlightController>(
         *pca, kFrontlightChannelFirst, kFrontlightChannelCount);
+    // Install DND gate before Start() so the boot fade-in is
+    // suppressed when a schedule is already active at power-up.
+    frontlight->SetActiveSuppressor(
+        [] { return btclock::dnd::Instance().IsActive(); });
     frontlight->Start();
     // Fade up to the configured brightness at boot. Matches old
     // firmware, which powered the frontlight on once the panels were
@@ -248,6 +263,17 @@ extern "C" void app_main() {
 
   // --- WiFi + NVS + optional provisioning portal ---
   ESP_ERROR_CHECK(btclock::Prefs::InitOnce());
+
+  // Set the process-wide TZ from NVS (namespace "time", key "tz")
+  // before anything that calls localtime_r. The clock screen, log
+  // timestamps, and any future scheduling code all rely on it being
+  // set; if the stored value is missing or unknown we fall back to
+  // UTC and log the reason. setenv/tzset don't need the network.
+  //
+  // TODO(beads): wire /api/settings write-back so the WebUI can
+  // change the zone at runtime — that lives in the jwz epic, not
+  // here. This call only restores whatever's already in NVS.
+  btclock::timezone::InitFromNvs();
 
   // LittleFS is used for the future static-WebUI bundle and OTA-webui
   // uploads. We format-on-failure so a blank partition (fresh flash,
@@ -318,6 +344,21 @@ extern "C" void app_main() {
   std::unique_ptr<btclock::ButtonReader> buttons;
   TaskHandle_t main_task = xTaskGetCurrentTaskHandle();
 
+  // Zap listener stack — kept separate from the Nostr DataSource so the
+  // user can run one without the other and so the zap relay (often
+  // relay.primal.net) can differ from the data relay. Lifetime must
+  // outlive the STA boot branch below because the WSS callback is
+  // asynchronous and we never return from app_main.
+  std::unique_ptr<btclock::nostr::RelayClient> zap_relay;
+  std::unique_ptr<btclock::nostr::SubscriptionManager> zap_subs;
+  std::unique_ptr<btclock::nostr::ZapListener> zap_listener;
+  // Atomic so a future /api settings PATCH handler can toggle the flash
+  // without tearing down the listener. Default matches the NVS default
+  // applied below; the captured reference inside the SetOnZap lambda
+  // reads this at each receipt.
+  static std::atomic<bool> flash_on_zap_enabled{true};
+  static std::atomic<bool> flash_frontlight_on_zap_enabled{false};
+
   // Active currency set. For now hardcoded; beads lx0.11+ tracks the
   // NVS-backed config. Antonio's subset covers $/£/¥/€ symbols.
   const std::vector<std::string> kCurrencies = {"USD", "EUR", "GBP", "JPY"};
@@ -332,11 +373,103 @@ extern "C" void app_main() {
     hub = std::make_unique<btclock::DataHub>();
     hub->AddSource(std::make_unique<btclock::BtclockDataSource>(
         "wss://ws.btclock.dev/api/v2/ws", kCurrencies));
-    // TODO(btclock_v3_fci-0wm): wire a nostr::NostrDataSource here once
-    // the relay URL + publisher pubkey are user-configurable. Suggested
-    // NVS keys (namespace "nostr"): "relay" (wss://...), "pub" (hex
-    // pubkey), "zap_pub" (hex pubkey for zap listener), "enable" (bool).
-    // See components/nostr/include/nostr/nostr_data_source.hpp.
+    // Optional Nostr DataSource. Opt-in via NVS (namespace "nostr"):
+    //   key "enable" (bool, default false)  — master switch
+    //   key "relay"  (string)                — wss:// URL
+    //   key "pub"    (hex string, 64 chars)  — publisher pubkey
+    // Missing or empty strings → skip cleanly rather than failing boot.
+    // A future follow-up will expose these via the control-server /api
+    // and the provisioning portal; for now set them with `nvs_tool` or a
+    // one-shot boot-time Prefs::SetString().
+    {
+      btclock::Prefs nostr_prefs("nostr");
+      const bool enable = nostr_prefs.GetBool("enable", false);
+      const std::string relay = nostr_prefs.GetString("relay", "");
+      const std::string pub = nostr_prefs.GetString("pub", "");
+      if (enable && !relay.empty() && !pub.empty()) {
+        btclock::nostr::NostrDataSource::Config ncfg;
+        ncfg.relay_url = relay;
+        ncfg.author_pubkey_hex = pub;
+        // Leave d_tags empty → subscribe to all slots the publisher
+        // emits (price:*, blockheight, medianFee). Narrowing is a
+        // future optimisation if the pubkey publishes more than we need.
+        hub->AddSource(
+            std::make_unique<btclock::nostr::NostrDataSource>(std::move(ncfg)));
+        ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…", relay.c_str(),
+                 pub.substr(0, 8).c_str());
+      } else {
+        ESP_LOGI(kTag, "nostr disabled (enable=%d relay=%s pub=%s)",
+                 enable ? 1 : 0, relay.empty() ? "<empty>" : "set",
+                 pub.empty() ? "<empty>" : "set");
+      }
+    }
+
+    // Optional zap listener — separate WSS connection from the Nostr
+    // DataSource above so enabling/disabling one doesn't tear down the
+    // other and the zap relay URL can differ from the data relay.
+    // NVS (namespace "nostr"):
+    //   zapEnable  (bool, default true)   — master switch for zap receipts
+    //   zapRelay   (string)               — wss:// URL
+    //   zapPubkey  (string)               — recipient pubkey (hex, 64 chars)
+    //   flashOnZap (bool, default true)   — gate for LED pulse on receipt
+    // NVS key names kept under 15 chars to fit the nvs_set_* limit.
+    // Defaults are the current test setup; provisioning portal /
+    // /api settings PATCH will overwrite them.
+    {
+      btclock::Prefs zap_prefs("nostr");
+      const bool zap_enable = zap_prefs.GetBool("zapEnable", true);
+      const std::string zap_relay_url =
+          zap_prefs.GetString("zapRelay", "wss://relay.primal.net");
+      const std::string zap_pub = zap_prefs.GetString(
+          "zapPubkey",
+          "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422");
+      flash_on_zap_enabled.store(zap_prefs.GetBool("flashOnZap", true));
+      // Frontlight flash-on-zap lives in the frontlight pref namespace to
+      // match the old firmware (src/lib/system/pref_keys.hpp::FlFlashOnZap),
+      // so re-using it keeps settings migration from Arduino straightforward.
+      {
+        btclock::Prefs fl_prefs("frontlight");
+        flash_frontlight_on_zap_enabled.store(
+            fl_prefs.GetBool("flFlashOnZap", false));
+      }
+      if (zap_enable && !zap_relay_url.empty() && zap_pub.size() == 64) {
+        zap_relay =
+            std::make_unique<btclock::nostr::RelayClient>(zap_relay_url);
+        zap_subs = std::make_unique<btclock::nostr::SubscriptionManager>(
+            *zap_relay);
+        zap_listener = std::make_unique<btclock::nostr::ZapListener>(
+            *zap_subs, std::string("zap"), zap_pub);
+        btclock::FrontlightController* fl_ptr = frontlight.get();
+        zap_listener->SetOnZap(
+            [fl_ptr](const btclock::nostr::ZapListener::ZapInfo& z) {
+              const uint64_t sats = z.amount_msat / 1000ULL;
+              const std::string eid =
+                  z.raw ? z.raw->id.substr(0, 8) : std::string("?");
+              ESP_LOGI(kTag, "zap: %llu sats id=%s…",
+                       static_cast<unsigned long long>(sats), eid.c_str());
+              ESP_LOGD(kTag, "zap bolt11: %s", z.bolt11.c_str());
+              if (flash_on_zap_enabled.load()) {
+                btclock::PostLedEffect(btclock::LedEffect::kZap);
+              }
+              if (fl_ptr && flash_frontlight_on_zap_enabled.load()) {
+                fl_ptr->ZapFlash();
+              }
+            });
+        ESP_ERROR_CHECK(zap_relay->Start());
+        zap_listener->Start();
+        ESP_LOGI(kTag,
+                 "zap listener enabled: relay=%s pub=%s… flashLed=%d flashFl=%d",
+                 zap_relay_url.c_str(), zap_pub.substr(0, 8).c_str(),
+                 flash_on_zap_enabled.load() ? 1 : 0,
+                 flash_frontlight_on_zap_enabled.load() ? 1 : 0);
+      } else {
+        ESP_LOGI(kTag,
+                 "zap listener disabled (enable=%d relay=%s pub=%s)",
+                 zap_enable ? 1 : 0,
+                 zap_relay_url.empty() ? "<empty>" : "set",
+                 zap_pub.size() == 64 ? "set" : "<invalid>");
+      }
+    }
     hub->SetOnUpdate([main_task](const btclock::DataSnapshot&) {
       xTaskNotifyGive(main_task);
     });
@@ -391,6 +524,86 @@ extern "C" void app_main() {
     fl_adapter = std::make_unique<FrontlightAdapter>(frontlight.get());
   }
 
+  // NeoPixel adapter — same shape as FrontlightAdapter, forwards to
+  // the led_controller namespace-level API. Shared LED state lives in
+  // that TU so there's no per-controller handle; the adapter is
+  // effectively stateless.
+  struct LedsAdapter : btclock::LedsIface {
+    Status GetStatus() const override {
+      const auto s = btclock::GetLedState();
+      Status out{};
+      out.brightness = s.brightness;
+      out.block_flash_color = s.block_flash_color;
+      out.disabled = s.disabled;
+      out.flash_on_update = s.flash_on_update;
+      out.pixel_count = s.pixel_count;
+      const uint32_t n = s.pixel_count <
+                         (sizeof(out.pixels) / sizeof(out.pixels[0]))
+                             ? s.pixel_count
+                             : (sizeof(out.pixels) / sizeof(out.pixels[0]));
+      for (uint32_t i = 0; i < n; ++i) out.pixels[i] = s.pixels[i];
+      return out;
+    }
+    void SetSolidColor(uint32_t rgb) override {
+      btclock::SetLedSolidColor(rgb);
+    }
+    void SetPixels(const uint32_t* rgb_array, uint32_t count) override {
+      btclock::SetLedPixels(rgb_array, count);
+    }
+    void SetDisabled(bool disabled) override {
+      btclock::SetLedDisabled(disabled);
+    }
+    void SetBrightness(uint8_t value) override {
+      btclock::SetLedBrightness(value);
+    }
+    void SetBlockFlashColor(uint32_t rgb) override {
+      btclock::SetBlockFlashColor(rgb);
+    }
+    void TriggerIdentify() override {
+      btclock::PostLedEffect(btclock::LedEffect::kIdentify);
+    }
+  };
+  auto leds_adapter = std::make_unique<LedsAdapter>();
+
+  // DND adapter — forwards the webserver's DndIface calls to the
+  // process-wide Dnd singleton. Keeps the webserver component free of
+  // a dependency on the `dnd` component while the main module, which
+  // already pulls both in, bridges them.
+  struct DndAdapter : btclock::DndIface {
+    Status GetStatus() const override {
+      auto& d = btclock::dnd::Instance();
+      const auto cfg = d.GetConfig();
+      Status s{};
+      s.enabled = cfg.enabled;
+      s.time_enabled = cfg.time_enabled;
+      s.start_hour = cfg.start_hour;
+      s.start_minute = cfg.start_minute;
+      s.end_hour = cfg.end_hour;
+      s.end_minute = cfg.end_minute;
+      s.active = d.IsActive();
+      return s;
+    }
+    void SetEnabled(bool enabled) override {
+      btclock::dnd::Instance().SetEnabled(enabled);
+    }
+  };
+  auto dnd_adapter = std::make_unique<DndAdapter>();
+
+  // Timer adapter — pause / restart the screen-rotation deadline from
+  // the HTTP task. ScreenManager is owned on the main task; the
+  // adapter's writes are plain scalar updates so a cross-task poke is
+  // safe without an explicit command-queue hop.
+  struct TimerAdapter : btclock::TimerIface {
+    TimerAdapter(btclock::ScreenManager& sm_ref, int64_t (*now_fn)())
+        : sm(sm_ref), now(now_fn) {}
+    bool IsPaused() const override { return sm.IsPaused(); }
+    void SetPaused(bool paused) override { sm.SetPaused(paused); }
+    void Restart() override { sm.RestartTimer(now()); }
+    btclock::ScreenManager& sm;
+    int64_t (*now)();
+  };
+  auto timer_adapter = std::make_unique<TimerAdapter>(sm, MsNow);
+
   std::unique_ptr<btclock::ControlServer> ctrl;
   if (!wifi.is_ap_mode()) {
     btclock::ControlServer::Config ccfg;
@@ -400,6 +613,9 @@ extern "C" void app_main() {
     ccfg.num_screens = kNumPanels;
     ccfg.hw_name = btclock::board::kHardwareName;
     ccfg.frontlight = fl_adapter.get();
+    ccfg.leds = leds_adapter.get();
+    ccfg.dnd = dnd_adapter.get();
+    ccfg.timer = timer_adapter.get();
     ctrl = std::make_unique<btclock::ControlServer>(std::move(ccfg));
     if (ctrl->Start() != ESP_OK) {
       ESP_LOGE(kTag, "control server failed to start; control API disabled");
@@ -407,16 +623,21 @@ extern "C" void app_main() {
     }
   }
 
-  auto publish_status = [&](bool timer_running) {
+  // Pull timer state live from the screen manager so /api/status
+  // doesn't drift when the user toggles /api/action/pause from the
+  // WebUI. The webserver's TimerIface also reads this directly — this
+  // lambda just keeps LiveStatus in sync for readers that cache it.
+  auto publish_status = [&]() {
     if (!ctrl) return;
     btclock::ControlServer::LiveStatus ls;
     ls.current_slot = static_cast<int32_t>(sm.current_slot());
     ls.slot_count = static_cast<int32_t>(sm.slot_count_public());
-    ls.timer_running = timer_running;
+    ls.timer_running = !sm.IsPaused();
     ls.currency = sm.current_currency();
+    ls.panel_texts = sm.last_panel_texts();
     ctrl->PublishStatus(ls);
   };
-  publish_status(true);
+  publish_status();
 
   // --- Event loop ---
   // Three wake sources: data-push notify, button event, 1 s heartbeat
@@ -441,7 +662,9 @@ extern "C" void app_main() {
           re_render = true;
           break;
         case Kind::kIdentify:
-          btclock::PostLedEvent(btclock::LedEvent::kBlockFlash);
+          // Triple rapid multi-colour flash — matches the old firmware's
+          // LED_FLASH_IDENTIFY (red↔cyan then green↔blue).
+          btclock::PostLedEffect(btclock::LedEffect::kIdentify);
           break;
         case Kind::kRestart:
           ESP_LOGW(kTag, "restart requested via /api/restart");
@@ -478,7 +701,7 @@ extern "C" void app_main() {
           break;
       }
       if (re_render && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
-      publish_status(true);
+      publish_status();
       continue;
     }
 
@@ -491,7 +714,7 @@ extern "C" void app_main() {
         rotated = sm.PrevScreen(MsNow());
       }
       if (rotated && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
-      if (rotated) publish_status(true);
+      if (rotated) publish_status();
       continue;
     }
 
@@ -518,7 +741,7 @@ extern "C" void app_main() {
 
     if (sm.MaybeAutoRotate(now_ms, kAutoRotateMs) && hub) {
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
-      publish_status(true);
+      publish_status();
       continue;
     }
 

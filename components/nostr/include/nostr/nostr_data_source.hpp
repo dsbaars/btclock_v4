@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,14 +52,20 @@ class NostrDataSource : public DataSource {
   esp_err_t Stop() override;
 
  private:
-  // TODO(beads-0wm follow-up): implement the d-tag → snapshot dispatch
-  // and wire through hub_->Report(). For now we log the event and drop.
+  // Route a decoded EVENT frame into the DataHub. Filters to kind
+  // 30078, drops stale replays by (d_tag, created_at), delegates the
+  // actual content → snapshot shape work to ParseNip78Content.
   void OnEvent(const std::string& sub_id, const Event& ev);
 
   Config cfg_;
   DataHub* hub_ = nullptr;
   std::unique_ptr<RelayClient> relay_;
   std::unique_ptr<SubscriptionManager> subs_;
+  // Last consumed event timestamp per `d` tag. NIP-78 is replaceable-
+  // by-newest, but nothing stops a relay from redelivering an older
+  // event after reconnect (or from misbehaving) — we enforce the
+  // invariant on our side. Small map (one entry per slot we see).
+  std::map<std::string, uint64_t> last_seen_created_at_;
 };
 
 }  // namespace nostr

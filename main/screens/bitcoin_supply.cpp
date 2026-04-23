@@ -10,6 +10,13 @@ namespace btclock {
 // integer mode first — the other two need per-panel text (not just
 // digits) and will reuse the layout solved for the halving-time-mode
 // once that lands (lx0.15 follow-up).
+//
+// CAVEAT — silent truncation: real mainnet supply is already 19.6M BTC
+// (8 digits), overflowing the 6 digit panels. Old firmware uses bigChars
+// suffix or small-char 3-digit groups to avoid this. Tracked as
+// btclock_v3_fci-0v9; parity-test text helpers already verify both
+// layouts (see test_datahandler_parity.cpp RenderBitcoinSupplyBigChars
+// / RenderBitcoinSupplySmallChars).
 
 template <size_t N>
 void RenderBitcoinSupplyScreen(

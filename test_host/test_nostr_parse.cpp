@@ -9,11 +9,13 @@
 #include <cstdint>
 #include <string>
 
+#include "data_core/snapshot.hpp"
 #include "nostr/event.hpp"
 #include "nostr/parser.hpp"
 #include "nostr/subscription_manager.hpp"
 
 using namespace btclock::nostr;
+using btclock::DataSnapshot;
 
 TEST_CASE("ParseEventObject: flat event with tags and content") {
   const std::string obj = R"({
@@ -151,4 +153,86 @@ TEST_CASE("BuildReqJson: zap filter emits #p") {
 
 TEST_CASE("BuildCloseJson: matches NIP-01") {
   CHECK(BuildCloseJson("s1") == R"(["CLOSE","s1"])");
+}
+
+// --- ParseNip78Content ------------------------------------------------
+//
+// Covers the d-tag dispatch used by NostrDataSource::OnEvent. Each
+// slot per NOSTR.md has its own case; unknown d and bad content both
+// surface as false-return so the caller can log+drop without
+// corrupting the hub's snapshot.
+
+TEST_CASE("ParseNip78Content: d=blockheight populates block_height") {
+  DataSnapshot s;
+  REQUIRE(ParseNip78Content("blockheight", "870124", s));
+  REQUIRE(s.block_height.has_value());
+  CHECK(*s.block_height == 870124u);
+  CHECK_FALSE(s.block_fee.has_value());
+  CHECK_FALSE(s.block_fee_precise.has_value());
+  CHECK(s.prices.empty());
+}
+
+TEST_CASE("ParseNip78Content: d=medianFee populates both fee fields") {
+  DataSnapshot s;
+  REQUIRE(ParseNip78Content("medianFee", "12.75", s));
+  REQUIRE(s.block_fee_precise.has_value());
+  CHECK(*s.block_fee_precise == doctest::Approx(12.75));
+  REQUIRE(s.block_fee.has_value());
+  CHECK(*s.block_fee == 13);  // round-half-away-from-zero
+
+  // Exact integer string → integer rounds trivially.
+  DataSnapshot s2;
+  REQUIRE(ParseNip78Content("medianFee", "12", s2));
+  CHECK(*s2.block_fee_precise == doctest::Approx(12.0));
+  CHECK(*s2.block_fee == 12);
+
+  // Below-half rounds down.
+  DataSnapshot s3;
+  REQUIRE(ParseNip78Content("medianFee", "12.4", s3));
+  CHECK(*s3.block_fee == 12);
+}
+
+TEST_CASE("ParseNip78Content: d=price:<CCY> populates prices map verbatim") {
+  DataSnapshot s;
+  REQUIRE(ParseNip78Content("price:USD", "64321.50", s));
+  REQUIRE(s.prices.count("USD") == 1);
+  CHECK(s.prices["USD"] == "64321.50");
+  CHECK_FALSE(s.block_height.has_value());
+
+  // Another currency maps to its own slot.
+  REQUIRE(ParseNip78Content("price:EUR", "60000.00", s));
+  CHECK(s.prices["EUR"] == "60000.00");
+  CHECK(s.prices["USD"] == "64321.50");  // unchanged
+}
+
+TEST_CASE("ParseNip78Content: unknown d tag returns false, snapshot unchanged") {
+  DataSnapshot s;
+  s.block_height = 42;  // pre-populated to check non-mutation
+  CHECK_FALSE(ParseNip78Content("totallyUnknown", "whatever", s));
+  CHECK_FALSE(ParseNip78Content("price:", "64321.50", s));  // empty ccy
+  CHECK_FALSE(ParseNip78Content("", "64321.50", s));
+  REQUIRE(s.block_height.has_value());
+  CHECK(*s.block_height == 42u);
+  CHECK(s.prices.empty());
+}
+
+TEST_CASE("ParseNip78Content: malformed content returns false") {
+  DataSnapshot s;
+  // Non-numeric block height.
+  CHECK_FALSE(ParseNip78Content("blockheight", "not-a-number", s));
+  CHECK_FALSE(ParseNip78Content("blockheight", "", s));
+  CHECK_FALSE(ParseNip78Content("blockheight", "123abc", s));
+
+  // Exponent notation rejected (publisher emits plain decimal per NOSTR.md).
+  CHECK_FALSE(ParseNip78Content("medianFee", "1e2", s));
+  CHECK_FALSE(ParseNip78Content("medianFee", "", s));
+  CHECK_FALSE(ParseNip78Content("medianFee", "12.3.4", s));
+
+  // Empty price content is dropped; an empty string would otherwise
+  // poison the renderer.
+  CHECK_FALSE(ParseNip78Content("price:USD", "", s));
+
+  // Overflow — value > uint32 max. NIP-78 height for bitcoin is safely
+  // within 32-bit for the next few centuries; still worth asserting.
+  CHECK_FALSE(ParseNip78Content("blockheight", "99999999999", s));
 }

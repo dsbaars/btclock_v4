@@ -34,6 +34,8 @@
     border-radius: 3px; font: inherit; cursor: pointer;
   }
   button:disabled { background: #aaa; cursor: not-allowed; }
+  button.secondary { background: #fff; color: var(--fg); border: 1px solid var(--cell-border); }
+  button.secondary.active { background: var(--fg); color: #fff; }
   .row { display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap; }
   .cell {
     flex: 1 1 80px;
@@ -61,6 +63,28 @@
     color: var(--muted);
     white-space: pre-wrap;
   }
+  .panel-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .panel-row canvas {
+    /* Each canvas is 122x250 logical; scale to ~2x so strokes are legible
+       on-screen while keeping aspect exact. */
+    background: #fff;
+    border: 1px solid var(--cell-border);
+    image-rendering: pixelated;
+    width: 92px;
+    height: 188px;
+  }
+  /* When anti-aliasing is on we want the browser's bilinear upscale so
+     the alpha gradient doesn't get re-quantized to hard pixel steps. */
+  .panel-row.aa canvas {
+    image-rendering: auto;
+  }
+  #pixelOptions { display: none; }
+  #pixelOptions.visible { display: block; }
 </style>
 </head>
 <body>
@@ -73,18 +97,27 @@
     cell below maps to one 2.13" EPD panel in the 7-panel rotation.
   </p>
 
-  <div class="todo">
-    <strong>TODO (stretch goal):</strong> pixel-accurate EPD preview. This page
-    only renders the per-panel text arrays that <code>parse*</code> returns.
-    The SSD1680 framebuffer + font rasterisation path lives in
-    <code>idf_cpp_proto/components/epd_ssd1680</code> + <code>main/screens/</code>
-    and is not yet ported to WASM. Tracked in beads
-    <code>btclock_v3_fci-90q</code> as Phase 2.
-    <br><br>
-    Halving / Market cap / Bitcoin-supply renderers are on
-    <code>worktree-agent-af32422c</code> and not yet merged — their cells show
-    <code>(wt-af3)</code> placeholders until that branch lands.
-  </div>
+  <fieldset>
+    <legend>View mode</legend>
+    <div class="row">
+      <button id="modeText" class="secondary active" type="button">Text cells</button>
+      <button id="modePixel" class="secondary" type="button">Pixel preview</button>
+    </div>
+    <div id="pixelOptions" class="row">
+      <label><input type="checkbox" id="aaEnabled" /> Anti-aliased (show alpha)</label>
+    </div>
+    <p class="status">
+      <strong>Text cells</strong>: shows what each panel's data layout
+      resolves to as plain strings — fast, cheap, no font rendering.
+      <strong>Pixel preview</strong>: runs the actual
+      <code>main/screens/*.cpp</code> renderers + stb_truetype font
+      rasterizer and draws each panel onto a canvas. Without AA this is
+      the exact 1-bpp frame the e-paper paints (122x250 logical, rotated
+      180° to match REV_B solder orientation); with AA enabled the
+      preview uses the raw grayscale alpha stb_truetype produces BEFORE
+      the 1-bpp threshold — smoother glyph edges, not what the EPD shows.
+    </p>
+  </fieldset>
 
   <p id="status" class="status">Loading module...</p>
 
@@ -107,8 +140,8 @@
           <option value="CAD">CAD</option>
         </select>
       </label>
-      <label>Block fees (integer sat/vB)
-        <input type="number" id="blockFees" value="42" min="0" step="1" />
+      <label>Block fees (sat/vB, decimals OK)
+        <input type="number" id="blockFees" value="12.75" min="-1" step="0.01" />
       </label>
     </div>
     <div class="row">
@@ -128,18 +161,66 @@
   const statusEl = document.getElementById("status");
   const controls = document.getElementById("controls");
   const outputs = document.getElementById("outputs");
+  const modeTextBtn  = document.getElementById("modeText");
+  const modePixelBtn = document.getElementById("modePixel");
+  const pixelOptions = document.getElementById("pixelOptions");
+  const aaEnabledEl  = document.getElementById("aaEnabled");
 
+  let viewMode = "text";  // "text" | "pixel"
+
+  // Each FN carries three binding names: text-mode (parse*), pixel 1-bpp
+  // (render*FrameBuffer), and pixel AA (render*AlphaBuffer). Same args
+  // across all three — the binding layer keeps them in lockstep.
   const FNS = [
-    { name: "parseBlockHeight",     args: (i) => [i.blockHeight] },
-    { name: "parsePriceData",       args: (i) => [i.price, i.currency] },
-    { name: "parseSatsPerCurrency", args: (i) => [i.price, i.currency, i.withSatsSymbol] },
-    { name: "parseBlockFees",       args: (i) => [i.blockFees] },
-    { name: "parseHalvingCountdown",args: (i) => [i.blockHeight, false] },
-    { name: "parseMarketCap",       args: (i) => [i.blockHeight, i.price, i.currency, false] },
-    { name: "parseBitcoinSupply",   args: (i) => [i.blockHeight, false, false] },
+    { title: "Block height",
+      textFn: "parseBlockHeight",
+      pixelFn: "renderBlockHeightFrameBuffer",
+      alphaFn: "renderBlockHeightAlphaBuffer",
+      args: (i) => [i.blockHeight] },
+    { title: "BTC price",
+      textFn: "parsePriceData",
+      pixelFn: "renderPriceDataFrameBuffer",
+      alphaFn: "renderPriceDataAlphaBuffer",
+      args: (i) => [i.price, i.currency] },
+    { title: "Sats per currency",
+      textFn: "parseSatsPerCurrency",
+      pixelFn: "renderSatsPerCurrencyFrameBuffer",
+      alphaFn: "renderSatsPerCurrencyAlphaBuffer",
+      args: (i) => [i.price, i.currency, i.withSatsSymbol] },
+    { title: "Block fees",
+      textFn: "parseBlockFees",
+      pixelFn: "renderBlockFeesFrameBuffer",
+      alphaFn: "renderBlockFeesAlphaBuffer",
+      args: (i) => [i.blockFees] },
+    { title: "Halving countdown",
+      textFn: "parseHalvingCountdown",
+      pixelFn: "renderHalvingCountdownFrameBuffer",
+      alphaFn: "renderHalvingCountdownAlphaBuffer",
+      args: (i) => [i.blockHeight, false] },
+    { title: "Market cap",
+      textFn: "parseMarketCap",
+      pixelFn: "renderMarketCapFrameBuffer",
+      alphaFn: "renderMarketCapAlphaBuffer",
+      args: (i) => [i.blockHeight, i.price, i.currency, false] },
+    { title: "Bitcoin supply",
+      textFn: "parseBitcoinSupply",
+      pixelFn: "renderBitcoinSupplyFrameBuffer",
+      alphaFn: "renderBitcoinSupplyAlphaBuffer",
+      args: (i) => [i.blockHeight, false, false] },
   ];
 
-  function renderScreenRow(title, arr, rawRepr) {
+  function readInputs() {
+    return {
+      blockHeight:    parseInt(document.getElementById("blockHeight").value, 10) || 0,
+      price:          parseInt(document.getElementById("price").value, 10) || 0,
+      blockFees:      parseInt(document.getElementById("blockFees").value, 10) || 0,
+      currency:       document.getElementById("currency").value,
+      withSatsSymbol: document.getElementById("withSatsSymbol").checked,
+    };
+  }
+
+  // --- Text mode rendering ---
+  function renderTextRow(title, arr, rawRepr) {
     const section = document.createElement("fieldset");
     const legend = document.createElement("legend");
     legend.textContent = title;
@@ -160,8 +241,7 @@
     for (const s of arr) {
       const c = document.createElement("div");
       c.className = "cell";
-      // Replace runs of spaces with a middle dot so they're visible.
-      c.textContent = s && s.length ? s : " ";
+      c.textContent = s && s.length ? s : " ";
       row.appendChild(c);
     }
     section.appendChild(row);
@@ -174,37 +254,168 @@
     outputs.appendChild(section);
   }
 
-  function readInputs() {
-    return {
-      blockHeight:    parseInt(document.getElementById("blockHeight").value, 10) || 0,
-      price:          parseInt(document.getElementById("price").value, 10) || 0,
-      blockFees:      parseInt(document.getElementById("blockFees").value, 10) || 0,
-      currency:       document.getElementById("currency").value,
-      withSatsSymbol: document.getElementById("withSatsSymbol").checked,
-    };
+  // --- Pixel mode rendering ---
+  //
+  // Each Uint8Array is a 122x250 landscape framebuffer in native SSD1680
+  // layout: 16 bytes per row, MSB-first within each byte, 0 = black,
+  // 1 = white. The renderer wrote logical coords through a Rotation::k180
+  // transform (see components/fonts/font.cpp SetPixelLandscape), so to
+  // show the image upright we apply the inverse: native (nx, ny) maps
+  // back to logical (native_width-1 - nx, native_height-1 - ny) =
+  // (121 - nx, 249 - ny). We iterate native and plot to logical.
+  function paintPanel(canvas, fb, dims) {
+    const W = dims.width;    // 122
+    const H = dims.height;   // 250
+    const stride = dims.stride;
+    const ctx2d = canvas.getContext("2d");
+    const img = ctx2d.createImageData(W, H);
+    const px = img.data;
+
+    for (let ny = 0; ny < H; ny++) {
+      for (let nx = 0; nx < W; nx++) {
+        const byteIdx = ny * stride + (nx >> 3);
+        const bit = 7 - (nx & 7);
+        const isWhite = (fb[byteIdx] >> bit) & 1;
+
+        // Apply inverse-k180 to show the image the way the user sees
+        // it on the physical panel. rotation === 2 => k180.
+        let lx = nx, ly = ny;
+        if (dims.rotation === 2) {
+          lx = W - 1 - nx;
+          ly = H - 1 - ny;
+        } else if (dims.rotation === 1) {
+          // k90Cw inverse
+          lx = ny;
+          ly = W - 1 - nx;
+        } else if (dims.rotation === 3) {
+          // k90Ccw inverse
+          lx = H - 1 - ny;
+          ly = nx;
+        }
+        const pxi = (ly * W + lx) * 4;
+        const v = isWhite ? 0xFF : 0x00;
+        px[pxi + 0] = v;
+        px[pxi + 1] = v;
+        px[pxi + 2] = v;
+        px[pxi + 3] = 0xFF;
+      }
+    }
+    ctx2d.putImageData(img, 0, 0);
   }
 
-  function runAll(mod, inputs) {
-    outputs.innerHTML = "";
+  // AA-mode rendering: each Uint8Array is width*height bytes in LOGICAL
+  // orientation (the sidechannel writes in logical coords before the
+  // rotation transform, so there's no inverse-k180 to undo here).
+  //   0 = no ink (white background)
+  //   255 = full ink (black)
+  //   1..254 = fractional coverage along glyph edges
+  // Pixel rgba: black-on-white with intensity = (255 - alpha).
+  function paintPanelAA(canvas, alphaBuf, dims) {
+    const W = dims.width;
+    const H = dims.height;
+    const ctx2d = canvas.getContext("2d");
+    const img = ctx2d.createImageData(W, H);
+    const px = img.data;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const a = alphaBuf[y * W + x];
+        const v = 255 - a;
+        const pxi = (y * W + x) * 4;
+        px[pxi + 0] = v;
+        px[pxi + 1] = v;
+        px[pxi + 2] = v;
+        px[pxi + 3] = 0xFF;
+      }
+    }
+    ctx2d.putImageData(img, 0, 0);
+  }
+
+  function renderPixelRow(title, buffers, dims, aa) {
+    const section = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = title;
+    section.appendChild(legend);
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "row cell-label-row";
+    for (let i = 0; i < buffers.length; i++) {
+      const c = document.createElement("div");
+      c.className = "cell";
+      c.textContent = `#${i}`;
+      labelRow.appendChild(c);
+    }
+    section.appendChild(labelRow);
+
+    const row = document.createElement("div");
+    row.className = aa ? "panel-row aa" : "panel-row";
+    for (let i = 0; i < buffers.length; i++) {
+      const canvas = document.createElement("canvas");
+      canvas.width = dims.width;
+      canvas.height = dims.height;
+      if (aa) paintPanelAA(canvas, buffers[i], dims);
+      else    paintPanel(canvas, buffers[i], dims);
+      row.appendChild(canvas);
+    }
+    section.appendChild(row);
+
+    outputs.appendChild(section);
+  }
+
+  function runTextMode(mod, inputs) {
     for (const fn of FNS) {
       const rawArgs = fn.args(inputs);
       try {
-        const result = mod[fn.name](...rawArgs);
-        // embind `emscripten::val::array` returns a JS array directly; some
-        // embind builds instead return an object with numeric keys, so normalise.
-        const arr = Array.isArray(result) ? result : Array.from({ length: 7 }, (_, i) => result[i] ?? "");
-        renderScreenRow(
-          `${fn.name}(${rawArgs.map((a) => JSON.stringify(a)).join(", ")})`,
+        const result = mod[fn.textFn](...rawArgs);
+        const arr = Array.isArray(result)
+          ? result
+          : Array.from({ length: 7 }, (_, i) => result[i] ?? "");
+        renderTextRow(
+          `${fn.title} — ${fn.textFn}(${rawArgs.map((a) => JSON.stringify(a)).join(", ")})`,
           arr,
           JSON.stringify(arr)
         );
       } catch (err) {
-        renderScreenRow(
-          `${fn.name} — error`,
+        renderTextRow(
+          `${fn.title} — error`,
           ["ERR", "ERR", "ERR", "ERR", "ERR", "ERR", "ERR"],
           String(err && err.stack ? err.stack : err)
         );
       }
+    }
+  }
+
+  function runPixelMode(mod, inputs) {
+    const dims = mod.getPanelDimensions();
+    const aa = aaEnabledEl.checked;
+    for (const fn of FNS) {
+      const rawArgs = fn.args(inputs);
+      const callFnName = aa ? fn.alphaFn : fn.pixelFn;
+      try {
+        const result = mod[callFnName](...rawArgs);
+        const bufs = Array.isArray(result)
+          ? result
+          : Array.from({ length: dims.panels }, (_, i) => result[i]);
+        renderPixelRow(
+          `${fn.title} — ${callFnName}(${rawArgs.map((a) => JSON.stringify(a)).join(", ")})`,
+          bufs,
+          dims,
+          aa
+        );
+      } catch (err) {
+        const section = document.createElement("fieldset");
+        section.innerHTML = `<legend>${fn.title} — error</legend>
+          <div class="raw">${String(err && err.stack ? err.stack : err)}</div>`;
+        outputs.appendChild(section);
+      }
+    }
+  }
+
+  function runAll(mod, inputs) {
+    outputs.innerHTML = "";
+    if (viewMode === "text") {
+      runTextMode(mod, inputs);
+    } else {
+      runPixelMode(mod, inputs);
     }
   }
 
@@ -217,6 +428,29 @@
       const trigger = () => runAll(mod, readInputs());
       document.getElementById("run").addEventListener("click", trigger);
       controls.addEventListener("input", trigger);
+
+      function applyModeVisibility() {
+        if (viewMode === "pixel") pixelOptions.classList.add("visible");
+        else                      pixelOptions.classList.remove("visible");
+      }
+
+      modeTextBtn.addEventListener("click", () => {
+        viewMode = "text";
+        modeTextBtn.classList.add("active");
+        modePixelBtn.classList.remove("active");
+        applyModeVisibility();
+        trigger();
+      });
+      modePixelBtn.addEventListener("click", () => {
+        viewMode = "pixel";
+        modePixelBtn.classList.add("active");
+        modeTextBtn.classList.remove("active");
+        applyModeVisibility();
+        trigger();
+      });
+      aaEnabledEl.addEventListener("change", trigger);
+
+      applyModeVisibility();
       trigger();
     } catch (e) {
       statusEl.textContent = "Failed to load WASM module: " + (e && e.message ? e.message : e);

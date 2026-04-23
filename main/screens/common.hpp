@@ -13,12 +13,17 @@
 #include <string>
 
 // Under the emscripten/WASM preview build (tools/wasm/build.sh) the
-// EPD/font headers transitively pull ESP-IDF driver headers that the
-// host toolchain can't compile. Gate them off; the pure-logic decls
-// below (FormatDigits, PriceInt, SatsPerUnit, ComputeMoscowLayout,
-// CurrencySymbolUtf8, DigitLayout) are independent of them, and PrepFb
-// isn't called from the WASM build.
-#ifndef BTCLOCK_WASM_BUILD
+// real epd_ssd1680.hpp can't be pulled in — it pulls driver/gpio.h,
+// driver/spi_master.h, mcp23017.hpp. We substitute a minimal EpdPanel
+// shim (wasm_panel.hpp) that exposes just the Width/Height/kStride
+// surface and stubs out DrawFramebufferStart/WaitForRefresh. font.hpp
+// itself is pure (cstdint/cstddef only) so it's the same in both
+// builds — it carries LandscapeFb/Rotation + the paint-primitive decls
+// that every renderer uses.
+#ifdef BTCLOCK_WASM_BUILD
+#include "wasm_panel.hpp"
+#include "font.hpp"
+#else
 #include "epd_ssd1680.hpp"
 #include "font.hpp"
 #endif
@@ -35,9 +40,11 @@ namespace btclock {
 // for the regression that motivated pinning this).
 inline constexpr const char* kDigitRef = "0123456789";
 
-#ifndef BTCLOCK_WASM_BUILD
 // Build a LandscapeFb view over panel `i`'s framebuffer. Templated on N
 // so the array-of-arrays type propagates naturally; there's no allocation.
+// Compiles against either the real EpdPanel (components/epd_ssd1680) or
+// the WASM shim (tools/wasm/wasm_panel.hpp) — both expose the same
+// kStride/Width/Height surface.
 template <size_t N>
 LandscapeFb PrepFb(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                    uint8_t (&fb_storage)[N][16 * 296], size_t i) {
@@ -49,7 +56,6 @@ LandscapeFb PrepFb(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   lfb.rotation = Rotation::k180;
   return lfb;
 }
-#endif
 
 // Right-justify the decimal form of `h` into `digits[slots]`; leading
 // positions get ' ' as blanks. Leading digits are truncated if `h`
@@ -72,6 +78,9 @@ struct DigitLayout {
 // Lay out up to 6 digits from `sats` with an optional sats-glyph prefix
 // placed one slot before the first digit. Returns all-blank on `sats<0`.
 // On overflow (> 6 digits), leading digits are truncated and no symbol.
+// Divergence vs. old firmware: old parseSatsPerCurrency drops the
+// SATS/MSCW label on 7-digit sats (price < ~$100) and fills all 7
+// panels. Not fixed here — tracked in btclock_v3_fci-f7y.
 DigitLayout ComputeMoscowLayout(int32_t sats, bool use_symbol);
 
 // UTF-8 currency symbol for the given ISO code, or "" if no glyph is

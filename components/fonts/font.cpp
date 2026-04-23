@@ -5,9 +5,53 @@
 #include <string>
 #include <vector>
 
+// Under the emscripten host build (tools/wasm/build.sh) the ESP-IDF
+// heap_caps + logging headers aren't available. Swap in stdlib
+// malloc and stubbed log macros — the paint primitives below are
+// identical either way; only the glyph-scratch allocator changes
+// SPIRAM -> malloc.
+#ifdef BTCLOCK_WASM_BUILD
+#include <cstdio>
+#include <cstdlib>
+#define MALLOC_CAP_SPIRAM 0
+#define MALLOC_CAP_8BIT   0
+static inline void* heap_caps_malloc(size_t n, int /*caps*/) {
+  return std::malloc(n);
+}
+#define ESP_LOGE(tag, fmt, ...) (void)(tag)
+#define ESP_LOGI(tag, fmt, ...) (void)(tag)
+#else
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#endif
 #include "stb_truetype.h"
+
+// WASM-only alpha sidechannel. Under BTCLOCK_WASM_BUILD the binding
+// layer (tools/wasm/binding.cpp) registers one alpha buffer per panel
+// (keyed on the LandscapeFb's native_fb pointer) and the paint
+// primitives here mirror each write into the matching buffer. On device
+// the header isn't on the include path (it lives under tools/wasm/),
+// so we drop in equivalent zero-cost inline stubs that compile away.
+// Full semantics: see tools/wasm/font_wasm_aa.hpp.
+#ifdef BTCLOCK_WASM_BUILD
+#include "font_wasm_aa.hpp"
+#else
+namespace btclock { namespace wasm_aa {
+inline void SetPanelTargets(std::size_t, const uint8_t* const*,
+                            uint8_t* const*, int, int, int) {}
+inline void Clear() {}
+inline void WritePixel(const uint8_t*, int, int, uint8_t, bool) {}
+inline void FillRect(const uint8_t*, int, int, int, int, uint8_t) {}
+inline bool SetPixelSuppressed() { return false; }
+class SetPixelSuppressScope {
+ public:
+  SetPixelSuppressScope() = default;
+  ~SetPixelSuppressScope() = default;
+  SetPixelSuppressScope(const SetPixelSuppressScope&) = delete;
+  SetPixelSuppressScope& operator=(const SetPixelSuppressScope&) = delete;
+};
+}}  // namespace btclock::wasm_aa
+#endif
 
 namespace btclock {
 namespace {
@@ -59,6 +103,13 @@ void ClearFb(LandscapeFb& fb, bool white) {
   std::memset(fb.native_fb, white ? 0xFF : 0x00,
               static_cast<size_t>(fb.native_stride) *
                   static_cast<size_t>(fb.native_height));
+  // Mirror into the WASM AA buffer (if armed). Panel key = native_fb
+  // pointer — unique per panel because each panel's LandscapeFb points
+  // into a distinct ctx.fbs[i] slice. Logical orientation; alpha=0 for
+  // a white/no-ink bg, 255 for a black bg.
+  wasm_aa::FillRect(fb.native_fb, 0, 0,
+                    LogicalWidth(fb), LogicalHeight(fb),
+                    white ? 0 : 255);
 }
 
 // Map a logical (lx, ly) through the rotation into native (nx, ny) and
@@ -70,6 +121,18 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
   // and a 128x250 portrait target behave identically.
   if (lx < 0 || lx >= LogicalWidth(fb)) return;
   if (ly < 0 || ly >= LogicalHeight(fb)) return;
+
+  // Mirror solid-ink pixels into the WASM AA buffer (no-op on device).
+  // Callers here are the fill primitives (FillRect/FillRoundRect corners,
+  // QR modules) — always full coverage. `white` has the same meaning it
+  // has in the 1-bpp layer: true=white/no-ink, false=black/ink. DrawText
+  // wraps its inner SetPixelLandscape calls in a SetPixelSuppressScope so
+  // the raw pre-threshold alpha it already recorded isn't clobbered back
+  // to 255 by the post-threshold fill.
+  if (!wasm_aa::SetPixelSuppressed()) {
+    wasm_aa::WritePixel(fb.native_fb, lx, ly, white ? 0 : 255,
+                        /*white_text=*/false);
+  }
 
   int nx = 0, ny = 0;
   switch (fb.rotation) {
@@ -194,9 +257,20 @@ int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
         font.RenderGlyph(cp, pixel_height, buf, m.w, m.h);
         const int top_left_x = pen_x + m.xoff;
         const int top_left_y = y_baseline + m.yoff;
+        // Suppress the secondary wasm_aa tap inside SetPixelLandscape —
+        // we feed the real grayscale alpha below (pre-threshold), which
+        // carries more information than the thresholded fill would.
+        // Scope no-ops on device.
+        wasm_aa::SetPixelSuppressScope aa_guard;
         for (int dy = 0; dy < m.h; ++dy) {
           for (int dx = 0; dx < m.w; ++dx) {
             const uint8_t a = buf[dy * m.w + dx];
+            // Feed the raw grayscale alpha into the WASM AA sidechannel
+            // (no-op on device). This is what gives the preview canvas
+            // smooth edges even though the physical panel still gets
+            // the thresholded 1bpp pixel below.
+            wasm_aa::WritePixel(fb.native_fb, top_left_x + dx,
+                                top_left_y + dy, a, white_text);
             if (a >= 128) {
               SetPixelLandscape(fb, top_left_x + dx, top_left_y + dy,
                                 white_text);

@@ -18,6 +18,7 @@
 
 #include <string>
 
+#include "data_core/snapshot.hpp"
 #include "nostr/event.hpp"
 
 namespace btclock {
@@ -42,6 +43,24 @@ bool ExtractZapAmountMsat(const Event& ev, uint64_t& msat);
 // Extract the bolt11 invoice string from a zap receipt. Returns true
 // iff a `bolt11` tag is present with a non-empty value.
 bool ExtractZapBolt11(const Event& ev, std::string& bolt11);
+
+// Decode a single NIP-78 (kind 30078) event content + `d` tag into a
+// partial DataSnapshot per ws-nostr-publish/docs/NOSTR.md:
+//
+//   d=blockheight  → snapshot.block_height      = uint32(content)
+//   d=medianFee    → snapshot.block_fee         = int32(round(content))
+//                    snapshot.block_fee_precise = double(content)
+//   d=price:<CCY>  → snapshot.prices[<CCY>]     = content (verbatim string)
+//
+// Pure logic, no ESP-IDF / no logging — caller handles both. Returns
+// true iff `d_tag` is a recognised slot AND the content parses for
+// that slot. Unknown `d_tag` → false with snapshot unchanged; caller
+// decides whether to log+drop. Malformed content (e.g. non-numeric
+// height) → false, snapshot is left in whatever partial state it was
+// in (caller should not use it on false return).
+bool ParseNip78Content(const std::string& d_tag,
+                       const std::string& content,
+                       DataSnapshot& out);
 
 }  // namespace nostr
 }  // namespace btclock

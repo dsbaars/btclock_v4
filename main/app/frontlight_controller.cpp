@@ -44,7 +44,22 @@ void FrontlightController::Start() {
 }
 
 void FrontlightController::Post(FrontlightCommand cmd) {
-  if (queue_ != nullptr) xQueueSend(queue_, &cmd, 0);
+  if (queue_ == nullptr) return;
+  // DND gate — matches the LedHandler::frontlight* short-circuits in
+  // the old firmware. Anything that would light the backlight is
+  // dropped, and any in-flight On/SetBrightness is cancelled by a
+  // forced kOff so a DND window armed while the light is already on
+  // fades the panel to black without the caller having to know.
+  if (suppressor_ && suppressor_()) {
+    if (cmd.event == FrontlightEvent::kOff) {
+      xQueueSend(queue_, &cmd, 0);
+    } else {
+      const FrontlightCommand off{FrontlightEvent::kOff, 0};
+      xQueueSend(queue_, &off, 0);
+    }
+    return;
+  }
+  xQueueSend(queue_, &cmd, 0);
 }
 
 void FrontlightController::OnAmbientLux(float lux) {

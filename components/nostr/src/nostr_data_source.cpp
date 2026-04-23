@@ -2,7 +2,10 @@
 
 #include <utility>
 
+#include "data_core/hub.hpp"
+#include "data_core/snapshot.hpp"
 #include "esp_log.h"
+#include "nostr/parser.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
 
@@ -55,17 +58,50 @@ esp_err_t NostrDataSource::Stop() {
 }
 
 void NostrDataSource::OnEvent(const std::string& /*sid*/, const Event& ev) {
-  // TODO(btclock_v3_fci-0wm): dispatch by `d` tag into DataSnapshot per
-  // NOSTR.md:
-  //   d=blockheight  → block_height  (content is decimal integer string)
-  //   d=medianFee    → block_fee + block_fee_precise (decimal string)
-  //   d=price:<CCY>  → prices["<CCY>"] (decimal string, stored verbatim)
-  // Keep this stub wired so the relay + subscription infra is exercised
-  // end-to-end; parsing follows once the wire format is confirmed
-  // against a live relay.
-  ESP_LOGI(kTag, "event kind=%u d=%s content=%.*s",
-           static_cast<unsigned>(ev.kind),
-           ev.TagValue("d").c_str(),
+  // TODO(nostr-sig): schnorr signature verification happens here once
+  // we vendor secp256k1 with --enable-module-schnorrsig. Until then we
+  // trust the WSS-to-relay channel (listen-only, per issue -0wm).
+
+  // We subscribe with kinds=[30078] so the relay should not send other
+  // kinds, but the filter is the relay's contract, not ours — guard.
+  if (ev.kind != kKindAppData) {
+    ESP_LOGD(kTag, "ignoring kind=%u (not app-data)",
+             static_cast<unsigned>(ev.kind));
+    return;
+  }
+
+  const std::string& d = ev.TagValue("d");
+  if (d.empty()) {
+    ESP_LOGW(kTag, "kind-30078 event without d tag; dropping");
+    return;
+  }
+
+  // Staleness gate. NIP-78 is replaceable-by-newest on the relay side,
+  // but a relay can redeliver older cached events on reconnect before
+  // the newest arrives. We keep the newest timestamp we've consumed per
+  // `d` slot and drop anything with a lower `created_at`. Ties are
+  // accepted: NIP-01 says clients "SHOULD" take the event with the
+  // greatest id in that case, but for our slot semantics re-applying
+  // the same content is harmless and Merge() suppresses the update.
+  const auto it = last_seen_created_at_.find(d);
+  if (it != last_seen_created_at_.end() && ev.created_at < it->second) {
+    ESP_LOGD(kTag, "stale event d=%s ts=%llu < seen=%llu", d.c_str(),
+             static_cast<unsigned long long>(ev.created_at),
+             static_cast<unsigned long long>(it->second));
+    return;
+  }
+
+  DataSnapshot partial;
+  if (!ParseNip78Content(d, ev.content, partial)) {
+    ESP_LOGW(kTag, "unparseable d=%s content=%.*s", d.c_str(),
+             static_cast<int>(ev.content.size()), ev.content.c_str());
+    return;
+  }
+
+  last_seen_created_at_[d] = ev.created_at;
+
+  if (hub_ != nullptr) hub_->Report(partial);
+  ESP_LOGD(kTag, "report d=%s content=%.*s", d.c_str(),
            static_cast<int>(ev.content.size()), ev.content.c_str());
 }
 

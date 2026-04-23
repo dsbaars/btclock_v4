@@ -1,32 +1,34 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# build.sh — compile the IDF-port's screen-layout helpers to WebAssembly.
+# build.sh — compile the IDF-port's screen stack to WebAssembly.
 #
-# Sources: idf_cpp_proto/main/screens/common.cpp (+ fee_rate_layout.hpp,
-# header-only) and tools/wasm/binding.cpp (embind glue). No ESP-IDF
-# headers are pulled in — the binding forward-declares the pure helpers
-# from common.cpp so we can compile without the device toolchain.
-#
-# Result is a JS/WASM pair that exposes parseBlockHeight / parsePriceData /
-# parseSatsPerCurrency / parseBlockFees to a browser, letting the HTML
-# preview mimic the EPD rendering without a device.
+# Two bindings families ship in the same blob (see binding.cpp):
+#   - parse*               : text-mode, pure-logic helpers only
+#                            (main/screens/common.cpp + screen_math.cpp +
+#                             fee_rate_layout.hpp).
+#   - render*FrameBuffer   : pixel-accurate, runs the real template-on-N
+#                            screen renderers (main/screens/block_height.cpp
+#                            et al) against an in-memory EpdPanel shim
+#                            (tools/wasm/wasm_panel.hpp) + the full font
+#                            stack (components/fonts/font.cpp + stb_truetype
+#                            + a generated ttf_blobs_wasm.cpp).
 #
 # How to run:
-#   1. Install emsdk (see https://emscripten.org/docs/getting_started/downloads.html):
-#        git clone https://github.com/emscripten-core/emsdk ~/emsdk
-#        cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
-#   2. Activate it in this shell:       source ~/emsdk/emsdk_env.sh
-#   3. Run:                             ./idf_cpp_proto/tools/wasm/build.sh
-#   4. Open preview.html in a browser (via a local HTTP server — WASM fetch
-#      won't work over file://):
-#        python3 -m http.server 8000 --directory idf_cpp_proto/tools/wasm
-#      then visit http://localhost:8000/preview.html
+#   1. Install emsdk (https://emscripten.org/docs/getting_started/downloads.html)
+#      or `brew install emscripten`.
+#   2. If using emsdk:  source ~/emsdk/emsdk_env.sh
+#   3. Run:              ./idf_cpp_proto/tools/wasm/build.sh
+#   4. Serve:            python3 -m http.server 8000 --directory idf_cpp_proto/tools/wasm
+#      then visit        http://localhost:8000/preview.html
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-SCREENS_DIR="${REPO_ROOT}/idf_cpp_proto/main/screens"
+IDF_PROTO_DIR="${REPO_ROOT}/idf_cpp_proto"
+SCREENS_DIR="${IDF_PROTO_DIR}/main/screens"
+MAIN_DIR="${IDF_PROTO_DIR}/main"
+FONTS_DIR="${IDF_PROTO_DIR}/components/fonts"
 DIST_DIR="${SCRIPT_DIR}/dist"
 
 : "${EMSCRIPTEN_MIN_VERSION:=3.1.0}"
@@ -54,21 +56,49 @@ fi
 
 mkdir -p "${DIST_DIR}"
 
+# Regenerate the TTF blob sources. Cheap (< 80 KB of .ttf total, output
+# is a ~450 KB .cpp). Under BTCLOCK_WASM_BUILD font.hpp picks up these
+# symbols in place of ESP-IDF EMBED_FILES.
+TTF_BLOB_CPP="${DIST_DIR}/ttf_blobs_wasm.cpp"
+python3 "${SCRIPT_DIR}/gen_font_blobs.py" \
+    "${FONTS_DIR}/assets" "${TTF_BLOB_CPP}"
+
 echo "[wasm] em++ ${em_version}, opt=${OPT_LEVEL}"
 echo "[wasm] compiling -> ${DIST_DIR}/btclock_datahandler.{js,wasm}"
 
-# Include path rooted at main/ so binding.cpp can `#include "screens/…"`.
-# We compile binding.cpp with -DBTCLOCK_WASM_BUILD so common.cpp (which
-# the binding calls into) can be compiled unchanged — the binding's own
-# forward decls match common.hpp's namespace btclock pure-logic signatures.
+# Include roots:
+#   main/                       — so `#include "screens/…"` works and
+#                                 `#include "fonts_app.hpp"` resolves.
+#   main/screens/               — for common.hpp's `#include "wasm_panel.hpp"`
+#                                 (we drop wasm_panel.hpp on this path below).
+#   components/fonts/include    — font.hpp
+#   components/fonts            — stb_truetype.h (PRIV_INCLUDE_DIRS on device)
+#   tools/wasm                  — the shim EpdPanel header.
 em++ \
     -lembind \
     -std=gnu++17 \
     "${OPT_LEVEL}" \
     -DBTCLOCK_WASM_BUILD \
-    -I"${REPO_ROOT}/idf_cpp_proto/main" \
+    -I"${MAIN_DIR}" \
+    -I"${FONTS_DIR}/include" \
+    -I"${FONTS_DIR}" \
+    -I"${SCRIPT_DIR}" \
     "${SCREENS_DIR}/common.cpp" \
+    "${SCREENS_DIR}/screen_math.cpp" \
+    "${SCREENS_DIR}/block_height.cpp" \
+    "${SCREENS_DIR}/btc_price.cpp" \
+    "${SCREENS_DIR}/moscow_time.cpp" \
+    "${SCREENS_DIR}/fee_rate.cpp" \
+    "${SCREENS_DIR}/clock.cpp" \
+    "${SCREENS_DIR}/halving.cpp" \
+    "${SCREENS_DIR}/bitcoin_supply.cpp" \
+    "${SCREENS_DIR}/market_cap.cpp" \
+    "${MAIN_DIR}/fonts_app.cpp" \
+    "${FONTS_DIR}/font.cpp" \
+    "${FONTS_DIR}/stb_truetype_impl.c" \
+    "${TTF_BLOB_CPP}" \
     "${SCRIPT_DIR}/binding.cpp" \
+    "${SCRIPT_DIR}/font_wasm_aa.cpp" \
     -o "${DIST_DIR}/btclock_datahandler.js" \
     -sMODULARIZE=1 \
     -sEXPORT_ES6=1 \

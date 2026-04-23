@@ -48,4 +48,45 @@ esp_err_t UnmountLittleFs();
 // Returns an error if the filesystem isn't mounted.
 esp_err_t GetLittleFsUsage(size_t* used_bytes, size_t* total_bytes);
 
+// Return the total byte-size of the LittleFS partition as declared in
+// the partition table. Does not require the FS to be mounted — it reads
+// partition metadata via `esp_partition_find_first`. Returns 0 if the
+// partition can't be located (board misconfiguration).
+size_t GetLittleFsPartitionSize();
+
+// The pure-logic bounds check for /upload/webui lives in
+// `webui_upload_bounds.hpp` so the host-test suite can include it
+// without pulling in esp_err.h.
+
+// OTA-mode helper: stream a new LittleFS image into the `storage`
+// partition.
+//
+// The filesystem MUST be mounted before calling (this function calls
+// `UnmountLittleFs` internally so it has exclusive access to the
+// partition during the erase/write cycle). On success the partition is
+// NOT remounted — the caller is expected to reboot; `MountLittleFs` on
+// the next boot will either succeed against the fresh image or, if the
+// image is corrupt, auto-format under the library's
+// `format_if_mount_failed=true` flag.
+//
+// `recv` is invoked in a loop to fill a 4 KiB scratch buffer. It must
+// return the number of bytes read (0 on clean EOF, negative on error).
+// The partition write offset advances by the returned count each call.
+//
+// `expected_len` is the total number of bytes to stream. If the caller
+// doesn't know the length (no Content-Length header), pass 0 and the
+// loop will stream until `recv` returns 0, capped at partition size.
+//
+// `bytes_written` is populated with the final byte-count on return.
+//
+// Returns ESP_OK on success, ESP_ERR_NOT_FOUND if the `storage`
+// partition is missing, ESP_ERR_INVALID_SIZE if `expected_len` exceeds
+// the partition, ESP_ERR_INVALID_ARG on null `recv`, or a forwarded
+// esp_partition_* error on flash failure. After any failure mode the
+// partition contents are undefined; callers should reboot so the next
+// mount triggers a fresh format.
+using WebuiRecvFn = int (*)(void* ctx, char* buf, size_t buf_len);
+esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx,
+                          size_t expected_len, size_t* bytes_written);
+
 }  // namespace btclock
