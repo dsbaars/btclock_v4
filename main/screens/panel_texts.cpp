@@ -53,13 +53,6 @@ std::string CharSlot(char c) {
   return std::string(1, c);
 }
 
-// Right-justify a uint64 across `slots` characters, using ' ' for
-// padding. Wraps FormatDigits64 (screen_math.cpp) so we don't duplicate
-// the int→string logic.
-void Fill64(uint64_t v, char* out, std::size_t slots) {
-  FormatDigits64(v, out, slots);
-}
-
 // Fill N digit strings from a right-justified char array. `digits` must
 // have at least `slots` entries; `out_texts` gets `slots` entries
 // appended. Reuses CharSlot so ' ' → "".
@@ -108,31 +101,46 @@ std::vector<std::string> BuildHalving(uint32_t h, std::size_t n_panels) {
   return out;
 }
 
-std::vector<std::string> BuildBitcoinSupply(uint32_t h, std::size_t n_panels) {
+// Right-pad a FormatNumberWithSuffix-style string across n_panels slots,
+// mirroring the parity helper's layout: slot 0 is the caller-supplied
+// label, slot 1..n_panels-1 = s[1..n_panels-1] after left-space-padding
+// to n_panels chars. s[0] is consumed by the padding and discarded.
+std::vector<std::string> EmitBigCharsFrame(std::string label, std::string s,
+                                           std::size_t n_panels) {
   std::vector<std::string> out;
   out.reserve(n_panels);
-  const uint64_t supply = SupplyAtBlock(h);
-  out.emplace_back("BTC/SUPPLY");
-  const std::size_t digit_slots = n_panels - 1;
-  std::vector<char> digits(digit_slots);
-  Fill64(supply, digits.data(), digit_slots);
-  AppendDigits(digits.data(), digit_slots, out);
+  out.emplace_back(std::move(label));
+  if (s.size() < n_panels) s.insert(s.begin(), n_panels - s.size(), ' ');
+  for (std::size_t i = 1; i < n_panels; ++i) {
+    out.push_back(CharSlot(s[i]));
+  }
   return out;
+}
+
+std::vector<std::string> BuildBitcoinSupply(uint32_t h, std::size_t n_panels) {
+  // BigChars suffix form ("19.9M") — matches the renderer's default. The
+  // pre-suffix integer-digit path silently truncates supply (19.7M → six
+  // low digits), see btclock_v3_fci-0v9 for the parity-layer test that
+  // pins this layout. showPercentage variant lives under btclock_v3_fci-33e.
+  const uint64_t supply = SupplyAtBlock(h);
+  std::string s = FormatNumberWithSuffix(supply,
+                                         static_cast<int>(n_panels) - 2);
+  return EmitBigCharsFrame("BTC/SUPPLY", std::move(s), n_panels);
 }
 
 std::vector<std::string> BuildMarketCap(uint32_t h, const std::string& price,
                                         const std::string& currency,
                                         std::size_t n_panels) {
-  std::vector<std::string> out;
-  out.reserve(n_panels);
-  out.emplace_back(currency + "/MCAP");
+  // BigChars suffix form prefixed by the currency glyph. Label in slot 0
+  // is "<CCY>/MCAP"; slots 1..n-1 carry " <SYM>NNNX" after left-space-pad.
+  // Parity source: test_datahandler_parity.cpp::RenderMarketCapBigChars.
   const int32_t pi = PriceIntLocal(price);
   const uint64_t cap = (pi < 0) ? 0 : MarketCap(static_cast<uint32_t>(pi), h);
-  const std::size_t digit_slots = n_panels - 1;
-  std::vector<char> digits(digit_slots);
-  Fill64(cap, digits.data(), digit_slots);
-  AppendDigits(digits.data(), digit_slots, out);
-  return out;
+  const char* sym = CurrencySymbolLocal(currency);
+  std::string glyph = (sym && *sym) ? std::string(sym) : currency;
+  std::string s = glyph + FormatNumberWithSuffix(
+                              cap, static_cast<int>(n_panels) - 2);
+  return EmitBigCharsFrame(currency + "/MCAP", std::move(s), n_panels);
 }
 
 std::vector<std::string> BuildMoscowTime(const std::string& currency,

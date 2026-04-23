@@ -36,6 +36,7 @@
 #include "buttons.hpp"
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
+#include "sse_server.hpp"
 #include "dnd/dnd.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_heap_caps.h"
@@ -605,6 +606,7 @@ extern "C" void app_main() {
   auto timer_adapter = std::make_unique<TimerAdapter>(sm, MsNow);
 
   std::unique_ptr<btclock::ControlServer> ctrl;
+  std::unique_ptr<btclock::SseServer> sse;
   if (!wifi.is_ap_mode()) {
     btclock::ControlServer::Config ccfg;
     ccfg.wifi = &wifi;
@@ -617,10 +619,31 @@ extern "C" void app_main() {
     ccfg.dnd = dnd_adapter.get();
     ccfg.timer = timer_adapter.get();
     ctrl = std::make_unique<btclock::ControlServer>(std::move(ccfg));
+    // SSE lifecycle: construct before Start() so RegisterRoute fires
+    // in the same handler-registration pass as /api/*. The SseServer
+    // does not own the httpd; ControlServer does, and stops it in its
+    // destructor — which outlives `sse` via the destruction order of
+    // these unique_ptrs.
+    sse = std::make_unique<btclock::SseServer>(btclock::SseServer::Config{});
+    ctrl->AttachSse(sse.get());
     if (ctrl->Start() != ESP_OK) {
       ESP_LOGE(kTag, "control server failed to start; control API disabled");
       ctrl.reset();
+      sse.reset();
     }
+  }
+
+  // Re-hook DataHub on-update so fresh snapshots also fan out to SSE
+  // subscribers. Capturing `ctrl`'s raw pointer is safe — the hub's
+  // callback lifetime is bounded by this scope (no dangling after
+  // app_main returns; app_main never returns in this firmware). We
+  // keep the main-task notify so the render loop still wakes.
+  if (hub) {
+    btclock::ControlServer* ctrl_ptr = ctrl.get();
+    hub->SetOnUpdate([main_task, ctrl_ptr](const btclock::DataSnapshot&) {
+      xTaskNotifyGive(main_task);
+      if (ctrl_ptr) ctrl_ptr->BroadcastStatus();
+    });
   }
 
   // Pull timer state live from the screen manager so /api/status
@@ -636,6 +659,9 @@ extern "C" void app_main() {
     ls.currency = sm.current_currency();
     ls.panel_texts = sm.last_panel_texts();
     ctrl->PublishStatus(ls);
+    // Fan out to SSE subscribers so screen rotations / button presses
+    // surface in the WebUI without waiting for the next poll.
+    ctrl->BroadcastStatus();
   };
   publish_status();
 

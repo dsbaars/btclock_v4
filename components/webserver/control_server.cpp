@@ -1,6 +1,7 @@
 #include "control_server.hpp"
 #include "control_validators.hpp"
 #include "mime.hpp"
+#include "sse_server.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -285,9 +286,11 @@ esp_err_t ControlServer::Start() {
 
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.server_port = 80;
-  // Bump handler cap — we register ~20 endpoints across the control
-  // surface and stubs; HTTPD_DEFAULT_CONFIG's 8 is not enough.
-  cfg.max_uri_handlers = 32;
+  // Handler cap must cover every reg() in this function + the /* catch-all,
+  // with headroom for planned additions (OTA, DND, pause/restart). Overflow
+  // silently drops the trailing registrations, including /*, which breaks
+  // static serving — see btclock_v3_fci-g9k.
+  cfg.max_uri_handlers = 48;
   cfg.uri_match_fn = httpd_uri_match_wildcard;
   cfg.stack_size = 8192;
   cfg.lru_purge_enable = true;
@@ -334,6 +337,18 @@ esp_err_t ControlServer::Start() {
   reg("/api/dnd/disable", HTTP_POST, TrampolineDndDisable);
   reg("/api/action/pause", HTTP_POST, TrampolineActionPause);
   reg("/api/action/timer_restart", HTTP_POST, TrampolineActionTimerRestart);
+
+  // Long-lived SSE stream for the WebUI's live-refresh. Registered
+  // via SseServer::RegisterRoute so the handler owns its own client
+  // list + heartbeat task. Added to the URI handler count — the
+  // max_uri_handlers bump above (48) comfortably covers it.
+  if (sse_) {
+    const esp_err_t sse_err = sse_->RegisterRoute(server_);
+    if (sse_err != ESP_OK) {
+      ESP_LOGW(kTag, "sse RegisterRoute failed: %s",
+               esp_err_to_name(sse_err));
+    }
+  }
   // TODO(btclock_v3_fci-equ): `GET /` static-file serve from LittleFS.
   // Tracked separately; the upload path above lands bytes on flash,
   // but until the static server lands the WebUI has no way to serve
@@ -501,11 +516,28 @@ esp_err_t ControlServer::TrampolineNotImplemented(httpd_req_t* req) {
 // --- Implemented handlers ------------------------------------------
 
 esp_err_t ControlServer::HandleStatus(httpd_req_t* req) {
-  cJSON* root = cJSON_CreateObject();
-  if (!root) {
+  const std::string body = BuildStatusJson();
+  if (body.empty()) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
     return ESP_FAIL;
   }
+  return SendJson(req, body);
+}
+
+void ControlServer::BroadcastStatus() {
+  if (!sse_) return;
+  // Skip the allocation + serialisation altogether when no clients
+  // are listening — a hot-loop DataHub push with nobody connected
+  // would otherwise hammer the allocator.
+  if (sse_->ClientCount() == 0) return;
+  const std::string body = BuildStatusJson();
+  if (body.empty()) return;
+  sse_->Broadcast("status", body);
+}
+
+std::string ControlServer::BuildStatusJson() const {
+  cJSON* root = cJSON_CreateObject();
+  if (!root) return {};
 
   LiveStatus live;
   {
@@ -594,7 +626,10 @@ esp_err_t ControlServer::HandleStatus(httpd_req_t* req) {
 
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
-  return SendJsonChar(req, txt);
+  if (!txt) return {};
+  std::string out(txt);
+  free(txt);
+  return out;
 }
 
 esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
@@ -736,6 +771,7 @@ esp_err_t ControlServer::HandleFrontlightOn(httpd_req_t* req) {
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   cfg_.frontlight->On();
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -749,6 +785,7 @@ esp_err_t ControlServer::HandleFrontlightOff(httpd_req_t* req) {
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   cfg_.frontlight->Off();
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -818,6 +855,7 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.frontlight->SetBrightness(static_cast<uint16_t>(raw));
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -923,6 +961,7 @@ esp_err_t ControlServer::HandleLightsColor(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.leds->SetSolidColor(rgb);
+  BroadcastStatus();
   // Echo the post-change state, matching the old firmware's
   // onApiLightsSetColor which serialises buildLedStatusJson()["data"].
   const LedsIface::Status st = cfg_.leds->GetStatus();
@@ -939,6 +978,7 @@ esp_err_t ControlServer::HandleLightsColor(httpd_req_t* req) {
 esp_err_t ControlServer::HandleLightsOff(httpd_req_t* req) {
   if (!cfg_.leds) return SendLedsUnavailable(req);
   cfg_.leds->SetSolidColor(0);
+  BroadcastStatus();
   // Old firmware returns 200 OK with empty body.
   return SendEmptyOk(req);
 }
@@ -963,6 +1003,7 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
   if (n == 0) {
     cJSON_Delete(root);
     cfg_.leds->SetSolidColor(0);
+    BroadcastStatus();
     return SendEmptyOk(req);
   }
   if (n != static_cast<int>(st_before.pixel_count)) {
@@ -1007,6 +1048,7 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
   }
   cJSON_Delete(root);
   cfg_.leds->SetPixels(pixels, static_cast<uint32_t>(n));
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -1256,8 +1298,12 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   }
 
   // Headers. Content-Type keys off the *logical* filename (strip .gz).
-  const std::string_view mime = MimeTypeForPath(rel);
-  httpd_resp_set_type(req, std::string(mime).c_str());
+  // MimeTypeForPath always returns a string literal (see mime.hpp), so
+  // .data() is null-terminated and outlives the response. Constructing
+  // a temporary std::string here hands httpd a dangling pointer whose
+  // memory gets overwritten by the body-chunk buffer below — the symptom
+  // is Content-Type showing bytes from the gzip FNAME field.
+  httpd_resp_set_type(req, MimeTypeForPath(rel).data());
   if (chosen_gz) {
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     // Vary: Accept-Encoding so proxies don't hand the .gz to a client
@@ -1421,6 +1467,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
 
   // Response body mirrors old firmware: 200 OK with an empty body
   // when no reboot is required, {"rebootRequired":true} otherwise.
+  BroadcastStatus();
   if (result.reboot_required) {
     return SendJson(req, "{\"rebootRequired\":true}");
   }
@@ -1463,6 +1510,7 @@ esp_err_t ControlServer::HandleDndEnable(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.dnd->SetEnabled(true);
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -1472,6 +1520,7 @@ esp_err_t ControlServer::HandleDndDisable(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.dnd->SetEnabled(false);
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -1481,6 +1530,7 @@ esp_err_t ControlServer::HandleActionPause(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.timer->SetPaused(true);
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 
@@ -1495,6 +1545,7 @@ esp_err_t ControlServer::HandleActionTimerRestart(httpd_req_t* req) {
   // unpause first, then reset the deadline.
   cfg_.timer->SetPaused(false);
   cfg_.timer->Restart();
+  BroadcastStatus();
   return SendEmptyOk(req);
 }
 

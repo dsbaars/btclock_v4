@@ -90,12 +90,16 @@ TEST_CASE("panel_texts — market cap uses currency in label") {
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "USD/MCAP");
-  // Cap = 100k × SupplyAtBlock(840000) — right-justified across 6 cells.
-  // Exact digits depend on SupplyAtBlock's computation; just require
-  // the last slot is a digit char.
+  // Cap = 100k × SupplyAtBlock(840000) ≈ 1.97T. BigChars suffix layout
+  // (see btclock_v3_fci-0v9) places the USD glyph prefix "$" in slot 1,
+  // an optional padding space in intermediate slots, and the suffix
+  // char (K/M/B/T) in the last slot. Slot 1 always carries the currency
+  // glyph.
+  CHECK(out[1] == "$");
   CHECK(!out[6].empty());
-  CHECK(out[6][0] >= '0');
-  CHECK(out[6][0] <= '9');
+  const char last = out[6][0];
+  CHECK((last == 'K' || last == 'M' || last == 'B' || last == 'T' ||
+         (last >= '0' && last <= '9')));
 }
 
 TEST_CASE("panel_texts — Moscow time in classic range → MSCW/TIME label") {

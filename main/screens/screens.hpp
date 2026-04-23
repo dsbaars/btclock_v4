@@ -116,22 +116,34 @@ void RenderHalvingScreen(
     uint32_t prev_height = 0);
 
 // --- Bitcoin circulating supply ---
-// Panel 0 = "BTC/SUPPLY" label. Remaining panels = integer BTC supply,
-// right-justified. Capped at 21,000,000. `prev_height == 0` forces a
-// full refresh; the digit diff handles the low-frequency change rate.
+// Panel 0 = "BTC/SUPPLY" label. Mode selection matches the old-firmware
+// `parseBitcoinSupply(bigChars, showPercentage)` branches, one char per
+// panel (see test_datahandler_parity.cpp / old data_handler.cpp):
+//   show_percent=true  → "93.48" spread over 5 panels + " % " trailing
+//   show_percent=false, big_chars=true  → "19.9M" one char per panel
+//   show_percent=false, big_chars=false → plain integer digits (legacy,
+//     silently truncates on real mainnet — see btclock_v3_fci-33e for
+//     the small-char 3-digit-group port).
+// `prev_height == 0` forces a full refresh; the digit diff handles the
+// low-frequency change rate.
 template <size_t N>
 void RenderBitcoinSupplyScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
     uint32_t block_height,
-    uint32_t prev_height = 0);
+    uint32_t prev_height = 0,
+    bool big_chars = true,
+    bool show_percent = false);
 
 // --- Market cap (price × supply) ---
-// Panel 0 = "<CCY>/MCAP" label. Remaining panels = integer market cap
-// (no suffix scaling — full digit string, right-justified, truncated
-// from the left if it exceeds the panel count). `prev_price.empty()`
-// or `prev_height == 0` forces a full refresh.
+// Panel 0 = "<CCY>/MCAP" label. Mode selection mirrors old-firmware
+// `parseMarketCap(..., bigChars)`:
+//   big_chars=true  → "<sym><N.NN>T/B/M" one char per panel (e.g. "$1.02T")
+//   big_chars=false → plain integer digits (legacy, silently truncates
+//     for real mainnet; small-char 3-digit-group deferred via
+//     btclock_v3_fci-33e).
+// `prev_price.empty()` or `prev_height == 0` forces a full refresh.
 template <size_t N>
 void RenderMarketCapScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
@@ -141,6 +153,7 @@ void RenderMarketCapScreen(
     const std::string& price,
     uint32_t block_height,
     const std::string& prev_price = "",
-    uint32_t prev_height = 0);
+    uint32_t prev_height = 0,
+    bool big_chars = true);
 
 }  // namespace btclock

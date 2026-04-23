@@ -13,7 +13,7 @@ validates one slice of the plan in [btclock_v3_fci-xyb](../idf_cpp_proto).
 ## Build + flash
 
 ```bash
-. ~/esp/v5.5.1/esp-idf/export.sh
+. ~/esp/v5.5.4/esp-idf/export.sh
 cd idf_cpp_proto
 idf.py set-target esp32s3
 idf.py build

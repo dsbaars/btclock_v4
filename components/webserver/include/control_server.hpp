@@ -34,6 +34,9 @@
 
 namespace btclock {
 
+class SseServer;  // components/webserver/include/sse_server.hpp
+
+
 // Minimal abstract surface the control server calls to drive the
 // per-board frontlight controller. Kept as a pure-virtual interface so
 // the webserver component doesn't have to depend on `main/`, where the
@@ -224,6 +227,19 @@ class ControlServer {
   };
   void PublishStatus(const LiveStatus& status);
 
+  // Attach an SSE server for live broadcasts. Non-owning — the caller
+  // (main.cpp) keeps the SseServer alive for the ControlServer's
+  // lifetime. When set, state-changing handlers push an updated
+  // `status` event after applying their mutation, and callers can
+  // force a broadcast with `BroadcastStatus()` after a DataHub
+  // snapshot update lands.
+  void AttachSse(SseServer* sse) { sse_ = sse; }
+
+  // Emit the current status JSON as an SSE `status` event to every
+  // connected client. Cheap no-op if no SSE server is attached or no
+  // clients are connected. Safe to call from any task.
+  void BroadcastStatus();
+
  private:
   static esp_err_t TrampolineStatus(httpd_req_t* req);
   static esp_err_t TrampolineSystemStatus(httpd_req_t* req);
@@ -292,9 +308,16 @@ class ControlServer {
   bool PostCommand(const ControlCommand& cmd);
   static void ApplyCors(httpd_req_t* req);
 
+  // Render the current /api/status JSON as a string. Single source of
+  // truth — both the REST handler and SSE broadcasts use this so a
+  // new field added to one automatically surfaces on the other.
+  // Empty string on OOM, which the caller surfaces as a 500.
+  std::string BuildStatusJson() const;
+
   Config cfg_;
   httpd_handle_t server_ = nullptr;
   QueueHandle_t cmd_queue_ = nullptr;
+  SseServer* sse_ = nullptr;  // non-owning; nullable
 
   // Live-status snapshot. Lightweight — one int + short string — so a
   // single std::mutex is more than enough.

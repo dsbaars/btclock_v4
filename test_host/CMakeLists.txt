@@ -51,6 +51,7 @@ add_executable(btclock_host_tests
     test_dnd.cpp
     test_screen_rotation.cpp
     test_panel_texts.cpp
+    test_sse_frame.cpp
     ../main/app/frontlight_fader.cpp
     ../main/app/led_curves.cpp
     ../main/screens/screen_math.cpp
@@ -58,6 +59,7 @@ add_executable(btclock_host_tests
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
     ../components/webserver/mime.cpp
+    ../components/webserver/sse_frame.cpp
     ../components/settings/settings_api.cpp
     ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
