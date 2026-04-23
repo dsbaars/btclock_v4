@@ -2,11 +2,17 @@
 # Layout matches production partition_8mb.csv. Both app offsets are
 # 64 KiB-aligned. LittleFS stays at 820 KiB (0xCD000) as in production.
 #
-# Name,   Type, SubType, Offset,   Size,     Flags
-nvs,      data, nvs,     0x9000,   0x5000
-otadata,  data, ota,     0xe000,   0x2000
-app0,     app,  ota_0,   0x10000,  0x370000
-app1,     app,  ota_1,   0x380000, 0x370000
-spiffs,   data, spiffs,  0x6F0000, 0xCD000
-coredump, data, coredump,0x7BD000, 0x10000
+# "storage" uses the `littlefs` subtype (vs `spiffs` in production);
+# esp_littlefs mounts the same way but `idf.py partition-table` labels
+# it correctly. 820 KiB is within scope's 1.5-2 MB band lower bound
+# on the smaller side, but keeps parity with the shipping layout so
+# bundle sizes don't have to change.
+#
+# Name,    Type, SubType,  Offset,   Size,     Flags
+nvs,       data, nvs,      0x9000,   0x5000
+otadata,   data, ota,      0xe000,   0x2000
+app0,      app,  ota_0,    0x10000,  0x370000
+app1,      app,  ota_1,    0x380000, 0x370000
+storage,   data, littlefs, 0x6F0000, 0xCD000
+coredump,  data, coredump, 0x7BD000, 0x10000
 # 0x7CD000..0x800000 (~200 KiB) reserved for future growth.

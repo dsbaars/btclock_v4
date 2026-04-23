@@ -34,6 +34,19 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
       changed = true;
     }
   }
+  // Pool stats: a non-empty name in `other` is the signal "this partial
+  // carries a fresh sample". Merge the whole substruct as a unit — we
+  // don't try to merge field-by-field because hashrate/workers/sats all
+  // come from the same API response and should be consistent.
+  if (!other.pool.name.empty()) {
+    if (pool.name != other.pool.name ||
+        pool.hashrate != other.pool.hashrate ||
+        pool.daily_sats != other.pool.daily_sats ||
+        pool.workers != other.pool.workers) {
+      pool = other.pool;
+      changed = true;
+    }
+  }
   return changed;
 }
 

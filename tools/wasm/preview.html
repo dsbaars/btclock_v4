@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>BTClock data_handler WASM preview</title>
+<style>
+  :root {
+    --fg: #111;
+    --muted: #666;
+    --bg: #f8f8f8;
+    --cell-bg: #fff;
+    --cell-border: #ccc;
+    --accent: #f7931a;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
+  main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  .todo {
+    background: #fff3cd;
+    border: 1px solid #ffecb5;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #664d03;
+  }
+  fieldset { border: 1px solid var(--cell-border); margin: 1rem 0; padding: 0.75rem 1rem; background: var(--cell-bg); }
+  legend { padding: 0 0.4rem; color: var(--muted); font-size: 0.85rem; }
+  label { display: inline-block; margin-right: 1rem; font-size: 0.9rem; }
+  input[type=number], input[type=text], select {
+    font: inherit; padding: 0.2rem 0.4rem; border: 1px solid var(--cell-border); border-radius: 3px;
+  }
+  button {
+    background: var(--accent); color: #fff; border: 0; padding: 0.4rem 0.8rem;
+    border-radius: 3px; font: inherit; cursor: pointer;
+  }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  .row { display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .cell {
+    flex: 1 1 80px;
+    min-width: 70px;
+    min-height: 70px;
+    background: #fff;
+    border: 1px solid var(--cell-border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    font-size: 1.5rem;
+    white-space: pre;
+    text-align: center;
+    padding: 0.3rem;
+    word-break: break-all;
+  }
+  .cell.label { font-size: 0.8rem; color: var(--muted); }
+  .cell-label-row .cell { font-size: 0.7rem; color: var(--muted); min-height: 1.5rem; background: transparent; border: 0; }
+  .status { color: var(--muted); font-size: 0.85rem; }
+  .status.err { color: #b00; }
+  .raw {
+    margin-top: 0.5rem;
+    font-family: "Courier New", monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>BTClock IDF-port screen preview</h1>
+  <p class="status">
+    Exercises the ESP-IDF C++ port's screen-layout helpers
+    (<code>idf_cpp_proto/main/screens/common.cpp</code> +
+    <code>fee_rate_layout.hpp</code>) compiled via Emscripten. Each screen
+    cell below maps to one 2.13" EPD panel in the 7-panel rotation.
+  </p>
+
+  <div class="todo">
+    <strong>TODO (stretch goal):</strong> pixel-accurate EPD preview. This page
+    only renders the per-panel text arrays that <code>parse*</code> returns.
+    The SSD1680 framebuffer + font rasterisation path lives in
+    <code>idf_cpp_proto/components/epd_ssd1680</code> + <code>main/screens/</code>
+    and is not yet ported to WASM. Tracked in beads
+    <code>btclock_v3_fci-90q</code> as Phase 2.
+    <br><br>
+    Halving / Market cap / Bitcoin-supply renderers are on
+    <code>worktree-agent-af32422c</code> and not yet merged — their cells show
+    <code>(wt-af3)</code> placeholders until that branch lands.
+  </div>
+
+  <p id="status" class="status">Loading module...</p>
+
+  <fieldset id="controls" disabled>
+    <legend>Inputs</legend>
+    <div>
+      <label>Block height
+        <input type="number" id="blockHeight" value="833333" min="0" max="1000000000" step="1" />
+      </label>
+      <label>Price (whole currency units)
+        <input type="number" id="price" value="67890" min="0" step="1" />
+      </label>
+      <label>Currency
+        <select id="currency">
+          <option value="USD">USD</option>
+          <option value="EUR">EUR</option>
+          <option value="GBP">GBP</option>
+          <option value="JPY">JPY</option>
+          <option value="AUD">AUD</option>
+          <option value="CAD">CAD</option>
+        </select>
+      </label>
+      <label>Block fees (integer sat/vB)
+        <input type="number" id="blockFees" value="42" min="0" step="1" />
+      </label>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="withSatsSymbol" checked /> sats: draw sats-glyph prefix</label>
+    </div>
+    <div class="row">
+      <button id="run">Render all</button>
+    </div>
+  </fieldset>
+
+  <div id="outputs"></div>
+</main>
+
+<script type="module">
+  import createBtclockModule from "./dist/btclock_datahandler.js";
+
+  const statusEl = document.getElementById("status");
+  const controls = document.getElementById("controls");
+  const outputs = document.getElementById("outputs");
+
+  const FNS = [
+    { name: "parseBlockHeight",     args: (i) => [i.blockHeight] },
+    { name: "parsePriceData",       args: (i) => [i.price, i.currency] },
+    { name: "parseSatsPerCurrency", args: (i) => [i.price, i.currency, i.withSatsSymbol] },
+    { name: "parseBlockFees",       args: (i) => [i.blockFees] },
+    { name: "parseHalvingCountdown",args: (i) => [i.blockHeight, false] },
+    { name: "parseMarketCap",       args: (i) => [i.blockHeight, i.price, i.currency, false] },
+    { name: "parseBitcoinSupply",   args: (i) => [i.blockHeight, false, false] },
+  ];
+
+  function renderScreenRow(title, arr, rawRepr) {
+    const section = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    legend.textContent = title;
+    section.appendChild(legend);
+
+    const labelRow = document.createElement("div");
+    labelRow.className = "row cell-label-row";
+    for (let i = 0; i < arr.length; i++) {
+      const c = document.createElement("div");
+      c.className = "cell";
+      c.textContent = `#${i}`;
+      labelRow.appendChild(c);
+    }
+    section.appendChild(labelRow);
+
+    const row = document.createElement("div");
+    row.className = "row";
+    for (const s of arr) {
+      const c = document.createElement("div");
+      c.className = "cell";
+      // Replace runs of spaces with a middle dot so they're visible.
+      c.textContent = s && s.length ? s : " ";
+      row.appendChild(c);
+    }
+    section.appendChild(row);
+
+    const raw = document.createElement("div");
+    raw.className = "raw";
+    raw.textContent = rawRepr;
+    section.appendChild(raw);
+
+    outputs.appendChild(section);
+  }
+
+  function readInputs() {
+    return {
+      blockHeight:    parseInt(document.getElementById("blockHeight").value, 10) || 0,
+      price:          parseInt(document.getElementById("price").value, 10) || 0,
+      blockFees:      parseInt(document.getElementById("blockFees").value, 10) || 0,
+      currency:       document.getElementById("currency").value,
+      withSatsSymbol: document.getElementById("withSatsSymbol").checked,
+    };
+  }
+
+  function runAll(mod, inputs) {
+    outputs.innerHTML = "";
+    for (const fn of FNS) {
+      const rawArgs = fn.args(inputs);
+      try {
+        const result = mod[fn.name](...rawArgs);
+        // embind `emscripten::val::array` returns a JS array directly; some
+        // embind builds instead return an object with numeric keys, so normalise.
+        const arr = Array.isArray(result) ? result : Array.from({ length: 7 }, (_, i) => result[i] ?? "");
+        renderScreenRow(
+          `${fn.name}(${rawArgs.map((a) => JSON.stringify(a)).join(", ")})`,
+          arr,
+          JSON.stringify(arr)
+        );
+      } catch (err) {
+        renderScreenRow(
+          `${fn.name} — error`,
+          ["ERR", "ERR", "ERR", "ERR", "ERR", "ERR", "ERR"],
+          String(err && err.stack ? err.stack : err)
+        );
+      }
+    }
+  }
+
+  (async () => {
+    try {
+      const mod = await createBtclockModule();
+      statusEl.textContent = "Module loaded.";
+      controls.disabled = false;
+
+      const trigger = () => runAll(mod, readInputs());
+      document.getElementById("run").addEventListener("click", trigger);
+      controls.addEventListener("input", trigger);
+      trigger();
+    } catch (e) {
+      statusEl.textContent = "Failed to load WASM module: " + (e && e.message ? e.message : e);
+      statusEl.classList.add("err");
+      console.error(e);
+    }
+  })();
+</script>
+</body>
+</html>

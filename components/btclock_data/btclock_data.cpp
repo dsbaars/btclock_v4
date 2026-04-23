@@ -15,7 +15,9 @@ namespace {
 constexpr const char* kTag = "btclock-data";
 }  // namespace
 
-BtclockDataSource::BtclockDataSource(const char* uri) : uri_(uri) {}
+BtclockDataSource::BtclockDataSource(const char* uri,
+                                     std::vector<std::string> currencies)
+    : uri_(uri), currencies_(std::move(currencies)) {}
 
 BtclockDataSource::~BtclockDataSource() { Stop(); }
 
@@ -108,12 +110,23 @@ void BtclockDataSource::SendSubscriptions() {
   };
 
   send_sub("blockheight", nullptr);
+  // Subscribe to both fee streams. `blockfee` is rounded to whole sat/vB
+  // and only fires when the rounded value changes; `blockfee2` is a
+  // 2-decimal value that fires on every upstream fee tick. Mirrors the
+  // subscription list in App.vue — the legacy fee-rate screen reads the
+  // integer field, a future decimal screen reads block_fee_precise.
   send_sub("blockfee", nullptr);
-  // Multi-currency: add more subscribe frames per the user's active
-  // currency set (see beads lx0.10 — for now USD only mirrors the
-  // production default).
-  send_sub("price", "USD");
-  ESP_LOGI(kTag, "subscribe: blockheight + blockfee + price/USD");
+  send_sub("blockfee2", nullptr);
+  for (const auto& ccy : currencies_) {
+    send_sub("price", ccy.c_str());
+  }
+  std::string ccy_list;
+  for (size_t i = 0; i < currencies_.size(); ++i) {
+    if (i > 0) ccy_list += ",";
+    ccy_list += currencies_[i];
+  }
+  ESP_LOGI(kTag, "subscribe: blockheight + blockfee + blockfee2 + price/[%s]",
+           ccy_list.c_str());
 }
 
 void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {

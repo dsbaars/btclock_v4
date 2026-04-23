@@ -16,10 +16,14 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "app/frontlight_controller.hpp"
 #include "app/led_controller.hpp"
 #include "app/screen_manager.hpp"
 #include "app/time_sync.hpp"
@@ -29,6 +33,7 @@
 #include "boot_ui.hpp"
 #include "btclock_data.hpp"
 #include "buttons.hpp"
+#include "control_server.hpp"
 #include "data_core/hub.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_heap_caps.h"
@@ -43,6 +48,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "i2c_bus.hpp"
+#include "littlefs.hpp"
 #include "lwip/inet.h"
 #include "mcp23017.hpp"
 #include "net_util.hpp"
@@ -74,6 +80,55 @@ std::string MakeOrLoadApPassword(btclock::Prefs& prefs) {
   prefs.Commit();
   return pw;
 }
+
+#ifdef CONFIG_BTCLOCK_LITTLEFS_SELFTEST
+// Smoke test the mounted LittleFS partition: write a known blob, read
+// it back, assert equality, then delete the file. Logs and swallows
+// errors so a degraded FS never bricks boot. Guarded by
+// CONFIG_BTCLOCK_LITTLEFS_SELFTEST (Kconfig, default off).
+void RunLittleFsSelfTest(const char* base_path) {
+  const std::string path = std::string(base_path) + "/_bq0_selftest.txt";
+  constexpr const char kPayload[] = "btclock-lfs-selftest-v1";
+
+  FILE* wf = std::fopen(path.c_str(), "w");
+  if (!wf) {
+    ESP_LOGE(kTag, "selftest: fopen(w) '%s' failed", path.c_str());
+    return;
+  }
+  const size_t wn = std::fwrite(kPayload, 1, sizeof(kPayload) - 1, wf);
+  std::fclose(wf);
+  if (wn != sizeof(kPayload) - 1) {
+    ESP_LOGE(kTag, "selftest: short write %u/%u", static_cast<unsigned>(wn),
+             static_cast<unsigned>(sizeof(kPayload) - 1));
+    std::remove(path.c_str());
+    return;
+  }
+
+  char buf[sizeof(kPayload)] = {};
+  FILE* rf = std::fopen(path.c_str(), "r");
+  if (!rf) {
+    ESP_LOGE(kTag, "selftest: fopen(r) '%s' failed", path.c_str());
+    std::remove(path.c_str());
+    return;
+  }
+  const size_t rn = std::fread(buf, 1, sizeof(buf) - 1, rf);
+  std::fclose(rf);
+
+  const bool ok = (rn == sizeof(kPayload) - 1) &&
+                  (std::memcmp(buf, kPayload, rn) == 0);
+  if (ok) {
+    ESP_LOGI(kTag, "selftest: OK (%u bytes round-tripped)",
+             static_cast<unsigned>(rn));
+  } else {
+    ESP_LOGE(kTag, "selftest: MISMATCH rn=%u buf='%.*s'",
+             static_cast<unsigned>(rn), static_cast<int>(rn), buf);
+  }
+
+  if (std::remove(path.c_str()) != 0) {
+    ESP_LOGW(kTag, "selftest: remove '%s' failed", path.c_str());
+  }
+}
+#endif  // CONFIG_BTCLOCK_LITTLEFS_SELFTEST
 
 }  // namespace
 
@@ -128,13 +183,18 @@ extern "C" void app_main() {
   }
 
   std::optional<btclock::Pca9685> pca;
+  std::unique_ptr<btclock::FrontlightController> frontlight;
   if constexpr (kHasFrontlight) {
     pca.emplace(i2c, kPcaAddr, kPcaOe);
     ESP_ERROR_CHECK(pca->Begin(1000));
     pca->SetOutputEnable(true);
-    for (uint8_t i = 0; i < kFrontlightChannelCount; ++i) {
-      pca->SetDuty(kFrontlightChannelFirst + i, 1024);
-    }
+    frontlight = std::make_unique<btclock::FrontlightController>(
+        *pca, kFrontlightChannelFirst, kFrontlightChannelCount);
+    frontlight->Start();
+    // Fade up to the configured brightness at boot. Matches old
+    // firmware, which powered the frontlight on once the panels were
+    // initialised.
+    frontlight->On();
   }
 
   std::optional<btclock::Bh1750> bh;
@@ -188,6 +248,26 @@ extern "C" void app_main() {
 
   // --- WiFi + NVS + optional provisioning portal ---
   ESP_ERROR_CHECK(btclock::Prefs::InitOnce());
+
+  // LittleFS is used for the future static-WebUI bundle and OTA-webui
+  // uploads. We format-on-failure so a blank partition (fresh flash,
+  // first boot after partition-table change) self-heals. A mount error
+  // after that fallback is logged but non-fatal — the firmware should
+  // continue to boot without a filesystem rather than brick.
+  {
+    const esp_err_t lfs_err =
+        btclock::MountLittleFs(btclock::kLittleFsDefaultBasePath);
+    if (lfs_err != ESP_OK) {
+      ESP_LOGE(kTag, "LittleFS mount failed (%s); continuing without FS",
+               esp_err_to_name(lfs_err));
+    }
+#ifdef CONFIG_BTCLOCK_LITTLEFS_SELFTEST
+    if (lfs_err == ESP_OK) {
+      RunLittleFsSelfTest(btclock::kLittleFsDefaultBasePath);
+    }
+#endif
+  }
+
   btclock::Prefs net_prefs("net");
   const std::string ssid = net_prefs.GetString("ssid", CONFIG_POC_WIFI_SSID);
   const std::string pw = net_prefs.GetString("pw", CONFIG_POC_WIFI_PASSWORD);
@@ -209,6 +289,9 @@ extern "C" void app_main() {
     ESP_LOGW(kTag, "provisioning mode: SoftAP '%s' pw='%s'", ap_ssid.c_str(),
              ap_pw.c_str());
     ESP_ERROR_CHECK(wifi.StartSoftAp(ap_ssid.c_str(), ap_pw.c_str()));
+    // Warm the SSID scan cache in the background so /api/scan can return
+    // instantly once the portal page loads.
+    wifi.StartBackgroundScan();
 
     portal = std::make_unique<btclock::ProvisioningServer>(
         wifi, btclock::board::kHardwareName,
@@ -235,7 +318,10 @@ extern "C" void app_main() {
   std::unique_ptr<btclock::ButtonReader> buttons;
   TaskHandle_t main_task = xTaskGetCurrentTaskHandle();
 
-  btclock::ScreenManager sm(MsNow());
+  // Active currency set. For now hardcoded; beads lx0.11+ tracks the
+  // NVS-backed config. Antonio's subset covers $/£/¥/€ symbols.
+  const std::vector<std::string> kCurrencies = {"USD", "EUR", "GBP", "JPY"};
+  btclock::ScreenManager sm(MsNow(), kCurrencies);
 
   if (wifi.is_ap_mode()) {
     const int64_t t0 = MsNow();
@@ -245,7 +331,12 @@ extern "C" void app_main() {
   } else {
     hub = std::make_unique<btclock::DataHub>();
     hub->AddSource(std::make_unique<btclock::BtclockDataSource>(
-        "wss://ws.btclock.dev/api/v2/ws"));
+        "wss://ws.btclock.dev/api/v2/ws", kCurrencies));
+    // TODO(btclock_v3_fci-0wm): wire a nostr::NostrDataSource here once
+    // the relay URL + publisher pubkey are user-configurable. Suggested
+    // NVS keys (namespace "nostr"): "relay" (wss://...), "pub" (hex
+    // pubkey), "zap_pub" (hex pubkey for zap listener), "enable" (bool).
+    // See components/nostr/include/nostr/nostr_data_source.hpp.
     hub->SetOnUpdate([main_task](const btclock::DataSnapshot&) {
       xTaskNotifyGive(main_task);
     });
@@ -270,6 +361,63 @@ extern "C" void app_main() {
     btclock::PostLedEvent(btclock::LedEvent::kSetIdle);
   }
 
+  // --- HTTP control API (STA mode only) ---
+  // The control surface mirrors the production firmware's /api/* routes
+  // so the existing WebUI in data/ can drive this PoC. Functional
+  // endpoints post back into the event loop via the command queue so we
+  // never touch ScreenManager / panels from the httpd worker task.
+  // Stubbed endpoints return 501 with a tracking token; see
+  // components/webserver/control_server.cpp for the list.
+  // Adapter exposing FrontlightController to the webserver component
+  // without pulling a main-owned header into the component tree. The
+  // adapter lives as long as the controller does; its lifetime is
+  // bounded by the enclosing unique_ptr below.
+  struct FrontlightAdapter : btclock::FrontlightIface {
+    explicit FrontlightAdapter(btclock::FrontlightController* fl) : fl_(fl) {}
+    void On() override { fl_->On(); }
+    void Off() override { fl_->Off(); }
+    void Flash() override { fl_->Flash(); }
+    void SetBrightness(uint16_t duty) override { fl_->SetBrightness(duty); }
+    Status GetStatus() const override {
+      const auto s = fl_->GetStatus();
+      return Status{s.enabled, s.current_duty, s.target_duty,
+                    s.configured_brightness, s.lux_threshold,
+                    s.ambient_auto_off};
+    }
+    btclock::FrontlightController* fl_;
+  };
+  std::unique_ptr<FrontlightAdapter> fl_adapter;
+  if (frontlight) {
+    fl_adapter = std::make_unique<FrontlightAdapter>(frontlight.get());
+  }
+
+  std::unique_ptr<btclock::ControlServer> ctrl;
+  if (!wifi.is_ap_mode()) {
+    btclock::ControlServer::Config ccfg;
+    ccfg.wifi = &wifi;
+    ccfg.hub = hub.get();
+    ccfg.currencies = kCurrencies;
+    ccfg.num_screens = kNumPanels;
+    ccfg.hw_name = btclock::board::kHardwareName;
+    ccfg.frontlight = fl_adapter.get();
+    ctrl = std::make_unique<btclock::ControlServer>(std::move(ccfg));
+    if (ctrl->Start() != ESP_OK) {
+      ESP_LOGE(kTag, "control server failed to start; control API disabled");
+      ctrl.reset();
+    }
+  }
+
+  auto publish_status = [&](bool timer_running) {
+    if (!ctrl) return;
+    btclock::ControlServer::LiveStatus ls;
+    ls.current_slot = static_cast<int32_t>(sm.current_slot());
+    ls.slot_count = static_cast<int32_t>(sm.slot_count_public());
+    ls.timer_running = timer_running;
+    ls.currency = sm.current_currency();
+    ctrl->PublishStatus(ls);
+  };
+  publish_status(true);
+
   // --- Event loop ---
   // Three wake sources: data-push notify, button event, 1 s heartbeat
   // tick. We drain the button queue first so a queued click is honoured
@@ -278,6 +426,62 @@ extern "C" void app_main() {
   int64_t last_heartbeat_ms = 0;
 
   while (true) {
+    // Drain control-API commands first. These ride in on the httpd
+    // worker task via the ControlServer's queue, not the button queue,
+    // so they need their own drain step. A single iteration handles
+    // one command to keep the event loop's "one action per pass"
+    // contract intact (rotations, rendering, etc. in the same pass).
+    btclock::ControlCommand ccmd{};
+    if (ctrl && ctrl->TryPopCommand(&ccmd)) {
+      using Kind = btclock::ControlCommand::Kind;
+      bool re_render = false;
+      switch (ccmd.kind) {
+        case Kind::kFullRefresh:
+          sm.MarkDirty();
+          re_render = true;
+          break;
+        case Kind::kIdentify:
+          btclock::PostLedEvent(btclock::LedEvent::kBlockFlash);
+          break;
+        case Kind::kRestart:
+          ESP_LOGW(kTag, "restart requested via /api/restart");
+          vTaskDelay(pdMS_TO_TICKS(500));
+          esp_restart();
+          break;
+        case Kind::kShowScreen:
+          sm.SetSlot(static_cast<size_t>(ccmd.arg_i), MsNow());
+          re_render = true;
+          break;
+        case Kind::kShowCurrency:
+          sm.SetCurrency(ccmd.arg_s, MsNow());
+          re_render = true;
+          break;
+        case Kind::kNextScreen:
+          sm.NextScreen(MsNow());
+          re_render = true;
+          break;
+        case Kind::kPrevScreen:
+          sm.PrevScreen(MsNow());
+          re_render = true;
+          break;
+        case Kind::kStopDataSources:
+          if (hub) hub->StopAll();
+          break;
+        case Kind::kRestartDataSources:
+          // StartAll() on an already-running source is a no-op for the
+          // btclock WS source today; a clean stop+start is the closer
+          // match to the old firmware. Cheap — sources only number 1.
+          if (hub) {
+            hub->StopAll();
+            hub->StartAll();
+          }
+          break;
+      }
+      if (re_render && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      publish_status(true);
+      continue;
+    }
+
     btclock::ButtonInput ev{};
     if (xQueueReceive(button_q, &ev, 0) == pdTRUE) {
       bool rotated = false;
@@ -287,6 +491,7 @@ extern "C" void app_main() {
         rotated = sm.PrevScreen(MsNow());
       }
       if (rotated && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      if (rotated) publish_status(true);
       continue;
     }
 
@@ -304,11 +509,16 @@ extern "C" void app_main() {
                    heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
                static_cast<unsigned>(
                    heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+      // Auto-off: feed each fresh lux reading to the frontlight
+      // controller. Below threshold -> on, above -> off. No-op if the
+      // board has no frontlight or no ambient sensor.
+      if (frontlight) frontlight->OnAmbientLux(lux);
       last_heartbeat_ms = now_ms;
     }
 
     if (sm.MaybeAutoRotate(now_ms, kAutoRotateMs) && hub) {
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      publish_status(true);
       continue;
     }
 
@@ -317,6 +527,7 @@ extern "C" void app_main() {
 
     if (sm.ConsumeNewBlock(snap)) {
       btclock::PostLedEvent(btclock::LedEvent::kBlockFlash);
+      if (frontlight) frontlight->Flash();
     }
 
     if (got != 0 && sm.ShouldRender(snap)) {

@@ -154,9 +154,15 @@ esp_err_t ProvisioningServer::HandlePortal(httpd_req_t* req) {
 
 esp_err_t ProvisioningServer::HandleScan(httpd_req_t* req) {
   auto* self = static_cast<ProvisioningServer*>(req->user_ctx);
-  const auto nets = self->wifi_->Scan();
+  // Return the cached background-scan results. If the first scan hasn't
+  // completed yet, return an empty `scan` array so the client can poll
+  // and show a "scanning…" placeholder rather than blocking here.
+  const auto nets = self->wifi_->GetCachedScan();
+  const bool ready = self->wifi_->scan_ready();
 
-  std::string body = "[";
+  std::string body = "{\"ready\":";
+  body += ready ? "true" : "false";
+  body += ",\"scan\":[";
   bool first = true;
   for (const auto& n : nets) {
     if (!first) body += ",";
@@ -165,11 +171,11 @@ esp_err_t ProvisioningServer::HandleScan(httpd_req_t* req) {
     body += JsonEscape(n.ssid);
     body += "\",\"rssi\":";
     body += std::to_string(static_cast<int>(n.rssi));
-    body += ",\"secured\":";
+    body += ",\"secure\":";
     body += n.secured ? "true" : "false";
     body += "}";
   }
-  body += "]";
+  body += "]}";
 
   httpd_resp_set_type(req, "application/json");
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");

@@ -1,13 +1,19 @@
 idf_component_register(
     SRCS "main.cpp"
          "fonts_app.cpp" "boot_ui.cpp" "provisioning_ui.cpp"
-         "app/led_controller.cpp" "app/wifi_guard.cpp"
+         "app/frontlight_fader.cpp" "app/frontlight_controller.cpp"
+         "app/led_controller.cpp"
+         "app/wifi_guard.cpp"
          "app/time_sync.cpp" "app/screen_manager.cpp"
-         "screens/common.cpp" "screens/block_height.cpp"
+         "screens/common.cpp" "screens/screen_math.cpp"
+         "screens/block_height.cpp"
          "screens/moscow_time.cpp" "screens/btc_price.cpp"
+         "screens/fee_rate.cpp"
+         "screens/clock.cpp" "screens/halving.cpp"
+         "screens/bitcoin_supply.cpp" "screens/market_cap.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer esp_psram esp_wifi i2c_bus mcp23017 pca9685
-             bh1750 epd_ssd1680 fonts wifi prefs webserver qrcode
+             bh1750 epd_ssd1680 fonts wifi prefs btclock_fs webserver qrcode
              data_core btclock_data buttons
 )
 

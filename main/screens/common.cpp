@@ -41,6 +41,14 @@ int32_t PriceInt(const std::string& price_str) {
   return static_cast<int32_t>(p + 0.5);
 }
 
+const char* CurrencySymbolUtf8(const std::string& ccy) {
+  if (ccy == "USD") return "$";
+  if (ccy == "EUR") return "\xE2\x82\xAC";  // U+20AC
+  if (ccy == "GBP") return "\xC2\xA3";       // U+00A3
+  if (ccy == "JPY") return "\xC2\xA5";       // U+00A5
+  return "";
+}
+
 DigitLayout ComputeMoscowLayout(int32_t sats, bool use_symbol) {
   DigitLayout l;
   if (sats < 0) return l;

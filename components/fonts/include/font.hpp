@@ -120,10 +120,18 @@ float FitTextPx(const char* text, const Font& font, float max_px,
 // typically the digits "0123456789". Strings containing only "." or "_"
 // then sit at the same baseline as digits do rather than floating to
 // the panel centre.
+//
+// `x_offset_px` / `y_offset_px` shift the result by the given pixels in
+// logical coords (positive x = right, positive y = down in logical
+// space, which after a Rotation::k180 LandscapeFb becomes physical UP).
+// Use x_offset to compensate for per-glyph ink-width asymmetry; use
+// y_offset to compensate for panel/case vertical asymmetries where the
+// visible area is not symmetric around the addressed gate lines.
 void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
                       const char* text, const char* ref_chars,
                       const Font& font, float pixel_height,
-                      bool white_text);
+                      bool white_text,
+                      int x_offset_px = 0, int y_offset_px = 0);
 
 // Two-line layout. Top text is centred in the upper half, bottom text
 // in the lower half. Each half uses `ref_chars` to pick a consistent

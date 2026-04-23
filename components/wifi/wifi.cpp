@@ -29,6 +29,11 @@ std::string Ipv4ToString(uint32_t v) {
 Wifi::Wifi() = default;
 
 Wifi::~Wifi() {
+  StopBackgroundScan();
+  if (scan_timer_) {
+    esp_timer_delete(scan_timer_);
+    scan_timer_ = nullptr;
+  }
   if (wifi_event_instance_) {
     esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                           wifi_event_instance_);
@@ -220,12 +225,136 @@ std::vector<WifiScanEntry> Wifi::Scan() {
   return uniq;
 }
 
+esp_err_t Wifi::StartBackgroundScan(uint32_t refresh_ms) {
+  if (!started_) {
+    ESP_LOGW(kTag, "StartBackgroundScan: wifi not started");
+    return ESP_ERR_INVALID_STATE;
+  }
+
+  if (!scan_timer_) {
+    esp_timer_create_args_t targs = {};
+    targs.callback = &Wifi::ScanTimerTrampoline;
+    targs.arg = this;
+    targs.dispatch_method = ESP_TIMER_TASK;
+    targs.name = "wifi_scan";
+    esp_err_t err = esp_timer_create(&targs, &scan_timer_);
+    if (err != ESP_OK) {
+      ESP_LOGE(kTag, "scan timer create: %s", esp_err_to_name(err));
+      return err;
+    }
+  }
+
+  // Stop any prior periodic schedule, then restart. Idempotent.
+  esp_timer_stop(scan_timer_);
+  esp_err_t err =
+      esp_timer_start_periodic(scan_timer_, static_cast<uint64_t>(refresh_ms) *
+                                                1000ULL);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "scan timer start: %s", esp_err_to_name(err));
+    return err;
+  }
+
+  // Kick off the first scan immediately so the cache warms up without
+  // waiting a full refresh interval.
+  {
+    std::lock_guard<std::mutex> lock(scan_mu_);
+    TriggerScanLocked();
+  }
+  ESP_LOGI(kTag, "background scan started (refresh=%u ms)",
+           static_cast<unsigned>(refresh_ms));
+  return ESP_OK;
+}
+
+void Wifi::StopBackgroundScan() {
+  if (scan_timer_) {
+    esp_timer_stop(scan_timer_);
+  }
+}
+
+std::vector<WifiScanEntry> Wifi::GetCachedScan() const {
+  std::lock_guard<std::mutex> lock(scan_mu_);
+  return scan_cache_;  // copy out under lock
+}
+
+esp_err_t Wifi::TriggerScanLocked() {
+  // Caller holds scan_mu_. We only guard `scan_in_flight_` with an atomic
+  // so the event handler can clear it without taking the mutex.
+  if (scan_in_flight_.load()) return ESP_OK;  // already scanning
+
+  wifi_scan_config_t cfg = {};
+  cfg.show_hidden = false;
+  cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+  cfg.scan_time.active.min = 120;
+  cfg.scan_time.active.max = 180;
+
+  scan_in_flight_.store(true);
+  esp_err_t err = esp_wifi_scan_start(&cfg, /*block=*/false);
+  if (err != ESP_OK) {
+    scan_in_flight_.store(false);
+    ESP_LOGW(kTag, "async scan_start err=%s", esp_err_to_name(err));
+  }
+  return err;
+}
+
+void Wifi::ScanTimerTrampoline(void* arg) {
+  auto* self = static_cast<Wifi*>(arg);
+  std::lock_guard<std::mutex> lock(self->scan_mu_);
+  self->TriggerScanLocked();
+}
+
+void Wifi::OnScanDone() {
+  // Only consume results if we kicked off the scan asynchronously; the
+  // blocking Scan() path retrieves its own results.
+  if (!scan_in_flight_.exchange(false)) return;
+
+  uint16_t ap_count = 0;
+  esp_wifi_scan_get_ap_num(&ap_count);
+  if (ap_count > 32) ap_count = 32;
+
+  std::vector<WifiScanEntry> out;
+  if (ap_count > 0) {
+    std::vector<wifi_ap_record_t> records(ap_count);
+    esp_wifi_scan_get_ap_records(&ap_count, records.data());
+    out.reserve(ap_count);
+    for (uint16_t i = 0; i < ap_count; ++i) {
+      WifiScanEntry e;
+      e.ssid.assign(reinterpret_cast<const char*>(records[i].ssid));
+      if (e.ssid.empty()) continue;
+      e.rssi = records[i].rssi;
+      e.secured = records[i].authmode != WIFI_AUTH_OPEN;
+      out.push_back(std::move(e));
+    }
+    std::sort(out.begin(), out.end(),
+              [](const auto& a, const auto& b) { return a.rssi > b.rssi; });
+    std::vector<WifiScanEntry> uniq;
+    uniq.reserve(out.size());
+    for (auto& e : out) {
+      bool seen = false;
+      for (auto& u : uniq) if (u.ssid == e.ssid) { seen = true; break; }
+      if (!seen) uniq.push_back(std::move(e));
+    }
+    out = std::move(uniq);
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(scan_mu_);
+    scan_cache_ = std::move(out);
+  }
+  scan_ready_.store(true);
+  ESP_LOGI(kTag, "background scan done, cached %u networks",
+           static_cast<unsigned>(ap_count));
+}
+
 void Wifi::EventTrampoline(void* arg, esp_event_base_t base, int32_t id,
                            void* data) {
   static_cast<Wifi*>(arg)->OnEvent(base, id, data);
 }
 
 void Wifi::OnEvent(esp_event_base_t base, int32_t id, void* data) {
+  if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
+    OnScanDone();
+    return;
+  }
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     const auto* ev = static_cast<wifi_event_sta_disconnected_t*>(data);
     ESP_LOGW(kTag, "disconnected reason=%u", ev ? ev->reason : 0);

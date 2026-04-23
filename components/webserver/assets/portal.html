@@ -229,7 +229,7 @@
     <div class="field">
       <label for="pw">Password</label>
       <div class="input-wrap">
-        <input id="pw" name="pw" type="password">
+        <input id="pw" name="pw" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore>
         <button type="button" class="reveal" id="reveal">Show</button>
       </div>
     </div>
@@ -290,12 +290,27 @@ function render(nets) {
   });
 }
 
+let scanRetryTimer = null;
+
 async function scan() {
+  if (scanRetryTimer) { clearTimeout(scanRetryTimer); scanRetryTimer = null; }
   networksEl.innerHTML = '<div class="net empty">Scanning…</div>';
   try {
     const r = await fetch('/api/scan');
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    render(await r.json());
+    const data = await r.json();
+    // Server may return the legacy bare-array form or {ready, scan}.
+    const ready = Array.isArray(data) ? true : !!data.ready;
+    const nets = Array.isArray(data) ? data : (data.scan || []);
+    // Normalise the `secure`/`secured` field — backend emits `secure`,
+    // renderer expects `secured`.
+    nets.forEach(n => { if (n.secure !== undefined && n.secured === undefined) n.secured = n.secure; });
+    if (!ready) {
+      networksEl.innerHTML = '<div class="net empty">Scanning…</div>';
+      scanRetryTimer = setTimeout(scan, 2000);
+      return;
+    }
+    render(nets);
   } catch (e) {
     networksEl.innerHTML = '<div class="net empty" style="color:var(--error)">Scan failed</div>';
   }

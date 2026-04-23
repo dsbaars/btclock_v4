@@ -12,6 +12,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "data_core/source.hpp"
 #include "esp_err.h"
@@ -21,7 +22,9 @@ namespace btclock {
 
 class BtclockDataSource : public DataSource {
  public:
-  explicit BtclockDataSource(const char* uri);
+  // `currencies` is the set of ISO codes to subscribe to ("USD","EUR",…).
+  // Empty = no price subscription (block + fee only).
+  BtclockDataSource(const char* uri, std::vector<std::string> currencies);
   ~BtclockDataSource() override;
 
   const char* name() const override { return "btclock-ws-v2"; }
@@ -36,6 +39,7 @@ class BtclockDataSource : public DataSource {
   void SendSubscriptions();
 
   std::string uri_;
+  std::vector<std::string> currencies_;
   DataHub* hub_ = nullptr;  // set in Start(); nulled in Stop()
   esp_websocket_client_handle_t client_ = nullptr;
 };

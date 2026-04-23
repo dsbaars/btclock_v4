@@ -2,9 +2,9 @@
 
 ## Antonio / Oswald
 
-Subsetted to printable ASCII (U+0020..U+007E) with kerning/ligature
-tables stripped, since the BTClock only ever renders Western digits,
-punctuation and a handful of uppercase letters for currency codes.
+Subsetted with kerning/ligature tables stripped. Antonio additionally
+includes the common currency symbols used by the price screen (£, ¥, €);
+Oswald is ASCII-only since it only renders the split-text label.
 
 To regenerate from upstream Google Fonts sources:
 
@@ -12,9 +12,17 @@ To regenerate from upstream Google Fonts sources:
 curl -L -o /tmp/Antonio.ttf "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
 curl -L -o /tmp/Oswald.ttf  "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
 
-pyftsubset /tmp/Antonio.ttf --unicodes=U+0020-007E --drop-tables+=GPOS,GSUB,DSIG --output-file=Antonio.ttf
-pyftsubset /tmp/Oswald.ttf  --unicodes=U+0020-007E --drop-tables+=GPOS,GSUB,DSIG --output-file=Oswald.ttf
+pyftsubset /tmp/Antonio.ttf \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --drop-tables+=GPOS,GSUB,DSIG --output-file=Antonio.ttf
+pyftsubset /tmp/Oswald.ttf \
+    --unicodes=U+0020-007E \
+    --drop-tables+=GPOS,GSUB,DSIG --output-file=Oswald.ttf
 ```
+
+Antonio codepoints: printable ASCII + £ (U+00A3) + ¥ (U+00A5) + € (U+20AC).
+`$` (U+0024) is already part of ASCII. Add more symbols here as more
+currencies are wired through to the price screen.
 
 Both licensed OFL (SIL Open Font License), compatible with the project's
 Apache-2.0 firmware licence.
@@ -60,20 +68,27 @@ Default variant: **U+E007** — chosen for visual balance against
 Antonio digits. The active variant is NVS-configurable per beads
 issue lx0.11.
 
-### U+E007 padding tweak
+### U+E007 side-bearings (historical)
 
 The source U+E007 glyph ships with **zero side-bearings**
-(advance=324 em, bbox xMin=0..xMax=323 on upem=512), so the ink
-fills the advance box and visually kisses the neighbouring digit.
-Antonio digits carry ~11 % sidebearings (advance=854, bbox 91..762
-on upem=2048), so the sats glyph was widened to match:
+(advance=324 em, bbox xMin=0..xMax=323 on upem=512). Our TTF in-tree
+has been fontTools-patched to advance=420, lsb=48, shifting the outline
++48 em on x — the change is preserved here as a historical artifact.
 
-- every contour x coordinate shifted **+48 em**
-- advance width set to **420 em**
-- resulting lsb=48, rsb=49 — symmetric ~11 % margins
+**It has no visual effect with the current renderer.** Single-glyph
+panels go through `DrawTextCentered` which ink-centres the glyph
+inside the panel and explicitly undoes any left side-bearing
+(`x_origin = (panel_w - ink_w) / 2 - left_bearing`). Visual padding
+for the sats glyph — i.e. making the gap to the neighbouring Antonio
+digit match the digit-to-digit gap — is instead handled at render
+time in `main/screens/moscow_time.cpp`, via the `x_offset_px`
+parameter added to `DrawTextCentered`. See that file for the shift
+computation.
 
-Applied via fontTools; only U+E007 is touched, the other 15 PUA
-variants are byte-identical.
+If the renderer is ever reworked to honour font-level advance/lsb
+(e.g. for multi-glyph flow layouts), the font-level sidebearings
+become load-bearing; leaving the patched metrics in place now costs
+nothing and keeps the option open.
 
 ### Conversion procedure
 
@@ -100,7 +115,7 @@ In-tree byte counts (`wc -c`), rounded:
 
 | Font           | Size    | Glyphs kept |
 |----------------|--------:|------------:|
-| Antonio        |  21.3 KB |          95 |
+| Antonio        |  22.3 KB |          98 |
 | Oswald         |   8.9 KB |          95 |
 | OswaldBold     |   8.9 KB |          95 |
 | DejaVu         |  21.2 KB |          95 |

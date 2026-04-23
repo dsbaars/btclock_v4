@@ -2,12 +2,14 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_netif_types.h"
+#include "esp_timer.h"
 #include "esp_wifi_types_generic.h"
 
 namespace btclock {
@@ -71,10 +73,32 @@ class Wifi {
   // in both STA and SoftAP+STA modes. Sorted by RSSI, strongest first.
   std::vector<WifiScanEntry> Scan();
 
+  // Kick off a non-blocking WiFi scan. Results land asynchronously in the
+  // cache when WIFI_EVENT_SCAN_DONE fires; a periodic timer re-runs the
+  // scan every `refresh_ms` ms (default 15 s) until StopBackgroundScan()
+  // is called or the object is destroyed. Safe to call multiple times —
+  // the timer is idempotent. Returns ESP_OK even if a scan is already
+  // in flight (the request is simply skipped).
+  esp_err_t StartBackgroundScan(uint32_t refresh_ms = 15'000);
+
+  // Stop the periodic scan timer. Any in-flight scan still completes and
+  // populates the cache.
+  void StopBackgroundScan();
+
+  // Returns the most recent cached scan results (populated by the
+  // background scanner). Empty if no scan has completed yet.
+  std::vector<WifiScanEntry> GetCachedScan() const;
+
+  // True once at least one background scan has completed.
+  bool scan_ready() const { return scan_ready_.load(); }
+
  private:
   static void EventTrampoline(void* arg, esp_event_base_t base,
                               int32_t event_id, void* event_data);
   void OnEvent(esp_event_base_t base, int32_t id, void* data);
+  void OnScanDone();
+  esp_err_t TriggerScanLocked();
+  static void ScanTimerTrampoline(void* arg);
 
   esp_netif_t* netif_sta_ = nullptr;
   esp_netif_t* netif_ap_ = nullptr;
@@ -84,6 +108,13 @@ class Wifi {
   bool started_ = false;
   esp_event_handler_instance_t wifi_event_instance_ = nullptr;
   esp_event_handler_instance_t ip_event_instance_ = nullptr;
+
+  // Background scanner state.
+  mutable std::mutex scan_mu_;
+  std::vector<WifiScanEntry> scan_cache_;  // guarded by scan_mu_
+  std::atomic<bool> scan_in_flight_{false};
+  std::atomic<bool> scan_ready_{false};
+  esp_timer_handle_t scan_timer_ = nullptr;
 };
 
 }  // namespace btclock

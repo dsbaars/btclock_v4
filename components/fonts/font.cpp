@@ -266,14 +266,16 @@ namespace {
 void DrawLineCentered(LandscapeFb& fb, int panel_w, int y_top, int region_h,
                       const char* text, const Font::ReferenceBox& ref_box,
                       const Font& font, float pixel_height,
-                      bool white_text) {
+                      bool white_text, int x_offset_px = 0,
+                      int y_offset_px = 0) {
   int left_bearing = 0;
   const int ink_w = MeasureInkWidth(text, font, pixel_height, &left_bearing);
-  const int x_origin = (panel_w - ink_w) / 2 - left_bearing;
+  const int x_origin =
+      (panel_w - ink_w) / 2 - left_bearing + x_offset_px;
 
   const int ref_h = ref_box.above_baseline + ref_box.below_baseline;
   const int ref_top = y_top + (region_h - ref_h) / 2;
-  const int y_baseline = ref_top + ref_box.above_baseline;
+  const int y_baseline = ref_top + ref_box.above_baseline + y_offset_px;
 
   DrawTextLandscape(fb, x_origin, y_baseline, text, font, pixel_height,
                     white_text);
@@ -318,10 +320,11 @@ void FillRoundRect(LandscapeFb& fb, int x, int y, int w, int h, int r,
 void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
                       const char* text, const char* ref_chars,
                       const Font& font, float pixel_height,
-                      bool white_text) {
+                      bool white_text, int x_offset_px, int y_offset_px) {
   const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
   DrawLineCentered(fb, panel_w, /*y_top=*/0, /*region_h=*/panel_h, text,
-                   rb, font, pixel_height, white_text);
+                   rb, font, pixel_height, white_text, x_offset_px,
+                   y_offset_px);
 }
 
 void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,

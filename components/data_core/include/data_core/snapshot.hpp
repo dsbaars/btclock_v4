@@ -29,9 +29,31 @@ struct DataSnapshot {
   // here so the map is homogeneous. Renderers parse as needed.
   std::map<std::string, std::string> prices;
 
-  // Reserved for sources not yet implemented — mining-pool stats and
-  // Bitaxe stats will add fields here once those sources land. Adding
-  // new fields is an ABI addition only, safe for all existing screens.
+  // --- Mining pool stats ---
+  // Populated by per-pool HTTPS pollers under
+  // components/mining_pool/*. Only the active pool source writes here;
+  // the screen renderer reads the whole struct via PoolStats().
+  // Field meanings mirror src/lib/data_sources/mining_pool/pool_stats.hpp
+  // from the old firmware, widened for the homogeneous snapshot shape.
+  struct PoolStats {
+    // Pool identity (e.g. "braiins", "ocean"). Stable across polls;
+    // lets the renderer pick the right logo / label.
+    std::string name;
+    // Human-readable hashrate string as the pool reports it
+    // ("123000000000000"-style integer, no unit suffix — formatter
+    // rescales for display). Empty string means "no sample yet".
+    std::string hashrate;
+    // Today's earnings in sats (whole-sats, no decimals). nullopt when
+    // the pool's API does not publish a per-day number.
+    std::optional<int64_t> daily_sats;
+    // Worker count, if the pool publishes one. nullopt otherwise.
+    std::optional<int32_t> workers;
+  };
+  PoolStats pool{};
+
+  // Reserved for sources not yet implemented — Bitaxe stats will add
+  // fields here once that source lands. Adding new fields is an ABI
+  // addition only, safe for all existing screens.
 
   // Merge non-empty fields of `other` into `this`. Returns true iff any
   // field actually changed — callers use that to suppress spurious

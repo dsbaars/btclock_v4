@@ -43,6 +43,16 @@ void RenderMoscowTimeScreen(
 
   const auto glyph = SatsGlyphUtf8(sats_variant);
 
+  // Sats-glyph pixel-height is deliberately lower than the digit height.
+  // The Satoshi Symbol font fills its em-box (ink width ≈ em-width), so
+  // rendering it at the digit pixel-height would leave much less visual
+  // margin around the glyph than Antonio digits get around themselves.
+  // 130 keeps the glyph the same vertical size as digit ink (both ≈
+  // 120-130 px) while shrinking the horizontal ink so symmetric panel
+  // centering yields margins close to digit-panel margins — no manual
+  // x-shift needed.
+  constexpr float kSatsPixelHeight = 130.0f;
+
   std::array<bool, kDigitPanels> update{};
   for (size_t i = 0; i < kDigitPanels; ++i) {
     update[i] = full_refresh ||
@@ -57,7 +67,7 @@ void RenderMoscowTimeScreen(
     if (now.is_sats[i]) {
       DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
                        glyph.c_str(), glyph.c_str(), fonts.sats_symbol(),
-                       170.0f, /*white_text=*/false);
+                       kSatsPixelHeight, /*white_text=*/false);
     } else if (now.digits[i] != ' ') {
       const char one[2] = {now.digits[i], '\0'};
       DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
