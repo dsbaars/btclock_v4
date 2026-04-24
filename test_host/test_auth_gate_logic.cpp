@@ -210,3 +210,50 @@ TEST_CASE("End-to-end rejects password stuffed into username slot") {
   REQUIRE(ParseUserPass(decoded, &u, &p));
   CHECK_FALSE(CredentialsMatch(u, p, "btclock", "hunter2"));
 }
+
+TEST_CASE("End-to-end rejects swapped user/pass") {
+  // "hunter2:btclock" base64 — must not authenticate as "btclock/hunter2".
+  std::string_view header = "Basic aHVudGVyMjpidGNsb2Nr";
+  std::string_view tok;
+  REQUIRE(ExtractBasicToken(header, &tok));
+  std::string decoded;
+  REQUIRE(DecodeBase64(tok, &decoded));
+  std::string u;
+  std::string p;
+  REQUIRE(ParseUserPass(decoded, &u, &p));
+  CHECK_FALSE(CredentialsMatch(u, p, "btclock", "hunter2"));
+}
+
+TEST_CASE("CredentialsMatch with empty configured_pass accepts nothing") {
+  // The IDF glue in auth_gate.cpp lets requests through when
+  // httpAuthPass is empty (documented recovery path against
+  // lockout); the pure-logic comparator does NOT make that exception
+  // — an attacker-supplied empty password must still fail when paired
+  // with a real username. The exception lives only in the glue.
+  CHECK_FALSE(CredentialsMatch("btclock", "", "btclock", "hunter2"));
+}
+
+TEST_CASE("CredentialsMatch treats UTF-8 bytes as opaque") {
+  // Non-ASCII password bytes round-trip through base64 and must compare
+  // byte-for-byte — the constant-time path does not normalise or casefold.
+  const char kPw[] = "p\xC3\xA4ssw\xC3\xB6rd";  // "pässwörd"
+  CHECK(CredentialsMatch("btclock", kPw, "btclock", kPw));
+  CHECK_FALSE(CredentialsMatch("btclock", "passwoerd", "btclock", kPw));
+}
+
+TEST_CASE("ExtractBasicToken rejects tab-separated scheme") {
+  // RFC 7235 §2.1 allows SP between scheme and credentials; strict
+  // readers reject HTAB. The parser deliberately rejects anything
+  // other than ASCII SP to avoid surprise-acceptance of smuggled
+  // headers.
+  std::string_view tok;
+  CHECK_FALSE(ExtractBasicToken("Basic\tYnRjbG9jazpodW50ZXIy", &tok));
+}
+
+TEST_CASE("DecodeBase64 rejects url-safe alphabet") {
+  // Some clients emit url-safe base64 with `-` / `_` in place of `+` / `/`.
+  // The Authorization header uses the standard alphabet; urlsafe input is
+  // ambiguous and we don't want to silently accept a double spelling.
+  std::string out;
+  CHECK_FALSE(DecodeBase64("YWJj-_==", &out));
+}

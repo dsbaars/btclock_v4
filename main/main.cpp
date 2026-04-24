@@ -12,6 +12,7 @@
 //   app/boot/init_screen_manager — ScreenManager + buttons
 //   app/boot/init_boot_path  — dispatch: provisioning overlay vs data wiring
 //   app/boot/init_control_api    — HTTP control API + SSE + OTA
+//   app/boot/init_mdns       — advertise device over mDNS (STA only)
 //   app/event_loop           — long-running render + event pump
 //
 // Board variant comes from -DPOC_BOARD=REV_A|REV_B|V8 at build time.
@@ -21,6 +22,7 @@
 #include "app/boot/init_boot_path.hpp"
 #include "app/boot/init_control_api.hpp"
 #include "app/boot/init_hardware.hpp"
+#include "app/boot/init_mdns.hpp"
 #include "app/boot/init_network.hpp"
 #include "app/boot/init_panels.hpp"
 #include "app/boot/init_screen_manager.hpp"
@@ -38,6 +40,7 @@ extern "C" void app_main() {
   btclock::InitScreenManager(ctx);
   btclock::DispatchBootPath(ctx);
   btclock::InitControlApi(ctx);
+  btclock::InitMdns(ctx);
 
   btclock::RunEventLoop(ctx);
 }

@@ -76,28 +76,32 @@ template <size_t N>
 void RenderHalvingScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    uint32_t block_height, uint32_t prev_height, bool as_blocks) {
+    uint32_t block_height, uint32_t prev_height, bool as_blocks,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "halving layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
-  const bool full_refresh = (prev_height == 0);
+  // `cell_diff_reset` forces every cell to repaint (sentinel prev_height
+  // 0 — 0 isn't a real mainnet height); `full_refresh_mode` drives the
+  // EPD refresh kind. See screens.hpp.
+  const bool cell_diff_reset = (prev_height == 0);
 
   if (as_blocks) {
     const uint32_t now_rem = HalvingCountdown(block_height);
     const uint32_t prev_rem =
-        full_refresh ? 0 : HalvingCountdown(prev_height);
+        cell_diff_reset ? 0 : HalvingCountdown(prev_height);
 
     char new_digits[kDigitPanels];
     char old_digits[kDigitPanels];
     FormatDigits(now_rem, new_digits, kDigitPanels);
-    if (!full_refresh) FormatDigits(prev_rem, old_digits, kDigitPanels);
+    if (!cell_diff_reset) FormatDigits(prev_rem, old_digits, kDigitPanels);
 
     std::array<PaintSlot, N> slots{};
     std::array<bool, N> update{};
 
     // Panel 0 — "HAL/VING" label. Static after first paint.
     slots[0] = PaintSlot{PaintSlot::kLabelSplit, "HAL/VING", nullptr, 0, 0};
-    update[0] = full_refresh;
+    update[0] = cell_diff_reset || full_refresh_mode;
 
     // Digit panels 1..N-1 — right-justified blocks-remaining. ' ' pad
     // cells short-circuit to no paint inside kDigit.
@@ -106,10 +110,12 @@ void RenderHalvingScreen(
       slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
                                    std::string(1, new_digits[i]),
                                    nullptr, 0, 0};
-      update[panel_idx] = full_refresh || new_digits[i] != old_digits[i];
+      update[panel_idx] = cell_diff_reset || full_refresh_mode ||
+                          new_digits[i] != old_digits[i];
     }
 
-    PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+    PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                    full_refresh_mode, vertical_desc);
     return;
   }
 
@@ -123,7 +129,7 @@ void RenderHalvingScreen(
   // slot DrawSplitText with slot-specific content that doesn't fit the
   // label/digit/unit shape the helper was designed around.
   const auto new_slots = TimeModeSlots(block_height);
-  const auto old_slots = full_refresh
+  const auto old_slots = cell_diff_reset
                              ? std::array<std::string, 7>{}
                              : TimeModeSlots(prev_height);
   constexpr size_t kSlotOffset = N - 7;
@@ -132,12 +138,13 @@ void RenderHalvingScreen(
   for (size_t i = 0; i < N; ++i) {
     if (i < kSlotOffset) {
       // Leading blank panels on the 8-panel variant — paint them blank
-      // on full-refresh only.
-      update[i] = full_refresh;
+      // on a cell-diff reset or a full EPD refresh.
+      update[i] = cell_diff_reset || full_refresh_mode;
       continue;
     }
     const size_t slot = i - kSlotOffset;
-    update[i] = full_refresh || new_slots[slot] != old_slots[slot];
+    update[i] = cell_diff_reset || full_refresh_mode ||
+                new_slots[slot] != old_slots[slot];
   }
 
   for (size_t i = 0; i < N; ++i) {
@@ -150,7 +157,7 @@ void RenderHalvingScreen(
   }
 
   const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
+      full_refresh_mode ? RefreshKind::kFull : RefreshKind::kPartial;
   for (size_t i = 0; i < N; ++i) {
     if (!update[i]) continue;
     panels[i]->DrawFramebufferStart(fb_storage[i], kind);
@@ -163,9 +170,9 @@ void RenderHalvingScreen(
 
 template void RenderHalvingScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, uint32_t, uint32_t, bool);
+    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
 template void RenderHalvingScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, uint32_t, uint32_t, bool);
+    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
 
 }  // namespace btclock

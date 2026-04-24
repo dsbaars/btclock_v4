@@ -40,6 +40,13 @@ void ZapListener::Stop() {
 
 void ZapListener::Handle(const std::string& /*sid*/, const Event& ev) {
   if (ev.kind != kKindZapReceipt) return;
+  // Drop zero-sat receipts before they reach the callback so the LED
+  // flash, screen overlay, and LatestZap snapshot update all stay
+  // suppressed. Relays occasionally forward NIP-57 receipts with a
+  // malformed or zero `amount` tag; surfacing them briefly flashed
+  // the device for a non-event. ShouldSurfaceZap also re-checks kind
+  // — harmless given the guard above, meaningful for test ergonomics.
+  if (!ShouldSurfaceZap(ev)) return;
   ZapInfo z;
   z.raw = &ev;
   z.content = ev.content;

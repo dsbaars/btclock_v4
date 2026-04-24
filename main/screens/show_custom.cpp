@@ -81,10 +81,13 @@ void RenderCustomScreen(
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::array<std::string, N>& cells,
     const std::array<std::string, N>& prev_cells,
-    bool force_full) {
+    bool cell_diff_reset, bool full_refresh_mode) {
+  // `cell_diff_reset` forces every cell to repaint (transition / first
+  // paint). `full_refresh_mode` drives the EPD refresh kind.
   std::array<bool, N> dirty{};
   for (size_t i = 0; i < N; ++i) {
-    dirty[i] = force_full || cells[i] != prev_cells[i];
+    dirty[i] = cell_diff_reset || full_refresh_mode ||
+               cells[i] != prev_cells[i];
   }
 
   for (size_t i = 0; i < N; ++i) {
@@ -92,11 +95,8 @@ void RenderCustomScreen(
     PaintOne(panels, fb_storage, fonts, i, cells[i]);
   }
 
-  // Refresh kind — match the clock screen's pattern: full refresh on
-  // first paint (force_full) keeps ghosting from accumulating across
-  // unrelated screens; otherwise use partial on every changed panel.
   const RefreshKind kind =
-      force_full ? RefreshKind::kFull : RefreshKind::kPartial;
+      full_refresh_mode ? RefreshKind::kFull : RefreshKind::kPartial;
   for (size_t i = 0; i < N; ++i) {
     if (!dirty[i]) continue;
     panels[i]->DrawFramebufferStart(fb_storage[i], kind);
@@ -110,10 +110,10 @@ void RenderCustomScreen(
 template void RenderCustomScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::array<std::string, 7>&,
-    const std::array<std::string, 7>&, bool);
+    const std::array<std::string, 7>&, bool, bool);
 template void RenderCustomScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::array<std::string, 8>&,
-    const std::array<std::string, 8>&, bool);
+    const std::array<std::string, 8>&, bool, bool);
 
 }  // namespace btclock

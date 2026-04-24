@@ -86,6 +86,16 @@ struct PanelTextInputs {
   // classic-range USD case. Default true preserves the legacy MSCW/TIME
   // label on USD in the classic range.
   bool use_mscw_time      = true;
+  // BTC price decorations. `suffix_price` routes the price screen
+  // through FormatNumberWithSuffix (K/M/B/T/Q) so huge values fit
+  // readably — 78280 → "$78.3K". `mow_mode` forces the MOW (millions
+  // of units) form: 78280 → "$0.078M", 1_000_000 → "$1.000M". v3
+  // precedence: `mow_mode` is consulted only inside the suffix branch
+  // (parsePriceData), so setting mow_mode without suffix_price on a
+  // short integer price renders plain digits — the suffix branch fires
+  // only when the integer itself is wide enough (>= N digits).
+  bool suffix_price       = false;
+  bool mow_mode           = false;
   // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
   MiningPoolMirror pool{};
   // Bitaxe screens. Empty hostname means "no sample yet" — mirror

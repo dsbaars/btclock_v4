@@ -145,4 +145,29 @@ bool LedsReady();
 // pulls NVS and mutex state).
 void SetLedActiveSuppressor(std::function<bool()> predicate);
 
+// --- OTA progress indicator -------------------------------------------
+// Paint `lit_count` green LEDs from index 0 followed by off LEDs for the
+// rest of the strip. Clamps `lit_count` to [0, pixel_count]. Bypasses
+// the effect queue and the DND / disabled predicates — the OTA UX is
+// a user-initiated, time-bounded action that must remain visible. The
+// resting mirror is NOT touched, so a successful OTA finishes with an
+// `esp_restart()` and a cold start repaints the normal colours; a
+// failed OTA reverts to the resting mirror via a SetLedIdle() call from
+// the caller.
+void ShowOtaProgressLedCount(int lit_count);
+
+// Indeterminate indicator — a single green pixel at index 0, rest off.
+// Used when Content-Length is missing on the upload so the write side
+// can't compute a fraction. The indicator is static (no pulsing / no
+// animation) because the HTTP worker thread is blocked in recv() for
+// most of the write; an animated indicator would freeze visually.
+void ShowOtaProgressIndeterminate();
+
+// Completion blink — flash all pixels green `times` times at `d_ms`
+// cadence. Blocks the caller for roughly times * 2 * d_ms. Called from
+// the HTTP worker after esp_ota_set_boot_partition succeeds but before
+// the scheduled reboot fires, so the user sees a clear "done" signal
+// on the LED strip even when the EPD hasn't been re-painted.
+void PlayOtaCompletionBlink(int times = 3, int d_ms = 150);
+
 }  // namespace btclock

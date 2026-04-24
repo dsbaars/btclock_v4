@@ -95,8 +95,9 @@ void RenderBitaxeHashrateScreen(
     const AppFonts& fonts,
     const std::string& hostname,
     const std::optional<double>& hashrate_ghs,
-    bool force_full,
-    const std::string& prev_value) {
+    bool full_refresh_mode,
+    const std::string& prev_value,
+    bool vertical_desc) {
   static_assert(N >= 7, "bitaxe layout needs at least 7 panels");
 
   const bool offline = hostname.empty() || !hashrate_ghs;
@@ -107,19 +108,23 @@ void RenderBitaxeHashrateScreen(
       offline ? std::string("OFFLINE")
               : FormatBitaxeHashrate(*hashrate_ghs);
 
-  const bool full_refresh = force_full || prev_value.empty();
-  // Bitaxe poll cadence is slow (~10 s) and the value rarely differs
-  // by a single digit — any value-string change repaints every tail
-  // panel without a per-codepoint diff.
-  const bool tail_changed = full_refresh || value != prev_value;
+  // `cell_diff_reset` forces every tail cell to repaint when there's no
+  // prior value cached; `full_refresh_mode` drives the EPD refresh
+  // kind. Bitaxe poll cadence is slow (~10 s) and the value rarely
+  // differs by a single digit — any value-string change repaints every
+  // tail panel without a per-codepoint diff.
+  const bool cell_diff_reset = prev_value.empty();
+  const bool tail_changed =
+      cell_diff_reset || full_refresh_mode || value != prev_value;
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
 
-  // Panel 0 — bitaxe logo. Always paints on full refresh; kIconBitmap
-  // on partial refresh with update=false is skipped entirely.
+  // Panel 0 — bitaxe logo. Paints on any cell-diff reset or full EPD
+  // refresh; kIconBitmap on partial refresh with update=false is
+  // skipped entirely (no need to redraw static art).
   slots[0] = BuildBitaxeLogoSlot();
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   if (offline) {
     // OFFLINE spans the whole tail (N-1 slots) — no split-text unit
@@ -155,7 +160,8 @@ void RenderBitaxeHashrateScreen(
     update[N - 1] = tail_changed;
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template <size_t N>
@@ -165,8 +171,9 @@ void RenderBitaxeBestDiffScreen(
     const AppFonts& fonts,
     const std::string& hostname,
     const std::optional<std::string>& best_diff,
-    bool force_full,
-    const std::string& prev_value) {
+    bool full_refresh_mode,
+    const std::string& prev_value,
+    bool vertical_desc) {
   static_assert(N >= 7, "bitaxe layout needs at least 7 panels");
 
   const std::string value =
@@ -174,8 +181,9 @@ void RenderBitaxeBestDiffScreen(
           ? std::string("OFFLINE")
           : *best_diff;
 
-  const bool full_refresh = force_full || prev_value.empty();
-  const bool tail_changed = full_refresh || value != prev_value;
+  const bool cell_diff_reset = prev_value.empty();
+  const bool tail_changed =
+      cell_diff_reset || full_refresh_mode || value != prev_value;
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
@@ -183,7 +191,7 @@ void RenderBitaxeBestDiffScreen(
   // Panel 0 — bitaxe logo (same single-panel layout as hashrate). Screen
   // identity is disambiguated by which value cycles in the tail slots.
   slots[0] = BuildBitaxeLogoSlot();
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   // Every tail panel renders through kDigit at the bitaxe-specific
   // 160 px metric — including the single-char suffix (M/G/T/P) which
@@ -195,24 +203,25 @@ void RenderBitaxeBestDiffScreen(
     update[panel_idx] = tail_changed;
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template void RenderBitaxeHashrateScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&,
-    const std::optional<double>&, bool, const std::string&);
+    const std::optional<double>&, bool, const std::string&, bool);
 template void RenderBitaxeHashrateScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&,
-    const std::optional<double>&, bool, const std::string&);
+    const std::optional<double>&, bool, const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&,
-    const std::optional<std::string>&, bool, const std::string&);
+    const std::optional<std::string>&, bool, const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&,
-    const std::optional<std::string>&, bool, const std::string&);
+    const std::optional<std::string>&, bool, const std::string&, bool);
 
 }  // namespace btclock

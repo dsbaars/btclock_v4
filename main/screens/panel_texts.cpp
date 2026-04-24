@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "screens/assets/pool_logos.hpp"
+#include "screens/btc_price_suffix_layout.hpp"
 #include "screens/fee_rate_layout.hpp"
 #include "screens/price_layout.hpp"
 #include "screens/screen_math.hpp"
@@ -383,21 +384,75 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
 
 std::vector<std::string> BuildBtcPrice(const std::string& currency,
                                        const std::string& price,
-                                       std::size_t n_panels) {
-  // Panel 0 = "BTC/<CCY>". Digits 1..N-1 are computed by
-  // `LayoutBtcPrice` — same helper the on-panel renderer uses, so the
-  // WebUI mirror and the EPD agree on where the '.' lands, which cell
-  // carries the glyph, and whether the glyph is dropped on overflow.
-  // Decimal-precision rules are documented in price_layout.hpp.
+                                       std::size_t n_panels,
+                                       bool suffix_price, bool mow_mode) {
+  // Panel 0 = "BTC/<CCY>" (or "MOW/UNITS" on the suffix+mow path when
+  // the price still fits with a label). Digits 1..N-1 come from the
+  // layout helpers in price_layout.hpp / btc_price_suffix_layout.hpp —
+  // same helpers the on-panel renderer uses, so the WebUI mirror and
+  // the EPD agree on where the '.' lands, which cell carries the glyph,
+  // and whether the glyph is dropped on overflow. Plain-path decimal
+  // rules live in price_layout.hpp; suffix/MOW rules mirror v3
+  // parsePriceData in lib/btclock/data_handler.cpp.
   std::vector<std::string> out;
   out.reserve(n_panels);
-  out.emplace_back("BTC/" + currency);
   const char* sym = CurrencySymbolLocal(currency);
   const double pd = PriceDoubleLocal(price);
-  // Dispatch on the two board topologies the firmware ships. Keeping
-  // the helper templated on Slots is what lets the renderer keep its
-  // std::array-backed fast path on-device; host code (here and the
-  // doctests) pays a trivial switch cost.
+
+  // Suffix path fires when `suffix_price` is on OR the integer part of
+  // the price is wide enough to force it — matching v3 parsePriceData's
+  // `std::to_string(price).length() >= NUM_SCREENS || useSuffixFormat`
+  // guard. We pre-check the width here so the mow_mode-without-suffix
+  // short-price case falls through to the integer path (v3 behaviour).
+  const int32_t price_int = PriceIntLocal(price);
+  const bool integer_overflow =
+      price_int >= 0 && std::to_string(price_int).size() >= n_panels;
+  const bool go_suffix = (suffix_price || integer_overflow) && price_int >= 0;
+
+  if (go_suffix) {
+    std::string label;
+    // On the overflow branch the suffix layout clears `label` and emits
+    // the currency glyph into cells[0] — the on-panel renderer paints
+    // that glyph on panel 0 in place of the dropped label (see
+    // RenderBtcPriceScreen's kCurrencyGlyph slot-0 branch). The mirror
+    // must agree cell-for-cell, otherwise /api/status carries "BTC/EUR"
+    // in slot 0 while the EPD shows the € glyph. Fixes the Rev B
+    // mowMode parity bug where `data[0]="BTC/EUR"` disagreed with the
+    // physical "€" on panel 0.
+    if (n_panels == 7) {
+      constexpr std::size_t kPanels = 7;
+      auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode, label);
+      if (label.empty()) {
+        // Overflow: glyph is already in cells[0].
+        for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
+      } else {
+        // Label path: paint label on panel 0, digits follow.
+        out.emplace_back(label);
+        for (std::size_t i = 1; i < kPanels; ++i) out.push_back(cells[i]);
+      }
+    } else if (n_panels == 8) {
+      constexpr std::size_t kPanels = 8;
+      auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode, label);
+      if (label.empty()) {
+        for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
+      } else {
+        out.emplace_back(label);
+        for (std::size_t i = 1; i < kPanels; ++i) out.push_back(cells[i]);
+      }
+    } else {
+      out.emplace_back("BTC/" + currency);
+      for (std::size_t i = 1; i < n_panels; ++i) out.emplace_back();
+    }
+    return out;
+  }
+
+  // Plain integer / sub-dollar-decimal path (v4 default). Also where we
+  // land when `mow_mode=true && suffix_price=false` on a short price —
+  // matches v3 parsePriceData which only consults `mowMode` inside the
+  // suffix branch.
+  out.emplace_back("BTC/" + currency);
   if (n_panels == 7) {
     constexpr std::size_t kSlots = 6;
     auto cells = LayoutBtcPriceStrings<kSlots>(pd, sym);
@@ -407,8 +462,6 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     auto cells = LayoutBtcPriceStrings<kSlots>(pd, sym);
     for (const auto& s : cells) out.push_back(s);
   } else {
-    // Fallback for unexpected board sizes — keep the label in slot 0
-    // and fill the rest with blanks so the WebUI still renders cleanly.
     for (std::size_t i = 1; i < n_panels; ++i) out.emplace_back();
   }
   return out;
@@ -549,31 +602,40 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats) {
 }
 
 std::vector<std::string> BuildNostrZap(
-    const std::optional<int64_t>& amount_sats, std::size_t n_panels) {
-  // Slot 0 = "ZAP" literal, matching what the panel renders. No icon
-  // slot — panel 1 onwards carries the scaled amount right-justified
-  // (BlockHeight-style digit tail). The zapper's message string is
-  // intentionally not mirrored; the snapshot field is kept so a future
-  // screen can surface it without re-plumbing the relay listener.
+    const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
+    std::size_t n_panels) {
+  // Slot 0 = "ZAP" literal, matching what the panel renders. Slot 1 is
+  // the optional sats-symbol marker cell — emitted as the same "STS"
+  // token parseSatsPerCurrency uses on Moscow-time so the WebUI's
+  // split-text renderer lines up byte-for-byte with what the EPD paints
+  // via PaintSlot::kSatsGlyph. When `use_sats_symbol=false` the marker
+  // panel stays blank and the amount uses every tail cell. The zapper's
+  // message string is intentionally not mirrored; the snapshot field is
+  // kept so a future screen can surface it without re-plumbing the
+  // relay listener.
   std::vector<std::string> out(n_panels);
   if (n_panels == 0) return out;
   out[0] = "ZAP";
   if (n_panels <= 1) return out;
 
+  const std::size_t amount_start = use_sats_symbol ? 2 : 1;
+  if (use_sats_symbol && n_panels >= 2) out[1] = "STS";
+  if (n_panels <= amount_start) return out;
+
   const std::string amount = FormatZapAmountLocal(amount_sats);
-  const std::size_t amount_cells = n_panels - 1;
+  const std::size_t amount_cells = n_panels - amount_start;
 
   // Right-justify the scaled amount into the tail cells, one char each.
   if (amount.size() >= amount_cells) {
     const std::size_t start = amount.size() - amount_cells;
     for (std::size_t i = 0; i < amount_cells; ++i) {
-      out[1 + i].assign(1, amount[start + i]);
+      out[amount_start + i].assign(1, amount[start + i]);
     }
   } else {
     const std::size_t pad = amount_cells - amount.size();
-    for (std::size_t i = 0; i < pad; ++i) out[1 + i].clear();
+    for (std::size_t i = 0; i < pad; ++i) out[amount_start + i].clear();
     for (std::size_t i = pad; i < amount_cells; ++i) {
-      out[1 + i].assign(1, amount[i - pad]);
+      out[amount_start + i].assign(1, amount[i - pad]);
     }
   }
   return out;
@@ -731,7 +793,8 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       return BuildMoscowTime(in.currency, in.price, n_panels,
                              in.use_sats_symbol, in.use_mscw_time);
     case ScreenType::kBtcPrice:
-      return BuildBtcPrice(in.currency, in.price, n_panels);
+      return BuildBtcPrice(in.currency, in.price, n_panels,
+                           in.suffix_price, in.mow_mode);
     case ScreenType::kBlockFeeRate:
       return BuildFeeRate(in.block_fee_sats_vb, n_panels);
     case ScreenType::kClock:
@@ -752,13 +815,20 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       // (misconfigured wiring) see blanks rather than stale content.
       return std::vector<std::string>(n_panels);
     case ScreenType::kNostrZap:
-      return BuildNostrZap(in.zap_amount_sats, n_panels);
+      return BuildNostrZap(in.zap_amount_sats, in.use_sats_symbol, n_panels);
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes
       // per panel; no useful `data[]` mirror. Return a single label in
       // slot 0 so /api/status still round-trips non-empty.
       std::vector<std::string> out(n_panels);
       out[0] = "DEBUG";
+      return out;
+    }
+    case ScreenType::kOtaUpdate: {
+      // OTA overlay paints "UP/DATE" on every panel. /api/status
+      // surfaces it as "UPDATE" across every slot so a watching client
+      // sees a consistent mirror of what's on the EPDs.
+      std::vector<std::string> out(n_panels, std::string("UPDATE"));
       return out;
     }
   }

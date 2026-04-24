@@ -1,218 +1,225 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>BTClock data_handler WASM preview</title>
+<!-- Tailwind v4 runtime JIT — no build step, acceptable for a dev preview. -->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<!-- DaisyUI 5 component styles. Once the browser has cached these the
+     page works offline across reloads. -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5/daisyui.css" rel="stylesheet" type="text/css" />
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
 <style>
-  :root {
-    --fg: #111;
-    --muted: #666;
-    --bg: #f8f8f8;
-    --cell-bg: #fff;
-    --cell-border: #ccc;
-    --accent: #f7931a;
-  }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
-  main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
-  h1 { font-size: 1.3rem; }
-  .todo {
-    background: #fff3cd;
-    border: 1px solid #ffecb5;
-    padding: 0.75rem 1rem;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    color: #664d03;
-  }
-  fieldset { border: 1px solid var(--cell-border); margin: 1rem 0; padding: 0.75rem 1rem; background: var(--cell-bg); }
-  legend { padding: 0 0.4rem; color: var(--muted); font-size: 0.85rem; }
-  label { display: inline-block; margin-right: 1rem; font-size: 0.9rem; }
-  input[type=number], input[type=text], select {
-    font: inherit; padding: 0.2rem 0.4rem; border: 1px solid var(--cell-border); border-radius: 3px;
-  }
-  button {
-    background: var(--accent); color: #fff; border: 0; padding: 0.4rem 0.8rem;
-    border-radius: 3px; font: inherit; cursor: pointer;
-  }
-  button:disabled { background: #aaa; cursor: not-allowed; }
-  button.secondary { background: #fff; color: var(--fg); border: 1px solid var(--cell-border); }
-  button.secondary.active { background: var(--fg); color: #fff; }
-  .row { display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap; }
-  .cell {
-    flex: 1 1 80px;
-    min-width: 70px;
-    min-height: 70px;
+  /* Each canvas is 122x250 logical; scale to ~1.5x so strokes are
+     legible on-screen while keeping aspect exact. The pixelated /
+     auto image-rendering hint is toggled via the `.aa` class on the
+     parent panel-row. */
+  .panel-canvas {
     background: #fff;
-    border: 1px solid var(--cell-border);
-    display: flex; align-items: center; justify-content: center;
-    font-family: "Courier New", monospace;
-    font-weight: bold;
-    font-size: 1.5rem;
-    white-space: pre;
-    text-align: center;
-    padding: 0.3rem;
-    word-break: break-all;
-  }
-  .cell.label { font-size: 0.8rem; color: var(--muted); }
-  .cell-label-row .cell { font-size: 0.7rem; color: var(--muted); min-height: 1.5rem; background: transparent; border: 0; }
-  .status { color: var(--muted); font-size: 0.85rem; }
-  .status.err { color: #b00; }
-  .raw {
-    margin-top: 0.5rem;
-    font-family: "Courier New", monospace;
-    font-size: 0.8rem;
-    color: var(--muted);
-    white-space: pre-wrap;
-  }
-  .panel-row {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.4rem;
-    flex-wrap: wrap;
-  }
-  .panel-row canvas {
-    /* Each canvas is 122x250 logical; scale to ~2x so strokes are legible
-       on-screen while keeping aspect exact. */
-    background: #fff;
-    border: 1px solid var(--cell-border);
-    image-rendering: pixelated;
     width: 92px;
     height: 188px;
+    image-rendering: pixelated;
   }
-  /* When anti-aliasing is on we want the browser's bilinear upscale so
-     the alpha gradient doesn't get re-quantized to hard pixel steps. */
-  .panel-row.aa canvas {
+  .panel-row-aa .panel-canvas {
     image-rendering: auto;
   }
-  #pixelOptions { display: none; }
-  #pixelOptions.visible { display: block; }
 </style>
 </head>
-<body>
-<main>
-  <h1>BTClock screen preview</h1>
-  <p class="status">
-    Exercises the ESP-IDF port's screen-layout helpers
-    (<code>main/screens/common.cpp</code> +
-    <code>fee_rate_layout.hpp</code>) compiled via Emscripten. Each cell
-    below maps to one 2.13" EPD panel in the selected rotation: 7 panels
-    for Rev A / Rev B, 8 panels for V8.
-  </p>
+<body class="min-h-screen bg-base-200 text-base-content">
 
-  <fieldset>
-    <legend>Layout</legend>
-    <div class="row">
-      <label>Font
-        <select id="fontFamily">
-          <option value="0">antonio (stock)</option>
-          <option value="1">oswald</option>
-          <option value="2">dejavu</option>
-        </select>
-      </label>
-      <label>Panels
-        <select id="panelsCount">
-          <option value="7">7 (Rev A / Rev B)</option>
-          <option value="8">8 (V8)</option>
-        </select>
-      </label>
+<!-- Top bar: title + view-mode toggle + theme toggle. -->
+<div class="navbar bg-base-100 shadow-sm sticky top-0 z-20">
+  <div class="flex-1 px-2">
+    <span class="text-lg font-semibold">BTClock screen preview</span>
+  </div>
+  <div class="flex-none gap-2">
+    <div role="tablist" class="tabs tabs-boxed" id="modeTabs">
+      <button id="modePixel" role="tab" class="tab tab-active" type="button">Pixel</button>
+      <button id="modeText"  role="tab" class="tab"            type="button">Text</button>
     </div>
-    <p class="status">
-      Font selection swaps the big-digit face; the small label on
-      panel&nbsp;0 stays Oswald-bold (that's a separate slot on
-      <code>AppFonts</code> and not currently exposed to the preview).
-    </p>
-  </fieldset>
+    <label class="swap swap-rotate btn btn-ghost btn-sm" title="Toggle light/dark">
+      <input type="checkbox" id="themeToggle" />
+      <span class="swap-on">Dark</span>
+      <span class="swap-off">Light</span>
+    </label>
+  </div>
+</div>
 
-  <fieldset>
-    <legend>View mode</legend>
-    <div class="row">
-      <!-- Pixel mode is the primary intent of this tool — what the
-           e-paper actually paints — so it's the default. Text-cells
-           stays available for quick layout-logic checks. -->
-      <button id="modePixel" class="secondary active" type="button">Pixel preview</button>
-      <button id="modeText" class="secondary" type="button">Text cells</button>
-    </div>
-    <div id="pixelOptions" class="row">
-      <label><input type="checkbox" id="aaEnabled" /> Anti-aliased (show alpha)</label>
-    </div>
-    <p class="status">
-      <strong>Pixel preview</strong>: runs the actual
-      <code>main/screens/*.cpp</code> renderers + stb_truetype font
-      rasterizer and draws each panel onto a canvas. Without AA this is
-      the exact 1-bpp frame the e-paper paints (122x250 logical, rotated
-      180° to match REV_B solder orientation); with AA enabled the
-      preview uses the raw grayscale alpha stb_truetype produces BEFORE
-      the 1-bpp threshold — smoother glyph edges, not what the EPD shows.
-      <strong>Text cells</strong>: shows what each panel's data layout
-      resolves to as plain strings — fast, cheap, no font rendering.
-    </p>
-  </fieldset>
+<!-- Two-column layout: sidebar left, outputs right. Stacks on <md. -->
+<div class="mx-auto max-w-[1600px] p-3 md:p-4 grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] gap-4">
 
-  <p id="status" class="status">Loading module...</p>
+  <!-- LEFT: sticky sidebar of inputs. -->
+  <aside class="md:sticky md:top-[4.5rem] md:self-start md:max-h-[calc(100vh-5rem)] md:overflow-y-auto space-y-3">
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-4 gap-2">
+        <p id="status" class="text-xs opacity-70">Loading module...</p>
+      </div>
+    </div>
 
-  <fieldset id="controls" disabled>
-    <legend>Inputs</legend>
-    <div>
-      <label>Block height
-        <input type="number" id="blockHeight" value="833333" min="0" max="1000000000" step="1" />
-      </label>
-      <label>Price (whole currency units)
-        <input type="number" id="price" value="67890" min="0" step="1" />
-      </label>
-      <label>Currency
-        <select id="currency">
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
-          <option value="GBP">GBP</option>
-          <option value="JPY">JPY</option>
-          <option value="AUD">AUD</option>
-          <option value="CAD">CAD</option>
-        </select>
-      </label>
-      <label>Block fees (sat/vB, decimals OK)
-        <input type="number" id="blockFees" value="12.75" min="-1" step="0.01" />
-      </label>
+    <!-- Layout (font family + panel count) -->
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-4 gap-3">
+        <h2 class="card-title text-sm">Layout</h2>
+        <label class="form-control w-full">
+          <span class="label-text text-xs mb-1">Font family</span>
+          <select id="fontFamily" class="select select-bordered select-sm w-full">
+            <option value="0">antonio (stock)</option>
+            <option value="1">oswald</option>
+            <option value="2">dejavu</option>
+          </select>
+        </label>
+        <label class="form-control w-full">
+          <span class="label-text text-xs mb-1">Panel count</span>
+          <select id="panelsCount" class="select select-bordered select-sm w-full">
+            <option value="7">7 (Rev A / Rev B)</option>
+            <option value="8">8 (V8)</option>
+          </select>
+        </label>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" id="verticalDesc" class="checkbox checkbox-sm" />
+          <span class="label-text text-xs">Vertical description (rotate label 90&deg; CCW)</span>
+        </label>
+        <p class="text-[11px] opacity-60">
+          Font swaps the big-digit face; the panel-0 label stays Oswald-bold
+          (separate slot on <code>AppFonts</code>, not exposed here).
+        </p>
+      </div>
     </div>
-    <div class="row">
-      <label><input type="checkbox" id="withSatsSymbol" checked /> sats: draw sats-glyph prefix</label>
-    </div>
-    <!-- Mining pool / bitaxe / nostr zap inputs. These feed the newer
-         renderers that consume DataSnapshot sub-structs (PoolStats,
-         BitaxeStats, LatestZap) rather than the legacy parse*() integer
-         args. Defaults pick plausible production values. -->
-    <div class="row">
-      <label>Pool name
-        <input type="text" id="poolName" value="Ocean" />
-      </label>
-      <label>Pool hashrate (H/s)
-        <input type="number" id="poolHashrate" value="200000000000000000" min="0" step="1" />
-      </label>
-      <label>Pool daily sats
-        <input type="number" id="poolDailySats" value="50000" min="0" step="1" />
-      </label>
-    </div>
-    <div class="row">
-      <label>Bitaxe hostname
-        <input type="text" id="bitaxeHost" value="bitaxe-alpha" />
-      </label>
-      <label>Bitaxe hashrate (GH/s)
-        <input type="number" id="bitaxeHashrate" value="1200" min="0" step="1" />
-      </label>
-      <label>Bitaxe best diff
-        <input type="text" id="bitaxeBestDiff" value="15.6M" />
-      </label>
-    </div>
-    <div class="row">
-      <label>Zap amount (sats)
-        <input type="number" id="zapAmount" value="21000" min="0" step="1" />
-      </label>
-    </div>
-    <div class="row">
-      <button id="run">Render all</button>
-    </div>
-  </fieldset>
 
-  <div id="outputs"></div>
-</main>
+    <!-- Pixel-mode anti-alias option. Visible only in pixel mode. -->
+    <div id="pixelOptions" class="card bg-base-100 shadow-sm">
+      <div class="card-body p-4 gap-2">
+        <h2 class="card-title text-sm">Pixel options</h2>
+        <label class="label cursor-pointer justify-start gap-2">
+          <input type="checkbox" id="aaEnabled" class="checkbox checkbox-sm" />
+          <span class="label-text text-xs">Anti-aliased (show alpha)</span>
+        </label>
+        <p class="text-[11px] opacity-60">
+          Without AA this is the exact 1-bpp frame the EPD paints. With AA
+          enabled, the preview uses the raw grayscale alpha stb_truetype
+          produces before the 1-bpp threshold — smoother glyph edges, not
+          what the EPD shows.
+        </p>
+      </div>
+    </div>
+
+    <!-- Inputs: grouped by data domain. All existing #ids preserved. -->
+    <fieldset id="controls" class="card bg-base-100 shadow-sm" disabled>
+      <div class="card-body p-4 gap-4">
+        <h2 class="card-title text-sm">Inputs</h2>
+
+        <!-- Block data -->
+        <div class="space-y-2">
+          <div class="text-xs font-semibold opacity-70 uppercase tracking-wide">Block data</div>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Block height</span>
+            <input type="number" id="blockHeight" value="833333" min="0" max="1000000000" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Block fees (sat/vB)</span>
+            <input type="number" id="blockFees" value="12.75" min="-1" step="0.01"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+        </div>
+
+        <!-- Price data -->
+        <div class="space-y-2">
+          <div class="text-xs font-semibold opacity-70 uppercase tracking-wide">Price data</div>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Price (whole currency units)</span>
+            <input type="number" id="price" value="67890" min="0" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Currency</span>
+            <select id="currency" class="select select-bordered select-sm w-full">
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="JPY">JPY</option>
+              <option value="AUD">AUD</option>
+              <option value="CAD">CAD</option>
+            </select>
+          </label>
+          <label class="label cursor-pointer justify-start gap-2">
+            <input type="checkbox" id="withSatsSymbol" checked class="checkbox checkbox-sm" />
+            <span class="label-text text-xs">sats: draw sats-glyph prefix</span>
+          </label>
+        </div>
+
+        <!-- Mining pool -->
+        <div class="space-y-2">
+          <div class="text-xs font-semibold opacity-70 uppercase tracking-wide">Mining pool</div>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Pool name</span>
+            <input type="text" id="poolName" value="Ocean"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Pool hashrate (H/s)</span>
+            <input type="number" id="poolHashrate" value="200000000000000000" min="0" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Pool daily sats</span>
+            <input type="number" id="poolDailySats" value="50000" min="0" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+        </div>
+
+        <!-- Bitaxe -->
+        <div class="space-y-2">
+          <div class="text-xs font-semibold opacity-70 uppercase tracking-wide">Bitaxe</div>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Bitaxe hostname</span>
+            <input type="text" id="bitaxeHost" value="bitaxe-alpha"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Bitaxe hashrate (GH/s)</span>
+            <input type="number" id="bitaxeHashrate" value="1200" min="0" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Bitaxe best diff</span>
+            <input type="text" id="bitaxeBestDiff" value="15.6M"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+        </div>
+
+        <!-- Nostr zap -->
+        <div class="space-y-2">
+          <div class="text-xs font-semibold opacity-70 uppercase tracking-wide">Nostr zap</div>
+          <label class="form-control w-full">
+            <span class="label-text text-xs mb-1">Zap amount (sats)</span>
+            <input type="number" id="zapAmount" value="21000" min="0" step="1"
+                   class="input input-bordered input-sm w-full" />
+          </label>
+        </div>
+
+        <button id="run" class="btn btn-primary btn-sm mt-2">Render all</button>
+      </div>
+    </fieldset>
+  </aside>
+
+  <!-- RIGHT: rendered outputs. -->
+  <section class="space-y-3 min-w-0">
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-4">
+        <p class="text-xs opacity-70 m-0">
+          Exercises the ESP-IDF port's screen-layout helpers
+          (<code>main/screens/common.cpp</code> +
+          <code>fee_rate_layout.hpp</code>) compiled via Emscripten. Each cell
+          below maps to one 2.13" EPD panel in the selected rotation: 7 panels
+          for Rev A / Rev B, 8 panels for V8.
+        </p>
+      </div>
+    </div>
+    <div id="outputs" class="space-y-3"></div>
+  </section>
+</div>
 
 <script type="module">
   import createBtclockModule from "./dist/btclock_datahandler.js";
@@ -226,6 +233,8 @@
   const aaEnabledEl  = document.getElementById("aaEnabled");
   const fontSelectEl = document.getElementById("fontFamily");
   const panelsSelectEl = document.getElementById("panelsCount");
+  const verticalDescEl = document.getElementById("verticalDesc");
+  const themeToggleEl = document.getElementById("themeToggle");
 
   // Pixel mode is the primary use-case — start there. Users can still
   // flip to text mode for a pure-logic sanity check.
@@ -329,38 +338,49 @@
     return [arr[0], ...pad, ...arr.slice(1)];
   }
 
+  // Shared card builder — every output screen renders as a DaisyUI card
+  // so the right pane reads as a stack of uniform tiles.
+  function newSection(title) {
+    const card = document.createElement("div");
+    card.className = "card bg-base-100 shadow-sm";
+    const body = document.createElement("div");
+    body.className = "card-body p-3 gap-2";
+    const h = document.createElement("h3");
+    h.className = "card-title text-sm font-semibold";
+    h.textContent = title;
+    body.appendChild(h);
+    card.appendChild(body);
+    outputs.appendChild(card);
+    return body;
+  }
+
   function renderTextRow(title, arr, rawRepr) {
-    const section = document.createElement("fieldset");
-    const legend = document.createElement("legend");
-    legend.textContent = title;
-    section.appendChild(legend);
+    const body = newSection(title);
 
     const labelRow = document.createElement("div");
-    labelRow.className = "row cell-label-row";
+    labelRow.className = "flex flex-wrap gap-1 text-[10px] opacity-60";
     for (let i = 0; i < arr.length; i++) {
       const c = document.createElement("div");
-      c.className = "cell";
+      c.className = "flex-1 min-w-[70px] text-center";
       c.textContent = `#${i}`;
       labelRow.appendChild(c);
     }
-    section.appendChild(labelRow);
+    body.appendChild(labelRow);
 
     const row = document.createElement("div");
-    row.className = "row";
+    row.className = "flex flex-wrap gap-1";
     for (const s of arr) {
       const c = document.createElement("div");
-      c.className = "cell";
+      c.className = "flex-1 min-w-[70px] min-h-[70px] bg-base-200 border border-base-300 flex items-center justify-center font-mono font-bold text-xl whitespace-pre text-center p-1 break-all";
       c.textContent = s && s.length ? s : " ";
       row.appendChild(c);
     }
-    section.appendChild(row);
+    body.appendChild(row);
 
     const raw = document.createElement("div");
-    raw.className = "raw";
+    raw.className = "font-mono text-[11px] opacity-60 whitespace-pre-wrap break-all";
     raw.textContent = rawRepr;
-    section.appendChild(raw);
-
-    outputs.appendChild(section);
+    body.appendChild(raw);
   }
 
   // --- Pixel mode rendering ---
@@ -440,34 +460,33 @@
   }
 
   function renderPixelRow(title, buffers, dims, aa) {
-    const section = document.createElement("fieldset");
-    const legend = document.createElement("legend");
-    legend.textContent = title;
-    section.appendChild(legend);
+    const body = newSection(title);
 
     const labelRow = document.createElement("div");
-    labelRow.className = "row cell-label-row";
+    labelRow.className = "flex flex-wrap gap-1 text-[10px] opacity-60";
     for (let i = 0; i < buffers.length; i++) {
       const c = document.createElement("div");
-      c.className = "cell";
+      c.className = "w-[92px] text-center";
       c.textContent = `#${i}`;
       labelRow.appendChild(c);
     }
-    section.appendChild(labelRow);
+    body.appendChild(labelRow);
 
     const row = document.createElement("div");
-    row.className = aa ? "panel-row aa" : "panel-row";
+    // The .panel-row-aa class toggles image-rendering from pixelated
+    // (default) to auto so the bilinear upscale doesn't re-quantize
+    // the grayscale alpha into hard pixel steps.
+    row.className = "flex flex-wrap gap-1" + (aa ? " panel-row-aa" : "");
     for (let i = 0; i < buffers.length; i++) {
       const canvas = document.createElement("canvas");
       canvas.width = dims.width;
       canvas.height = dims.height;
+      canvas.className = "panel-canvas border border-base-300";
       if (aa) paintPanelAA(canvas, buffers[i], dims);
       else    paintPanel(canvas, buffers[i], dims);
       row.appendChild(canvas);
     }
-    section.appendChild(row);
-
-    outputs.appendChild(section);
+    body.appendChild(row);
   }
 
   function runTextMode(mod, inputs, panelsCount) {
@@ -519,10 +538,11 @@
           aa
         );
       } catch (err) {
-        const section = document.createElement("fieldset");
-        section.innerHTML = `<legend>${fn.title} — error</legend>
-          <div class="raw">${String(err && err.stack ? err.stack : err)}</div>`;
-        outputs.appendChild(section);
+        const body = newSection(`${fn.title} — error`);
+        const raw = document.createElement("div");
+        raw.className = "font-mono text-[11px] text-error whitespace-pre-wrap break-all";
+        raw.textContent = String(err && err.stack ? err.stack : err);
+        body.appendChild(raw);
       }
     }
   }
@@ -533,8 +553,10 @@
   function syncRenderOptions(mod) {
     const panels = parseInt(panelsSelectEl.value, 10) || 7;
     const font = parseInt(fontSelectEl.value, 10) || 0;
+    const verticalDesc = verticalDescEl.checked;
     mod.setRenderOptions(panels, font);
-    return { panels, font };
+    mod.setVerticalDesc(verticalDesc);
+    return { panels, font, verticalDesc };
   }
 
   function runAll(mod, inputs) {
@@ -558,33 +580,44 @@
       controls.addEventListener("input", trigger);
       fontSelectEl.addEventListener("change", trigger);
       panelsSelectEl.addEventListener("change", trigger);
+      verticalDescEl.addEventListener("change", trigger);
 
       function applyModeVisibility() {
-        if (viewMode === "pixel") pixelOptions.classList.add("visible");
-        else                      pixelOptions.classList.remove("visible");
+        // Pixel-only options card collapses entirely in text mode to
+        // keep the sidebar tidy.
+        if (viewMode === "pixel") pixelOptions.classList.remove("hidden");
+        else                      pixelOptions.classList.add("hidden");
       }
 
-      modeTextBtn.addEventListener("click", () => {
-        viewMode = "text";
-        modeTextBtn.classList.add("active");
-        modePixelBtn.classList.remove("active");
+      function setMode(mode) {
+        viewMode = mode;
+        if (mode === "pixel") {
+          modePixelBtn.classList.add("tab-active");
+          modeTextBtn.classList.remove("tab-active");
+        } else {
+          modeTextBtn.classList.add("tab-active");
+          modePixelBtn.classList.remove("tab-active");
+        }
         applyModeVisibility();
         trigger();
-      });
-      modePixelBtn.addEventListener("click", () => {
-        viewMode = "pixel";
-        modePixelBtn.classList.add("active");
-        modeTextBtn.classList.remove("active");
-        applyModeVisibility();
-        trigger();
-      });
+      }
+
+      modeTextBtn.addEventListener("click", () => setMode("text"));
+      modePixelBtn.addEventListener("click", () => setMode("pixel"));
       aaEnabledEl.addEventListener("change", trigger);
+
+      themeToggleEl.addEventListener("change", (ev) => {
+        document.documentElement.setAttribute(
+          "data-theme",
+          ev.target.checked ? "dark" : "light"
+        );
+      });
 
       applyModeVisibility();
       trigger();
     } catch (e) {
       statusEl.textContent = "Failed to load WASM module: " + (e && e.message ? e.message : e);
-      statusEl.classList.add("err");
+      statusEl.classList.add("text-error");
       console.error(e);
     }
   })();

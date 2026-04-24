@@ -44,6 +44,18 @@ bool ExtractZapAmountMsat(const Event& ev, uint64_t& msat);
 // iff a `bolt11` tag is present with a non-empty value.
 bool ExtractZapBolt11(const Event& ev, std::string& bolt11);
 
+// NIP-57 gate: should this zap receipt surface as a user-visible event
+// (LED flash, screen overlay, LatestZap snapshot update)?
+//
+// Returns true iff `ev` is a kind-9735 event with a parseable `amount`
+// tag AND the decoded amount resolves to at least 1 sat (1000 msat).
+// Zero-sat receipts — common when a relay forwards a malformed or
+// placeholder zap — should be ignored at the source so none of the
+// three downstream effects fire. Gate is kept here (alongside the
+// extractor) so host tests can pin the boundary without booting the
+// full zap listener machinery.
+bool ShouldSurfaceZap(const Event& ev);
+
 // Decode a single NIP-78 (kind 30078) event content + `d` tag into a
 // partial DataSnapshot per ws-nostr-publish/docs/NOSTR.md:
 //

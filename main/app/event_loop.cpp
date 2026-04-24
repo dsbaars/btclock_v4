@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "app/app_ctx.hpp"
+#include "app/block_event_policy.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_control_api.hpp"
 #include "io/frontlight_controller.hpp"
@@ -23,7 +24,9 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mcp23017.hpp"
+#include "prefs.hpp"
 #include "screens/screens.hpp"
+#include "settings/pref_keys.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -222,7 +225,17 @@ constexpr const char* kTag = "poc";
     bool pending_zap = true;
     if (zap_notify_pending.compare_exchange_strong(pending_zap, false) &&
         hub) {
-      sm.SetZapNotify(now_ms, zap_screen_auto_restore.load());
+      // timerSeconds (seconds) drives the overlay's visible-time
+      // window when scrnRestoreZap=true. Read at dispatch time so a
+      // live PATCH lands without a reboot; ZapOverlayPolicy clamps 0
+      // to the documented fallback so the zap doesn't vanish before
+      // the viewer reads it.
+      Prefs zap_prefs(prefs::kSettingsNs);
+      const int64_t timer_s =
+          static_cast<int64_t>(zap_prefs.GetU32(prefs::kTimerSeconds, 0));
+      const int64_t timeout_ms =
+          ZapOverlayPolicy::ComputeTimeoutMs(timer_s);
+      sm.SetZapNotify(now_ms, zap_screen_auto_restore.load(), timeout_ms);
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
       continue;
@@ -240,6 +253,21 @@ constexpr const char* kTag = "poc";
     if (sm.ConsumeNewBlock(snap)) {
       PostLedEvent(LedEvent::kBlockFlash);
       if (frontlight) frontlight->Flash();
+      // stealFocus: when enabled, a new block jumps the display to the
+      // block-height screen so the viewer sees the fresh height without
+      // waiting for rotation. Pref read per-event so a live PATCH lands
+      // without reboot. Overlay-aware — debug / custom / zap overlays
+      // block the steal (see BlockEventPolicy::ShouldSteal).
+      Prefs block_prefs(prefs::kSettingsNs);
+      const bool steal_focus =
+          block_prefs.GetBool(prefs::kStealFocus, false);
+      if (BlockEventPolicy::ShouldSteal(steal_focus, sm.current_kind())) {
+        if (sm.SetKind(ScreenType::kBlockHeight, now_ms)) {
+          sm.Render(panels, fb_storage, fonts, snap);
+          publish_status();
+          continue;
+        }
+      }
     }
 
     if (got != 0 && sm.ShouldRender(snap)) {

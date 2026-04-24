@@ -12,7 +12,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi prefs esp_wifi lwip esp_app_format
              data_core esp_psram json btclock_fs vfs settings ota
-             app_update
+             app_update net_util
     EMBED_FILES "${_PORTAL_GZ}"
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

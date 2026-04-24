@@ -24,7 +24,17 @@ FrontlightController::FrontlightController(Pca9685& pca, uint8_t channel_first,
     : pca_(pca),
       channel_first_(channel_first),
       channel_count_(channel_count),
-      fader_(frontlight::kDefaultMaxDuty, frontlight::kFadeStep) {}
+      fader_(frontlight::kDefaultMaxDuty, frontlight::kFadeStep) {
+  // Seed the policy with the same defaults the old header exposed as
+  // constants. `init_hardware` overwrites these at boot from NVS, but
+  // if that call never happens (unit test fixture, hardware init stub)
+  // the controller still behaves like v3's defaults.
+  FrontlightAmbientConfig cfg{};
+  cfg.ambient_auto_enabled = true;
+  cfg.lux_threshold = frontlight::kDefaultLuxThreshold;
+  cfg.off_when_dark = false;
+  policy_.SetConfig(cfg);
+}
 
 void FrontlightController::Start() {
   // Queue depth 8: matches led_controller; deeper buffering is
@@ -50,11 +60,18 @@ void FrontlightController::Post(FrontlightCommand cmd) {
   // dropped, and any in-flight On/SetBrightness is cancelled by a
   // forced kOff so a DND window armed while the light is already on
   // fades the panel to black without the caller having to know.
+  // kAmbientOn / kAmbientOff are treated like kOn / kOff here so DND
+  // wins over the ambient loop too.
   if (suppressor_ && suppressor_()) {
+    // Forward a user-off verbatim so the latch still tracks user
+    // intent even inside a DND window. Everything else becomes a
+    // kAmbientOff — we fade to black (or stay black) without setting
+    // the user-off latch, so when DND lifts the ambient loop can
+    // resume control on the next lux sample.
     if (cmd.event == FrontlightEvent::kOff) {
       xQueueSend(queue_, &cmd, 0);
     } else {
-      const FrontlightCommand off{FrontlightEvent::kOff, 0};
+      const FrontlightCommand off{FrontlightEvent::kAmbientOff, 0};
       xQueueSend(queue_, &off, 0);
     }
     return;
@@ -62,14 +79,68 @@ void FrontlightController::Post(FrontlightCommand cmd) {
   xQueueSend(queue_, &cmd, 0);
 }
 
+// --- Runtime config forwarders ---------------------------------------
+
+void FrontlightController::SetAmbientAutoOff(bool enabled) {
+  FrontlightAmbientConfig cfg = policy_.config();
+  cfg.ambient_auto_enabled = enabled;
+  policy_.SetConfig(cfg);
+}
+
+bool FrontlightController::ambient_auto_off() const {
+  return policy_.config().ambient_auto_enabled;
+}
+
+void FrontlightController::SetLuxThreshold(uint32_t lux) {
+  FrontlightAmbientConfig cfg = policy_.config();
+  cfg.lux_threshold = lux;
+  policy_.SetConfig(cfg);
+}
+
+uint32_t FrontlightController::lux_threshold() const {
+  return policy_.config().lux_threshold;
+}
+
+void FrontlightController::SetOffWhenDark(bool enabled) {
+  FrontlightAmbientConfig cfg = policy_.config();
+  cfg.off_when_dark = enabled;
+  policy_.SetConfig(cfg);
+}
+
+bool FrontlightController::off_when_dark() const {
+  return policy_.config().off_when_dark;
+}
+
+void FrontlightController::SetConfiguredBrightness(uint16_t duty) {
+  // Keep configured_brightness_ in lock-step with the queue so a later
+  // kOn resumes at the right level even if the fader isn't running yet.
+  // The task's kSetBrightness branch re-assigns under the task's own
+  // ordering so the value is eventually consistent.
+  SetBrightness(duty);
+}
+
 void FrontlightController::OnAmbientLux(float lux) {
-  if (!ambient_enabled_ || lux < 0.0f) return;
-  const uint32_t threshold = lux_threshold_;
-  if (threshold == 0) return;  // 0 = feature disabled (matches old fw)
-  if (static_cast<uint32_t>(lux) < threshold) {
-    if (!logical_on_) On();
+  // The policy reads user_off_ + output_on_ + hysteresis state to decide
+  // what event to post. Keeps the off-when-dark + user-off + regular
+  // threshold interactions in one pure-logic spot, covered by host
+  // tests. The controller task reconciles logical_on_ from the event
+  // it receives, which keeps the user-off latch single-sourced.
+  if (logical_on_) {
+    policy_.NoteOutputOn();
   } else {
-    if (logical_on_) Off();
+    policy_.NoteOutputOff();
+  }
+
+  const auto action = policy_.Evaluate(lux);
+  switch (action) {
+    case FrontlightAmbientAction::kNone:
+      return;
+    case FrontlightAmbientAction::kOn:
+      Post({FrontlightEvent::kAmbientOn, 0});
+      return;
+    case FrontlightAmbientAction::kOff:
+      Post({FrontlightEvent::kAmbientOff, 0});
+      return;
   }
 }
 
@@ -79,8 +150,9 @@ FrontlightController::Status FrontlightController::GetStatus() const {
   s.current_duty = fader_.current();
   s.target_duty = fader_.target();
   s.configured_brightness = configured_brightness_;
-  s.lux_threshold = lux_threshold_;
-  s.ambient_auto_off = ambient_enabled_;
+  const auto& cfg = policy_.config();
+  s.lux_threshold = cfg.lux_threshold;
+  s.ambient_auto_off = cfg.ambient_auto_enabled;
   return s;
 }
 
@@ -117,11 +189,34 @@ void FrontlightController::TaskLoop() {
     if (xQueueReceive(queue_, &cmd, wait) == pdTRUE) {
       switch (cmd.event) {
         case FrontlightEvent::kOn:
+          // User intent: light on. Clears the user-off latch so the
+          // ambient loop is free to act again on the next sample.
+          policy_.SetUserOff(false);
           logical_on_ = true;
           pulse = PulsePhase::kIdle;
           fader_.SetTarget(configured_brightness_);
           break;
         case FrontlightEvent::kOff:
+          // User intent: light off. Latch it. The ambient loop will
+          // keep hands off until kOn / kSetBrightness / a flash clears
+          // the latch again.
+          policy_.SetUserOff(true);
+          logical_on_ = false;
+          pulse = PulsePhase::kIdle;
+          fader_.SetTarget(0);
+          break;
+        case FrontlightEvent::kAmbientOn:
+          // Ambient-driven on: never overrides a user-off latch. The
+          // policy already gates this at source; the second check here
+          // is defence against a stale queue entry from before a kOff.
+          if (policy_.user_off()) break;
+          logical_on_ = true;
+          pulse = PulsePhase::kIdle;
+          fader_.SetTarget(configured_brightness_);
+          break;
+        case FrontlightEvent::kAmbientOff:
+          // Ambient-driven off: fades to 0 without setting the latch,
+          // so a future lux rise can auto-on it again.
           logical_on_ = false;
           pulse = PulsePhase::kIdle;
           fader_.SetTarget(0);
@@ -130,6 +225,12 @@ void FrontlightController::TaskLoop() {
           configured_brightness_ = cmd.value;
           // Only move the fader if the light is logically on; an off
           // light stays dark but remembers the new level for next kOn.
+          // A non-zero brightness write also clears the user-off latch
+          // — the user is explicitly asking for "this much light", so
+          // keeping them dark would be perverse.
+          if (cmd.value > 0) {
+            policy_.SetUserOff(false);
+          }
           if (logical_on_) {
             pulse = PulsePhase::kIdle;
             fader_.SetTarget(configured_brightness_);
@@ -137,6 +238,13 @@ void FrontlightController::TaskLoop() {
           break;
         case FrontlightEvent::kBlockFlash:
         case FrontlightEvent::kZapFlash:
+          // Flash events count as explicit user-visible acknowledgements,
+          // so they clear the user-off latch (matches the task brief:
+          // "until something explicit turns it back on — button press,
+          // next zap, next block flash, or POST /api/frontlight/on").
+          // The pulse itself still returns to the pre-flash state
+          // (dark if we were dark, bright if we were bright).
+          policy_.SetUserOff(false);
           hold_ms = (cmd.event == FrontlightEvent::kBlockFlash)
                         ? frontlight::kBlockFlashHoldMs
                         : frontlight::kZapFlashHoldMs;

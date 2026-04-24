@@ -85,8 +85,12 @@ struct RenderContext {
   // Runtime-selectable preview state. `panels_active` is 7 or 8;
   // `font_family` selects which face overrides the stock antonio slot
   // on `fonts` before a render. 0=antonio (stock), 1=oswald, 2=dejavu.
+  // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
+  // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
+  // axis. Default false matches the device boot default.
   std::size_t panels_active = 7;
   int font_family = 0;
+  bool vertical_desc = false;
 
   RenderContext() {
     for (std::size_t i = 0; i < kMaxPanels; ++i) {
@@ -478,14 +482,64 @@ val renderBlockHeight(int block_height) {
   ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderBlockHeightScreen<7>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderBlockHeightScreen<7>(pans, fbs, c.fonts, bh, 0,
+                                            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderBlockHeightScreen<8>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderBlockHeightScreen<8>(pans, fbs, c.fonts, bh, 0,
+                                            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
+}
+
+// Test-only variant that exposes the decoupled full_refresh_mode knob
+// (btclock_v4-jo6). Runs block-height render with caller-supplied
+// `prev_height` (for cell-diff reset control) and `full_refresh_mode`,
+// then returns an object containing the framebuffers AND the last
+// RefreshKind the panel shim captured. Lets smoke_test.mjs verify that
+// partial-mode actually flows kPartial to DrawFramebufferStart while
+// still producing a valid framebuffer.
+val renderBlockHeightWithMode(int block_height, int prev_height,
+                              bool full_refresh_mode) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  for (std::size_t i = 0; i < ctx.panels_active; ++i) {
+    ctx.panels[i]->reset_refresh_state();
+  }
+  const uint32_t bh =
+      block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+  const uint32_t ph =
+      prev_height < 0 ? 0 : static_cast<uint32_t>(prev_height);
+  const bool vd = ctx.vertical_desc;
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBlockHeightScreen<7>(pans, fbs, c.fonts, bh, ph,
+                                            full_refresh_mode, vd);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBlockHeightScreen<8>(pans, fbs, c.fonts, bh, ph,
+                                            full_refresh_mode, vd);
+      });
+  val out = val::object();
+  out.set("frameBuffers", FrameBuffersToVal(ctx.panels_active));
+  // Report refresh kind from the first panel that the renderer touched.
+  // Every updated panel sees the same kind (PaintDataScreen dispatches
+  // uniformly), so picking the first one is sufficient.
+  int kind_code = -1;
+  int total_refreshes = 0;
+  for (std::size_t i = 0; i < ctx.panels_active; ++i) {
+    total_refreshes += ctx.panels[i]->refresh_count();
+    if (ctx.panels[i]->refresh_count() > 0 && kind_code == -1) {
+      kind_code = static_cast<int>(ctx.panels[i]->last_refresh_kind());
+    }
+  }
+  // 0 = kFull, 1 = kPartial, -1 = no panel refreshed (nothing dirty).
+  out.set("refreshKind", kind_code);
+  out.set("refreshCount", total_refreshes);
+  return out;
 }
 
 val renderPriceData(int price_int, std::string currency) {
@@ -495,14 +549,17 @@ val renderPriceData(int price_int, std::string currency) {
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
   const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderBtcPriceScreen<7>(
-            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8);
+            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8,
+            false, false, /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderBtcPriceScreen<8>(
-            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8);
+            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8,
+            false, false, /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -514,16 +571,19 @@ val renderSatsPerCurrency(int price_int, std::string currency,
   char price_buf[24];
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMoscowTimeScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault);
+            btclock::kSatsVariantDefault, true, true,
+            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMoscowTimeScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault);
+            btclock::kSatsVariantDefault, true, true,
+            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -533,12 +593,15 @@ val renderBlockFees(int fee_sats_vb) {
   ClearPanels(ctx.panels_active);
   const double fee = fee_sats_vb < 0 ? 0.0
                                      : static_cast<double>(fee_sats_vb);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderFeeRateScreen<7>(pans, fbs, c.fonts, fee, -1);
+        btclock::RenderFeeRateScreen<7>(pans, fbs, c.fonts, fee, -1,
+                                        /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderFeeRateScreen<8>(pans, fbs, c.fonts, fee, -1);
+        btclock::RenderFeeRateScreen<8>(pans, fbs, c.fonts, fee, -1,
+                                        /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -548,12 +611,15 @@ val renderHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
   ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderHalvingScreen<7>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderHalvingScreen<7>(pans, fbs, c.fonts, bh, 0, true,
+                                        /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderHalvingScreen<8>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderHalvingScreen<8>(pans, fbs, c.fonts, bh, 0, true,
+                                        /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -567,14 +633,17 @@ val renderMarketCap(int block_height, int price_int, std::string currency,
                 price_int < 0 ? 0 : price_int);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMarketCapScreen<7>(
-            pans, fbs, c.fonts, currency, price_buf, bh, "", 0);
+            pans, fbs, c.fonts, currency, price_buf, bh, "", 0, true,
+            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMarketCapScreen<8>(
-            pans, fbs, c.fonts, currency, price_buf, bh, "", 0);
+            pans, fbs, c.fonts, currency, price_buf, bh, "", 0, true,
+            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -585,12 +654,19 @@ val renderBitcoinSupply(int block_height, bool /*bigchars_unused*/,
   ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderBitcoinSupplyScreen<7>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderBitcoinSupplyScreen<7>(pans, fbs, c.fonts, bh, 0,
+                                              true, false,
+                                              /*full_refresh_mode=*/true,
+                                              vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderBitcoinSupplyScreen<8>(pans, fbs, c.fonts, bh, 0);
+        btclock::RenderBitcoinSupplyScreen<8>(pans, fbs, c.fonts, bh, 0,
+                                              true, false,
+                                              /*full_refresh_mode=*/true,
+                                              vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -624,14 +700,17 @@ val renderMiningPoolHashrate(std::string pool_name, std::string hashrate) {
   // Empty `prev_pool` triggers the renderer's full-refresh path — a must
   // for the preview, which has no state across calls.
   const btclock::DataSnapshot::PoolStats prev{};
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMiningPoolHashrateScreen<7>(
-            pans, fbs, c.fonts, stats, prev);
+            pans, fbs, c.fonts, stats, prev,
+            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMiningPoolHashrateScreen<8>(
-            pans, fbs, c.fonts, stats, prev);
+            pans, fbs, c.fonts, stats, prev,
+            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -642,14 +721,17 @@ val renderMiningPoolEarnings(std::string pool_name, double daily_sats) {
   // hashrate not consumed by the earnings screen — pass empty string.
   const auto stats = MakePoolStats(pool_name, "", daily_sats);
   const btclock::DataSnapshot::PoolStats prev{};
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMiningPoolEarningsScreen<7>(
-            pans, fbs, c.fonts, stats, prev);
+            pans, fbs, c.fonts, stats, prev,
+            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMiningPoolEarningsScreen<8>(
-            pans, fbs, c.fonts, stats, prev);
+            pans, fbs, c.fonts, stats, prev,
+            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -659,16 +741,17 @@ val renderBitaxeHashrate(std::string hostname, double hashrate_ghs) {
   ClearPanels(ctx.panels_active);
   std::optional<double> ghs;
   if (hashrate_ghs > 0.0) ghs = hashrate_ghs;
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderBitaxeHashrateScreen<7>(
             pans, fbs, c.fonts, hostname, ghs,
-            /*force_full=*/true, /*prev_value=*/"");
+            /*full_refresh_mode=*/true, /*prev_value=*/"", vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderBitaxeHashrateScreen<8>(
             pans, fbs, c.fonts, hostname, ghs,
-            /*force_full=*/true, /*prev_value=*/"");
+            /*full_refresh_mode=*/true, /*prev_value=*/"", vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -678,16 +761,17 @@ val renderBitaxeBestDiff(std::string hostname, std::string best_diff) {
   ClearPanels(ctx.panels_active);
   std::optional<std::string> bd;
   if (!best_diff.empty()) bd = best_diff;
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderBitaxeBestDiffScreen<7>(
             pans, fbs, c.fonts, hostname, bd,
-            /*force_full=*/true, /*prev_value=*/"");
+            /*full_refresh_mode=*/true, /*prev_value=*/"", vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderBitaxeBestDiffScreen<8>(
             pans, fbs, c.fonts, hostname, bd,
-            /*force_full=*/true, /*prev_value=*/"");
+            /*full_refresh_mode=*/true, /*prev_value=*/"", vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -700,12 +784,17 @@ val renderNostrZap(double amount_sats) {
     zap.amount_sats = static_cast<int64_t>(amount_sats);
   }
   // message intentionally left empty — the renderer no longer paints it.
+  const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderNostrZapScreen<7>(pans, fbs, c.fonts, zap);
+        btclock::RenderNostrZapScreen<7>(pans, fbs, c.fonts, zap, false,
+                                         btclock::kSatsVariantDefault,
+                                         /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderNostrZapScreen<8>(pans, fbs, c.fonts, zap);
+        btclock::RenderNostrZapScreen<8>(pans, fbs, c.fonts, zap, false,
+                                         btclock::kSatsVariantDefault,
+                                         /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -747,15 +836,16 @@ val renderBlockHeightAlpha(int block_height) {
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBlockHeightScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, bh, 0);
+          borrowed, As8(ctx), ctx.fonts, bh, 0, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBlockHeightScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, bh, 0);
+          borrowed, As7(ctx), ctx.fonts, bh, 0, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -768,17 +858,18 @@ val renderPriceDataAlpha(int price_int, std::string currency) {
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
     const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBtcPriceScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          symbol_utf8);
+          symbol_utf8, false, false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBtcPriceScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          symbol_utf8);
+          symbol_utf8, false, false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -791,17 +882,18 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
     char price_buf[24];
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault);
+          btclock::kSatsVariantDefault, true, true, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault);
+          btclock::kSatsVariantDefault, true, true, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -812,15 +904,16 @@ val renderBlockFeesAlpha(int fee_sats_vb) {
     auto& ctx = Ctx();
     const double fee = fee_sats_vb < 0 ? 0.0
                                        : static_cast<double>(fee_sats_vb);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderFeeRateScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, fee, -1);
+          borrowed, As8(ctx), ctx.fonts, fee, -1, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderFeeRateScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, fee, -1);
+          borrowed, As7(ctx), ctx.fonts, fee, -1, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -831,15 +924,16 @@ val renderHalvingCountdownAlpha(int block_height, bool /*bigchars_unused*/) {
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderHalvingScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, bh, 0);
+          borrowed, As8(ctx), ctx.fonts, bh, 0, true, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderHalvingScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, bh, 0);
+          borrowed, As7(ctx), ctx.fonts, bh, 0, true, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -855,15 +949,18 @@ val renderMarketCapAlpha(int block_height, int price_int,
                   price_int < 0 ? 0 : price_int);
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMarketCapScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, currency, price_buf, bh, "", 0);
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, bh, "", 0,
+          true, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMarketCapScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, currency, price_buf, bh, "", 0);
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, bh, "", 0,
+          true, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -875,15 +972,16 @@ val renderBitcoinSupplyAlpha(int block_height, bool /*bigchars_unused*/,
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBitcoinSupplyScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, bh, 0);
+          borrowed, As8(ctx), ctx.fonts, bh, 0, true, false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBitcoinSupplyScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, bh, 0);
+          borrowed, As7(ctx), ctx.fonts, bh, 0, true, false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -895,15 +993,16 @@ val renderMiningPoolHashrateAlpha(std::string pool_name,
     auto& ctx = Ctx();
     const auto stats = MakePoolStats(pool_name, hashrate, -1.0);
     const btclock::DataSnapshot::PoolStats prev{};
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMiningPoolHashrateScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, stats, prev);
+          borrowed, As8(ctx), ctx.fonts, stats, prev, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMiningPoolHashrateScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, stats, prev);
+          borrowed, As7(ctx), ctx.fonts, stats, prev, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -914,15 +1013,16 @@ val renderMiningPoolEarningsAlpha(std::string pool_name, double daily_sats) {
     auto& ctx = Ctx();
     const auto stats = MakePoolStats(pool_name, "", daily_sats);
     const btclock::DataSnapshot::PoolStats prev{};
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMiningPoolEarningsScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, stats, prev);
+          borrowed, As8(ctx), ctx.fonts, stats, prev, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMiningPoolEarningsScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, stats, prev);
+          borrowed, As7(ctx), ctx.fonts, stats, prev, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -933,15 +1033,16 @@ val renderBitaxeHashrateAlpha(std::string hostname, double hashrate_ghs) {
     auto& ctx = Ctx();
     std::optional<double> ghs;
     if (hashrate_ghs > 0.0) ghs = hashrate_ghs;
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBitaxeHashrateScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, hostname, ghs, true, "");
+          borrowed, As8(ctx), ctx.fonts, hostname, ghs, true, "", vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBitaxeHashrateScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, hostname, ghs, true, "");
+          borrowed, As7(ctx), ctx.fonts, hostname, ghs, true, "", vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -952,15 +1053,16 @@ val renderBitaxeBestDiffAlpha(std::string hostname, std::string best_diff) {
     auto& ctx = Ctx();
     std::optional<std::string> bd;
     if (!best_diff.empty()) bd = best_diff;
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBitaxeBestDiffScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, hostname, bd, true, "");
+          borrowed, As8(ctx), ctx.fonts, hostname, bd, true, "", vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBitaxeBestDiffScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, hostname, bd, true, "");
+          borrowed, As7(ctx), ctx.fonts, hostname, bd, true, "", vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -974,13 +1076,18 @@ val renderNostrZapAlpha(double amount_sats) {
       zap.amount_sats = static_cast<int64_t>(amount_sats);
     }
     // message intentionally left empty — the renderer no longer paints it.
+    const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
-      btclock::RenderNostrZapScreen<8>(borrowed, As8(ctx), ctx.fonts, zap);
+      btclock::RenderNostrZapScreen<8>(borrowed, As8(ctx), ctx.fonts, zap,
+                                       false, btclock::kSatsVariantDefault,
+                                       /*full_refresh_mode=*/true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
-      btclock::RenderNostrZapScreen<7>(borrowed, As7(ctx), ctx.fonts, zap);
+      btclock::RenderNostrZapScreen<7>(borrowed, As7(ctx), ctx.fonts, zap,
+                                       false, btclock::kSatsVariantDefault,
+                                       /*full_refresh_mode=*/true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -995,6 +1102,15 @@ void setRenderOptions(int panels, int font_family) {
   ctx.panels_active = (panels == 8) ? 8 : 7;
   if (font_family < 0 || font_family > 2) font_family = 0;
   ctx.font_family = font_family;
+}
+
+// Mirror of the `verticalDesc` device pref — flips the label panel's
+// orientation 90° CCW so "BLOCK/HEIGHT" and sibling labels read along
+// the panel's long axis. Exposed as a separate setter so the preview
+// UI can toggle it without recomputing the panels/font_family state;
+// safe to call before every render.
+void setVerticalDesc(bool on) {
+  Ctx().vertical_desc = on;
 }
 
 // Panel dimension metadata — JS needs this to set the <canvas> size
@@ -1028,6 +1144,8 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
 
   // Pixel mode (1-bpp — what the physical panel shows).
   emscripten::function("renderBlockHeightFrameBuffer", &renderBlockHeight);
+  emscripten::function("renderBlockHeightWithMode",
+                       &renderBlockHeightWithMode);
   emscripten::function("renderPriceDataFrameBuffer", &renderPriceData);
   emscripten::function("renderSatsPerCurrencyFrameBuffer",
                        &renderSatsPerCurrency);
@@ -1072,4 +1190,5 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
 
   emscripten::function("getPanelDimensions", &getPanelDimensions);
   emscripten::function("setRenderOptions", &setRenderOptions);
+  emscripten::function("setVerticalDesc", &setVerticalDesc);
 }

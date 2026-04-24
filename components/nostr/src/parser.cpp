@@ -375,6 +375,18 @@ bool ExtractZapBolt11(const Event& ev, std::string& bolt11) {
   return true;
 }
 
+bool ShouldSurfaceZap(const Event& ev) {
+  // Kind-check first so a mis-routed frame never trips the gate. The
+  // listener already subscribes to kind 9735 only, but this helper is
+  // public and host-tests feed it synthetic events — belt-and-suspenders.
+  if (ev.kind != kKindZapReceipt) return false;
+  uint64_t msat = 0;
+  if (!ExtractZapAmountMsat(ev, msat)) return false;
+  // 1 sat == 1000 msat. Anything under that — including the "amount
+  // tag present but zero" case — is treated as "not worth surfacing".
+  return msat >= 1000u;
+}
+
 namespace {
 
 // Parse a whole-number decimal string (no sign, no exponent). Returns

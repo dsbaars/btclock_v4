@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -21,8 +22,11 @@
 #include <sys/stat.h>
 
 #include "cJSON.h"
+#include "net_util/hostname.hpp"
 #include "ota_manager.hpp"
+#include "ota_upload_bounds.hpp"
 #include "settings/api.hpp"
+#include "settings/build_time.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "esp_app_desc.h"
@@ -596,7 +600,15 @@ std::string ControlServer::BuildStatusJson() const {
           ? cfg_.slot_to_api_id(static_cast<size_t>(live.current_slot))
           : live.current_slot;
   cJSON_AddNumberToObject(root, "currentScreen", current_api_id);
-  cJSON_AddNumberToObject(root, "numScreens", live.slot_count);
+  // `numScreens` is the hardware EPD panel count, not the rotation
+  // slot count. Matches v3 (`root["numScreens"] = NUM_SCREENS;`) and
+  // GET /api/settings, which the WebUI uses as `maxlength` for the
+  // "show custom text" input — it must be the panel count, not the
+  // filtered rotation length (which varies with feature flags). Using
+  // live.slot_count here caused /api/status.numScreens to drift from
+  // /api/settings.numScreens on any board with enabled currencies.
+  cJSON_AddNumberToObject(root, "numScreens",
+                          static_cast<double>(cfg_.num_screens));
   // `timerRunning` mirrors the old firmware's isTimerActive() — false
   // while the screen-rotation pause is armed. Prefer the real timer
   // iface when plumbed so this stays accurate even if the main loop
@@ -1364,15 +1376,27 @@ esp_err_t ControlServer::HandleWifiTxPower(httpd_req_t* req) {
 
 namespace {
 
-// Trampoline for FlashWebuiImage — it expects a C-style callback.
+// Trampoline for FlashWebuiImage / OTA push — expects a C-style callback.
 // `ctx` is the httpd_req_t*; read up to `want` bytes into `buf`.
+//
+// httpd_req_recv returns HTTPD_SOCK_ERR_TIMEOUT (-3) after the httpd
+// config's recv_wait_timeout (default 5 s) with no socket data. On a
+// slow/contended WiFi link that happens several times during a 1–2 MB
+// upload even when the client is healthy; the old firmware treated
+// these as fatal, which is why OTA "works sometimes." Retry a few
+// times before giving up so a transient stall doesn't abort a
+// full-partition erase mid-stream.
+constexpr int kHttpdRecvTimeoutRetries = 6;  // ~30 s of silence
+
 int HttpdRecvTrampoline(void* ctx, char* buf, size_t want) {
   auto* req = static_cast<httpd_req_t*>(ctx);
-  const int r = httpd_req_recv(req, buf, want);
-  // HTTPD_SOCK_ERR_TIMEOUT can happen on slow uploads; the old firmware
-  // treated these as fatal for OTA flows (the client is expected to
-  // push at line rate) — mirror that. Any <=0 result aborts the stream.
-  return r;
+  for (int attempt = 0; attempt <= kHttpdRecvTimeoutRetries; ++attempt) {
+    const int r = httpd_req_recv(req, buf, want);
+    if (r != HTTPD_SOCK_ERR_TIMEOUT) return r;
+    ESP_LOGW(kTag, "httpd_req_recv timeout (attempt %d/%d)",
+             attempt + 1, kHttpdRecvTimeoutRetries + 1);
+  }
+  return HTTPD_SOCK_ERR_TIMEOUT;
 }
 
 // Deferred reboot callback. Scheduled with a short delay so the HTTP
@@ -1502,7 +1526,19 @@ esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
   }
 
   const size_t expected = req->content_len;
-  if (expected > next->size) {
+  if (!btclock::IsValidFirmwareUploadSize(expected, next->size)) {
+    if (expected == 0) {
+      // Missing / zero Content-Length — the body might still stream
+      // but the old behaviour of "read until the partition fills up"
+      // either spins for minutes on a closed socket or misreads past
+      // the image. Require a declared length.
+      httpd_resp_set_status(req, "411 Length Required");
+      httpd_resp_set_type(req, kJsonType);
+      httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+      const char kBody[] = "{\"error\":\"content-length required\"}";
+      httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+      return ESP_FAIL;
+    }
     httpd_resp_set_status(req, "413 Payload Too Large");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -1553,14 +1589,18 @@ esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
     return ESP_FAIL;
   }
 
-  ESP_LOGW(kTag, "firmware upload ok: bytes=%u; rebooting in 500ms",
-           static_cast<unsigned>(written));
+  ESP_LOGW(kTag, "firmware upload ok: bytes=%u", static_cast<unsigned>(written));
   char body[96];
   std::snprintf(body, sizeof(body),
                 "{\"result\":\"ok\",\"bytes\":%u}",
                 static_cast<unsigned>(written));
   SendJson(req, body);
-  ScheduleReboot(500);
+  // Completion blink runs AFTER the HTTP body has flushed so the
+  // client's connection doesn't wait on the LED animation. It blocks
+  // the httpd worker for ~1 s; the reboot delay below is widened past
+  // that so the scheduled esp_restart doesn't fire mid-blink.
+  if (cfg_.on_ota_completion_blink) cfg_.on_ota_completion_blink();
+  ScheduleReboot(1500);
   return ESP_OK;
 }
 
@@ -1716,18 +1756,17 @@ btclock::settings::DeviceContext BuildDeviceContext(
     const ControlServer::Config& cfg) {
   btclock::settings::DeviceContext ctx;
   // Wifi component doesn't yet surface the configured hostname — the
-  // old firmware built it from hostnamePrefix + last-4-MAC. Read those
-  // back here so /api/settings hostname echoes whatever the user
-  // actually sees on the network.
+  // old firmware built it from hostnamePrefix + last-3-MAC-bytes.
+  // Route through the shared helper so this field matches the mDNS
+  // advertisement exactly; earlier revisions used a 4-hex-char suffix
+  // here while mDNS used 6, so the WebUI reported a name nobody could
+  // actually ping.
   {
     btclock::Prefs p("settings");
     const std::string prefix = p.GetString("hostnamePrefix", "btclock");
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    char host[48];
-    std::snprintf(host, sizeof(host), "%s-%02x%02x", prefix.c_str(),
-                  mac[4], mac[5]);
-    ctx.hostname = host;
+    ctx.hostname = btclock::net_util::ComputeHostname(prefix, mac);
   }
   ctx.ip = cfg.wifi ? cfg.wifi->ip() : "";
   int8_t tx = 0;
@@ -1749,11 +1788,25 @@ btclock::settings::DeviceContext BuildDeviceContext(
   const esp_app_desc_t* desc = esp_app_get_description();
   if (desc) {
     ctx.git_rev = desc->version;
-    ctx.last_build_time = std::string(desc->date) + " " + desc->time;
+    // desc->date is `MMM DD YYYY` (same as __DATE__) and desc->time is
+    // `HH:MM:SS` — both treated as UTC. Parse once per GET; the result
+    // is a small integer so recomputing it is cheaper than caching.
+    ctx.last_build_time_unix =
+        btclock::settings::ParseCompilerBuildTimeUnix(desc->date,
+                                                     desc->time);
   }
   ctx.available_fonts = cfg.available_fonts;
   ctx.available_pools = cfg.available_pools;
   ctx.available_currencies = cfg.available_currencies;
+  // Feature-flag gates for the settings page's `screens[]`. Read fresh
+  // from NVS so a PATCH toggling them takes effect on the very next GET
+  // without needing a reboot or a cache invalidation — matches the same
+  // read-every-request shape used by `screen_is_hidden` below.
+  {
+    btclock::Prefs p(btclock::prefs::kSettingsNs);
+    ctx.mining_pool_stats_enabled = p.GetBool(prefs::kMiningPoolStats, false);
+    ctx.bitaxe_enabled = p.GetBool(prefs::kBitaxeEnabled, false);
+  }
   for (const auto& s : cfg.screens_catalog) {
     ctx.screens.push_back({s.id, s.name});
     // Let the suppression probe filter capability-gated slots — today
@@ -1894,6 +1947,27 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
       }
     }
   }
+
+  // blockFlashColor: mirror the new value into the LED controller so
+  // the next block flash uses the user-chosen colour without a reboot.
+  // The `settings` and `led` NVS namespaces are intentionally distinct
+  // (the LED controller's key is abbreviated for the 15-char NVS cap)
+  // so this hook is the only thing keeping them in sync at runtime.
+  if (cfg_.on_block_flash_color_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kBlockFlashColor) {
+        cfg_.on_block_flash_color_changed(
+            prefs.GetU32(btclock::prefs::kBlockFlashColor, 0xE04300));
+        break;
+      }
+    }
+  }
+
+  // Every successful PATCH fires the generic "settings saved" hook so
+  // main can emit a visible confirmation (green LED pulse today). No
+  // touched-keys filter — an empty-but-valid PATCH still counts as a
+  // save in the user's mental model, and the LED flash is cheap.
+  if (cfg_.on_settings_patched) cfg_.on_settings_patched();
 
   // Response body mirrors old firmware: 200 OK with an empty body
   // when no reboot is required, {"rebootRequired":true} otherwise.

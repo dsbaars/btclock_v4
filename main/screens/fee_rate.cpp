@@ -45,31 +45,38 @@ template <size_t N>
 void RenderFeeRateScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    double fee_sats_vb, double prev_fee_sats_vb) {
+    double fee_sats_vb, double prev_fee_sats_vb,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "fee-rate layout needs at least 7 panels");
   constexpr size_t kDigitPanels = kFeeRateDigitPanels<N>;
   constexpr size_t kUnitPanel = N - 1;
 
-  const bool full_refresh = (prev_fee_sats_vb < 0.0);
+  // `cell_diff_reset` forces every cell to repaint (sentinel <0);
+  // `full_refresh_mode` drives the EPD refresh kind. See screens.hpp.
+  const bool cell_diff_reset = (prev_fee_sats_vb < 0.0);
 
   std::array<char, kDigitPanels> new_digits;
   std::array<char, kDigitPanels> old_digits;
   LayoutFeeRate(fee_sats_vb, new_digits);
-  if (!full_refresh) {
+  if (!cell_diff_reset) {
     LayoutFeeRate(prev_fee_sats_vb, old_digits);
   } else {
     for (size_t i = 0; i < kDigitPanels; ++i) old_digits[i] = ' ';
   }
 
+  // DiffFeeRateDigits's `full_refresh` argument forces every digit to
+  // repaint when true — feed it the combined cell-diff-reset signal
+  // so either a sentinel prev OR an EPD full frame paints everything.
   const auto digit_update =
-      DiffFeeRateDigits(new_digits, old_digits, full_refresh);
+      DiffFeeRateDigits(new_digits, old_digits,
+                        cell_diff_reset || full_refresh_mode);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
 
   // Panel 0 — "FEE/RATE" label. Static after first paint.
   slots[0] = PaintSlot{PaintSlot::kLabelSplit, "FEE/RATE", nullptr, 0, 0};
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   // Digit panels 1..N-2 — per-cell digits. Skips ' ' automatically via
   // kDigit. '.' is painted through kDigit + kDigitRef; '.' has no
@@ -86,22 +93,19 @@ void RenderFeeRateScreen(
   // Panel N-1 — "sat/vB" unit as paired split-text. Uses kLabelSplit
   // (label role + 54px) per plan D — this panel visually frames the
   // digits with the FEE/RATE label, and must render at the same size.
-  // The pre-refactor code used a focused "Bastv" ref; kLabelSplit's
-  // kLabelRef ("A..Z0..9") also contains 'B' (tallest glyph in "sat/vB")
-  // so GetReferenceBox returns an equivalent box — confirmed by the
-  // bit-identical hash diff.
   slots[kUnitPanel] =
       PaintSlot{PaintSlot::kLabelSplit, "sat/vB", nullptr, 0, 0, kUnitRef};
-  update[kUnitPanel] = full_refresh;
+  update[kUnitPanel] = cell_diff_reset || full_refresh_mode;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template void RenderFeeRateScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, double, double);
+    const AppFonts&, double, double, bool, bool);
 template void RenderFeeRateScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, double, double);
+    const AppFonts&, double, double, bool, bool);
 
 }  // namespace btclock

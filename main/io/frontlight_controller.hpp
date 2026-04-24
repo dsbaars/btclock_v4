@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <functional>
 
+#include "io/frontlight_ambient_policy.hpp"
 #include "io/frontlight_fader.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -78,11 +79,13 @@ constexpr uint32_t kZapFlashHoldMs = 400;
 // drop for now (adds complexity without user-visible value on the
 // 7-panel Rev B, where all channels share one diffuser).
 enum class FrontlightEvent : uint8_t {
-  kOn,           // fade to current configured brightness
-  kOff,          // fade to 0
+  kOn,             // user-on: clears user-off latch, fades to configured
+  kOff,            // user-off: sets user-off latch, fades to 0
+  kAmbientOn,      // ambient-loop on: no-op if user-off latch is set
+  kAmbientOff,     // ambient-loop off: fades to 0, does NOT set user-off latch
   kSetBrightness,  // fade to payload brightness, also updates configured value
-  kBlockFlash,   // pulse up -> hold -> return to previous state
-  kZapFlash,     // same shape, longer hold
+  kBlockFlash,     // pulse up -> hold -> return to previous state
+  kZapFlash,       // same shape, longer hold
 };
 
 // Event payload. Only `kSetBrightness` uses `value`; other events
@@ -115,13 +118,26 @@ class FrontlightController {
   void ZapFlash() { Post({FrontlightEvent::kZapFlash, 0}); }
 
   // --- Runtime-configurable ambient-light behaviour ---
-  // Lux threshold and enable flag are plain getters/setters; NVS
-  // persistence is deferred to btclock_v3_fci-jwz.
-  void SetAmbientAutoOff(bool enabled) { ambient_enabled_ = enabled; }
-  bool ambient_auto_off() const { return ambient_enabled_; }
+  // Forwarded to the embedded policy. `ambient_auto_off` matches the
+  // v3 semantic where `luxLightToggle == 0` disables the feature
+  // entirely — useful for Rev-A / V8 (no sensor), but still reachable
+  // via NVS on Rev-B for users who prefer a fixed brightness.
+  void SetAmbientAutoOff(bool enabled);
+  bool ambient_auto_off() const;
 
-  void SetLuxThreshold(uint32_t lux) { lux_threshold_ = lux; }
-  uint32_t lux_threshold() const { return lux_threshold_; }
+  void SetLuxThreshold(uint32_t lux);
+  uint32_t lux_threshold() const;
+
+  // `flOffWhenDark` — when true and the BH1750 reports effective-zero
+  // lux, the controller forces the backlight off and ignores
+  // auto-on/threshold logic until the room lights come back up.
+  // Matches v3 Arduino firmware src/main.cpp:38.
+  void SetOffWhenDark(bool enabled);
+  bool off_when_dark() const;
+
+  // Max duty (0..4095) written to the PCA9685 for the "on" state.
+  // Read from NVS `flMaxBrightness` at boot and live-tunable.
+  void SetConfiguredBrightness(uint16_t duty);
 
   // Install a predicate the controller consults before acting on Post.
   // When true, kOn / kSetBrightness / kBlockFlash / kZapFlash are
@@ -136,8 +152,10 @@ class FrontlightController {
   }
 
   // Feed the latest ambient-light reading. Safe to call from any task;
-  // enqueues kOn/kOff as needed. No-op when ambient_auto_off() is
-  // false, or when the reading is < 0 (sensor error sentinel).
+  // enqueues kAmbientOn / kAmbientOff as needed. No-op when
+  // ambient_auto_off() is false, when the reading is < 0 (sensor
+  // error sentinel), or when the user-off latch is set and the policy
+  // would otherwise turn the backlight on.
   void OnAmbientLux(float lux);
 
   // --- Status surface for future /api/frontlight/status wiring ---
@@ -168,11 +186,12 @@ class FrontlightController {
   uint16_t configured_brightness_ = frontlight::kDefaultMaxDuty;
   bool logical_on_ = false;
 
-  // Ambient-light coupling state. Updated from OnAmbientLux() on the
-  // caller's task; read from the controller task. Simple atomics would
-  // be tidier but we only need eventual consistency here.
-  volatile bool ambient_enabled_ = true;
-  volatile uint32_t lux_threshold_ = frontlight::kDefaultLuxThreshold;
+  // Ambient-light state. `policy_` owns the hysteresis latch + the
+  // dark-mode detection; `OnAmbientLux()` is the single point that
+  // feeds it. The policy's config is mirrored into the getters so the
+  // /api/frontlight/status response keeps working without exposing the
+  // policy type through the public surface.
+  FrontlightAmbientPolicy policy_;
 
   // DND predicate. Set once at boot, read from both the caller thread
   // (inside Post) and the controller task. Nullptr = no gating.

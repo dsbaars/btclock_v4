@@ -1,10 +1,23 @@
 // STA-mode data screens.
 //
-// All screen renderers follow the same per-digit diff pattern: pass
-// empty `prev_*` state on first paint to force a full refresh; on
-// subsequent paints pass the previously-rendered value so only the
-// digit panels whose glyph actually changed get a partial refresh
-// (~800 ms vs ~2.4 s full, label panel untouched after first paint).
+// Two independent knobs drive every data renderer:
+//
+//   prev_value         — previously-rendered value for cell-diff.
+//                        Sentinel (empty/0/-1) forces every cell to
+//                        repaint this frame (cells don't get the "no
+//                        change" short-circuit).
+//   full_refresh_mode  — EPD refresh kind for this frame. True →
+//                        RefreshKind::kFull (slow, ghost-clear), false
+//                        → RefreshKind::kPartial (fast). The user's
+//                        `refrScrnChange` + `fullRefreshMin` prefs are
+//                        consumed by RefreshPolicy::Decide upstream;
+//                        ScreenManager hands the result through here.
+//
+// Decoupling matters because screen transitions need every cell to
+// repaint (cell-diff reset) but may only warrant a partial refresh
+// (policy) — the previous coupling (deriving full_refresh from prev==
+// sentinel) meant transitions always did a full, even when the policy
+// wanted partial. See btclock_v4-jo6.
 
 #pragma once
 
@@ -32,13 +45,18 @@ namespace btclock {
 
 // --- Block height ---
 // Panel 0 = "BLOCK/HEIGHT" split-text label, panels 1..N-1 = one digit.
+// `vertical_desc=true` rotates the label panel 90° CCW so the text reads
+// along the longer physical edge of the panel (ports the v3 verticalDesc
+// pref — see btclock_v3_fci/src/lib/drivers/epd/epd.cpp splitText).
 template <size_t N>
 void RenderBlockHeightScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
     uint32_t block_height,
-    uint32_t prev_height = 0);
+    uint32_t prev_height = 0,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Moscow time (sats/USD as HH:MM-style digits) ---
 // `price` and `prev_price` are the raw price strings from the data
@@ -60,14 +78,25 @@ void RenderMoscowTimeScreen(
     const std::string& prev_price = "",
     uint8_t sats_variant = kSatsVariantDefault,
     bool use_sats_symbol = true,
-    bool use_mscw_time = true);
+    bool use_mscw_time = true,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- BTC price ---
-// Panel 0 = "BTC/<CCY>" label, panels 1..N-1 = price digits with an
-// optional currency-symbol glyph placed one slot before the first digit
-// (same layout pattern as the sats glyph on Moscow time). Symbol is a
-// UTF-8 string; pass "" to skip the symbol panel. Right-justified
-// integer part — fractional precision is tracked in beads lx0.12.
+// Panel 0 = "BTC/<CCY>" label (or "MOW/UNITS" when `mow_mode` is on and
+// the MOW form fits with a label slot; blank on the suffix-overflow
+// path where priceString fills all panels). Panels 1..N-1 = price
+// digits with an optional currency-symbol glyph placed one slot before
+// the first digit. Symbol is a UTF-8 string; pass "" to skip the
+// symbol panel.
+//
+// `suffix_price=true` routes through FormatNumberWithSuffix so huge
+// prices compress to "$78.3K" / "$1.02M" — ports v3's parsePriceData
+// useSuffixFormat branch. `mow_mode=true` forces the M suffix (MOW
+// units): 78280 → "$0.078M", 1_000_000 → "$1.000M". v3 precedence:
+// `mow_mode` without `suffix_price` is ignored for short integer prices
+// — the suffix branch only fires when `suffix_price=true` or the
+// integer price itself is wide enough (digit count >= N).
 template <size_t N>
 void RenderBtcPriceScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
@@ -76,7 +105,11 @@ void RenderBtcPriceScreen(
     const std::string& currency,
     const std::string& price,
     const std::string& prev_price = "",
-    const char* symbol_utf8 = "");
+    const char* symbol_utf8 = "",
+    bool suffix_price = false,
+    bool mow_mode = false,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Block fee rate ---
 // Panel 0 = "FEE/RATE" split-text label, panels 1..N-2 = median-mempool-
@@ -93,7 +126,9 @@ void RenderFeeRateScreen(
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
     double fee_sats_vb,
-    double prev_fee_sats_vb = -1.0);
+    double prev_fee_sats_vb = -1.0,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Wall-clock HH:MM ---
 // Panel 0 = dd/mm date label (split-text). Remaining panels carry
@@ -109,7 +144,9 @@ void RenderClockScreen(
     const AppFonts& fonts,
     bool valid, int hour, int minute, int mday, int month,
     bool prev_valid, int prev_hour, int prev_minute,
-    int prev_mday, int prev_month);
+    int prev_mday, int prev_month,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Halving countdown ---
 // `as_blocks=true` (default) paints the blocks-remaining form: panel 0 =
@@ -126,7 +163,9 @@ void RenderHalvingScreen(
     const AppFonts& fonts,
     uint32_t block_height,
     uint32_t prev_height = 0,
-    bool as_blocks = true);
+    bool as_blocks = true,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Bitcoin circulating supply ---
 // Panel 0 = "BTC/SUPPLY" label. Mode selection matches the old-firmware
@@ -147,7 +186,9 @@ void RenderBitcoinSupplyScreen(
     uint32_t block_height,
     uint32_t prev_height = 0,
     bool big_chars = true,
-    bool show_percent = false);
+    bool show_percent = false,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Mining pool hashrate ---
 // Panels 0+1 = pool identity area: a vendored 1-bpp logo bitmap painted
@@ -163,7 +204,9 @@ void RenderMiningPoolHashrateScreen(
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool);
+    const DataSnapshot::PoolStats& prev_pool,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Mining pool earnings (daily sats) ---
 // Same pool-identity layout as the hashrate screen (panels 0+1 = logo
@@ -178,7 +221,9 @@ void RenderMiningPoolEarningsScreen(
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool);
+    const DataSnapshot::PoolStats& prev_pool,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Runtime-pushed custom content ---
 // Renders the string in `cells[i]` centered on panel i for i in [0, N).
@@ -202,7 +247,8 @@ void RenderCustomScreen(
     const AppFonts& fonts,
     const std::array<std::string, N>& cells,
     const std::array<std::string, N>& prev_cells,
-    bool force_full);
+    bool cell_diff_reset,
+    bool full_refresh_mode);
 
 // --- Diagnostic screen ---
 // Off-rotation debug screen driven by the on-device button 4. Shows
@@ -241,8 +287,9 @@ void RenderBitaxeHashrateScreen(
     const AppFonts& fonts,
     const std::string& hostname,
     const std::optional<double>& hashrate_ghs,
-    bool force_full,
-    const std::string& prev_value);
+    bool full_refresh_mode,
+    const std::string& prev_value,
+    bool vertical_desc = false);
 
 // --- Bitaxe best-share difficulty ---
 // Panel 0 = rocket-launch MDI icon, panels 1..N-1 = best-diff string
@@ -255,24 +302,32 @@ void RenderBitaxeBestDiffScreen(
     const AppFonts& fonts,
     const std::string& hostname,
     const std::optional<std::string>& best_diff,
-    bool force_full,
-    const std::string& prev_value);
+    bool full_refresh_mode,
+    const std::string& prev_value,
+    bool vertical_desc = false);
 
 // --- Nostr zap notification ---
 // Transient overlay painted when a NIP-57 zap receipt arrives. Panel 0
-// carries the MDI lightning-bolt icon (from the kIconLightningBolt
-// codepoint in the already-wired fonts.mdi() bundle). Trailing panels
-// show the amount in sats, scaled via FormatZapAmount ("21k", "1.2M",
-// "100"), followed by an optional truncated zapper-supplied message.
-// Always full-refresh — the screen is only up for a few seconds before
-// ScreenManager restores the prior slot, so diff bookkeeping would add
-// no value.
+// carries the "ZAP" label. Trailing panels show the amount in sats,
+// scaled via FormatZapAmount ("21k", "1.2M", "100"). When
+// `use_sats_symbol=true`, panel 1 is reserved for the Satoshi-symbol
+// glyph (same kSatsGlyph slot kind + sats_glyph font role the
+// Moscow-time screen uses) and the amount is right-justified across
+// panels 2..N-1 instead of 1..N-1 — visually tags the number as sats.
+// `sats_variant` selects one of the 16 glyphs in the Satoshi Symbol
+// font (0..15; default 7). Always full-refresh — the screen is only
+// up for a few seconds before ScreenManager restores the prior slot,
+// so diff bookkeeping would add no value.
 template <size_t N>
 void RenderNostrZapScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
-    const DataSnapshot::LatestZap& zap);
+    const DataSnapshot::LatestZap& zap,
+    bool use_sats_symbol = false,
+    uint8_t sats_variant = kSatsVariantDefault,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // Format a zap amount (sats) into the scaled string painted on the
 // trailing panels. Pure-logic helper so host tests can pin the rules
@@ -282,6 +337,23 @@ void RenderNostrZapScreen(
 // >= 1_000_000 → "NM" / "N.NM", >= 1_000_000_000 → "NB". Negative /
 // missing → "?".
 std::string FormatZapAmount(const std::optional<int64_t>& amount_sats);
+
+// --- Firmware OTA overlay ---
+// Painted once by the /upload/firmware handler before esp_ota_begin
+// erases the target partition. Panel 0 shows an "UP/DATE" split-text
+// label; remaining panels carry the same "UPDATE!" label so the user
+// can tell from any viewing angle that a flash is in progress. Always
+// full-refresh — only painted once per OTA, and the content never
+// changes during the write (the LED strip carries the progress
+// indication). After the render returns the HTTP worker blocks in the
+// flash-write loop for ~15 s; the main render loop's data-screen path
+// short-circuits via ScreenManager::IsOtaActive() so a concurrent
+// data push can't stomp the overlay.
+template <size_t N>
+void RenderOtaUpdateScreen(
+    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296],
+    const AppFonts& fonts);
 
 // --- Market cap (price × supply) ---
 // Panel 0 = "<CCY>/MCAP" label. Mode selection mirrors old-firmware
@@ -301,6 +373,8 @@ void RenderMarketCapScreen(
     uint32_t block_height,
     const std::string& prev_price = "",
     uint32_t prev_height = 0,
-    bool big_chars = true);
+    bool big_chars = true,
+    bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 }  // namespace btclock

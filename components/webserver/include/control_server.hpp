@@ -264,6 +264,21 @@ class ControlServer {
     // the user why the reset didn't take effect.
     std::function<void()> on_factory_reset;
 
+    // Fires when PATCH /api/settings writes `blockFlashColor`. The
+    // callback receives the stored uint32 (0x00RRGGBB) and is expected
+    // to mirror it into the LED controller's namespace so the next
+    // block flash uses the new colour without a reboot. Nullable: a
+    // null callback leaves the change deferred — the settings NVS key
+    // is updated but the LED controller's cached value stays stale.
+    std::function<void(uint32_t)> on_block_flash_color_changed;
+
+    // Fires on every successful PATCH /api/settings (after NVS commit,
+    // before the response is sent). The callback is expected to emit
+    // a short visible confirmation (e.g. green LED pulse) so the user
+    // knows the save landed. Nullable: a null callback leaves the save
+    // silent beyond the 200 OK.
+    std::function<void()> on_settings_patched;
+
     // Live Nostr zap-relay connection state. Non-null only when the
     // zap listener is wired (nostrZapNotify=true + valid relay URL +
     // 64-char zap pubkey). Returns false while the WebSocket is
@@ -293,6 +308,16 @@ class ControlServer {
     // picker's button ids.
     std::function<int(int)> api_id_to_slot;
     std::function<int(size_t)> slot_to_api_id;
+
+    // Fires from HandleUploadFirmware after SendJson has flushed the
+    // success body and before ScheduleReboot latches the timer. The
+    // implementation is expected to play a brief "done" blink on the
+    // NeoPixels (3× green) so the user sees a clear completion signal
+    // even though the EPDs still carry the "UPDATE!" overlay. Blocks
+    // the httpd worker thread for the blink duration (~1 s); the
+    // reboot delay is widened to accommodate. Nullable — a null hook
+    // skips the blink (matches pre-hook behaviour).
+    std::function<void()> on_ota_completion_blink;
   };
 
   explicit ControlServer(Config cfg);

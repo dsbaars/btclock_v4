@@ -85,9 +85,24 @@ void PaintInvertedBitmap(LandscapeFb& lfb, const std::uint8_t* bitmap,
 }  // namespace
 
 void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
-                     const PaintSlot& slot) {
-  const int w = lfb.native_width;
-  const int h = lfb.native_height;
+                     const PaintSlot& slot, bool vertical_desc) {
+  // Label slots honour `vertical_desc` by rotating 90° CCW relative to
+  // the caller's orientation (ClearFb used the caller's orientation too —
+  // that's safe because white-fill is rotation-agnostic). For panels
+  // already at k180 (REV_B solder orientation) the effective native-
+  // relative rotation becomes k90Cw: 180° then rotate another 90° CCW
+  // lands at 90° CW from native, which is what GxEPD's setRotation(1)
+  // produced in v3's splitText verticalDesc branch.
+  //
+  // Swapping the rotation also swaps logical width/height — after the
+  // flip the label sees a 250×122 region instead of 122×250, so the
+  // text's long axis follows the panel's physical long axis.
+  const bool rotate_label =
+      vertical_desc && (slot.kind == PaintSlot::kLabel ||
+                        slot.kind == PaintSlot::kLabelSplit);
+  if (rotate_label) lfb.rotation = Rotation::k90Cw;
+  const int w = LogicalWidth(lfb);
+  const int h = LogicalHeight(lfb);
   // Per-kind defaults for ref-chars and pixel-height are picked below;
   // the slot's `ref_override` / `pixel_height_override` replace those
   // defaults when non-default (used by fee_rate's focused "sat/vB" ref

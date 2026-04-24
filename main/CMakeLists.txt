@@ -9,6 +9,7 @@ idf_component_register(
          "app/boot/init_boot_path.cpp"
          "app/boot/init_control_api.cpp"
          "app/boot/init_hardware.cpp"
+         "app/boot/init_mdns.cpp"
          "app/boot/init_network.cpp"
          "app/boot/init_panels.cpp"
          "app/boot/init_screen_manager.cpp"
@@ -17,11 +18,13 @@ idf_component_register(
          "app/event_loop.cpp"
          "sources/sources.cpp"
          "io/frontlight_fader.cpp" "io/frontlight_controller.cpp"
+         "io/frontlight_ambient_policy.cpp"
          "io/led_controller.cpp" "io/led_curves.cpp"
          "io/light_sensor.cpp"
          "io/wifi_guard.cpp"
          "io/mining_pool_selector.cpp"
          "app/time_sync.cpp" "app/screen_manager.cpp"
+         "app/refresh_policy.cpp"
          "screens/common.cpp" "screens/screen_math.cpp"
          "screens/panel_texts.cpp"
          "screens/block_height.cpp"
@@ -34,6 +37,7 @@ idf_component_register(
          "screens/assets/bitaxe_logo.cpp"
          "screens/show_custom.cpp"
          "screens/nostr_zap.cpp"
+         "screens/ota_update.cpp"
          "screens/debug.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer esp_psram esp_wifi i2c_bus mcp23017 pca9685
@@ -42,7 +46,7 @@ idf_component_register(
              mining_pool_common mining_pool_braiins mining_pool_ckpool
              mining_pool_gobrrr mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio
-             bitaxe
+             bitaxe mdns net_util
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

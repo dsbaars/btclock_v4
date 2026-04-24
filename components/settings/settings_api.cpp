@@ -36,25 +36,37 @@ void AddI32(cJSON* obj, const char* key, int32_t val) {
   cJSON_AddNumberToObject(obj, key, static_cast<double>(val));
 }
 
+// Unix timestamps (seconds since epoch) live just above 2^30 today and
+// will stay inside double's 2^53 integer-exact range for another ~285
+// million years — double-precision storage is lossless for this field.
+void AddI64(cJSON* obj, const char* key, int64_t val) {
+  cJSON_AddNumberToObject(obj, key, static_cast<double>(val));
+}
+
 // Emit the value of a schema field into the GET response. Only called
-// for keys the schema table knows about.
+// for keys the schema table knows about. Defaults come from the schema
+// entry (ported from btclock_v3_fci defaults.hpp) so a fresh install
+// returns the old firmware's values rather than zero/empty.
 void EmitField(cJSON* root, const FieldSpec& f, const PrefsReader& prefs) {
   const char* k = f.key.data();  // string_view is NUL-terminated (points at constexpr literal)
   switch (f.kind) {
-    case FieldKind::kString:
-      AddString(root, k, prefs.GetString(k, ""));
+    case FieldKind::kString: {
+      // `data()` on a constexpr string_view literal is NUL-terminated.
+      const char* def = f.default_str.empty() ? "" : f.default_str.data();
+      AddString(root, k, prefs.GetString(k, def));
       break;
+    }
     case FieldKind::kUint:
-      AddU32(root, k, prefs.GetU32(k, 0));
+      AddU32(root, k, prefs.GetU32(k, static_cast<uint32_t>(f.default_int)));
       break;
     case FieldKind::kInt:
-      AddI32(root, k, prefs.GetI32(k, 0));
+      AddI32(root, k, prefs.GetI32(k, f.default_int));
       break;
     case FieldKind::kUChar:
-      AddU32(root, k, prefs.GetU8(k, 0));
+      AddU32(root, k, prefs.GetU8(k, static_cast<uint8_t>(f.default_int)));
       break;
     case FieldKind::kBool:
-      AddBool(root, k, prefs.GetBool(k, false));
+      AddBool(root, k, prefs.GetBool(k, f.default_bool));
       break;
   }
 }
@@ -86,8 +98,12 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   AddString(root, "fsRev", ctx.fs_rev);
   if (!ctx.git_rev.empty()) AddString(root, "gitRev", ctx.git_rev);
   if (!ctx.git_tag.empty()) AddString(root, "gitTag", ctx.git_tag);
-  if (!ctx.last_build_time.empty()) {
-    AddString(root, "lastBuildTime", ctx.last_build_time);
+  // Integer seconds-since-epoch. Old shape emitted "Apr 24 2026 12:34"
+  // as a string; the WebUI now formats this client-side with the
+  // browser's locale, so switching to the raw number removes a
+  // locale / DST parser from the device firmware.
+  if (ctx.last_build_time_unix > 0) {
+    AddI64(root, "lastBuildTime", ctx.last_build_time_unix);
   }
 
   // Emit every schema field. Skip a few that the old firmware surfaces
@@ -154,8 +170,22 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // PATCH validation still recognises them. `order` is recomputed from
   // the filtered index so the WebUI's array assumption — positions are
   // contiguous from 0 — holds even after a hidden slot is removed.
-  const std::set<int> hidden(ctx.hidden_screen_ids.begin(),
-                             ctx.hidden_screen_ids.end());
+  //
+  // Feature-flag filtering follows the same pattern: the parent feature
+  // toggles (`miningPoolStats`, `bitaxeEnabled`) drop their child screen
+  // slots so the Settings page doesn't advertise disabled rotation
+  // items. `screen%dVisible` keys stay untouched so re-enabling the
+  // feature restores the user's previous visibility choice.
+  std::set<int> hidden(ctx.hidden_screen_ids.begin(),
+                       ctx.hidden_screen_ids.end());
+  if (!ctx.mining_pool_stats_enabled) {
+    hidden.insert(70);  // Mining Pool Hashrate
+    hidden.insert(71);  // Mining Pool Earnings
+  }
+  if (!ctx.bitaxe_enabled) {
+    hidden.insert(80);  // Bitaxe Hashrate
+    hidden.insert(81);  // Bitaxe Best Difficulty
+  }
   cJSON* screens_arr = cJSON_AddArrayToObject(root, "screens");
   size_t emit_order = 0;
   for (size_t i = 0; i < ctx.screens.size(); ++i) {
@@ -270,10 +300,16 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     const std::string key = item->string;
 
     if (key == "screens" || key == "dnd" || key == "actCurrencies" ||
-        key == "timePerScreen" || key == "txPower" || key == "invertedColor" ||
-        key == "tzOffset") {
+        key == "timePerScreen" || key == "txPower" || key == "invertedColor") {
       continue;  // handled below
     }
+    // tzOffset / gmtOffset are ignored — bd btclock_v4-9rx. v4 drives
+    // the clock from POSIX TZ strings via `tzString`, and the old
+    // offset pref was never read back. Legacy clients that still send
+    // tzOffset get a silent skip (matches the "unknown field ignored"
+    // policy below) rather than a hard error so a stale WebUI doesn't
+    // break saves of other fields.
+    if (key == "tzOffset" || key == "gmtOffset") continue;
 
     const FieldSpec* spec = FindField(key);
     if (!spec) continue;  // unknown field — silent skip (old-firmware behaviour)
@@ -381,25 +417,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     if (spec->boot_only) result.reboot_required = true;
   }
 
-  // tzOffset (minutes) -> gmtOffset (seconds). Matches the old firmware
-  // path so the WebUI's "UTC offset" field still lands. Reboot-required
-  // because gmtOffset only feeds boot-time NTP init.
-  {
-    cJSON* tz = cJSON_GetObjectItemCaseSensitive(root, "tzOffset");
-    if (cJSON_IsNumber(tz)) {
-      const double d = tz->valuedouble;
-      // Keep the sanity cap generous (±24h covers every real IANA zone).
-      if (d < -24 * 60 || d > 24 * 60) {
-        result.status = PatchStatus::kBadRequest;
-        result.error = "tzOffset:range";
-        cJSON_Delete(root);
-        return result;
-      }
-      writer.SetI32(prefs::kGmtOffset, static_cast<int32_t>(d * 60.0));
-      result.touched_keys.emplace_back(prefs::kGmtOffset);
-      result.reboot_required = true;
-    }
-  }
+  // tzOffset / gmtOffset intentionally not handled (bd btclock_v4-9rx):
+  // v4's clock path reads `tzString` only, so accepting an offset here
+  // would misleadingly report success for a value nothing consumes. The
+  // schema loop above silently skips these keys.
 
   // invertedColor: also writes fgColor/bgColor siblings. Matches the
   // old firmware's special case in onApiSettingsPatch. No
@@ -511,8 +532,20 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         // but keep them in the catalog for dup-id / unknown-id checks
         // (so an old client that DID include 71 still lands a valid
         // write, matching the PATCH-still-accepts-71 host test).
+        //
+        // Feature-flag gates (miningPoolStats / bitaxeEnabled) use the
+        // same pattern: when off, a freshly-fetched GET omits those
+        // slots, so the round-tripped reorder has fewer entries.
         std::set<int> effective_catalog = catalog;
         for (int hid : ctx.hidden_screen_ids) effective_catalog.erase(hid);
+        if (!ctx.mining_pool_stats_enabled) {
+          effective_catalog.erase(70);
+          effective_catalog.erase(71);
+        }
+        if (!ctx.bitaxe_enabled) {
+          effective_catalog.erase(80);
+          effective_catalog.erase(81);
+        }
         std::set<int> seen_ids;
         std::set<int> seen_orders;
         std::vector<std::pair<int, int>> pairs;

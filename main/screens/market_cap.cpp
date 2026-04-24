@@ -91,20 +91,23 @@ void RenderMarketCapScreen(
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& currency, const std::string& price,
     uint32_t block_height, const std::string& prev_price,
-    uint32_t prev_height, bool big_chars) {
+    uint32_t prev_height, bool big_chars,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "market-cap layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
-  const bool full_refresh = prev_price.empty() || prev_height == 0;
+  // `cell_diff_reset` forces every cell to repaint (sentinel prev_*);
+  // `full_refresh_mode` drives the EPD refresh kind. See screens.hpp.
+  const bool cell_diff_reset = prev_price.empty() || prev_height == 0;
 
   const int32_t new_price = PriceInt(price);
-  const int32_t old_price = full_refresh ? -1 : PriceInt(prev_price);
+  const int32_t old_price = cell_diff_reset ? -1 : PriceInt(prev_price);
   const uint64_t now_cap =
       new_price < 0
           ? 0
           : MarketCap(static_cast<uint32_t>(new_price), block_height);
   const uint64_t prev_cap =
-      full_refresh || old_price < 0
+      cell_diff_reset || old_price < 0
           ? 0
           : MarketCap(static_cast<uint32_t>(old_price), prev_height);
 
@@ -131,12 +134,12 @@ void RenderMarketCapScreen(
 
   if (big_chars) {
     LayoutMarketCapBigChars<kDigitPanels>(now_cap, currency_byte, new_cells);
-    if (!full_refresh) {
+    if (!cell_diff_reset) {
       LayoutMarketCapBigChars<kDigitPanels>(prev_cap, currency_byte, old_cells);
     }
   } else {
     new_sc_cells = SmallCharsGroups(now_cap, ccy_cell, kDigitPanels);
-    if (!full_refresh) {
+    if (!cell_diff_reset) {
       old_sc_cells = SmallCharsGroups(prev_cap, ccy_cell, kDigitPanels);
     }
   }
@@ -145,10 +148,10 @@ void RenderMarketCapScreen(
   std::array<bool, N> update{};
 
   // Panel 0 — "<CCY>/MCAP" label. Static within a currency across price
-  // updates, so only paint on full refresh.
+  // updates, so only paint on a cell-diff reset or a full EPD refresh.
   slots[0] = PaintSlot{PaintSlot::kLabelSplit,
                        currency + std::string("/MCAP"), nullptr, 0, 0};
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   // Digit / currency-glyph / 3-digit-group cells. big_chars branch maps
   // to kDigit / kCurrencyGlyph at 180 pt; small-chars branch maps to
@@ -170,7 +173,8 @@ void RenderMarketCapScreen(
                                      nullptr, 0, 0};
       }
       update[panel_idx] =
-          full_refresh || cell.c != old_cells[i].c ||
+          cell_diff_reset || full_refresh_mode ||
+          cell.c != old_cells[i].c ||
           cell.is_currency_glyph != old_cells[i].is_currency_glyph;
     } else {
       const auto& cell = new_sc_cells[i];
@@ -189,20 +193,22 @@ void RenderMarketCapScreen(
         slots[panel_idx] =
             PaintSlot{PaintSlot::kSmallGroup, cell, nullptr, 0, 0};
       }
-      update[panel_idx] = full_refresh || cell != old_sc_cells[i];
+      update[panel_idx] = cell_diff_reset || full_refresh_mode ||
+                          cell != old_sc_cells[i];
     }
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template void RenderMarketCapScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    uint32_t, const std::string&, uint32_t, bool);
+    uint32_t, const std::string&, uint32_t, bool, bool, bool);
 template void RenderMarketCapScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    uint32_t, const std::string&, uint32_t, bool);
+    uint32_t, const std::string&, uint32_t, bool, bool, bool);
 
 }  // namespace btclock

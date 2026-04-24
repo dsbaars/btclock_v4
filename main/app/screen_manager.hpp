@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 
+#include "app/refresh_policy.hpp"
 #include "app/rotation_timer.hpp"
 #include "data_core/snapshot.hpp"
 #include "epd_ssd1680.hpp"
@@ -69,6 +70,15 @@ class ScreenManager {
   // reset alongside the slot change.
   bool SetSlot(size_t slot, int64_t now_ms);
 
+  // Jump to the first slot matching `kind`. Used by the stealFocus
+  // branch of the new-block event in event_loop.cpp so a mined block
+  // pops the block-height screen to the front. Returns true if a slot
+  // with that kind was found and selected; false otherwise (caller
+  // falls back to leaving the current slot up). Marks dirty so the
+  // next Render() paints the target with a full refresh rather than a
+  // digit-diff against a different screen.
+  bool SetKind(ScreenType kind, int64_t now_ms);
+
   // Jump to the first Moscow/price pair for a given currency code.
   // Returns false if the currency is not in the active set.
   bool SetCurrency(const std::string& ccy, int64_t now_ms);
@@ -95,14 +105,16 @@ class ScreenManager {
   void SetCustomCells(std::vector<std::string> cells, int64_t now_ms);
 
   // Push the transient Nostr-zap overlay on top of the current slot.
-  // `now_ms` stamps the arrival; the deadline is `now_ms +
-  // kZapTimeoutMs` unless scrnRestoreZap=false, in which case the
+  // `now_ms` stamps the arrival; the deadline is `now_ms + timeout_ms`
+  // when `auto_restore=true` (scrnRestoreZap pref on), otherwise the
   // overlay stays latched until the user navigates off (same latch
-  // semantics as kCustom). current_kind() returns kNostrZap while the
-  // overlay is active (above kCustom, below kDebug in priority).
-  // Called from main's on_zap callback after the snapshot's LatestZap
-  // has been patched.
-  void SetZapNotify(int64_t now_ms, bool auto_restore);
+  // semantics as kCustom). `timeout_ms <= 0` uses kZapTimeoutMs as a
+  // guard against a 0-second rotation timer, which would auto-dismiss
+  // the zap before the user sees it. current_kind() returns kNostrZap
+  // while the overlay is active (above kCustom, below kDebug in
+  // priority). Called from main's on_zap callback after the snapshot's
+  // LatestZap has been patched.
+  void SetZapNotify(int64_t now_ms, bool auto_restore, int64_t timeout_ms);
 
   // Navigation — always returns true today (the slot list always has
   // ≥ 2 entries). Sets the dirty flag so the next Render does a full
@@ -130,6 +142,20 @@ class ScreenManager {
     rot_.paused = !rot_.paused;
     return rot_.paused;
   }
+
+  // --- Firmware OTA overlay ---
+  //
+  // Latched by the /upload/firmware handler on the httpd worker before
+  // esp_ota_begin erases the partition. While active, current_kind()
+  // returns ScreenType::kOtaUpdate (outranks kDebug + every other
+  // override), ShouldRender() returns false so a data push can't paint
+  // over the overlay, and MaybeAutoRotate() is a no-op. The HTTP
+  // worker is responsible for painting the overlay once via
+  // RenderOtaUpdateScreen — the main loop stays out of the renderer
+  // entirely while this is active, which avoids needing a separate EPD
+  // mutex for the brief window.
+  bool IsOtaActive() const { return ota_active_; }
+  void SetOtaOverlay(bool active) { ota_active_ = active; }
 
   // --- Off-rotation debug overlay ---
   //
@@ -163,6 +189,20 @@ class ScreenManager {
   void SetSkipPredicate(std::function<bool(ScreenType)> pred) {
     skip_predicate_ = std::move(pred);
   }
+
+  // Install the user's auto-rotate traversal sequence. Each entry is a
+  // slot index; rotation (Next/Prev/MaybeAutoRotate) walks this list
+  // rather than the dense slot_map order.
+  //
+  // Sourced from rotation_plan::BuildRotationSequence which combines
+  // `screenOrder` NVS + `screen<id>Visible` toggles + the active currency
+  // list. Pass an empty vector to fall back to "walk every slot in index
+  // order" — the screen manager treats that as equivalent to a freshly-
+  // flashed device with no screenOrder yet.
+  //
+  // Safe to call at runtime: rebuilds internal state, preserves the
+  // currently-displayed slot if it still appears in the new sequence.
+  void SetRotationSequence(std::vector<std::size_t> sequence);
 
   // Decide whether the current slot should be re-rendered against
   // `snap`. True if dirty (navigation just happened) or if the snapshot
@@ -229,7 +269,23 @@ class ScreenManager {
 
   std::vector<std::string> currencies_;
   size_t slot_ = 0;
-  bool dirty_ = true;                 // first render is always full-refresh
+  // `dirty_` = caller explicitly wants the next paint to be a full
+  // refresh, regardless of the refrScrnChange / fullRefreshMin policy.
+  // Set by MarkDirty() (/api/full_refresh + invertedColor PATCH),
+  // debug-overlay exit, first construction. Cleared after each paint.
+  bool dirty_ = true;
+  // `screen_change_pending_` = the next paint follows a nav event
+  // (Next/Prev/SetSlot/SetCurrency/MaybeAutoRotate/SetCustomCells/
+  // SetZapNotify). Feeds the RefreshPolicy screen-change branch so the
+  // user's refrScrnChange=false + fullRefreshMin window is honoured
+  // without stomping on MarkDirty()-driven force-fulls. Also forces
+  // ShouldRender() to return true once so a nav with no new data still
+  // repaints.
+  bool screen_change_pending_ = false;
+  // Per-manager refresh-policy state: monotonic-ms of the last full
+  // refresh. Decide() stamps it on every full paint so screed change +
+  // fullRefreshMin resets alongside MarkDirty()-driven fulls.
+  RefreshPolicyState refresh_state_;
   // Pause flag + last-advance timestamp live on RotationTimer so the
   // auto-rotate decision is a single pure-logic call (host-testable).
   RotationTimer rot_;
@@ -285,6 +341,14 @@ class ScreenManager {
   std::vector<std::string> last_panel_texts_;
   // True while the off-rotation debug overlay is up.
   bool debug_mode_ = false;
+  // True while a firmware OTA push upload is streaming bytes to flash.
+  // Plain scalar — the HTTP worker sets it before Render and the main
+  // task reads it to short-circuit ShouldRender / MaybeAutoRotate.
+  // No lock: scalar writes on the S3 are atomic wrt reads, and the
+  // only contended path is the main loop's "should I re-render?"
+  // check which tolerates a one-tick stale value (worst case: it
+  // paints a data screen once before the next loop iteration clamps).
+  bool ota_active_ = false;
   // Runtime skip hook: invoked against the *would-be* next slot's kind
   // during rotation advance. Wired by main.cpp to the mining-pool
   // capability check so users who saved `screens[{id:71,enabled:true}]`
@@ -292,6 +356,24 @@ class ScreenManager {
   // pool. Kept as an unconditional std::function (not an override) so a
   // follow-up test case can install a lambda without subclassing.
   std::function<bool(ScreenType)> skip_predicate_;
+  // User-editable traversal sequence. Empty → "walk every slot in index
+  // order" (pre-screenOrder fallback). Non-empty → rotate only through
+  // these slot indices, in this order.
+  std::vector<std::size_t> rotation_sequence_;
+  // Index into rotation_sequence_ for the currently-displayed slot. Kept
+  // in sync whenever `slot_` changes (SetSlot, NextScreen, etc.) so auto-
+  // rotate resumes from "next in sequence" even after a direct HTTP jump
+  // to a slot outside the sequence.
+  std::size_t rotation_idx_ = 0;
+  // Internal: resolve the sequence index for the given slot. Returns
+  // rotation_sequence_.size() (end) when the slot isn't in the sequence
+  // — the caller treats that as "rotation resumes from index 0".
+  std::size_t IndexForSlot(std::size_t slot) const;
+  // Internal: advance the rotation index by +1 / -1 (wrapping) past any
+  // slots the skip predicate rejects. Updates slot_ to the resolved
+  // target. Bails out after rotation_sequence_.size() steps so a
+  // misbehaving predicate can't infinite-loop.
+  void AdvanceInSequence(int direction);
   // Internal: probe ScreenType for a given slot WITHOUT mutating state.
   // Mirrors current_kind()'s switch but takes the slot argument directly
   // so the auto-rotate / Next / Prev code can look ahead.
@@ -299,6 +381,7 @@ class ScreenManager {
   // Internal: step `slot_` forward/backward past any slots the skip
   // predicate rejects. `direction` is +1 or -1. Bails out after
   // slot_count() steps so a misbehaving predicate can't infinite-loop.
+  // Used only on the legacy "no rotation sequence" path.
   void AdvancePastSkipped(int direction);
 };
 

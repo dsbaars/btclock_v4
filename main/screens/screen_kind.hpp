@@ -77,6 +77,13 @@ enum class ScreenType : uint8_t {
   kCustom,
   kDebug,
   kNostrZap,
+  // Painted once by the OTA push-upload path via RenderOtaUpdateScreen.
+  // Outranks every other override while OtaManager's push flow is
+  // active; the rotation timer is frozen and ShouldRender() returns
+  // false so a data-push can't stomp the overlay mid-write. The HTTP
+  // worker task is the one painting the panels here — the main render
+  // loop short-circuits while this is active.
+  kOtaUpdate,
 };
 
 }  // namespace btclock

@@ -157,7 +157,8 @@ void RenderMiningPoolHashrateScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool) {
+    const DataSnapshot::PoolStats& prev_pool,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "mining-pool hashrate layout needs at least 7 panels");
   // Panel 0 holds the pool logo (or split-text fallback), panel N-1 holds
   // the unit label, so the digit area is N-2 slots starting at panel 1.
@@ -166,10 +167,11 @@ void RenderMiningPoolHashrateScreen(
   constexpr std::size_t kDigitPanels = N - 2;
   constexpr std::size_t kFirstDigitPanel = 1;
 
-  // Full refresh when the previous pool snapshot was empty (first paint
-  // after a slot change) or when the pool identity flipped under us
-  // (settings change mid-session).
-  const bool full_refresh =
+  // `cell_diff_reset` forces every cell to repaint when the previous
+  // pool snapshot was empty (first paint after a slot change) or when
+  // the pool identity flipped under us (settings change mid-session).
+  // `full_refresh_mode` drives the EPD refresh kind. See screens.hpp.
+  const bool cell_diff_reset =
       prev_pool.name.empty() ||
       (!pool.name.empty() && !SamePoolName(pool.name, prev_pool.name));
 
@@ -177,7 +179,7 @@ void RenderMiningPoolHashrateScreen(
       pool.hashrate,
       static_cast<unsigned int>(kDigitPanels ? kDigitPanels : 1));
   const MiningPoolHashrateLayout prev_layout =
-      full_refresh
+      cell_diff_reset
           ? MiningPoolHashrateLayout{}
           : LayoutMiningPoolHashrate(
                 prev_pool.hashrate,
@@ -186,15 +188,15 @@ void RenderMiningPoolHashrateScreen(
   const std::string now_digits =
       RightJustifyDigits(now_layout.value, kDigitPanels);
   const std::string prev_digits =
-      full_refresh ? std::string()
-                   : RightJustifyDigits(prev_layout.value, kDigitPanels);
+      cell_diff_reset ? std::string()
+                      : RightJustifyDigits(prev_layout.value, kDigitPanels);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
 
   // Panel 0 — logo or name-split label.
   slots[0] = BuildPoolLabelSlot(pool.name);
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   // Digit panels 1..N-2. ' ' → blank cell (kDigit short-circuits on ' ').
   for (std::size_t i = 0; i < kDigitPanels; ++i) {
@@ -206,16 +208,18 @@ void RenderMiningPoolHashrateScreen(
     slot.ref_override = kHashDigitRef;
     slots[panel_idx] = slot;
     update[panel_idx] =
-        full_refresh || (i < prev_digits.size()
-                             ? now_digits[i] != prev_digits[i]
-                             : now_digits[i] != ' ');
+        cell_diff_reset || full_refresh_mode ||
+        (i < prev_digits.size() ? now_digits[i] != prev_digits[i]
+                                : now_digits[i] != ' ');
   }
 
   // Panel N-1 — unit label.
   slots[N - 1] = BuildUnitSlot(now_layout.unit);
-  update[N - 1] = full_refresh || now_layout.unit != prev_layout.unit;
+  update[N - 1] = cell_diff_reset || full_refresh_mode ||
+                  now_layout.unit != prev_layout.unit;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template <size_t N>
@@ -223,7 +227,8 @@ void RenderMiningPoolEarningsScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool) {
+    const DataSnapshot::PoolStats& prev_pool,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "mining-pool earnings layout needs at least 7 panels");
   // Same (label, digits…, unit) shape as the hashrate screen: 1 label +
   // N-2 digits + 1 unit. Previous 2-label layout truncated the 5-char
@@ -231,14 +236,14 @@ void RenderMiningPoolEarningsScreen(
   constexpr std::size_t kDigitPanels = N - 2;
   constexpr std::size_t kFirstDigitPanel = 1;
 
-  const bool full_refresh =
+  const bool cell_diff_reset =
       prev_pool.name.empty() ||
       (!pool.name.empty() && !SamePoolName(pool.name, prev_pool.name));
 
   const MiningPoolEarningsLayout now_layout =
       LayoutMiningPoolEarnings(pool.daily_sats.value_or(-1));
   const MiningPoolEarningsLayout prev_layout =
-      full_refresh
+      cell_diff_reset
           ? MiningPoolEarningsLayout{}
           : LayoutMiningPoolEarnings(prev_pool.daily_sats.value_or(-1));
 
@@ -248,14 +253,14 @@ void RenderMiningPoolEarningsScreen(
       prev_layout.valid ? prev_layout.value : std::string();
   const std::string now_digits = RightJustifyDigits(now_value, kDigitPanels);
   const std::string prev_digits =
-      full_refresh ? std::string()
-                   : RightJustifyDigits(prev_value, kDigitPanels);
+      cell_diff_reset ? std::string()
+                      : RightJustifyDigits(prev_value, kDigitPanels);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
 
   slots[0] = BuildPoolLabelSlot(pool.name);
-  update[0] = full_refresh;
+  update[0] = cell_diff_reset || full_refresh_mode;
 
   for (std::size_t i = 0; i < kDigitPanels; ++i) {
     const std::size_t panel_idx = kFirstDigitPanel + i;
@@ -266,9 +271,9 @@ void RenderMiningPoolEarningsScreen(
     slot.ref_override = kEarnDigitRef;
     slots[panel_idx] = slot;
     update[panel_idx] =
-        full_refresh || (i < prev_digits.size()
-                             ? now_digits[i] != prev_digits[i]
-                             : now_digits[i] != ' ');
+        cell_diff_reset || full_refresh_mode ||
+        (i < prev_digits.size() ? now_digits[i] != prev_digits[i]
+                                : now_digits[i] != ' ');
   }
 
   // Unit label: "SATS" by default; "BTC" when the whale-mode branch
@@ -279,26 +284,27 @@ void RenderMiningPoolEarningsScreen(
   const std::string prev_unit =
       prev_layout.valid ? prev_layout.unit_label : std::string("SATS");
   slots[N - 1] = BuildUnitSlot(unit);
-  update[N - 1] = full_refresh || unit != prev_unit;
+  update[N - 1] = cell_diff_reset || full_refresh_mode || unit != prev_unit;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  full_refresh_mode, vertical_desc);
 }
 
 template void RenderMiningPoolHashrateScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
-    const DataSnapshot::PoolStats&);
+    const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolHashrateScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
-    const DataSnapshot::PoolStats&);
+    const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
-    const DataSnapshot::PoolStats&);
+    const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
-    const DataSnapshot::PoolStats&);
+    const DataSnapshot::PoolStats&, bool, bool);
 
 }  // namespace btclock

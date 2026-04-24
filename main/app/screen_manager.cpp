@@ -1,4 +1,6 @@
 #include "app/screen_manager.hpp"
+#include "app/boot/helpers.hpp"
+#include "app/rotation_plan.hpp"
 #include "app/screen_slot_map.hpp"
 
 #include <cassert>
@@ -35,6 +37,18 @@ struct RenderPrefs {
   bool supply_percent;
   bool mcap_big_char;
   bool block_fee_dec;
+  bool suffix_price;
+  bool mow_mode;
+  // verticalDesc: rotate label panels 90° CCW so "BLOCK/HEIGHT" etc.
+  // read along the panel's long axis. Ports v3's verticalDesc pref
+  // (see btclock_v3_fci/src/lib/drivers/epd/epd.cpp splitText).
+  bool vertical_desc;
+  // Refresh-policy inputs. refr_scrn_change forces full on every nav;
+  // full_refresh_min is the ghost-clear cadence in minutes. Defaults
+  // match v3 defaults.hpp (`DEFAULT_REFRESH_ON_SCREEN_CHANGE=false`,
+  // `DEFAULT_MINUTES_FULL_REFRESH=60`).
+  bool refr_scrn_change;
+  int full_refresh_min;
 };
 
 RenderPrefs ReadRenderPrefs() {
@@ -46,6 +60,12 @@ RenderPrefs ReadRenderPrefs() {
   out.supply_percent   = prefs.GetBool(btclock::prefs::kSupplyPercent, false);
   out.mcap_big_char    = prefs.GetBool(btclock::prefs::kMcapBigChar, true);
   out.block_fee_dec    = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
+  out.suffix_price     = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
+  out.mow_mode         = prefs.GetBool(btclock::prefs::kMowMode, false);
+  out.vertical_desc    = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
+  out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
+  out.full_refresh_min =
+      static_cast<int>(prefs.GetU32(btclock::prefs::kFullRefreshMin, 60));
   return out;
 }
 
@@ -66,6 +86,7 @@ const char* KindName(ScreenType k) {
     case ScreenType::kCustom:             return "custom";
     case ScreenType::kDebug:              return "debug";
     case ScreenType::kNostrZap:           return "zap";
+    case ScreenType::kOtaUpdate:          return "ota";
   }
   return "?";
 }
@@ -118,7 +139,55 @@ void ScreenManager::AdvancePastSkipped(int direction) {
   }
 }
 
+std::size_t ScreenManager::IndexForSlot(std::size_t slot) const {
+  for (std::size_t i = 0; i < rotation_sequence_.size(); ++i) {
+    if (rotation_sequence_[i] == slot) return i;
+  }
+  return rotation_sequence_.size();
+}
+
+void ScreenManager::AdvanceInSequence(int direction) {
+  const std::size_t n = rotation_sequence_.size();
+  if (n == 0) return;
+  // Starting from the current rotation_idx_, step in `direction` past any
+  // slot the skip predicate rejects. Bounded by n so a misbehaving
+  // predicate can't spin.
+  for (std::size_t guard = 0; guard < n; ++guard) {
+    const std::size_t candidate_slot = rotation_sequence_[rotation_idx_];
+    const bool skip =
+        skip_predicate_ && skip_predicate_(KindForSlot(candidate_slot));
+    if (!skip) {
+      slot_ = candidate_slot;
+      return;
+    }
+    if (direction >= 0) {
+      rotation_idx_ = (rotation_idx_ + 1) % n;
+    } else {
+      rotation_idx_ = (rotation_idx_ + n - 1) % n;
+    }
+  }
+  // Every entry was skipped — land on the first anyway so the display
+  // isn't left stale. Matches the AdvancePastSkipped guard behaviour.
+  slot_ = rotation_sequence_[rotation_idx_];
+}
+
+void ScreenManager::SetRotationSequence(std::vector<std::size_t> sequence) {
+  // Preserve the currently-displayed slot's position in the new sequence
+  // when possible, so a live /api/settings PATCH that rebuilds the plan
+  // doesn't yank the user off their current screen.
+  rotation_sequence_ = std::move(sequence);
+  rotation_idx_ = 0;
+  if (!rotation_sequence_.empty()) {
+    const std::size_t idx = IndexForSlot(slot_);
+    rotation_idx_ = (idx < rotation_sequence_.size()) ? idx : 0;
+  }
+}
+
 ScreenType ScreenManager::current_kind() const {
+  // OTA push-upload overlay outranks every other kind — the user has
+  // committed to replacing the running firmware and the EPD must read
+  // "UPDATE!" from any angle until esp_restart fires.
+  if (ota_active_) return ScreenType::kOtaUpdate;
   // Debug screen latches above everything else until button 4 clears.
   if (debug_mode_) return ScreenType::kDebug;
   // Zap notification outranks kCustom — a pending zap should interrupt
@@ -143,12 +212,37 @@ bool ScreenManager::SetSlot(size_t slot, int64_t now_ms) {
   const size_t n = slot_count();
   if (n == 0) return false;
   slot_ = slot % n;
+  // Re-sync rotation_idx_ so a subsequent auto-rotate / Next picks up
+  // from the slot the caller just jumped to. When the target isn't in
+  // the rotation sequence (e.g. the user disabled that api_id but still
+  // POSTs /api/show/screen?s=<id> to force-display it), leave
+  // rotation_idx_ at 0 — the next Next step advances back into the
+  // user's configured rotation rather than stranding us outside it.
+  if (!rotation_sequence_.empty()) {
+    const std::size_t idx = IndexForSlot(slot_);
+    rotation_idx_ = (idx < rotation_sequence_.size()) ? idx : 0;
+  }
   custom_active_ = false;
   zap_active_ = false;
-  dirty_ = true;
+  screen_change_pending_ = true;
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "set → slot %zu", slot_);
   return true;
+}
+
+bool ScreenManager::SetKind(ScreenType kind, int64_t now_ms) {
+  // Scan the slot map for the first slot whose KindForSlot matches.
+  // Currency-bearing kinds (Moscow, price, market cap) resolve to the
+  // first currency in the active list — stealFocus today only points
+  // at kBlockHeight (slot 0), but keeping the scan generic lets a
+  // future caller hop to any screen by kind.
+  const size_t n = slot_count();
+  for (size_t s = 0; s < n; ++s) {
+    if (KindForSlot(s) == kind) {
+      return SetSlot(s, now_ms);
+    }
+  }
+  return false;
 }
 
 bool ScreenManager::SetCurrency(const std::string& ccy, int64_t now_ms) {
@@ -177,24 +271,32 @@ void ScreenManager::SetCustomCells(std::vector<std::string> cells,
   }
   custom_active_ = true;
   zap_active_ = false;
-  dirty_ = true;
+  screen_change_pending_ = true;
   // Reset the auto-rotate deadline so the user gets a full rotation
   // period to read the custom content before it rolls off.
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "custom → %zu cells latched", custom_cells_.size());
 }
 
-void ScreenManager::SetZapNotify(int64_t now_ms, bool auto_restore) {
+void ScreenManager::SetZapNotify(int64_t now_ms, bool auto_restore,
+                                 int64_t timeout_ms) {
   zap_active_ = true;
   zap_auto_restore_ = auto_restore;
-  zap_active_until_ = now_ms + kZapTimeoutMs;
-  dirty_ = true;
+  // Caller-driven deadline when positive — mirrors the user's
+  // `timerSeconds` rotation pref so the overlay dismisses on the same
+  // cadence as a rotation step. Guard against 0/negative (e.g. an
+  // unset pref) with the documented default so the zap doesn't vanish
+  // before the viewer can read it.
+  const int64_t t = (timeout_ms > 0) ? timeout_ms : kZapTimeoutMs;
+  zap_active_until_ = now_ms + t;
+  screen_change_pending_ = true;
   // Hold off rotation advance while the notification is up; the deadline
   // check in MaybeAutoRotate will bounce on zap_active_ so this is
   // belt-and-braces.
   rot_.Restart(now_ms);
-  ESP_LOGI(kTag, "zap notify → auto_restore=%d until=%lld",
-           auto_restore ? 1 : 0, static_cast<long long>(zap_active_until_));
+  ESP_LOGI(kTag, "zap notify → auto_restore=%d timeout=%lld until=%lld",
+           auto_restore ? 1 : 0, static_cast<long long>(t),
+           static_cast<long long>(zap_active_until_));
 }
 
 bool ScreenManager::NextScreen(int64_t now_ms) {
@@ -208,9 +310,16 @@ bool ScreenManager::NextScreen(int64_t now_ms) {
   const bool exiting_overlay = custom_active_ || zap_active_;
   custom_active_ = false;
   zap_active_ = false;
-  if (!exiting_overlay) slot_ = (slot_ + 1) % slot_count();
-  AdvancePastSkipped(+1);
-  dirty_ = true;
+  if (rotation_sequence_.empty()) {
+    if (!exiting_overlay) slot_ = (slot_ + 1) % slot_count();
+    AdvancePastSkipped(+1);
+  } else {
+    if (!exiting_overlay) {
+      rotation_idx_ = (rotation_idx_ + 1) % rotation_sequence_.size();
+    }
+    AdvanceInSequence(+1);
+  }
+  screen_change_pending_ = true;
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "next → slot %zu (%s %s)", slot_,
            KindName(current_kind()), current_currency().c_str());
@@ -221,15 +330,25 @@ bool ScreenManager::PrevScreen(int64_t now_ms) {
   const bool exiting_overlay = custom_active_ || zap_active_;
   custom_active_ = false;
   zap_active_ = false;
-  if (!exiting_overlay) slot_ = (slot_ + slot_count() - 1) % slot_count();
-  AdvancePastSkipped(-1);
-  dirty_ = true;
+  if (rotation_sequence_.empty()) {
+    if (!exiting_overlay) slot_ = (slot_ + slot_count() - 1) % slot_count();
+    AdvancePastSkipped(-1);
+  } else {
+    const std::size_t n = rotation_sequence_.size();
+    if (!exiting_overlay) rotation_idx_ = (rotation_idx_ + n - 1) % n;
+    AdvanceInSequence(-1);
+  }
+  screen_change_pending_ = true;
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "prev → slot %zu", slot_);
   return true;
 }
 
 bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
+  // OTA overlay freezes rotation — a mid-flash auto-rotate tick would
+  // try to repaint the EPD from the main task while the HTTP worker
+  // still owns it.
+  if (ota_active_) return false;
   // Debug overlay suppresses auto-rotate — the user entered it via
   // button 4 and expects it to stay up until they press again.
   if (debug_mode_) return false;
@@ -241,7 +360,7 @@ bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
   if (zap_active_) {
     if (zap_auto_restore_ && now_ms > zap_active_until_) {
       zap_active_ = false;
-      dirty_ = true;
+      screen_change_pending_ = true;
       rot_.Restart(now_ms);
       ESP_LOGI(kTag, "zap restore → slot %zu (%s)", slot_,
                KindName(current_kind()));
@@ -260,9 +379,16 @@ bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
   // doesn't expect a runtime-pushed override to stay on-screen forever.
   const bool exiting_custom = custom_active_;
   custom_active_ = false;
-  if (!exiting_custom) slot_ = (slot_ + 1) % slot_count();
-  AdvancePastSkipped(+1);
-  dirty_ = true;
+  if (rotation_sequence_.empty()) {
+    if (!exiting_custom) slot_ = (slot_ + 1) % slot_count();
+    AdvancePastSkipped(+1);
+  } else {
+    if (!exiting_custom) {
+      rotation_idx_ = (rotation_idx_ + 1) % rotation_sequence_.size();
+    }
+    AdvanceInSequence(+1);
+  }
+  screen_change_pending_ = true;
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "auto-rotate → slot %zu (%s %s)", slot_,
            KindName(current_kind()), current_currency().c_str());
@@ -270,10 +396,18 @@ bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
 }
 
 bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
+  // OTA overlay: the HTTP worker painted it once and owns the EPD for
+  // the duration of the write. The main render loop must stay out so a
+  // data push can't stomp the "UPDATE!" screen mid-flash.
+  if (ota_active_) return false;
   // Debug overlay is painted via RenderDebug() on entry / value
   // change; the data-driven render path mustn't stomp it.
   if (debug_mode_) return false;
-  if (dirty_) return true;
+  // Either force-full (MarkDirty / first render) or a pending nav
+  // event drives a repaint — the refresh-policy layer decides whether
+  // the paint itself is full or partial, but ShouldRender is just
+  // "something changed, re-draw".
+  if (dirty_ || screen_change_pending_) return true;
   switch (current_kind()) {
     case ScreenType::kBlockHeight:
       return snap.block_height &&
@@ -345,16 +479,21 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
     }
     case ScreenType::kCustom:
       // The custom screen is push-driven: SetCustomCells always flips
-      // dirty_ so ShouldRender() returns true via the early-out above.
-      // If we somehow reach this branch without dirty_, there's no data
-      // source that would change content → no re-render needed.
+      // screen_change_pending_ so ShouldRender() returns true via the
+      // early-out above. If we reach this branch without either flag,
+      // there's no data source that would change content → no
+      // re-render needed.
       return false;
     case ScreenType::kNostrZap:
-      // Same as kCustom — SetZapNotify sets dirty_ on arrival; further
-      // paints are only driven by nav/timeout, not snapshot changes.
+      // Same as kCustom — SetZapNotify sets screen_change_pending_ on
+      // arrival; further paints are only driven by nav/timeout, not
+      // snapshot changes.
       return false;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit above fires first.
+      return false;
+    case ScreenType::kOtaUpdate:
+      // Unreachable — ota_active_ short-circuits at function entry.
       return false;
   }
   return false;
@@ -373,36 +512,75 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                            uint8_t (&fb)[N][16 * 296],
                            const AppFonts& fonts,
                            const DataSnapshot& snap) {
+  // OTA overlay: the HTTP worker painted via RenderOtaUpdateScreen and
+  // owns the panels until esp_restart. Bail so the main loop can't
+  // stomp the overlay on a data push that slipped through.
+  if (ota_active_) return;
   // Debug overlay renders via RenderDebug(); skip the data path so a
   // stray caller doesn't stomp the diagnostic screen.
   if (debug_mode_) return;
-  const bool force_full = dirty_;
   const ScreenType kind = current_kind();
   const std::string& ccy = current_currency();
   const RenderPrefs rp = ReadRenderPrefs();
+  // Route the full-vs-partial decision through the policy so
+  // refrScrnChange + fullRefreshMin are honoured. MarkDirty() maps to
+  // is_force_full; navigation events (Next/Prev/SetSlot/etc.) map to
+  // is_screen_change. Same-screen data pushes fall into neither and
+  // therefore render partial — the cheap path.
+  //
+  // Two independent signals drive the render (see btclock_v4-jo6):
+  //   `force_full` → EPD refresh kind (RefreshKind::kFull / kPartial).
+  //                  Passed through as each renderer's
+  //                  `full_refresh_mode` argument.
+  //   `force_repaint` → cell-diff reset. Forces every cell to repaint
+  //                     this frame regardless of value-equality.
+  //                     Wired via sentinel prev_value arguments.
+  // Screen transitions always force repaint (the new screen's state
+  // might accidentally equal the last-rendered value of the outgoing
+  // screen) but only force a full EPD refresh when the policy says to.
+  const int64_t now_ms_policy = MsNow();
+  const bool force_full = RefreshPolicy::Decide(
+      refresh_state_, now_ms_policy,
+      /*is_screen_change=*/screen_change_pending_,
+      /*is_force_full=*/dirty_,
+      rp.refr_scrn_change,
+      rp.full_refresh_min);
+
+  // Force cell-diff reset on any transition so the renderer repaints
+  // the new screen's content. Without this, POST /api/show/screen?s=0
+  // appears to no-op when the block height hasn't changed since the
+  // screen was last shown (or since boot — default last_rendered_*
+  // zero values happen to match real data). Includes `force_full`
+  // because kFull without per-cell repaint would leave update[] masks
+  // stale for cells whose value happens to match the previous frame.
+  const bool force_repaint = force_full || screen_change_pending_ || dirty_;
 
   switch (kind) {
     case ScreenType::kBlockHeight:
       if (snap.block_height) {
         RenderBlockHeightScreen(panels, fb, fonts, *snap.block_height,
-                                force_full ? 0 : last_rendered_height_);
+                                force_repaint ? 0 : last_rendered_height_,
+                                force_full, rp.vertical_desc);
         last_rendered_height_ = *snap.block_height;
       }
       break;
     case ScreenType::kMoscowTime:
       if (const auto* p = snap.PriceOf(ccy)) {
         RenderMoscowTimeScreen(panels, fb, fonts, ccy, *p,
-                               force_full ? "" : last_rendered_price_,
+                               force_repaint ? "" : last_rendered_price_,
                                sats_variant_, rp.use_sats_symbol,
-                               rp.use_mscw_time);
+                               rp.use_mscw_time, force_full,
+                               rp.vertical_desc);
         last_rendered_price_ = *p;
       }
       break;
     case ScreenType::kBtcPrice:
       if (const auto* p = snap.PriceOf(ccy)) {
         RenderBtcPriceScreen(panels, fb, fonts, ccy, *p,
-                             force_full ? "" : last_rendered_price_,
-                             CurrencySymbolUtf8(ccy));
+                             force_repaint ? "" : last_rendered_price_,
+                             CurrencySymbolUtf8(ccy),
+                             rp.suffix_price, rp.mow_mode, force_full,
+                             rp.vertical_desc);
         last_rendered_price_ = *p;
       }
       break;
@@ -427,7 +605,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         fee = -1.0;
       }
       RenderFeeRateScreen(panels, fb, fonts, fee,
-                          force_full ? -1.0 : last_rendered_fee_);
+                          force_repaint ? -1.0 : last_rendered_fee_,
+                          force_full, rp.vertical_desc);
       last_rendered_fee_ = fee;
       break;
     }
@@ -443,11 +622,12 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
           valid ? tm_now.tm_min : 0,
           valid ? tm_now.tm_mday : 0,
           valid ? tm_now.tm_mon + 1 : 0,
-          force_full ? false : last_rendered_clock_valid_,
+          force_repaint ? false : last_rendered_clock_valid_,
           last_rendered_clock_hour_,
           last_rendered_clock_min_,
           last_rendered_clock_mday_,
-          last_rendered_clock_mon_);
+          last_rendered_clock_mon_,
+          force_full, rp.vertical_desc);
       last_rendered_clock_valid_ = valid;
       if (valid) {
         last_rendered_clock_hour_ = tm_now.tm_hour;
@@ -460,8 +640,9 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     case ScreenType::kHalving:
       if (snap.block_height) {
         RenderHalvingScreen(panels, fb, fonts, *snap.block_height,
-                            force_full ? 0 : last_rendered_height_,
-                            rp.use_blk_countdown);
+                            force_repaint ? 0 : last_rendered_height_,
+                            rp.use_blk_countdown, force_full,
+                            rp.vertical_desc);
         last_rendered_height_ = *snap.block_height;
       }
       break;
@@ -471,8 +652,9 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         // v3_fci screen_handler.cpp call site (parseBitcoinSupply gets
         // the mcapBigChar pref as its `bigChars` argument).
         RenderBitcoinSupplyScreen(panels, fb, fonts, *snap.block_height,
-                                  force_full ? 0 : last_rendered_height_,
-                                  rp.mcap_big_char, rp.supply_percent);
+                                  force_repaint ? 0 : last_rendered_height_,
+                                  rp.mcap_big_char, rp.supply_percent,
+                                  force_full, rp.vertical_desc);
         last_rendered_height_ = *snap.block_height;
       }
       break;
@@ -480,9 +662,9 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       if (const auto* p = snap.PriceOf(ccy); p && snap.block_height) {
         RenderMarketCapScreen(
             panels, fb, fonts, ccy, *p, *snap.block_height,
-            force_full ? "" : last_rendered_cap_price_,
-            force_full ? 0 : last_rendered_cap_height_,
-            rp.mcap_big_char);
+            force_repaint ? "" : last_rendered_cap_price_,
+            force_repaint ? 0 : last_rendered_cap_height_,
+            rp.mcap_big_char, force_full, rp.vertical_desc);
         last_rendered_cap_price_ = *p;
         last_rendered_cap_height_ = *snap.block_height;
       }
@@ -494,17 +676,19 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       // navigable even when the user toggles miningPoolStats off at
       // runtime.
       const DataSnapshot::PoolStats& prev =
-          force_full ? DataSnapshot::PoolStats{}
-                     : last_rendered_pool_hashrate_;
-      RenderMiningPoolHashrateScreen(panels, fb, fonts, snap.pool, prev);
+          force_repaint ? DataSnapshot::PoolStats{}
+                        : last_rendered_pool_hashrate_;
+      RenderMiningPoolHashrateScreen(panels, fb, fonts, snap.pool, prev,
+                                     force_full, rp.vertical_desc);
       last_rendered_pool_hashrate_ = snap.pool;
       break;
     }
     case ScreenType::kMiningPoolEarnings: {
       const DataSnapshot::PoolStats& prev =
-          force_full ? DataSnapshot::PoolStats{}
-                     : last_rendered_pool_earnings_;
-      RenderMiningPoolEarningsScreen(panels, fb, fonts, snap.pool, prev);
+          force_repaint ? DataSnapshot::PoolStats{}
+                        : last_rendered_pool_earnings_;
+      RenderMiningPoolEarningsScreen(panels, fb, fonts, snap.pool, prev,
+                                     force_full, rp.vertical_desc);
       last_rendered_pool_earnings_ = snap.pool;
       break;
     }
@@ -512,7 +696,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       RenderBitaxeHashrateScreen(
           panels, fb, fonts, snap.bitaxe.hostname,
           snap.bitaxe.hashrate_ghs, force_full,
-          force_full ? "" : last_rendered_bitaxe_hashrate_);
+          force_repaint ? "" : last_rendered_bitaxe_hashrate_,
+          rp.vertical_desc);
       last_rendered_bitaxe_hashrate_ =
           (snap.bitaxe.hostname.empty() || !snap.bitaxe.hashrate_ghs)
               ? std::string("OFFLINE")
@@ -523,7 +708,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       RenderBitaxeBestDiffScreen(
           panels, fb, fonts, snap.bitaxe.hostname,
           snap.bitaxe.best_diff, force_full,
-          force_full ? "" : last_rendered_bitaxe_best_diff_);
+          force_repaint ? "" : last_rendered_bitaxe_best_diff_,
+          rp.vertical_desc);
       last_rendered_bitaxe_best_diff_ =
           (snap.bitaxe.hostname.empty() || !snap.bitaxe.best_diff ||
            snap.bitaxe.best_diff->empty())
@@ -543,21 +729,29 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         live[i] = custom_cells_[i];
         prev[i] = last_rendered_custom_cells_[i];
       }
-      RenderCustomScreen(panels, fb, fonts, live, prev, force_full);
+      RenderCustomScreen(panels, fb, fonts, live, prev, force_repaint,
+                         force_full);
       for (std::size_t i = 0; i < N; ++i) {
         last_rendered_custom_cells_[i] = custom_cells_[i];
       }
       break;
     }
     case ScreenType::kNostrZap:
-      RenderNostrZapScreen(panels, fb, fonts, snap.latest_zap);
+      RenderNostrZapScreen(panels, fb, fonts, snap.latest_zap,
+                           rp.use_sats_symbol, sats_variant_,
+                           force_full, rp.vertical_desc);
       break;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit at function entry
       // returns before this switch executes.
       break;
+    case ScreenType::kOtaUpdate:
+      // Unreachable — the ota_active_ short-circuit at function entry
+      // returns before this switch executes.
+      break;
   }
   dirty_ = false;
+  screen_change_pending_ = false;
   ESP_LOGI(kTag, "render slot=%zu full=%d", slot_, force_full ? 1 : 0);
 
   // Refresh the per-panel text mirror for /api/status data[]. Cheap
@@ -592,6 +786,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   pti.mcap_big_chars    = rp.mcap_big_char;
   pti.use_sats_symbol   = rp.use_sats_symbol;
   pti.use_mscw_time     = rp.use_mscw_time;
+  pti.suffix_price      = rp.suffix_price;
+  pti.mow_mode          = rp.mow_mode;
   // Bitaxe mirror fields. pti copies the raw snapshot values so the
   // panel_texts builder formats identically to what the EPD renderer
   // just painted; both share FormatBitaxeHashrate.

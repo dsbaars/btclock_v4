@@ -28,11 +28,16 @@ constexpr const char* kZapRef = "0123456789kMBA";
 constexpr const char* kLabelRef =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-// Amount starts immediately after the "ZAP" label on slot 0. The old
-// icon + blank layout freed panel 1 for data, so the scaled amount
-// spreads across every remaining cell.
+// Amount starts immediately after the "ZAP" label on slot 0. When the
+// `useSatsSymbol` pref is on, panel 1 is reclaimed for the Satoshi
+// glyph (matching Moscow-time) and the amount slides right by one.
 constexpr std::size_t kLabelSlot = 0;
-constexpr std::size_t kAmountStart = 1;
+constexpr std::size_t kSatsGlyphSlot = 1;
+
+// Pixel height for the sats-glyph cell — mirrors the kSatsGlyphPx
+// used by PaintSlot::kSatsGlyph in common.cpp so the zap screen's
+// glyph visually matches Moscow-time's.
+constexpr float kSatsGlyphPx = 130.0f;
 
 }  // namespace
 
@@ -75,19 +80,25 @@ void PaintBlank(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   ClearFb(lfb, /*white=*/true);
 }
 
+// `rotate_label=true` flips the slot 90° CCW relative to k180 so "ZAP"
+// reads along the panel's long axis — matches the verticalDesc port in
+// common.cpp::PaintSlotIntoFb.
 template <size_t N>
 void PaintCentered(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                    uint8_t (&fb_storage)[N][16 * 296],
                    std::size_t i, const char* text,
                    const Font& font, float max_px, float min_px,
-                   const char* ref_chars) {
+                   const char* ref_chars,
+                   bool rotate_label = false) {
   auto lfb = PrepFb(panels, fb_storage, i);
   ClearFb(lfb, /*white=*/true);
   if (text == nullptr || text[0] == '\0') return;
-  const float px = FitTextPx(text, font, max_px, min_px,
-                             lfb.native_width - 6);
-  DrawTextCentered(lfb, lfb.native_width, lfb.native_height, text,
-                   ref_chars, font, px, /*white_text=*/false);
+  if (rotate_label) lfb.rotation = Rotation::k90Cw;
+  const int w = LogicalWidth(lfb);
+  const int h = LogicalHeight(lfb);
+  const float px = FitTextPx(text, font, max_px, min_px, w - 6);
+  DrawTextCentered(lfb, w, h, text, ref_chars, font, px,
+                   /*white_text=*/false);
 }
 
 }  // namespace
@@ -97,26 +108,53 @@ void RenderNostrZapScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296],
     const AppFonts& fonts,
-    const DataSnapshot::LatestZap& zap) {
+    const DataSnapshot::LatestZap& zap,
+    bool use_sats_symbol,
+    uint8_t sats_variant,
+    bool full_refresh_mode,
+    bool vertical_desc) {
   // "ZAP" label on panel 0 — same typography as MSCW / BTC/SUPPLY so
   // the notification reads as part of the same visual family, not as a
   // one-off overlay. FitTextPx shrinks only if the word wouldn't fit;
   // at 140 px cap "ZAP" sits comfortably within panel width.
   PaintCentered(panels, fb_storage, kLabelSlot, "ZAP",
                 fonts.label(), /*max_px=*/140.0f, /*min_px=*/40.0f,
-                /*ref_chars=*/kLabelRef);
+                /*ref_chars=*/kLabelRef,
+                /*rotate_label=*/vertical_desc);
 
-  // Amount spreads across every tail cell — no message snippet, no
-  // icon slot. On N=7 that's 6 cells for a max-4-char scaled string
-  // ("1.2M"), leaving ≥ 2 leading blanks.
+  // Panel 1 is the optional sats-glyph cell. When the user keeps
+  // `useSatsSymbol=true` we paint it at the same 130 px pixel height
+  // Moscow-time uses (kSatsGlyphPx in common.cpp) so the glyph's
+  // visual weight matches across screens. When the flag is off we
+  // leave the panel blank and include it in the amount run.
+  const std::size_t amount_start =
+      use_sats_symbol ? kSatsGlyphSlot + 1 : kSatsGlyphSlot;
+  if (use_sats_symbol && N > kSatsGlyphSlot) {
+    const auto glyph = SatsGlyphUtf8(sats_variant);
+    auto lfb = PrepFb(panels, fb_storage, kSatsGlyphSlot);
+    ClearFb(lfb, /*white=*/true);
+    // DrawTextCentered passes through the UTF-8 glyph unchanged; the
+    // sats_glyph font role covers U+E000..U+E00F.
+    DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
+                     glyph.c_str(), /*ref_chars=*/glyph.c_str(),
+                     fonts.sats_glyph(), /*text_px=*/kSatsGlyphPx,
+                     /*white_text=*/false);
+  }
+
+  // Amount spreads across every remaining tail cell. With no sats
+  // glyph that's N-1 cells (starting at panel 1); with the glyph on
+  // it's N-2 cells (starting at panel 2). On N=7 + useSatsSymbol=true
+  // that's 5 cells for a max-4-char scaled string, leaving ≥ 1
+  // leading blank — matches the Moscow-time 6-cell + glyph layout
+  // visually.
   const std::string amount = FormatZapAmount(zap.amount_sats);
-  const std::size_t amount_cells = (N > kAmountStart) ? N - kAmountStart : 0;
+  const std::size_t amount_cells = (N > amount_start) ? N - amount_start : 0;
 
   // Paint amount right-justified. If the scaled string is shorter than
   // the slot count, pad with leading blanks; if longer (shouldn't happen
   // since FormatZapAmount clamps to 4 chars), truncate leading chars.
   for (std::size_t i = 0; i < amount_cells; ++i) {
-    const std::size_t slot = kAmountStart + i;
+    const std::size_t slot = amount_start + i;
     char glyph = '\0';
     if (amount.size() >= amount_cells) {
       glyph = amount[amount.size() - amount_cells + i];
@@ -134,9 +172,20 @@ void RenderNostrZapScreen(
     }
   }
 
-  // Full refresh — single-shot notification, no value in partial.
+  // When useSatsSymbol is off the panel-1 glyph slot is repurposed
+  // by the amount loop above — no extra blanking needed here. When
+  // it's on but the amount run didn't cover panel 1, the glyph block
+  // above already painted it.
+
+  // EPD refresh kind is caller-driven (`full_refresh_mode`). A zap is a
+  // short-lived overlay — typically the caller picks full refresh so the
+  // overlay lands cleanly, but partial is fine when the policy says so
+  // and no ghosting of the overlay is visible (single paint before the
+  // auto-restore tick redraws the prior slot).
+  const RefreshKind kind =
+      full_refresh_mode ? RefreshKind::kFull : RefreshKind::kPartial;
   for (std::size_t i = 0; i < N; ++i) {
-    panels[i]->DrawFramebufferStart(fb_storage[i], RefreshKind::kFull);
+    panels[i]->DrawFramebufferStart(fb_storage[i], kind);
   }
   for (std::size_t i = 0; i < N; ++i) {
     panels[i]->WaitForRefresh();
@@ -145,9 +194,11 @@ void RenderNostrZapScreen(
 
 template void RenderNostrZapScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&);
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool,
+    bool);
 template void RenderNostrZapScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&);
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool,
+    bool);
 
 }  // namespace btclock

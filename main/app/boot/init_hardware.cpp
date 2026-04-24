@@ -10,6 +10,8 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -85,11 +87,43 @@ void InitHardware(AppCtx& ctx) {
     ctx.pca->SetOutputEnable(true);
     ctx.frontlight = std::make_unique<FrontlightController>(
         *ctx.pca, kFrontlightChannelFirst, kFrontlightChannelCount);
+
+    // Pull the ambient-auto prefs out of NVS once at boot. Policy
+    // setters poke plain scalar state in the controller — safe to call
+    // before Start() because they don't go through the command queue.
+    // Matches the v3 handleFrontlight() contract (src/main.cpp:31-47)
+    // plus the flOffWhenDark branch on line 38.
+    {
+      Prefs settings(prefs::kSettingsNs);
+      const uint32_t lux_threshold = settings.GetU32(
+          prefs::kLuxLightToggle, frontlight::kDefaultLuxThreshold);
+      const bool off_when_dark =
+          settings.GetBool(prefs::kFlOffWhenDark, true);
+      ctx.frontlight->SetLuxThreshold(lux_threshold);
+      ctx.frontlight->SetOffWhenDark(off_when_dark);
+      // `luxLightToggle == 0` disables the whole feature in v3.
+      ctx.frontlight->SetAmbientAutoOff(lux_threshold != 0);
+    }
+
     // Install DND gate before Start() so the boot fade-in is
     // suppressed when a schedule is already active at power-up.
     ctx.frontlight->SetActiveSuppressor(
         [] { return dnd::Instance().IsActive(); });
     ctx.frontlight->Start();
+
+    // Brightness goes through the command queue, so wait until Start()
+    // has created the queue before setting it. The initial kOn below
+    // then fades us up to this new configured level.
+    {
+      Prefs settings(prefs::kSettingsNs);
+      const uint32_t max_brightness =
+          settings.GetU32(prefs::kFlMaxBrightness,
+                          static_cast<uint32_t>(frontlight::kDefaultMaxDuty));
+      if (max_brightness > 0 && max_brightness <= 0xFFFFu) {
+        ctx.frontlight->SetConfiguredBrightness(
+            static_cast<uint16_t>(max_brightness));
+      }
+    }
     // Fade up to the configured brightness at boot. Matches old
     // firmware, which powered the frontlight on once the panels were
     // initialised.

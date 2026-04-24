@@ -53,6 +53,15 @@ constexpr std::array<Rgb, 6> kBootPalette = {{
 
 QueueHandle_t g_queue = nullptr;
 uint32_t g_count = 0;
+// Direct handle to the strip, cached at InitLeds time so the OTA
+// progress paint path can bypass the queue + task. The task holds the
+// same handle but it's owned by led_strip internally; the driver API
+// is safe to call from multiple tasks as long as refreshes don't
+// interleave (we serialise via g_direct_mu below).
+led_strip_handle_t g_strip = nullptr;
+// Serialises direct paint calls so the OTA progress indicator doesn't
+// race the task's per-frame led_strip_refresh.
+std::mutex g_direct_mu;
 
 // Mutex protects g_state across the LED task and caller threads (HTTP
 // worker, data-source callbacks). Coarse lock — good enough given the
@@ -522,6 +531,7 @@ void InitLeds(gpio_num_t pin, uint32_t count) {
   g_queue = xQueueCreate(8, sizeof(LedEffect));
   assert(g_queue != nullptr);
   led_strip_handle_t strip = InitStrip(pin, count);
+  g_strip = strip;
   xTaskCreate(Task, "leds", 4096, strip, tskIDLE_PRIORITY + 1, nullptr);
   LedState s;
   {
@@ -650,6 +660,61 @@ bool LedsReady() { return g_queue != nullptr; }
 void SetLedActiveSuppressor(std::function<bool()> predicate) {
   std::lock_guard<std::mutex> lk(g_state_mu);
   g_suppressor = std::move(predicate);
+}
+
+// --- OTA progress paint path ---------------------------------------
+// These paint directly on the strip under g_direct_mu rather than
+// queueing effects so the progress indicator updates in lock-step with
+// the httpd worker's write loop. They deliberately ignore the
+// `disabled` + DND predicates: the user initiated an OTA and needs to
+// see progress even if they normally mute the LEDs.
+
+void ShowOtaProgressLedCount(int lit_count) {
+  if (!g_strip || g_count == 0) return;
+  const uint8_t bright = CurrentBrightness();
+  const uint32_t green = PackRgb(0, 255, 0);
+  std::lock_guard<std::mutex> lk(g_direct_mu);
+  const int clamped =
+      std::max(0, std::min(lit_count, static_cast<int>(g_count)));
+  for (uint32_t i = 0; i < g_count; ++i) {
+    if (static_cast<int>(i) < clamped) {
+      PushPixel(g_strip, i, green, bright);
+    } else {
+      led_strip_set_pixel(g_strip, i, 0, 0, 0);
+    }
+  }
+  led_strip_refresh(g_strip);
+}
+
+void ShowOtaProgressIndeterminate() {
+  // Content-Length was missing — no fraction to display. Light pixel 0
+  // only so the user sees "something is happening" without implying a
+  // concrete bar position.
+  ShowOtaProgressLedCount(1);
+}
+
+void PlayOtaCompletionBlink(int times, int d_ms) {
+  if (!g_strip || g_count == 0) return;
+  const uint8_t bright = CurrentBrightness();
+  const uint32_t green = PackRgb(0, 255, 0);
+  std::lock_guard<std::mutex> lk(g_direct_mu);
+  for (int t = 0; t < times; ++t) {
+    for (uint32_t i = 0; i < g_count; ++i) {
+      PushPixel(g_strip, i, green, bright);
+    }
+    led_strip_refresh(g_strip);
+    vTaskDelay(pdMS_TO_TICKS(d_ms));
+    for (uint32_t i = 0; i < g_count; ++i) {
+      led_strip_set_pixel(g_strip, i, 0, 0, 0);
+    }
+    led_strip_refresh(g_strip);
+    vTaskDelay(pdMS_TO_TICKS(d_ms));
+  }
+  // Leave all LEDs lit green as a "done" marker until esp_restart fires.
+  for (uint32_t i = 0; i < g_count; ++i) {
+    PushPixel(g_strip, i, green, bright);
+  }
+  led_strip_refresh(g_strip);
 }
 
 }  // namespace btclock

@@ -467,6 +467,498 @@ TEST_CASE("panel_texts — V8 BTC price 6-digit integer keeps glyph") {
   CHECK(out[7] == "6");
 }
 
+// --- suffixPrice + mowMode panel-text parity ---
+// Ports the v3_fci test_datahandler_parity tests for useSuffixFormat and
+// useMowMode to the IDF /api/status mirror. These cases match v3's
+// parsePriceData byte-for-byte where applicable; see the old firmware
+// lib/btclock/data_handler.cpp and Unity tests.
+
+TEST_CASE("panel_texts — suffixPrice=false, integer passes through") {
+  // Regression path — without suffixPrice, short prices render as
+  // plain digits via LayoutBtcPrice.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78280";
+  in.suffix_price = false;
+  in.mow_mode = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "7");
+  CHECK(out[3] == "8");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "8");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 78280 renders $78.3K") {
+  // v3 parsePriceData(78280, '$', useSuffixFormat=true, mow=false):
+  // FormatNumberWithSuffix(78280, 5) → "78.3K"(5). "$78.3K"(6 cells) fits
+  // the 6 digit slots with 0 leading pad; labelled "BTC/USD" on panel 0.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78280";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "7");
+  CHECK(out[3] == "8");
+  CHECK(out[4] == ".");
+  CHECK(out[5] == "3");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 1234 renders $1.23K") {
+  // 1234 → FormatNumberWithSuffix(1234, 5) → "1K"(len=2), rest=5-2-1=2,
+  // → "1.23K". Prepend "$" → "$1.23K" (6 chars).
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "1234";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "3");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 10000000 renders $10.0M") {
+  // 10_000_000 → "10M"(len=3), rest=5-3-1=1 → "10.0M"(5). "$10.0M"(6).
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "10000000";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == ".");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 999 renders plain integer") {
+  // 999 → FormatNumberWithSuffix(999, 5, false) → "999" (no suffix).
+  // "$999" (4 chars) fits in 6 slots with 2 leading pads.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "999";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "$");
+  CHECK(out[4] == "9");
+  CHECK(out[5] == "9");
+  CHECK(out[6] == "9");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 1000 renders $1.00K") {
+  // 1000 → "1K"(len=2), rest=5-2-1=2 → "1.00K"; "$1.00K" (6 chars) fits.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "1000";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true for 1000000000 renders $1.00B") {
+  // 1e9 → "1B"(len=2), rest=5-2-1=2 → "1.00B"; "$1.00B"(6 chars).
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "1000000000";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "B");
+}
+
+TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 78280 → $0.078M") {
+  // 78280/1e6 = 0.078280 → "0.0M"(len=4), rest=6-4=2, take=5 → "0.078M"
+  // (6). "$0.078M"(7 cells) overflows → no label, char-per-cell. Slot 0
+  // carries the currency glyph — same as the EPD renderer which paints
+  // PaintSlot::kCurrencyGlyph on panel 0 when the label is dropped.
+  // v3 parsePriceData parity: `firstIndex=0` in the overflow branch so
+  // ret[0] holds the '$' from priceString. Rev B user report at
+  // 192.168.20.97 with mowMode+EUR saw data[0]="BTC/EUR" while the
+  // panel painted "€" — fixed.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "$");
+  CHECK(out[1] == "0");
+  CHECK(out[2] == ".");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "7");
+  CHECK(out[5] == "8");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 1000000 → $1.000M") {
+  // 1e6 + mow → "1.000M"(6). "$1.000M"(7) = 7 cells → overflow path.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "1000000";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "$");
+  CHECK(out[1] == "1");
+  CHECK(out[2] == ".");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 99999 → $0.099M") {
+  // 99999/1e6=0.099999 → "0.0M"→"0.099M"(6). "$0.099M"(7) overflow.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "99999";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "$");
+  CHECK(out[1] == "0");
+  CHECK(out[2] == ".");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "9");
+  CHECK(out[5] == "9");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode=true, suffixPrice=false, short price stays integer") {
+  // v3 precedence: `mowMode` only takes effect when the suffix branch
+  // fires (either `useSuffixFormat=true` OR the integer itself is too
+  // wide to fit). Without suffix_price and with 78280 (5 digits, fits a
+  // 6-slot area), mowMode is ignored and the plain integer renders.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78280";
+  in.suffix_price = false;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "7");
+  CHECK(out[3] == "8");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "8");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — suffixPrice=true, 8-panel board, 78280 → $78.28K") {
+  // V8 (8-panel → 7 digit slots). FormatNumberWithSuffix(78280, 6):
+  // "78K"(len=3), rest=6-3-1=2 → "78.28K"(6). "$78.28K"(7 cells) fits
+  // with 0 leading pad, labelled "BTC/USD" on panel 0.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78280";
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "7");
+  CHECK(out[3] == "8");
+  CHECK(out[4] == ".");
+  CHECK(out[5] == "2");
+  CHECK(out[6] == "8");
+  CHECK(out[7] == "K");
+}
+
+TEST_CASE("panel_texts — integer overflow forces suffix path even off") {
+  // v3 parsePriceData routes 7+digit integer prices through the suffix
+  // path regardless of useSuffixFormat. 9_999_999 with suffix_price=
+  // false → "$10.0M" on a 7-panel board (integer form would be 7 chars
+  // and wouldn't fit with a glyph).
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "9999999";
+  in.suffix_price = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  // FormatNumberWithSuffix(9_999_999, 5): num_digits=7>6 → M branch;
+  // 9_999_999/1e6=9.999999 → "10M"(rounded; len=3), rest=1 → "10.0M"(5).
+  // "$10.0M"(6) fits with leading blank.
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == ".");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "M");
+}
+
+// --- mowMode overflow: currency glyph lands in slot 0 (Rev B bug) ---
+// Rev B user report (192.168.20.97, mowMode=true, EUR, price=78280):
+// /api/status data[] was ["BTC/EUR","0",".","0","6","6","M"] while the
+// EPD painted "€ 0 . 0 6 6 M". The mirror now emits the currency glyph
+// in slot 0 on the overflow branch, matching the on-device renderer
+// and v3 parsePriceData's `firstIndex=0` / `ret[0]=priceString[0]`
+// fall-through. See BuildBtcPrice's go_suffix branch — when the suffix
+// layout returns an empty label, the glyph already sits in cells[0].
+
+TEST_CASE("panel_texts — mowMode overflow: EUR glyph in slot 0 (Rev B bug)") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "EUR";
+  // User-reported fixture: 78280 with mowMode+suffixPrice = overflow.
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "\xE2\x82\xAC");  // UTF-8 euro sign
+  CHECK(out[1] == "0");
+  CHECK(out[2] == ".");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "7");
+  CHECK(out[5] == "8");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: GBP glyph in slot 0") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "GBP";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "\xC2\xA3");  // UTF-8 pound sign
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: JPY glyph in slot 0") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "JPY";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "\xC2\xA5");  // UTF-8 yen sign
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: CAD uses $ glyph") {
+  // CAD and AUD share the $ glyph in CurrencySymbolLocal — same as the
+  // device-side CurrencySymbolUtf8 (main/screens/common.cpp).
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "CAD";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "$");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: AUD uses $ glyph") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "AUD";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "$");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: CHF keeps ISO-code cell") {
+  // CHF has no single-character glyph in the panel font; CurrencySymbol
+  // returns the literal "CHF" string. The layout still treats it as one
+  // cell regardless of byte count, so the mirror holds "CHF" in slot 0.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "CHF";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "CHF");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — EUR suffix non-overflow keeps BTC/EUR label") {
+  // Short prices where priceString fits with the label still emit the
+  // BTC/<CCY> label in slot 0 (parity with v3's firstIndex=1 branch).
+  // Contrast with the overflow cases above; this pins the branch split.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "EUR";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = false;  // NOT mow → "€78.3K" (6 cells; label fits)
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/EUR");
+  CHECK(out[1] == "\xE2\x82\xAC");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — mowMode label path is reachable for price=0") {
+  // Edge: price=0 falls out of FormatNumberWithSuffix as "0M" (2 chars)
+  // regardless of num_characters, so `$0M`(3) fits with room for a
+  // "MOW/UNITS" label. This pins the only reachable MOW/UNITS path
+  // under the current num_chars=Panels-1 mow expansion — for any other
+  // price the M-suffix expansion pads to exactly num_chars and
+  // priceString always hits the overflow branch.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "0";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "MOW/UNITS");
+}
+
+TEST_CASE("panel_texts — V8 mowMode overflow: glyph in slot 0") {
+  // V8 (8-panel) parity. 99000000 with mow: FormatNumberWithSuffix
+  // num_chars = 8-1 = 7 → "99.000M"(7); "$99.000M"(8 cells) overflows
+  // slot 0 → glyph on panel 0, digits fill 1..7.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "EUR";
+  in.price = "99000000";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "\xE2\x82\xAC");
+  CHECK(out[7] == "M");
+}
+
+TEST_CASE("panel_texts — integer-overflow path with EUR keeps glyph intact") {
+  // Without explicit suffix_price, a very-large integer forces the
+  // suffix branch (v3 `std::to_string(price).length() >= NUM_SCREENS`
+  // guard). 99_999_999 → "100M" + "€" = 5 cells → label path on a
+  // 7-panel board. This pins that the glyph still lands in a single
+  // cell (not byte-split) on the label branch of the mirror.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "EUR";
+  in.price = "99999999";
+  in.suffix_price = false;
+  in.mow_mode = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/EUR");
+  // 5 cells in 6 digit slots → 1 leading pad at slot 1, glyph at slot 2.
+  CHECK(out[1] == "");
+  CHECK(out[2] == "\xE2\x82\xAC");
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — mowMode overflow: slot 0 is never BTC/<CCY> label") {
+  // Parametric guard: for every supported currency, mowMode+suffixPrice
+  // with a non-trivial price must NOT emit the BTC/<CCY> label in slot 0
+  // — the EPD renderer drops the label on overflow and paints the
+  // currency glyph on panel 0 instead. Catches future regressions of
+  // the Rev B parity bug at the currency-dispatch level.
+  const char* ccys[] = {"USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF"};
+  for (const char* ccy : ccys) {
+    CAPTURE(ccy);
+    PanelTextInputs in;
+    in.kind = ScreenType::kBtcPrice;
+    in.currency = ccy;
+    in.price = "78280";
+    in.suffix_price = true;
+    in.mow_mode = true;
+    const auto out = BuildPanelTexts(in, 7);
+    REQUIRE(out.size() == 7);
+    CHECK(out[0] != (std::string("BTC/") + ccy));
+    CHECK(!out[0].empty());
+    // Last cell is always the 'M' suffix for the mow path.
+    CHECK(out[6] == "M");
+  }
+}
+
+TEST_CASE("panel_texts — integer-overflow path with EUR in overflow (8-digit +)") {
+  // For 9-digit prices the label is actually dropped on a 7-panel board:
+  // FormatNumberWithSuffix(999_999_999, 5, false) → "1.00B" (5) + €(1)
+  // = 6 cells. 6 < 7 → still label path. Try a case that actually
+  // overflows — suffix_price=true forced, very large price expanding to
+  // a 6+ cell priceString: 1000 with num_chars=5 → "1.00K"+ $ = 6 cells
+  // → still fits. Most realistic overflow is mow mode (tested above).
+  // This pins the non-mow overflow (shareDot off) corner case: a 3-digit
+  // suffix like "1.000Q" (6 chars) for 1e15 + $ = 7 cells → overflow.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "EUR";
+  in.price = "1000000000000000";  // 1e15 → Q suffix
+  in.suffix_price = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  // Either label-path or overflow-path is acceptable so long as the
+  // slot-0 invariant holds: it's the label (BTC/EUR) OR the glyph €,
+  // never the label with a dropped glyph.
+  const bool is_label = (out[0] == "BTC/EUR");
+  const bool is_glyph = (out[0] == "\xE2\x82\xAC");
+  CHECK((is_label || is_glyph));
+  // If it's the label, the glyph is somewhere in slots 1..5. If the
+  // label was dropped, slot 0 IS the glyph and it's NOT "BTC/EUR".
+}
+
 TEST_CASE("panel_texts — fee rate emits sat/vB split tokens") {
   // Bug 4 — the unit panel is now a split-text ("sat" over "vB")
   // matching the paired FEE/RATE label. The mirror string encodes the
@@ -773,6 +1265,7 @@ TEST_CASE("panel_texts — nostr zap small amount as integer (7 panels)") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21;
+  in.use_sats_symbol = false;  // no-glyph path — amount spans 6 tail cells
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "ZAP");
@@ -789,6 +1282,7 @@ TEST_CASE("panel_texts — nostr zap scaled k-suffix") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21000;
+  in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "ZAP");
@@ -805,6 +1299,7 @@ TEST_CASE("panel_texts — nostr zap million-suffix (1.2M)") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 1'200'000;
+  in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "ZAP");
@@ -820,6 +1315,7 @@ TEST_CASE("panel_texts — nostr zap million-suffix (1.2M)") {
 TEST_CASE("panel_texts — nostr zap without amount shows '?'") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
+  in.use_sats_symbol = false;
   // zap_amount_sats left nullopt — builder paints "?" as the amount.
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
@@ -834,6 +1330,7 @@ TEST_CASE("panel_texts — nostr zap ignores message string") {
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 100;
   in.zap_message = "hi";
+  in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "ZAP");
@@ -847,6 +1344,7 @@ TEST_CASE("panel_texts — nostr zap 8-panel board") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 500;
+  in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
   CHECK(out[0] == "ZAP");
@@ -855,6 +1353,91 @@ TEST_CASE("panel_texts — nostr zap 8-panel board") {
   CHECK(out[5] == "5");
   CHECK(out[6] == "0");
   CHECK(out[7] == "0");
+}
+
+// --- Sats-glyph prefix (useSatsSymbol=true) --------------------------
+// These pin the Bug-2 fix: with the pref on, slot 1 carries the "STS"
+// marker (same token parseSatsPerCurrency emits on Moscow-time) and
+// the amount slides right by one cell. Mirrors the EPD renderer's
+// kSatsGlyphSlot layout in main/screens/nostr_zap.cpp.
+
+TEST_CASE("panel_texts — nostr zap with sats glyph (7 panels, 21000)") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 21000;
+  in.use_sats_symbol = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  // Target shape from the bug spec: ["ZAP","STS","","","2","1","k"]
+  CHECK(out[0] == "ZAP");
+  CHECK(out[1] == "STS");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "1");
+  CHECK(out[6] == "k");
+}
+
+TEST_CASE("panel_texts — nostr zap with sats glyph (8 panels, 21000)") {
+  // V8 parity: extra leading blank before the 3-char "21k".
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 21000;
+  in.use_sats_symbol = true;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "ZAP");
+  CHECK(out[1] == "STS");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "");
+  CHECK(out[4] == "");
+  CHECK(out[5] == "2");
+  CHECK(out[6] == "1");
+  CHECK(out[7] == "k");
+}
+
+TEST_CASE(
+    "panel_texts — nostr zap glyph on/off parity: amount slides one slot") {
+  // Same input, only the pref flips. The amount cells collectively move
+  // right by one — exercises the expected "slot 1 reclaimed for glyph"
+  // invariant without re-testing every scaled-amount magnitude.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 21000;  // renders as "21k"
+
+  in.use_sats_symbol = false;
+  const auto off = BuildPanelTexts(in, 7);
+  REQUIRE(off.size() == 7);
+  CHECK(off[0] == "ZAP");
+  CHECK(off[1] == "");
+  CHECK(off[4] == "2");
+  CHECK(off[5] == "1");
+  CHECK(off[6] == "k");
+
+  in.use_sats_symbol = true;
+  const auto on = BuildPanelTexts(in, 7);
+  REQUIRE(on.size() == 7);
+  CHECK(on[0] == "ZAP");
+  CHECK(on[1] == "STS");
+  CHECK(on[4] == "2");
+  CHECK(on[5] == "1");
+  CHECK(on[6] == "k");
+}
+
+TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {
+  // The zap listener drops amount<1 sat before this builder runs; when
+  // the builder is invoked at the edge (exactly 1 sat) the normal
+  // "ZAP + <digit>" shape paints. This pins the boundary the listener
+  // enforces via parser::ShouldSurfaceZap.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 1;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "ZAP");
+  CHECK(out[6] == "1");
+  CHECK(out[5] == "");
 }
 
 // Latest-wins merge semantics for DataSnapshot::LatestZap. The full

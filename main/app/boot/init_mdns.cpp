@@ -1,0 +1,132 @@
+#include "app/boot/init_mdns.hpp"
+
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+#include "app/app_ctx.hpp"
+#include "board/board.hpp"
+#include "esp_app_desc.h"
+#include "esp_err.h"
+#include "esp_log.h"
+#include "esp_mac.h"
+#include "mdns.h"
+#include "net_util/hostname.hpp"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
+#include "wifi.hpp"
+
+namespace btclock {
+namespace {
+constexpr const char* kTag = "mdns";
+
+// Build the hostname advertised over mDNS. Delegates to the shared
+// helper in components/net_util so the /api/settings emitter and this
+// init path stay in lockstep — drift between them meant the WebUI
+// reported a name nobody could actually ping.
+std::string BuildHostname() {
+  btclock::Prefs p(prefs::kSettingsNs);
+  std::string prefix = p.GetString(prefs::kHostnamePrefix, "btclock");
+  uint8_t mac[6] = {};
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+  return btclock::net_util::ComputeHostname(prefix, mac);
+}
+
+// Which HW variant this firmware is built for. Surfaced as a TXT
+// record so an avahi-browse pass can tell Rev A from Rev B from V8.
+const char* BoardTxtValue() {
+#if defined(POC_BOARD_REV_A)
+  return "REV_A";
+#elif defined(POC_BOARD_REV_B)
+  return "REV_B";
+#elif defined(POC_BOARD_V8)
+  return "V8";
+#else
+  return "unknown";
+#endif
+}
+
+}  // namespace
+
+void InitMdns(AppCtx& ctx) {
+  // SoftAP (provisioning) mode owns the captive-portal DNS hijack on
+  // 53/udp and the WebUI runs locally — there's no LAN to advertise
+  // into and starting mDNS would stall on netif discovery.
+  if (!ctx.wifi || ctx.wifi->is_ap_mode()) return;
+
+  btclock::Prefs p(prefs::kSettingsNs);
+  // Default-true to match DEFAULT_MDNS_ENABLED in btclock_v3_fci.
+  if (!p.GetBool(prefs::kMdnsEnabled, true)) {
+    ESP_LOGI(kTag, "mdnsEnabled=false; skipping advertisement");
+    return;
+  }
+
+  const std::string hostname = BuildHostname();
+
+  esp_err_t err = mdns_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "mdns_init failed: %s", esp_err_to_name(err));
+    return;
+  }
+  // hostname is the left-hand label of "<name>.local" — any existing
+  // entry with the same name would cause Bonjour to publish a
+  // numbered variant, so set ours explicitly before adding services.
+  if ((err = mdns_hostname_set(hostname.c_str())) != ESP_OK) {
+    ESP_LOGW(kTag, "mdns_hostname_set('%s') failed: %s", hostname.c_str(),
+             esp_err_to_name(err));
+    return;
+  }
+  // Instance name is the human-readable string shown in Bonjour
+  // browsers. Keep it identical to the hostname so the two columns
+  // match — the WebUI scan helper searches on this.
+  if ((err = mdns_instance_name_set(hostname.c_str())) != ESP_OK) {
+    ESP_LOGW(kTag, "mdns_instance_name_set failed: %s", esp_err_to_name(err));
+    // Non-fatal — continue with service registration.
+  }
+
+  // Compose TXT records. Kept compatible with btclock_v3_fci's shape
+  // (model/version/rev/hw_rev) and extended with the v4-era keys
+  // (path/board) called out in the task brief.
+  const char* git_rev = "";
+  const esp_app_desc_t* desc = esp_app_get_description();
+  if (desc && desc->version[0] != '\0') git_rev = desc->version;
+  const char* board = BoardTxtValue();
+
+  const mdns_txt_item_t txt[] = {
+      {"path",    "/"},
+      {"version", "4.0"},
+      {"board",   board},
+      {"model",   "BTClock"},
+      {"rev",     git_rev},
+      {"hw_rev",  board::kHardwareName},
+  };
+  constexpr size_t kTxtCount = sizeof(txt) / sizeof(txt[0]);
+
+  // http._tcp matches btclock_v3_fci. The webserver listens on port 80
+  // (esp_http_server default) — keep that literal until the port
+  // becomes configurable.
+  constexpr uint16_t kHttpPort = 80;
+  if ((err = mdns_service_add(hostname.c_str(), "_http", "_tcp", kHttpPort,
+                              const_cast<mdns_txt_item_t*>(txt),
+                              kTxtCount)) != ESP_OK) {
+    ESP_LOGW(kTag, "mdns_service_add _http failed: %s", esp_err_to_name(err));
+    return;
+  }
+  // Parallel advert under a BTClock-specific service type so
+  // dedicated tooling can filter our devices without walking every
+  // HTTP host on the LAN.
+  if ((err = mdns_service_add(hostname.c_str(), "_btclock", "_tcp", kHttpPort,
+                              const_cast<mdns_txt_item_t*>(txt),
+                              kTxtCount)) != ESP_OK) {
+    ESP_LOGW(kTag, "mdns_service_add _btclock failed: %s",
+             esp_err_to_name(err));
+    // Not fatal — primary _http advert already succeeded.
+  }
+
+  ESP_LOGI(kTag, "advertising %s.local board=%s", hostname.c_str(), board);
+  // TODO: react to PATCH /api/settings changing mdnsEnabled / hostnamePrefix
+  // live. Right now those keys are flagged boot_only in schema.hpp, so a
+  // reboot picks up the new value.
+}
+
+}  // namespace btclock

@@ -244,8 +244,14 @@ struct PaintSlot {
 // wrapper below stays header-only (it references EpdPanel whose type
 // differs between device / WASM builds) without pulling the paint
 // primitives into the template body.
+//
+// `vertical_desc` rotates kLabel / kLabelSplit slots 90° CCW relative to
+// the caller's orientation (on device that's k180, so the effective
+// native-relative rotation becomes k90Cw). Other slot kinds ignore the
+// flag. Ports the v3 `splitText`'s `preferences.getBool("verticalDesc")`
+// branch (see btclock_v3_fci/src/lib/drivers/epd/epd.cpp).
 void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
-                     const PaintSlot& slot);
+                     const PaintSlot& slot, bool vertical_desc = false);
 
 template <std::size_t N>
 void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
@@ -253,7 +259,8 @@ void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                      const AppFonts& fonts,
                      const std::array<PaintSlot, N>& slots,
                      const std::array<bool, N>& update,
-                     bool full_refresh) {
+                     bool full_refresh,
+                     bool vertical_desc = false) {
   const RefreshKind kind =
       full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
 
@@ -267,7 +274,7 @@ void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     if (!full_refresh && slots[i].kind == PaintSlot::kBlank) continue;
     auto lfb = PrepFb(panels, fb_storage, i);
     ClearFb(lfb, /*white=*/true);
-    PaintSlotIntoFb(lfb, fonts, slots[i]);
+    PaintSlotIntoFb(lfb, fonts, slots[i], vertical_desc);
   }
 
   // Refresh phase — fan the activation out across all updated panels

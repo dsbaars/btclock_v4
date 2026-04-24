@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -66,7 +67,11 @@ struct DeviceContext {
   std::string fs_rev;
   std::string git_rev;
   std::string git_tag;
-  std::string last_build_time;
+  // Firmware build time as Unix seconds. Emitted as `lastBuildTime`
+  // (integer); the WebUI treats a numeric value as seconds-since-epoch
+  // and formats it locally. 0 means "unknown" and is omitted from the
+  // response.
+  int64_t last_build_time_unix = 0;
   // Fonts available to the renderer; propagated into `availableFonts`.
   std::vector<std::string> available_fonts;
   // Mining pool list propagated into `availablePools`.
@@ -89,6 +94,18 @@ struct DeviceContext {
   // hidden slot in rotation (main/app/screen_manager.cpp reads the
   // same capability directly).
   std::vector<int> hidden_screen_ids;
+  // Feature-flag gates that also suppress screens from the emitted
+  // `screens[]`. Same semantics as `hidden_screen_ids` — the catalogue
+  // entries stay so PATCH reorders keep accepting the legacy full shape,
+  // but a WebUI that consulted a fresh GET will never see the slots while
+  // the feature is off.
+  //   - `mining_pool_stats_enabled == false` drops ids 70 + 71.
+  //   - `bitaxe_enabled == false` drops ids 80 + 81.
+  // Default to `true` so host tests that don't populate the context
+  // continue to emit the full catalogue; the IDF caller always sets
+  // these explicitly from NVS.
+  bool mining_pool_stats_enabled = true;
+  bool bitaxe_enabled = true;
 };
 
 // Build the full GET /api/settings body. Caller owns the returned

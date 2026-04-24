@@ -8,6 +8,7 @@
 #include "app/boot/factory_reset.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/catalogs.hpp"
+#include "io/led_controller.hpp"
 #include "io/light_sensor.hpp"
 #include "io/mining_pool_selector.hpp"
 #include "app/screen_manager.hpp"
@@ -23,8 +24,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nostr/relay_client.hpp"
+#include "nostr/zap_listener.hpp"
 #include "ota_manager.hpp"
+#include "ota_progress.hpp"
 #include "prefs.hpp"
+#include "screens/screens.hpp"
 #include "sdkconfig.h"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
@@ -139,6 +143,21 @@ void InitControlApi(AppCtx& ctx) {
       ctx_ptr->fonts.SetFamily(ParseFontFamily(id));
       if (ctx_ptr->sm) ctx_ptr->sm->MarkDirty();
     };
+    // blockFlashColor PATCH hook — mirror the settings namespace write
+    // into the LED controller's own namespace so the next block flash
+    // uses the new colour without reboot. SetBlockFlashColor persists
+    // to the led/blockFlashCol key and updates the cached runtime
+    // value the strip task reads on each kBlockFlash event.
+    ccfg.on_block_flash_color_changed = [](uint32_t rgb) {
+      SetBlockFlashColor(rgb);
+    };
+    // Every successful /api/settings PATCH pulses the LEDs green so
+    // the user sees an immediate confirmation the save landed. Piggy-
+    // backs on the existing kFlashSuccess effect (3x green, 150ms) —
+    // matches the old firmware's LED_FLASH_SUCCESS intent.
+    ccfg.on_settings_patched = [] {
+      PostLedEffect(LedEffect::kFlashSuccess);
+    };
     // Mirror freshly-PATCHed DND fields into the singleton so the LED
     // and frontlight suppressor predicates (`dnd::Instance().IsActive()`,
     // evaluated on every frame) switch over to the new window without a
@@ -199,6 +218,14 @@ void InitControlApi(AppCtx& ctx) {
     // on whichever currency is currently displayed, matching the old
     // firmware's "stay on my current currency when I pick a new screen"
     // UX.
+    // Completion-blink wiring for /upload/firmware — fires after the
+    // 200 OK body has flushed and before ScheduleReboot. Kept inline so
+    // the webserver component doesn't need to link against the LED
+    // controller (it already depends on a stack of non-HW components).
+    ccfg.on_ota_completion_blink = []() {
+      PlayOtaCompletionBlink(3, 150);
+    };
+
     ccfg.api_id_to_slot = [sm_ptr](int api_id) -> int {
       const auto& ccs = sm_ptr->currencies();
       std::size_t pref = 0;
@@ -230,6 +257,75 @@ void InitControlApi(AppCtx& ctx) {
   // OTA manager — stores release URL + per-variant asset name so the
   // /api/firmware/auto_update handler can kick off a pull update.
   GetOtaManager().Init(MakeOtaConfig());
+
+  // Pre-flash hook: fires once on the httpd worker before esp_ota_begin
+  // erases the partition. We stop every data source (WS client, nostr
+  // relay + zap listener, mining-pool + bitaxe pollers) to free the
+  // internal heap their TLS / recv buffers were holding, then paint the
+  // "UPDATE!" overlay on every panel and latch ScreenManager into OTA
+  // mode so the main loop can't stomp it. The main render loop stops
+  // painting once SetOtaOverlay(true) is observed — subsequent panel
+  // writes come only from this handler's completion-blink branch (LED
+  // only; the EPD stays on the "UPDATE!" screen until esp_restart).
+  GetOtaManager().SetPreFlashHook([ctx_ptr]() {
+    ESP_LOGW("ota-ux", "pre-flash hook: quiescing data + painting UPDATE");
+    // Quiesce data sources — DataHub::StopAll is best-effort and safe
+    // to call from any task.
+    if (ctx_ptr->hub) ctx_ptr->hub->StopAll();
+    // Nostr stack. Stop the listener first so its callback won't fire
+    // after the relay closes; then stop the relay's own WS task.
+    if (ctx_ptr->zap_listener) ctx_ptr->zap_listener->Stop();
+    if (ctx_ptr->zap_relay) ctx_ptr->zap_relay->Stop();
+    // Latch ScreenManager into OTA mode before painting — ShouldRender
+    // now returns false so the main loop stays out of the EPD for the
+    // remainder of the flash. Rotation timer is frozen via the same
+    // predicate in MaybeAutoRotate.
+    if (ctx_ptr->sm) {
+      ctx_ptr->sm->SetOtaOverlay(true);
+      RenderOtaUpdateScreen(ctx_ptr->panels, AppCtx::fb_storage(),
+                            ctx_ptr->fonts);
+    }
+    // Seed the LED bar so the user sees "something is happening"
+    // before the first real progress event fires.
+    ShowOtaProgressLedCount(1);
+  });
+
+  // Progress callback: translate (written,total) into a 4-LED bar.
+  // Content-Length missing → indeterminate indicator. The write phase
+  // emits one event per ~16 KiB, so this lambda fires ~100 times over
+  // a 1.5 MiB image — cheap enough for the httpd worker thread.
+  GetOtaManager().SetProgressCallback([](const OtaProgress& p) {
+    switch (p.phase) {
+      case OtaProgress::Phase::kStarting:
+        ShowOtaProgressLedCount(1);
+        break;
+      case OtaProgress::Phase::kWriting: {
+        if (p.total == 0) {
+          ShowOtaProgressIndeterminate();
+        } else {
+          const float frac = ProgressFraction(p.written, p.total);
+          ShowOtaProgressLedCount(ProgressFractionToLedCount(frac));
+        }
+        break;
+      }
+      case OtaProgress::Phase::kVerifying:
+        ShowOtaProgressLedCount(4);
+        break;
+      case OtaProgress::Phase::kRebooting:
+        // Light all 4 pixels solid green. The blocking 3x completion
+        // blink runs in HandleUploadFirmware after SendJson, so the
+        // HTTP response flushes before we hold the httpd worker for
+        // the ~1 s blink sequence.
+        ShowOtaProgressLedCount(4);
+        break;
+      case OtaProgress::Phase::kFailed:
+        // Clear the bar so a failed attempt leaves the strip dark,
+        // then let the caller fall back to the normal resting state
+        // via kSetIdle on the next interaction.
+        ShowOtaProgressLedCount(0);
+        break;
+    }
+  });
 
   // Re-hook DataHub on-update so fresh snapshots also fan out to SSE
   // subscribers. Capturing `ctrl`'s raw pointer is safe — the hub's

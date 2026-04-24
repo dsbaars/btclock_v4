@@ -1,12 +1,15 @@
 #include "app/boot/init_screen_manager.hpp"
 
 #include <cassert>
+#include <cstdio>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/rotation_plan.hpp"
 #include "fonts_app.hpp"
 #include "io/mining_pool_selector.hpp"
 #include "app/screen_manager.hpp"
@@ -35,10 +38,43 @@ void InitScreenManager(AppCtx& ctx) {
     ctx.fonts.SetFamily(ParseFontFamily(id));
   }
 
-  // Active currency set. For now hardcoded; beads lx0.11+ tracks the
-  // NVS-backed config. Antonio's subset covers $/£/¥/€ symbols.
-  ctx.currencies = {"USD", "EUR", "GBP", "JPY"};
+  // Active currency set lives under `actCurrencies` (CSV). Mirrors what
+  // the settings API emits in GET /api/settings `actCurrencies[]` so the
+  // rotation walks only the codes the user picked in the WebUI. Empty /
+  // missing NVS value falls back to the WebUI's "first-launch defaults"
+  // trio so a fresh device still rotates through something sensible.
+  {
+    Prefs settings(prefs::kSettingsNs);
+    const std::string csv =
+        settings.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+    ctx.currencies.clear();
+    std::stringstream ss(csv);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (!item.empty()) ctx.currencies.push_back(item);
+    }
+    if (ctx.currencies.empty()) ctx.currencies.push_back("USD");
+  }
   ctx.sm = std::make_unique<ScreenManager>(MsNow(), ctx.currencies);
+
+  // Build the auto-rotate traversal sequence from the persisted
+  // `screenOrder` CSV + `screen<id>Visible` toggles. When `screenOrder`
+  // is unset (fresh device), the builder falls back to slot-index order
+  // — pre-screenOrder default. `screenXVisible` defaults to true so a
+  // missing key doesn't silently drop the screen from rotation.
+  {
+    Prefs settings(prefs::kSettingsNs);
+    const std::string order_csv =
+        settings.GetString(prefs::kScreenOrder, "");
+    auto is_enabled = [](int api_id) -> bool {
+      Prefs p(prefs::kSettingsNs);
+      char vkey[24];
+      std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
+      return p.GetBool(vkey, true);
+    };
+    ctx.sm->SetRotationSequence(rotation_plan::BuildRotationSequence(
+        order_csv, is_enabled, ctx.currencies.size()));
+  }
 
   // Sats-symbol glyph index (0..15) lives in the "ui" namespace so it
   // can sit alongside future user-facing display prefs (color, layout)

@@ -131,6 +131,109 @@ TEST_CASE("Zap receipt: missing amount/bolt11 surfaces as false") {
   CHECK(bolt11 == "unchanged");
 }
 
+// --- Bug-1 gate: ShouldSurfaceZap --------------------------------------
+// Zero-sat zap receipts (relay-malformed NIP-57 events) should never
+// reach the overlay / LED flash / LatestZap snapshot update. The gate
+// lives on the parser helper so a host test can pin it without
+// standing up the whole SubscriptionManager. The listener calls it
+// inline in Handle() — see components/nostr/src/zap_listener.cpp.
+
+TEST_CASE("ShouldSurfaceZap: 0-sat receipt is ignored") {
+  const std::string zero = R"({
+    "id":"z0",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":9735,
+    "tags":[["p","abc"],["amount","0"],["bolt11","lnbc0"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(zero, ev));
+  CHECK_FALSE(ShouldSurfaceZap(ev));
+}
+
+TEST_CASE("ShouldSurfaceZap: sub-sat (amount<1000 msat) is ignored") {
+  // 500 msat == 0.5 sat. NIP-57 allows sub-sat in theory; the firmware
+  // rounds to sats for display and 0 sats is the "nothing to show"
+  // case we're gating out.
+  const std::string sub = R"({
+    "id":"zs",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":9735,
+    "tags":[["p","abc"],["amount","500"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(sub, ev));
+  CHECK_FALSE(ShouldSurfaceZap(ev));
+}
+
+TEST_CASE("ShouldSurfaceZap: missing amount tag is ignored") {
+  const std::string no_amt = R"({
+    "id":"zm",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":9735,
+    "tags":[["p","abc"],["bolt11","lnbc"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(no_amt, ev));
+  CHECK_FALSE(ShouldSurfaceZap(ev));
+}
+
+TEST_CASE("ShouldSurfaceZap: 1-sat receipt surfaces (edge case)") {
+  // 1000 msat == 1 sat. Boundary of the gate.
+  const std::string one = R"({
+    "id":"z1",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":9735,
+    "tags":[["p","abc"],["amount","1000"],["bolt11","lnbc10n"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(one, ev));
+  CHECK(ShouldSurfaceZap(ev));
+}
+
+TEST_CASE("ShouldSurfaceZap: 21k sat receipt surfaces") {
+  const std::string k21 = R"({
+    "id":"z21k",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":9735,
+    "tags":[["p","abc"],["amount","21000000"],["bolt11","lnbc210u"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(k21, ev));
+  CHECK(ShouldSurfaceZap(ev));
+}
+
+TEST_CASE("ShouldSurfaceZap: non-zap kind never surfaces") {
+  // Defensive — a mis-routed frame with a valid amount but wrong kind
+  // should not be surfaced even if the listener somehow forwards it.
+  const std::string wrong_kind = R"({
+    "id":"zk",
+    "pubkey":"c0ffee",
+    "created_at":1,
+    "kind":30078,
+    "tags":[["amount","1000"]],
+    "content":"",
+    "sig":"0"
+  })";
+  Event ev;
+  REQUIRE(ParseEventObject(wrong_kind, ev));
+  CHECK_FALSE(ShouldSurfaceZap(ev));
+}
+
 TEST_CASE("BuildReqJson: kind + author filter is a valid NIP-01 REQ") {
   Filter f;
   f.kinds.push_back(30078);

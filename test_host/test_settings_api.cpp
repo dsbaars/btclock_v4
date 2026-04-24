@@ -96,6 +96,37 @@ btclock::settings::DeviceContext DefaultCtx() {
 
 }  // namespace
 
+TEST_CASE("GET /api/settings emits lastBuildTime as Unix seconds integer") {
+  // 2026-04-24T15:30:45Z -> 1777044645 (see test_build_time.cpp).
+  FakePrefs prefs;
+  auto ctx = DefaultCtx();
+  ctx.last_build_time_unix = 1777044645;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+
+  cJSON* lbt = cJSON_GetObjectItemCaseSensitive(root, "lastBuildTime");
+  REQUIRE(lbt != nullptr);
+  // MUST be a JSON number, never a string — the WebUI formats it with
+  // `new Date(seconds * 1000)` and a stray string would land as NaN.
+  CHECK(cJSON_IsNumber(lbt));
+  CHECK_FALSE(cJSON_IsString(lbt));
+  CHECK(static_cast<int64_t>(lbt->valuedouble) == 1777044645);
+
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET /api/settings omits lastBuildTime when unknown") {
+  // Populate nothing — default-constructed ctx has last_build_time_unix=0,
+  // which the handler treats as "unknown" and drops from the response so
+  // the WebUI renders a placeholder instead of "1970-01-01".
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  CHECK(cJSON_GetObjectItemCaseSensitive(root, "lastBuildTime") == nullptr);
+  cJSON_Delete(root);
+}
+
 TEST_CASE("GET /api/settings emits device-context fields") {
   FakePrefs prefs;
   cJSON* root =
@@ -274,6 +305,116 @@ TEST_CASE("GET /api/settings renumbers order after hiding a screen") {
     CHECK(static_cast<int>(o->valuedouble) == expected);
     ++expected;
   }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET drops mining-pool screens (70,71) when miningPoolStats off") {
+  // Feature-flag gate. Both the pool hashrate slot (70) and the earnings
+  // slot (71) must disappear from the emitted list when the parent
+  // `miningPoolStats` toggle is off — matches how the bitaxe pair is
+  // suppressed below. The WebUI's "which screens can I re-order" picker
+  // must only advertise screens the firmware can actually render.
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.mining_pool_stats_enabled = false;
+  ctx.bitaxe_enabled = true;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 70) == ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 71) == ids.end());
+  // Bitaxe pair still present.
+  CHECK(std::find(ids.begin(), ids.end(), 80) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 81) != ids.end());
+  // Order must remain contiguous 0..N-1 after the filter.
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  int expected = 0;
+  cJSON* it = nullptr;
+  cJSON_ArrayForEach(it, arr) {
+    cJSON* o = cJSON_GetObjectItemCaseSensitive(it, "order");
+    REQUIRE(cJSON_IsNumber(o));
+    CHECK(static_cast<int>(o->valuedouble) == expected);
+    ++expected;
+  }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET drops bitaxe screens (80,81) when bitaxeEnabled off") {
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.mining_pool_stats_enabled = true;
+  ctx.bitaxe_enabled = false;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 80) == ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 81) == ids.end());
+  // Mining-pool slots still present when the parent flag is on.
+  CHECK(std::find(ids.begin(), ids.end(), 70) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 71) != ids.end());
+  // Order renumbered contiguously.
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  int expected = 0;
+  cJSON* it = nullptr;
+  cJSON_ArrayForEach(it, arr) {
+    cJSON* o = cJSON_GetObjectItemCaseSensitive(it, "order");
+    REQUIRE(cJSON_IsNumber(o));
+    CHECK(static_cast<int>(o->valuedouble) == expected);
+    ++expected;
+  }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET drops 70/80/81 when both features off (71 stays dropped via mining gate)") {
+  // Bug repro fixture: stock Rev A boot has both features off and still
+  // emits 70, 80, 81 as enabled=false entries. After the fix all three
+  // must be gone.
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.mining_pool_stats_enabled = false;
+  ctx.bitaxe_enabled = false;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 70) == ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 71) == ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 80) == ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 81) == ids.end());
+  // The eight always-available screens from CtxWithEarnings() remain.
+  CHECK(ids.size() == ctx.screens.size() - 4);
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET keeps id 70 + drops 71 on solo pool (mining on, earnings hidden)") {
+  // Combined path: parent feature is on but the active pool doesn't
+  // support per-user earnings, so the legacy `hidden_screen_ids` gate
+  // alone drops 71 while 70 stays visible.
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.mining_pool_stats_enabled = true;
+  ctx.bitaxe_enabled = true;
+  ctx.hidden_screen_ids = {71};  // what the solo-pool probe contributes
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 70) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 71) == ids.end());
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET all four (70,71,80,81) present when both flags on + non-solo pool") {
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.mining_pool_stats_enabled = true;
+  ctx.bitaxe_enabled = true;
+  // `hidden_screen_ids` empty = non-solo pool (ocean etc.).
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 70) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 71) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 80) != ids.end());
+  CHECK(std::find(ids.begin(), ids.end(), 81) != ids.end());
   cJSON_Delete(root);
 }
 
@@ -613,14 +754,16 @@ TEST_CASE("PATCH txPower 80 resets to default") {
 TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // Freezes the classification until someone intentionally edits the
   // schema. Beads report echoes these numbers.
-  CHECK(btclock::settings::kFields.size() == 64);
+  // 2026-04-24 bd btclock_v4-9rx: gmtOffset removed from the schema
+  // (v4 drives the clock from tzString); field count 64 -> 63,
+  // boot-only count 19 -> 18.
+  CHECK(btclock::settings::kFields.size() == 63);
   // Boot-only count: hostnamePrefix, mdnsEnabled, otaEnabled,
   // httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, fontName,
   // mempoolInstance, mempoolSecure, dataSource, ceEndpoint,
   // ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
-  // enableDebugLog, gmtOffset, wpTimeout = 19. (invertedColor moved
-  // to runtime — bd btclock_v4-5wj.)
-  CHECK(btclock::settings::BootOnlyCount() == 19);
+  // enableDebugLog, wpTimeout = 18.
+  CHECK(btclock::settings::BootOnlyCount() == 18);
 }
 
 TEST_CASE("NVS key length guard: every field key fits NVS's 15-char limit") {
@@ -809,7 +952,7 @@ TEST_CASE("PATCH verticalDesc wrong type rejected") {
   CHECK(res.error == "verticalDesc:bad_type");
 }
 
-// -- wpTimeout + gmtOffset / tzOffset -------------------------------
+// -- wpTimeout -------------------------------------------------------
 
 TEST_CASE("PATCH wpTimeout accepted, triggers reboot") {
   FakePrefs prefs;
@@ -828,31 +971,25 @@ TEST_CASE("PATCH wpTimeout too large rejected") {
   CHECK(res.error == "range:wpTimeout");
 }
 
-TEST_CASE("PATCH tzOffset minutes -> gmtOffset seconds") {
+// bd btclock_v4-9rx: `gmtOffset` / `tzOffset` were removed from the PATCH
+// schema on 2026-04-24 (v4 reads the clock from tzString only). A legacy
+// client that still sends them must not get an error — the keys are
+// silently ignored, the rest of the body applies.
+TEST_CASE("PATCH tzOffset silently ignored, rest of body still lands") {
   FakePrefs prefs;
-  // +2h = 120 minutes -> 7200 s
   auto res = btclock::settings::ApplyPatch(
-      "{\"tzOffset\":120}", DefaultCtx(), prefs, prefs);
+      "{\"tzOffset\":120,\"mowMode\":true}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.i32_["gmtOffset"] == 7200);
-  CHECK(res.reboot_required);
+  CHECK(!prefs.i32_.count("gmtOffset"));   // never written
+  CHECK(prefs.b_.at("mowMode") == true);   // sibling key still landed
 }
 
-TEST_CASE("PATCH tzOffset negative accepted") {
+TEST_CASE("PATCH gmtOffset silently ignored (no-op, no error)") {
   FakePrefs prefs;
-  // -5h = -300 minutes -> -18000 s (US/Eastern)
   auto res = btclock::settings::ApplyPatch(
-      "{\"tzOffset\":-300}", DefaultCtx(), prefs, prefs);
+      "{\"gmtOffset\":7200}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.i32_["gmtOffset"] == -18000);
-}
-
-TEST_CASE("PATCH tzOffset out-of-range rejected") {
-  FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"tzOffset\":99999}", DefaultCtx(), prefs, prefs);
-  CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
-  CHECK(res.error == "tzOffset:range");
+  CHECK(!prefs.i32_.count("gmtOffset"));
 }
 
 // -- dataSource enum range -----------------------------------------
@@ -888,16 +1025,240 @@ TEST_CASE("PATCH fontName with empty catalog accepts anything") {
 
 // -- GET must emit every newly-added schema field ------------------
 
-TEST_CASE("GET emits verticalDesc / flFlashOnZap / ledFlashOnZap / wpTimeout / gmtOffset") {
+TEST_CASE("GET emits verticalDesc / flFlashOnZap / ledFlashOnZap / wpTimeout") {
   FakePrefs prefs;
   cJSON* root =
       btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
   for (const char* k : {"verticalDesc", "flFlashOnZap", "ledFlashOnZap",
-                        "wpTimeout", "gmtOffset"}) {
+                        "wpTimeout"}) {
     CAPTURE(k);
     cJSON* item = cJSON_GetObjectItemCaseSensitive(root, k);
     REQUIRE(item != nullptr);
   }
+  // gmtOffset removed on 2026-04-24 (bd btclock_v4-9rx). Confirm it no
+  // longer surfaces so a future schema addition with the same name fails
+  // loudly.
+  CHECK(cJSON_GetObjectItemCaseSensitive(root, "gmtOffset") == nullptr);
   cJSON_Delete(root);
+}
+
+// --- blockFlashColor PATCH (Bug 3: honor user-selected flash colour) -
+
+TEST_CASE("PATCH blockFlashColor persists uint RGB and reports touched key") {
+  FakePrefs prefs;
+  // 0xFF8000 == 16'744'448 decimal — the example in the bug brief.
+  auto res = btclock::settings::ApplyPatch(
+      "{\"blockFlashColor\":16744448}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(!res.reboot_required);  // runtime-editable
+  // Persisted under the documented key — on-device the init hook
+  // mirrors this into the led namespace so the block-flash effect
+  // picks it up without reboot.
+  CHECK(prefs.u32_[btclock::prefs::kBlockFlashColor] == 0xFF8000u);
+  // touched_keys is the signal the control server uses to decide
+  // whether to fire on_block_flash_color_changed -> SetBlockFlashColor.
+  const auto& keys = res.touched_keys;
+  CHECK(std::find(keys.begin(), keys.end(),
+                  std::string(btclock::prefs::kBlockFlashColor)) !=
+        keys.end());
+}
+
+TEST_CASE("PATCH blockFlashColor clamps to the 24-bit schema bound") {
+  FakePrefs prefs;
+  // 0x1FF_FFFF exceeds the 0..0xFFFFFF schema max — ApplyPatch must
+  // reject rather than silently truncate the alpha byte.
+  auto bad = btclock::settings::ApplyPatch(
+      "{\"blockFlashColor\":33554431}", DefaultCtx(), prefs, prefs);
+  CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
+  CHECK(bad.error == std::string("range:") +
+                         std::string(btclock::prefs::kBlockFlashColor));
+  CHECK(prefs.u32_.count(btclock::prefs::kBlockFlashColor) == 0);
+}
+
+// -- Defaults sweep (ported from btclock_v3_fci defaults.hpp) --------
+//
+// A fresh install (no NVS entries touched) must surface the v3 default
+// values rather than zero/empty. Pins every non-trivial default so a
+// future schema edit that drops a default surfaces here before it ships.
+
+namespace {
+
+// Read a field of known kind from the GET response. Returns the value as
+// a uniform variant-lite so the table-driven test below can stay flat.
+struct GetValue {
+  bool b = false;
+  double n = 0;
+  std::string s;
+  bool found = false;
+};
+
+GetValue ReadField(cJSON* root, const char* key) {
+  GetValue out;
+  cJSON* it = cJSON_GetObjectItemCaseSensitive(root, key);
+  if (!it) return out;
+  out.found = true;
+  if (cJSON_IsBool(it)) out.b = cJSON_IsTrue(it);
+  else if (cJSON_IsNumber(it)) out.n = it->valuedouble;
+  else if (cJSON_IsString(it)) out.s = it->valuestring ? it->valuestring : "";
+  return out;
+}
+
+}  // namespace
+
+TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
+  FakePrefs prefs;  // zero stored values
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root);
+
+  // Bool defaults — (key, expected).
+  const std::pair<const char*, bool> bools[] = {
+      {"bitaxeEnabled", false},
+      {"blockFeeDec", true},
+      {"ceDisableSSL", false},
+      {"disableLeds", false},
+      {"enableDebugLog", false},
+      {"flAlwaysOn", true},
+      {"flDisable", false},
+      {"flFlashOnUpd", true},
+      {"flFlashOnZap", true},
+      {"flOffWhenDark", true},
+      {"httpAuthEnabled", false},
+      {"inverseButtons", false},
+      {"ledFlashOnUpd", false},
+      {"ledFlashOnZap", true},
+      {"ledTestOnPower", true},
+      {"mcapBigChar", true},
+      {"mdnsEnabled", true},
+      {"mempoolSecure", true},
+      {"miningPoolStats", false},
+      {"mowMode", false},
+      {"nostrZapNotify", false},
+      {"otaEnabled", true},
+      {"poolGlobalStats", false},
+      {"refrScrnChange", false},
+      {"scrnRestoreZap", true},
+      {"stealFocus", false},
+      {"suffixPrice", false},
+      {"suffixShareDot", false},
+      {"supplyPercent", false},
+      {"useBlkCountdown", true},
+      {"useMscwTime", true},
+      {"useSatsSymbol", false},
+      {"verticalDesc", true},
+  };
+  for (const auto& [k, v] : bools) {
+    CAPTURE(k);
+    auto got = ReadField(root, k);
+    REQUIRE(got.found);
+    CHECK(got.b == v);
+  }
+
+  // Uint defaults — (key, expected).
+  const std::pair<const char*, double> uints[] = {
+      {"blockFlashColor", 0xE04300},
+      {"flEffectDelay", 15},
+      {"flMaxBrightness", 2048},
+      {"fullRefreshMin", 60},
+      {"ledBrightness", 128},
+      {"luxLightToggle", 128},
+      {"minSecPriceUpd", 30},
+      {"wifiRebootMin", 10},
+      {"wpTimeout", 15 * 60},
+  };
+  for (const auto& [k, v] : uints) {
+    CAPTURE(k);
+    auto got = ReadField(root, k);
+    REQUIRE(got.found);
+    CHECK(got.n == v);
+  }
+
+  // String defaults — (key, expected).
+  const std::pair<const char*, const char*> strings[] = {
+      {"bitaxeHostname", "bitaxe1"},
+      {"ceEndpoint", "ws-staging.btclock.dev"},
+      {"fontName", "antonio"},
+      {"gitReleaseUrl",
+       "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/latest"},
+      {"hostnamePrefix", "btclock"},
+      {"httpAuthUser", "btclock"},
+      {"localPoolHost", "umbrel.local:2019"},
+      {"mempoolInstance", "mempool.space"},
+      {"miningPoolName", "ocean"},
+      {"miningPoolUser", "38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy"},
+      {"nostrPubKey",
+       "642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288"},
+      {"nostrRelay", "wss://relay.primal.net"},
+      {"nostrZapPubkey",
+       "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"},
+      {"poolLogosUrl",
+       "https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main"},
+      {"tzString", "Europe/Amsterdam"},
+  };
+  for (const auto& [k, v] : strings) {
+    CAPTURE(k);
+    auto got = ReadField(root, k);
+    REQUIRE(got.found);
+    CHECK(got.s == v);
+  }
+
+  // Passwords must NOT leak a non-empty default — the GET emitter uses
+  // empty string and emits the httpAuthPassSet / otaPassSet booleans
+  // instead (matches v3 behaviour post-"reflect actual storage" fix).
+  {
+    auto pw = ReadField(root, "httpAuthPass");
+    REQUIRE(pw.found);
+    CHECK(pw.s.empty());
+    auto ota = ReadField(root, "otaPass");
+    REQUIRE(ota.found);
+    CHECK(ota.s.empty());
+    auto pwSet = ReadField(root, "httpAuthPassSet");
+    REQUIRE(pwSet.found);
+    CHECK(pwSet.b == false);  // no password stored in the FakePrefs
+  }
+
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET defaults are overridden once NVS has the key set") {
+  // A stored value must win over the schema default. Regression guard
+  // for a buggy EmitField that forgets the prefs lookup and always
+  // returns the hardcoded default.
+  FakePrefs prefs;
+  prefs.b_["mowMode"] = true;
+  prefs.str_["fontName"] = "oswald";
+  prefs.u32_["ledBrightness"] = 42;
+
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root);
+  CHECK(ReadField(root, "mowMode").b == true);
+  CHECK(ReadField(root, "fontName").s == "oswald");
+  CHECK(ReadField(root, "ledBrightness").n == 42);
+  cJSON_Delete(root);
+}
+
+// -- numScreens consistency (bd btclock_v4: settings vs status) --------
+
+TEST_CASE("numScreens reflects the hardware panel count, not rotation slots") {
+  // Both GET /api/settings and /api/status should emit the same
+  // numScreens value — the hardware EPD panel count. A Rev A/B device
+  // has 3 panels; V8 has 7 or 8. The rotation slot count varies with
+  // active currencies (and is the *wrong* thing to expose as
+  // numScreens because the WebUI uses it as maxlength for custom-text
+  // input, which must equal the physical panel count).
+  FakePrefs prefs;
+  auto ctx = DefaultCtx();
+  ctx.num_screens = 7;  // simulate V8
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root);
+  cJSON* n = cJSON_GetObjectItemCaseSensitive(root, "numScreens");
+  REQUIRE(cJSON_IsNumber(n));
+  CHECK(static_cast<int>(n->valuedouble) == 7);
+  cJSON_Delete(root);
+  // The /api/status side of the invariant lives in
+  // components/webserver/control_server.cpp::BuildStatusJson and uses
+  // cfg_.num_screens directly. The mismatch-with-settings regression
+  // was root-caused to that builder reading `live.slot_count` (the
+  // rotation length) instead; the fix substitutes cfg_.num_screens so
+  // both surfaces agree for a given DeviceContext + config pair.
 }

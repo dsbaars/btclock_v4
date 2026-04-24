@@ -29,14 +29,33 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <mutex>
 #include <string>
 
 #include "esp_err.h"
+
+#include "ota_progress.hpp"
 
 namespace btclock {
 
 class OtaManager {
  public:
+  // Progress callback signature — invoked from WritePushImage on
+  // milestone boundaries (start, every ~16 KiB written, on verify /
+  // reboot / failure). May be called from any task; the callback must
+  // be cheap (a few LED posts + a status mirror). Use SetProgressCallback
+  // to install. Pass `{}` to clear.
+  using ProgressCallback = std::function<void(const OtaProgress&)>;
+
+  // Pre-flash hook — fires once from WritePushImage BEFORE the first
+  // esp_ota_begin call. Used to stop data sources / nostr relay / pollers
+  // so the write path has more internal heap to work with, and to paint
+  // the "UPDATE!" overlay on every EPD panel. Not called for pull-OTA
+  // today (the auto-update flow already pauses naturally between HTTPS
+  // reads).
+  using PreFlashHook = std::function<void()>;
+
   struct Config {
     // GitHub-style releases JSON (with `assets[]` containing
     // `browser_download_url`). Empty disables pull-OTA.
@@ -80,12 +99,30 @@ class OtaManager {
                            const char* expected_sha256_hex,
                            size_t* out_written);
 
+  // Install / clear the progress callback. Thread-safe. The callback is
+  // invoked on the WritePushImage caller's thread (the httpd worker),
+  // so callers that want to paint the EPD panels should either do so
+  // directly here (the main render loop short-circuits while the OTA
+  // is active) or hop the work to a task that owns the panels.
+  void SetProgressCallback(ProgressCallback cb);
+
+  // Install / clear the pre-flash hook. See the PreFlashHook doc above.
+  void SetPreFlashHook(PreFlashHook hook);
+
  private:
   static void AutoUpdateTaskTrampoline(void* arg);
   void RunAutoUpdate();
 
+  // Internal: fire `progress_cb_` under the mutex. Copies the callback
+  // out before invocation so a concurrent SetProgressCallback doesn't
+  // mutate the functor while it's on the stack.
+  void EmitProgress(const OtaProgress& p);
+
   Config cfg_;
   std::atomic<bool> is_updating_{false};
+  std::mutex cb_mu_;
+  ProgressCallback progress_cb_;
+  PreFlashHook pre_flash_hook_;
 };
 
 // Process-wide singleton. Safe to call before Init — methods that

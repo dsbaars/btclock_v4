@@ -26,8 +26,10 @@ add_executable(btclock_host_tests
     main.cpp
     test_control_validators.cpp
     test_frontlight_fade.cpp
+    test_frontlight_ambient_policy.cpp
     test_mime.cpp
     test_net_util.cpp
+    test_hostname.cpp
     test_partitions.cpp
     test_screen_ref_chars.cpp
     test_fee_rate.cpp
@@ -45,6 +47,8 @@ add_executable(btclock_host_tests
     test_bitaxe_panel_texts.cpp
     test_screen_math.cpp
     test_webui_upload_bounds.cpp
+    test_ota_upload_bounds.cpp
+    test_ota_progress.cpp
     test_timezone.cpp
     test_led_curves.cpp
     test_led_color_parse.cpp
@@ -54,6 +58,7 @@ add_executable(btclock_host_tests
     test_dnd.cpp
     test_screen_rotation.cpp
     test_screen_slot_map.cpp
+    test_rotation_plan.cpp
     test_panel_texts.cpp
     test_price_layout.cpp
     test_show_text_parse.cpp
@@ -65,7 +70,13 @@ add_executable(btclock_host_tests
     test_bh1750_math.cpp
     test_light_metrics.cpp
     test_font_roles.cpp
+    test_refresh_policy.cpp
+    test_build_time.cpp
+    test_block_event_policy.cpp
+    test_vertical_desc.cpp
+    ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
+    ../main/io/frontlight_ambient_policy.cpp
     ../main/io/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
@@ -78,6 +89,7 @@ add_executable(btclock_host_tests
     ../components/webserver/sse_frame.cpp
     ../components/webserver/auth_gate_logic.cpp
     ../components/settings/settings_api.cpp
+    ../components/settings/build_time.cpp
     ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
 )
@@ -90,6 +102,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/nostr/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/tls_gate/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/net_util/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_common/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_braiins/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_ocean/include
@@ -100,6 +113,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_gobrrr/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/bitaxe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_fs/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/ota/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/timezone/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/settings/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
