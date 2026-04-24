@@ -29,7 +29,8 @@ void RenderClockScreen(
     bool valid, int hour, int minute, int mday, int month,
     bool prev_valid, int prev_hour, int prev_minute,
     int prev_mday, int prev_month,
-    bool full_refresh_mode, bool vertical_desc) {
+    bool full_refresh_mode, bool vertical_desc,
+    bool hide_leading_zero) {
   static_assert(N >= 7, "clock layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -56,9 +57,17 @@ void RenderClockScreen(
   std::string label_text = std::string(top) + "/" + bot;
 
   const ClockLayout now =
-      ComputeClockLayout(valid, hour, minute, kDigitPanels);
+      ComputeClockLayout(valid, hour, minute, kDigitPanels,
+                         hide_leading_zero);
+  // The previous frame was rendered with the pref value active at that
+  // point; using the current pref value here is fine because a PATCH
+  // toggle calls MarkDirty, which forces cell_diff_reset via the
+  // validity-flip path so every cell repaints on the next render. A
+  // scan-for-scan mismatch on a partial-refresh cycle would show a
+  // stray leading zero for one frame — acceptable and self-healing.
   const ClockLayout before =
-      ComputeClockLayout(prev_valid, prev_hour, prev_minute, kDigitPanels);
+      ComputeClockLayout(prev_valid, prev_hour, prev_minute, kDigitPanels,
+                         hide_leading_zero);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
@@ -85,10 +94,10 @@ void RenderClockScreen(
 template void RenderClockScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, bool, int, int, int, int, bool, int, int, int, int,
-    bool, bool);
+    bool, bool, bool);
 template void RenderClockScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, bool, int, int, int, int, bool, int, int, int, int,
-    bool, bool);
+    bool, bool, bool);
 
 }  // namespace btclock

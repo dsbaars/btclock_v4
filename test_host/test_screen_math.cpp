@@ -196,6 +196,72 @@ TEST_CASE("ComputeClockLayout handles midnight and 23:59 edges") {
   CHECK(latest.digits[4] == '9');
 }
 
+// ----- ComputeClockLayout: hide-leading-zero -----
+//
+// Mirrors the `hideLeadZero` setting. The tens-of-hours slot goes blank
+// for 0..9; 10..23 stay untouched. Minute digits always keep their
+// zero pad so "7:05" renders as " 7:05", never " 7: 5".
+
+TEST_CASE("ComputeClockLayout hide_leading_zero blanks tens for 7am") {
+  const auto l = btclock::ComputeClockLayout(true, 7, 0, 5, true);
+  CHECK(l.digits[0] == ' ');
+  CHECK(l.digits[1] == '7');
+  CHECK(l.digits[2] == ':');
+  CHECK(l.digits[3] == '0');
+  CHECK(l.digits[4] == '0');
+}
+
+TEST_CASE("ComputeClockLayout hide_leading_zero blanks tens for midnight") {
+  const auto l = btclock::ComputeClockLayout(true, 0, 0, 5, true);
+  CHECK(l.digits[0] == ' ');
+  CHECK(l.digits[1] == '0');
+  CHECK(l.digits[2] == ':');
+  CHECK(l.digits[3] == '0');
+  CHECK(l.digits[4] == '0');
+}
+
+TEST_CASE("ComputeClockLayout hide_leading_zero keeps minute zero-pad") {
+  // Minute stays "05", never "5" — matches the user-visible "7:05"
+  // example (minute leading zero is always preserved).
+  const auto l = btclock::ComputeClockLayout(true, 7, 5, 5, true);
+  CHECK(l.digits[0] == ' ');
+  CHECK(l.digits[1] == '7');
+  CHECK(l.digits[2] == ':');
+  CHECK(l.digits[3] == '0');
+  CHECK(l.digits[4] == '5');
+}
+
+TEST_CASE("ComputeClockLayout hide_leading_zero untouched for two-digit hours") {
+  // Noon: 12:00 stays 12:00 with or without the flag.
+  const auto noon_hide = btclock::ComputeClockLayout(true, 12, 0, 5, true);
+  CHECK(noon_hide.digits[0] == '1');
+  CHECK(noon_hide.digits[1] == '2');
+  const auto one_pm = btclock::ComputeClockLayout(true, 13, 0, 5, true);
+  CHECK(one_pm.digits[0] == '1');
+  CHECK(one_pm.digits[1] == '3');
+  const auto late = btclock::ComputeClockLayout(true, 23, 45, 5, true);
+  CHECK(late.digits[0] == '2');
+  CHECK(late.digits[1] == '3');
+  CHECK(late.digits[3] == '4');
+  CHECK(late.digits[4] == '5');
+}
+
+TEST_CASE("ComputeClockLayout hide_leading_zero off keeps legacy HH:MM") {
+  // Default (flag=false) must match the pre-refactor output byte-for-byte.
+  const auto l = btclock::ComputeClockLayout(true, 7, 0, 5, false);
+  CHECK(l.digits[0] == '0');
+  CHECK(l.digits[1] == '7');
+  CHECK(l.digits[2] == ':');
+  CHECK(l.digits[3] == '0');
+  CHECK(l.digits[4] == '0');
+}
+
+TEST_CASE("ComputeClockLayout hide_leading_zero preserves invalid-blank path") {
+  // When NTP hasn't synced the whole layout stays blank regardless.
+  const auto l = btclock::ComputeClockLayout(false, 7, 0, 5, true);
+  for (int i = 0; i < 5; ++i) CHECK(l.digits[i] == ' ');
+}
+
 TEST_CASE("SmallCharsGroups — USD market cap 1.568T across 6 panels") {
   // Reproduces the live Rev B bug: cap = 1,567,956,610,000 (13 digits).
   // Old single-digit-per-panel truncated to the last 6 digits; the

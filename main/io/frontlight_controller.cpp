@@ -162,121 +162,224 @@ void FrontlightController::WriteAllChannels(uint16_t duty) {
   }
 }
 
+void FrontlightController::WriteStaggeredTick(uint32_t tick,
+                                               uint16_t max_brightness,
+                                               StaggerDirection direction) {
+  // Per-LED duty uses the pure helper so host tests exercise the same
+  // math the hardware sees. `i` here is the stagger index 0..N-1; it
+  // maps to PCA channel `channel_first_ + i`. v3 pinned index 0 as
+  // the first-to-light LED; we preserve that so the cascade direction
+  // across the physical panel matches v3.
+  for (uint8_t i = 0; i < channel_count_; ++i) {
+    const uint16_t duty = ComputeStaggeredDuty(
+        tick, i, channel_count_, max_brightness, frontlight::kFadeStep,
+        direction);
+    pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), duty);
+  }
+}
+
 void FrontlightController::TaskTrampoline(void* arg) {
   static_cast<FrontlightController*>(arg)->TaskLoop();
 }
 
 void FrontlightController::TaskLoop() {
-  // Pulse state machine: on a kBlockFlash/kZapFlash the controller
-  // captures the pre-flash target, ramps up to max, holds, then
-  // restores. A mid-pulse event (e.g. Off while flashing) wins: the
-  // pulse aborts and the new target takes over.
-  enum class PulsePhase : uint8_t { kIdle, kRampUp, kHold, kRampDown };
+  // Pulse state machine — two-phase staggered animation, mirroring v3
+  // `LedHandler::frontlightFlash` (btclock_v3_fci:
+  // src/lib/drivers/leds/led_handler.cpp:515-527). Direction sequence:
+  //
+  //   if pre-flash was on : kOut  (dim cascade) -> hold -> kIn  (restore)
+  //   if pre-flash was off: kIn   (lit cascade) -> hold -> kOut (restore)
+  //
+  // While kOut / kIn runs the fader is paused and the task drives the
+  // PCA9685 channels directly via WriteStaggeredTick(). That bypass is
+  // necessary because the staggered animation writes different duties
+  // per channel at the same tick — the single-duty fader model cannot
+  // express that. After the second half of the stagger ends we snap
+  // the fader to the pre-flash target so subsequent kOn / kOff events
+  // interpolate from the correct current value.
+  //
+  // A mid-pulse kOn / kOff / kSetBrightness / kAmbient* wins: the
+  // stagger is cancelled (pulse -> kIdle) and the new intent routes
+  // through the fader on the next tick.
+  enum class PulsePhase : uint8_t {
+    kIdle,
+    kFirstHalf,   // cascade from the pre-flash state to its inverse
+    kMidHold,     // brief hold at the inverted state (block=0ms, zap small)
+    kSecondHalf,  // cascade back to the pre-flash state
+  };
   PulsePhase pulse = PulsePhase::kIdle;
-  int64_t hold_until_ms = 0;
-  uint32_t hold_ms = 0;
-  uint16_t pre_pulse_target = 0;
+
+  // Per-pulse captured state (snapshot at kBlockFlash/kZapFlash
+  // receipt so a concurrent PATCH doesn't mutate mid-animation).
+  uint16_t pulse_max_brightness = frontlight::kDefaultMaxDuty;
+  uint32_t pulse_total_ticks = 0;
+  uint32_t pulse_tick_delay_ms = frontlight::kTickMs;
+  uint32_t pulse_mid_hold_ms = 0;
+  uint32_t pulse_tick = 0;
+  int64_t pulse_hold_until_ms = 0;
+  // first_half_in tracks which direction the first half uses. Inverse
+  // drives the second half. Matches v3: if pre-flash bright, first is
+  // kOut (dim cascade); if pre-flash dark, first is kIn (lit cascade).
+  bool first_half_in = true;
+  StaggerDirection first_dir = StaggerDirection::kIn;
+
+  auto start_pulse = [&](FrontlightEvent ev) {
+    // Flash events count as explicit user-visible acknowledgements,
+    // so they clear the user-off latch — matches v3 semantics and the
+    // task brief: a block flash should re-enable the ambient loop.
+    policy_.SetUserOff(false);
+
+    // Snapshot tunables so a concurrent PATCH can't change them mid-
+    // pulse. `effect_delay_ms_` is volatile for the read.
+    pulse_max_brightness = configured_brightness_ > 0
+                                ? configured_brightness_
+                                : frontlight::kDefaultMaxDuty;
+    const uint32_t effect_delay = effect_delay_ms_;
+    pulse_total_ticks = StaggerTotalTicks(channel_count_,
+                                           pulse_max_brightness,
+                                           frontlight::kFadeStep);
+    pulse_tick_delay_ms = StaggerDelayMs(effect_delay, channel_count_);
+    pulse_mid_hold_ms = (ev == FrontlightEvent::kBlockFlash)
+                            ? frontlight::kBlockFlashHoldMs
+                            : frontlight::kZapFlashHoldMs;
+
+    // Pre-flash state picks direction. v3: frontlightOn ? out+in : in+out.
+    first_half_in = !logical_on_;
+    first_dir = first_half_in ? StaggerDirection::kIn
+                              : StaggerDirection::kOut;
+
+    pulse_tick = 0;
+    pulse = PulsePhase::kFirstHalf;
+    // Pause the fader so its Step() doesn't fight our per-channel
+    // writes. Snap to the current visible duty on first_dir's tick 0.
+    fader_.Snap(first_dir == StaggerDirection::kIn ? 0
+                                                   : pulse_max_brightness);
+  };
+
+  auto cancel_pulse = [&]() {
+    pulse = PulsePhase::kIdle;
+    pulse_tick = 0;
+  };
 
   while (true) {
-    // Block until there's work, unless we're mid-transition — then
-    // wake every kTickMs to step the fader.
-    const bool animating =
-        !fader_.AtTarget() || pulse != PulsePhase::kIdle;
-    const TickType_t wait =
-        animating ? pdMS_TO_TICKS(frontlight::kTickMs) : portMAX_DELAY;
+    // Choose the wait period. During a stagger phase we wake at the
+    // per-LED cadence so the cascade rate is driven by flEffectDelay.
+    // During fader transitions we wake every kTickMs. Otherwise block.
+    TickType_t wait;
+    if (pulse == PulsePhase::kFirstHalf ||
+        pulse == PulsePhase::kSecondHalf) {
+      wait = pdMS_TO_TICKS(pulse_tick_delay_ms);
+    } else if (pulse == PulsePhase::kMidHold) {
+      wait = pdMS_TO_TICKS(10);  // tight poll for the hold deadline
+    } else if (!fader_.AtTarget()) {
+      wait = pdMS_TO_TICKS(frontlight::kTickMs);
+    } else {
+      wait = portMAX_DELAY;
+    }
 
     FrontlightCommand cmd{};
     if (xQueueReceive(queue_, &cmd, wait) == pdTRUE) {
       switch (cmd.event) {
         case FrontlightEvent::kOn:
-          // User intent: light on. Clears the user-off latch so the
-          // ambient loop is free to act again on the next sample.
           policy_.SetUserOff(false);
           logical_on_ = true;
-          pulse = PulsePhase::kIdle;
+          cancel_pulse();
           fader_.SetTarget(configured_brightness_);
           break;
         case FrontlightEvent::kOff:
-          // User intent: light off. Latch it. The ambient loop will
-          // keep hands off until kOn / kSetBrightness / a flash clears
-          // the latch again.
           policy_.SetUserOff(true);
           logical_on_ = false;
-          pulse = PulsePhase::kIdle;
+          cancel_pulse();
           fader_.SetTarget(0);
           break;
         case FrontlightEvent::kAmbientOn:
-          // Ambient-driven on: never overrides a user-off latch. The
-          // policy already gates this at source; the second check here
-          // is defence against a stale queue entry from before a kOff.
           if (policy_.user_off()) break;
           logical_on_ = true;
-          pulse = PulsePhase::kIdle;
+          cancel_pulse();
           fader_.SetTarget(configured_brightness_);
           break;
         case FrontlightEvent::kAmbientOff:
-          // Ambient-driven off: fades to 0 without setting the latch,
-          // so a future lux rise can auto-on it again.
           logical_on_ = false;
-          pulse = PulsePhase::kIdle;
+          cancel_pulse();
           fader_.SetTarget(0);
           break;
         case FrontlightEvent::kSetBrightness:
           configured_brightness_ = cmd.value;
-          // Only move the fader if the light is logically on; an off
-          // light stays dark but remembers the new level for next kOn.
-          // A non-zero brightness write also clears the user-off latch
-          // — the user is explicitly asking for "this much light", so
-          // keeping them dark would be perverse.
           if (cmd.value > 0) {
             policy_.SetUserOff(false);
           }
           if (logical_on_) {
-            pulse = PulsePhase::kIdle;
+            cancel_pulse();
             fader_.SetTarget(configured_brightness_);
           }
           break;
         case FrontlightEvent::kBlockFlash:
         case FrontlightEvent::kZapFlash:
-          // Flash events count as explicit user-visible acknowledgements,
-          // so they clear the user-off latch (matches the task brief:
-          // "until something explicit turns it back on — button press,
-          // next zap, next block flash, or POST /api/frontlight/on").
-          // The pulse itself still returns to the pre-flash state
-          // (dark if we were dark, bright if we were bright).
-          policy_.SetUserOff(false);
-          hold_ms = (cmd.event == FrontlightEvent::kBlockFlash)
-                        ? frontlight::kBlockFlashHoldMs
-                        : frontlight::kZapFlashHoldMs;
-          pre_pulse_target = logical_on_ ? configured_brightness_ : 0;
-          pulse = PulsePhase::kRampUp;
-          fader_.SetTarget(frontlight::kDefaultMaxDuty);
+          start_pulse(cmd.event);
+          // Emit tick 0 immediately so the user sees the first phase
+          // of the cascade on the same loop iteration the event arrived.
+          WriteStaggeredTick(pulse_tick, pulse_max_brightness, first_dir);
+          pulse_tick = 1;
           break;
       }
+      // Skip the per-tick advance on an event-receive cycle — next
+      // iteration will advance us at the correct wait cadence.
+      continue;
     }
 
-    // Advance the fader + pulse state machine.
-    const uint16_t duty = fader_.Step();
-    WriteAllChannels(duty);
-
+    // No event: advance whichever animation is active.
     switch (pulse) {
-      case PulsePhase::kIdle:
+      case PulsePhase::kIdle: {
+        // Normal fade state machine.
+        const uint16_t duty = fader_.Step();
+        WriteAllChannels(duty);
         break;
-      case PulsePhase::kRampUp:
-        if (fader_.AtTarget()) {
-          pulse = PulsePhase::kHold;
-          hold_until_ms = MsNow() + static_cast<int64_t>(hold_ms);
+      }
+      case PulsePhase::kFirstHalf: {
+        if (pulse_tick < pulse_total_ticks) {
+          WriteStaggeredTick(pulse_tick, pulse_max_brightness, first_dir);
+          ++pulse_tick;
+        } else {
+          // First half done — every LED landed on the inverted state.
+          // Enter mid-hold (may be 0 for block flash, in which case we
+          // immediately fall through to kSecondHalf on the next iter).
+          pulse_hold_until_ms =
+              MsNow() + static_cast<int64_t>(pulse_mid_hold_ms);
+          pulse = PulsePhase::kMidHold;
+          pulse_tick = 0;
         }
         break;
-      case PulsePhase::kHold:
-        if (MsNow() >= hold_until_ms) {
-          pulse = PulsePhase::kRampDown;
-          fader_.SetTarget(pre_pulse_target);
+      }
+      case PulsePhase::kMidHold: {
+        if (MsNow() >= pulse_hold_until_ms) {
+          pulse = PulsePhase::kSecondHalf;
+          pulse_tick = 0;
         }
         break;
-      case PulsePhase::kRampDown:
-        if (fader_.AtTarget()) pulse = PulsePhase::kIdle;
+      }
+      case PulsePhase::kSecondHalf: {
+        // Inverse direction of the first half.
+        const StaggerDirection second_dir =
+            first_dir == StaggerDirection::kIn ? StaggerDirection::kOut
+                                                : StaggerDirection::kIn;
+        if (pulse_tick < pulse_total_ticks) {
+          WriteStaggeredTick(pulse_tick, pulse_max_brightness, second_dir);
+          ++pulse_tick;
+        } else {
+          // Stagger complete. Restore the fader to the pre-flash state
+          // so subsequent kOn/kOff interpolate from the right point.
+          // v3 left whatever state the last fade ended on — which is
+          // exactly what `configured_brightness_` (if on) or 0 (if off)
+          // represents here.
+          const uint16_t restore =
+              logical_on_ ? configured_brightness_ : 0;
+          fader_.Snap(restore);
+          WriteAllChannels(restore);
+          pulse = PulsePhase::kIdle;
+          pulse_tick = 0;
+        }
         break;
+      }
     }
   }
 }

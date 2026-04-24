@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 
 #include "cJSON.h"
+#include "epd_ssd1680.hpp"
 #include "net_util/hostname.hpp"
 #include "ota_manager.hpp"
 #include "ota_upload_bounds.hpp"
@@ -621,6 +622,8 @@ std::string ControlServer::BuildStatusJson() const {
 
   const int64_t uptime_s = esp_timer_get_time() / 1000000;
   cJSON_AddNumberToObject(root, "espUptime", static_cast<double>(uptime_s));
+  cJSON_AddBoolToObject(root, "epdInverted",
+                        btclock::EpdGetGlobalInverted());
   // "espFreeHeap"/"espHeapSize" describe INTERNAL SRAM only; PSRAM is
   // split into espFreePsram/espPsramSize so the free <= size invariant
   // holds. See heap_metrics.hpp for the full field contract.

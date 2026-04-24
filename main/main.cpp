@@ -28,8 +28,22 @@
 #include "app/boot/init_screen_manager.hpp"
 #include "app/boot/init_storage.hpp"
 #include "app/event_loop.hpp"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 extern "C" void app_main() {
+  // Bump main-task priority above the network/LWIP stack (LWIP is at
+  // 18, WiFi at 23, esp_timer at 22). The EPD render path runs
+  // synchronously in this task, and the SSD1680 driver's per-frame
+  // command sequence + BUSY polling assumes prompt scheduling. At the
+  // default priority 1 the render gets preempted by every network
+  // worker (SSE broadcast, mining-pool poll, WSS keep-alive, OTA
+  // chunk handler), which serialises panel updates against arbitrary
+  // network bursts and produces partial-refresh ghosting under load.
+  // 20 keeps WiFi (23) and esp_timer (22) ahead of us so RF + tick
+  // servicing aren't starved.
+  vTaskPrioritySet(nullptr, 20);
+
   btclock::InitBootLeds();
 
   btclock::AppCtx ctx;

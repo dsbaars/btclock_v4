@@ -146,7 +146,8 @@ void RenderClockScreen(
     bool prev_valid, int prev_hour, int prev_minute,
     int prev_mday, int prev_month,
     bool full_refresh_mode = true,
-    bool vertical_desc = false);
+    bool vertical_desc = false,
+    bool hide_leading_zero = false);
 
 // --- Halving countdown ---
 // `as_blocks=true` (default) paints the blocks-remaining form: panel 0 =

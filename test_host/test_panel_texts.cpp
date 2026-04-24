@@ -1039,6 +1039,52 @@ TEST_CASE("panel_texts — clock invalid → dash label, blank digits") {
   for (std::size_t i = 1; i < 7; ++i) CHECK(out[i] == "");
 }
 
+TEST_CASE("panel_texts — clock hide_lead_zero drops leading hour digit") {
+  // Mirror must match the EPD for the hideLeadZero pref: "07:05" on
+  // panels → "", "", "7", ":", "0", "5" across digit slots so
+  // /api/status `data[]` agrees with what the panels paint.
+  PanelTextInputs in;
+  in.kind = ScreenType::kClock;
+  in.clock_valid = true;
+  in.hour = 7;
+  in.minute = 5;
+  in.mday = 9;
+  in.month = 5;
+  in.hide_lead_zero = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "9/5");
+  // digit_slots = 6, base = 1: slot 1 stays blank (ComputeClockLayout
+  // base-slot padding), slot 2 is the tens-of-hours — blanked by
+  // hide_lead_zero for h<10, so slot 2 is also "". The 7 lands in
+  // slot 3, then ':', '0', '5'.
+  CHECK(out[1] == "");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "7");
+  CHECK(out[4] == ":");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "5");
+}
+
+TEST_CASE("panel_texts — clock hide_lead_zero leaves two-digit hours alone") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kClock;
+  in.clock_valid = true;
+  in.hour = 13;
+  in.minute = 37;
+  in.mday = 9;
+  in.month = 5;
+  in.hide_lead_zero = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "9/5");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "3");
+  CHECK(out[4] == ":");
+  CHECK(out[5] == "3");
+  CHECK(out[6] == "7");
+}
+
 // Mining pool hashrate mirror. Slot 0 holds the pool identity (vendored
 // logo → empty; text fallback → single name string, "<top>\n<bottom>"
 // when the name contains a natural delimiter). Slot N-1 holds the unit;

@@ -18,7 +18,7 @@ idf_component_register(
          "app/event_loop.cpp"
          "sources/sources.cpp"
          "io/frontlight_fader.cpp" "io/frontlight_controller.cpp"
-         "io/frontlight_ambient_policy.cpp"
+         "io/frontlight_ambient_policy.cpp" "io/frontlight_stagger.cpp"
          "io/led_controller.cpp" "io/led_curves.cpp"
          "io/light_sensor.cpp"
          "io/wifi_guard.cpp"

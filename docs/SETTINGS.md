@@ -65,6 +65,7 @@ derived keys the WebUI uses to render that section.
 | `suffixPrice` | bool | `false` | Use k/M suffixes on the price screen. | Not yet honored in v4 — no read site found. |
 | `suffixShareDot` | bool | `false` | Reserve one extra panel for a decimal-point slot when a suffix is active. | Not yet honored in v4 — no read site found. |
 | `mowMode` | bool | `false` | Million-Of-Watoshis style price formatting. | Not yet honored in v4 — no read site found. |
+| `hideLeadZero` | bool | `false` | Clock screen: drop the leading zero on single-digit hours ("07:00" → "7:00"). Minute leading zero is always preserved. | Honored by `ComputeClockLayout` via `ScreenManager::ReadRenderPrefs`. Applied live: `on_settings_patched` calls `ScreenManager::MarkDirty`. NVS key truncated to `hideLeadZero` (15-char cap; JSON key matches). |
 
 Display-related special keys:
 

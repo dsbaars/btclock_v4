@@ -57,7 +57,6 @@ constexpr const char* kTag = "poc";
   // Three wake sources: data-push notify, button event, 1 s heartbeat
   // tick. We drain the button queue first so a queued click is honoured
   // before we sleep on the task-notify.
-  constexpr int64_t kAutoRotateMs = 30'000;
   int64_t last_heartbeat_ms = 0;
 
   while (true) {
@@ -241,7 +240,15 @@ constexpr const char* kTag = "poc";
       continue;
     }
 
-    if (sm.MaybeAutoRotate(now_ms, kAutoRotateMs) && hub) {
+    // timerSeconds drives auto-rotate cadence. Read per iteration so a
+    // live PATCH lands without reboot (same pattern as kStealFocus
+    // below). Zero disables rotation entirely — ShouldAdvance with
+    // period_ms=0 would otherwise fire on every tick.
+    Prefs rotate_prefs(prefs::kSettingsNs);
+    const uint32_t timer_s = rotate_prefs.GetU32(prefs::kTimerSeconds, 30);
+    const int64_t auto_rotate_ms = static_cast<int64_t>(timer_s) * 1000;
+    if (auto_rotate_ms > 0 &&
+        sm.MaybeAutoRotate(now_ms, auto_rotate_ms) && hub) {
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
       continue;
@@ -272,6 +279,14 @@ constexpr const char* kTag = "poc";
 
     if (got != 0 && sm.ShouldRender(snap)) {
       sm.Render(panels, fb_storage, fonts, snap);
+      // Data-push renders (incl. the per-minute clock tick) update
+      // ScreenManager::last_panel_texts_ but previously didn't flow
+      // into the ControlServer's cached LiveStatus. Without this
+      // /api/status.data[] and the SSE "status" event would stay stuck
+      // on whatever was current at the last nav/rotation — most
+      // visibly on the Time screen, which re-renders every minute
+      // without any accompanying nav event.
+      publish_status();
     }
   }
 }

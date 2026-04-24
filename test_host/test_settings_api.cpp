@@ -757,7 +757,9 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // 2026-04-24 bd btclock_v4-9rx: gmtOffset removed from the schema
   // (v4 drives the clock from tzString); field count 64 -> 63,
   // boot-only count 19 -> 18.
-  CHECK(btclock::settings::kFields.size() == 63);
+  // 2026-04-24: hideLeadZero added for the time-screen leading-zero
+  // toggle; field count 63 -> 64, boot-only count unchanged (runtime).
+  CHECK(btclock::settings::kFields.size() == 64);
   // Boot-only count: hostnamePrefix, mdnsEnabled, otaEnabled,
   // httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, fontName,
   // mempoolInstance, mempoolSecure, dataSource, ceEndpoint,

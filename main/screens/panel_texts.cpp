@@ -750,7 +750,8 @@ std::vector<std::string> BuildBitaxeBestDiff(
 
 std::vector<std::string> BuildClock(bool valid, int hour, int minute,
                                     int mday, int month,
-                                    std::size_t n_panels) {
+                                    std::size_t n_panels,
+                                    bool hide_lead_zero) {
   // Panel 0 = "dd/mm" date split-text (rendered via DrawSplitText in the
   // renderer; we mirror that with a "<dd>/<mm>" string). When SNTP
   // hasn't landed the renderer paints "-/-"; match that here so the
@@ -766,7 +767,7 @@ std::vector<std::string> BuildClock(bool valid, int hour, int minute,
   out.emplace_back(label);
   const std::size_t digit_slots = n_panels - 1;
   const ClockLayout layout =
-      ComputeClockLayout(valid, hour, minute, digit_slots);
+      ComputeClockLayout(valid, hour, minute, digit_slots, hide_lead_zero);
   AppendDigits(layout.digits, digit_slots, out);
   return out;
 }
@@ -799,7 +800,7 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       return BuildFeeRate(in.block_fee_sats_vb, n_panels);
     case ScreenType::kClock:
       return BuildClock(in.clock_valid, in.hour, in.minute, in.mday,
-                        in.month, n_panels);
+                        in.month, n_panels, in.hide_lead_zero);
     case ScreenType::kMiningPoolHashrate:
       return BuildMiningPoolHashrate(in.pool, n_panels);
     case ScreenType::kMiningPoolEarnings:

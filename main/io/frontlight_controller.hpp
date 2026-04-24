@@ -25,6 +25,7 @@
 
 #include "io/frontlight_ambient_policy.hpp"
 #include "io/frontlight_fader.hpp"
+#include "io/frontlight_stagger.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "pca9685.hpp"
@@ -52,17 +53,24 @@ constexpr uint16_t kFadeStep = 25;
 // Controller task tick period, ms. Matches DEFAULT_FL_EFFECT_DELAY.
 constexpr uint32_t kTickMs = 15;
 
+// Default for the user-tunable `flEffectDelay` NVS pref — the outer
+// wall-clock period (ms) that a full staggered fade-in or fade-out
+// targets. Per-LED stagger delay is this divided by the LED count.
+// Matches v3 Arduino DEFAULT_FL_EFFECT_DELAY.
+constexpr uint32_t kDefaultEffectDelayMs = 15;
+
 // Ambient-light threshold, lux. Below this, frontlight stays on;
 // above, it fades off. Matches DEFAULT_LUX_LIGHT_TOGGLE.
 constexpr uint32_t kDefaultLuxThreshold = 128;
 
-// Pulse-effect timings (ms). Old firmware chains fadeIn+fadeOut back
-// to back with no explicit hold — we add a tiny hold so a "flash"
-// isn't imperceptible at faster fade steps. Block and zap share
-// shape; zap lingers longer for higher visibility on low-frequency
-// events.
-constexpr uint32_t kBlockFlashHoldMs = 120;
-constexpr uint32_t kZapFlashHoldMs = 400;
+// Pulse-effect "hold" between the two halves of a staggered flash.
+// v3 chained fadeIn+fadeOut back-to-back with zero hold — we honour
+// that for block-flash to keep parity, and give zap-flash a small
+// visible hold (users notice rare zap events more than common block
+// events). Held in the bright state when the pre-flash target was
+// dark, held in the dark state when the pre-flash target was bright.
+constexpr uint32_t kBlockFlashHoldMs = 0;
+constexpr uint32_t kZapFlashHoldMs = 250;
 
 }  // namespace frontlight
 
@@ -74,10 +82,12 @@ constexpr uint32_t kZapFlashHoldMs = 400;
 // the fader's target, and on each tick writes every PCA9685 channel
 // in the frontlight range to the interpolated duty.
 //
-// The same duty is written to every channel — the old firmware's
-// staggered per-channel cascade is a cosmetic detail we intentionally
-// drop for now (adds complexity without user-visible value on the
-// 7-panel Rev B, where all channels share one diffuser).
+// Steady-state fades write the same duty to every channel. The
+// block-flash / zap-flash pulse uses a staggered per-channel cascade
+// — restored after the initial IDF port dropped it — so the flash
+// animation matches v3 Arduino's visual signature (LED index 0 leads
+// on the fade-in half, index N-1 lags; reversed on the fade-out half).
+// See io/frontlight_stagger.hpp for the pure math.
 enum class FrontlightEvent : uint8_t {
   kOn,             // user-on: clears user-off latch, fades to configured
   kOff,            // user-off: sets user-off latch, fades to 0
@@ -139,6 +149,18 @@ class FrontlightController {
   // Read from NVS `flMaxBrightness` at boot and live-tunable.
   void SetConfiguredBrightness(uint16_t duty);
 
+  // Per-flash outer cadence in ms — NVS `flEffectDelay`. Governs the
+  // speed of the staggered block/zap-flash animation. Live-tunable;
+  // read by the controller task at the start of each pulse so a PATCH
+  // to `flEffectDelay` is picked up on the next flash without reboot.
+  void SetEffectDelay(uint32_t ms) {
+    // Plain store, read from the controller task on the next flash
+    // start. Eventual consistency is fine — a racing PATCH during an
+    // in-flight pulse just takes effect on the pulse after it.
+    effect_delay_ms_ = ms;
+  }
+  uint32_t effect_delay_ms() const { return effect_delay_ms_; }
+
   // Install a predicate the controller consults before acting on Post.
   // When true, kOn / kSetBrightness / kBlockFlash / kZapFlash are
   // silently dropped and an immediate kOff is enqueued so the backlight
@@ -173,6 +195,10 @@ class FrontlightController {
   static void TaskTrampoline(void* arg);
   void TaskLoop();
   void WriteAllChannels(uint16_t duty);
+  // Drive one tick of the staggered flash animation. Bypasses the
+  // fader so each LED sees its phase-shifted duty directly.
+  void WriteStaggeredTick(uint32_t tick, uint16_t max_brightness,
+                           StaggerDirection direction);
 
   Pca9685& pca_;
   uint8_t channel_first_;
@@ -185,6 +211,10 @@ class FrontlightController {
   // the fader's current/target so a flash doesn't clobber it.
   uint16_t configured_brightness_ = frontlight::kDefaultMaxDuty;
   bool logical_on_ = false;
+
+  // Outer cadence (ms) for staggered flash animation; stagger delay
+  // per LED = effect_delay_ms_ / channel_count_.
+  volatile uint32_t effect_delay_ms_ = frontlight::kDefaultEffectDelayMs;
 
   // Ambient-light state. `policy_` owns the hysteresis latch + the
   // dark-mode detection; `OnAmbientLux()` is the single point that

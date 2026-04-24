@@ -126,14 +126,20 @@ void InitControlApi(AppCtx& ctx) {
       (void)timezone::SetTimezoneByName(zone.c_str());
     };
     // invertedColor PATCH hook — flip the EPD polarity flag + mark the
-    // screen dirty so the next frame paints a full-refresh with the new
-    // polarity. The data-driven render path runs on the main task's
-    // event loop; the dirty flag is plain scalar state so poking it
-    // from the httpd worker is safe without a command-queue hop.
+    // screen dirty + kick the main task so the next frame paints a
+    // full-refresh with the new polarity. MarkDirty alone isn't enough:
+    // event_loop's render path is gated on `got != 0` (a fresh
+    // DataHub notification), so without a data push the dirty flag
+    // would sit unprocessed until the next tick. xTaskNotifyGive here
+    // wakes the event loop on the next iteration; the ShouldRender
+    // check sees dirty_=true and re-renders with the new polarity
+    // inside a single frame.
     ScreenManager* sm_ptr = ctx.sm.get();
-    ccfg.on_inverted_color_changed = [sm_ptr](bool v) {
+    TaskHandle_t main_task_for_hooks = ctx.main_task;
+    ccfg.on_inverted_color_changed = [sm_ptr, main_task_for_hooks](bool v) {
       EpdSetGlobalInverted(v);
       sm_ptr->MarkDirty();
+      if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };
     // fontName PATCH hook — rebind the AppFonts role accessors and mark
     // the screen dirty so the next render paints with the new family.
@@ -142,6 +148,7 @@ void InitControlApi(AppCtx& ctx) {
     ccfg.on_font_changed = [ctx_ptr](const std::string& id) {
       ctx_ptr->fonts.SetFamily(ParseFontFamily(id));
       if (ctx_ptr->sm) ctx_ptr->sm->MarkDirty();
+      if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
     // blockFlashColor PATCH hook — mirror the settings namespace write
     // into the LED controller's own namespace so the next block flash
@@ -154,9 +161,15 @@ void InitControlApi(AppCtx& ctx) {
     // Every successful /api/settings PATCH pulses the LEDs green so
     // the user sees an immediate confirmation the save landed. Piggy-
     // backs on the existing kFlashSuccess effect (3x green, 150ms) —
-    // matches the old firmware's LED_FLASH_SUCCESS intent.
-    ccfg.on_settings_patched = [] {
+    // matches the old firmware's LED_FLASH_SUCCESS intent. Also marks
+    // the screen dirty so display prefs (hideLeadZero, mowMode, etc.)
+    // that ScreenManager samples from NVS per-render repaint on the
+    // next tick instead of waiting for the next natural data change
+    // (e.g. a minute rollover on the clock screen).
+    ccfg.on_settings_patched = [sm_ptr, main_task_for_hooks] {
       PostLedEffect(LedEffect::kFlashSuccess);
+      if (sm_ptr) sm_ptr->MarkDirty();
+      if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };
     // Mirror freshly-PATCHed DND fields into the singleton so the LED
     // and frontlight suppressor predicates (`dnd::Instance().IsActive()`,

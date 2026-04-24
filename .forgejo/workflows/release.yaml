@@ -1,11 +1,23 @@
-name: "Release bundle"
+name: "Release pipeline"
 
-# Tag-triggered: waits for the matrix firmware build to finish, then
-# downloads every variant's artifact and re-publishes them together
-# under a single "release-<tag>" umbrella artifact. Mirrors the spirit
-# of v3_fci's release job without creating an actual Forgejo release
-# object yet — that's a follow-up once we're confident the artifact
-# contents are right.
+# Tag-triggered full pipeline. The graph is:
+#
+#   tag refs/tags/v* (or manual dispatch)
+#     └── host_tests          (gate: regression suite must pass)
+#           └── webui_and_lfs (one WebUI build, three sized storage.bin)
+#                 └── firmware (matrix: rev-a, rev-b, v8, [rev-a-29 slot])
+#                       └── release (collects artifacts, publishes tag)
+#
+# On non-tag pushes this file does nothing — host_tests.yaml is the
+# push-time regression guard. The release pipeline is intentionally
+# heavy (IDF toolchain + WebUI + matrix) and only runs when we're
+# actually shipping.
+#
+# Adding a new hardware variant (e.g. the upcoming 2.9" Rev A) is a
+# single entry in the `variants` matrix include-list below: pick a
+# label, wire it to a POC_BOARD value, give it its sdkconfig suffix,
+# and point it at one of the three storage sizes. No other job needs
+# to change.
 
 on:
   push:
@@ -14,12 +26,261 @@ on:
   workflow_dispatch:
 
 jobs:
-  bundle:
+  # ---------------------------------------------------------------
+  # 1. Host tests preflight
+  # ---------------------------------------------------------------
+  # Duplicates host_tests.yaml's job body on purpose: Forgejo Actions
+  # has no cross-workflow `needs:`, so to gate the release chain on
+  # the host-test suite we re-run it here. The standalone
+  # host_tests.yaml still runs on every push/PR — that's the fast
+  # regression signal — and this copy guarantees the release pipeline
+  # can't bypass it.
+  host_tests:
     runs-on: docker
     container:
-      # catthehacker's js-24.04 ships Node (required for actions/* which
-      # are JS actions) + basic CLI tools; we only need zip on top.
       image: ghcr.io/catthehacker/ubuntu:js-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential cmake
+
+      - name: Configure
+        shell: bash
+        run: cmake -S test_host -B build-host
+
+      - name: Build
+        shell: bash
+        run: cmake --build build-host --parallel
+
+      - name: Run
+        shell: bash
+        run: ./build-host/btclock_host_tests
+
+  # ---------------------------------------------------------------
+  # 2. WebUI + LittleFS images (built once, shared across variants)
+  # ---------------------------------------------------------------
+  # Previously every firmware variant re-ran `pnpm install && pnpm
+  # build && gzip_build.py && littlefs-python create` — three times
+  # the same work for identical output. This job builds the WebUI
+  # exactly once, packs one storage.bin per supported flash size, and
+  # publishes them as artifacts for the firmware matrix to consume.
+  #
+  # The output artifact names are keyed on storage size (4mb / 8mb /
+  # 16mb), not on variant label — this is what lets a future
+  # `rev-a-29` entry share Rev A's 4 MB image for free.
+  webui_and_lfs:
+    runs-on: docker
+    container:
+      image: espressif/idf:v5.5.4
+    needs: host_tests
+    steps:
+      - name: Install Node.js (for JS-based Forgejo actions)
+        shell: bash
+        run: |
+          apt-get update
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get install -y --no-install-recommends nodejs
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: data/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: data/pnpm-lock.yaml
+
+      - name: Build WebUI
+        shell: bash
+        working-directory: data
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          python3 gzip_build.py
+
+      - name: Install littlefs-python
+        shell: bash
+        # Pinned to match local dev machines so CI output is
+        # byte-identical to `idf.py flash`. The espressif/idf image's
+        # pip lives inside its managed venv — sourcing export.sh puts
+        # it on PATH.
+        run: |
+          . /opt/esp/idf/export.sh
+          pip install littlefs-python==0.15.0
+
+      - name: Pack storage images (all variant sizes)
+        shell: bash
+        # Three sizes cover every current and planned variant:
+        #   4mb  -> 0x67000   (REV_A, REV_A_29)
+        #   8mb  -> 0xCD000   (REV_B)
+        #   16mb -> 0x200000  (V8)
+        # Block/page/name-max match the on-device littlefs config
+        # (joltwallet__littlefs 1.21.1 / LittleFS v2.11.1).
+        run: |
+          . /opt/esp/idf/export.sh
+          mkdir -p dist-lfs
+          for entry in "4mb:421888" "8mb:839680" "16mb:2097152"; do
+            label="${entry%%:*}"
+            size="${entry##*:}"
+            littlefs-python create \
+              data/build_gz \
+              "dist-lfs/storage-${label}.bin" \
+              -v \
+              --fs-size="${size}" \
+              --name-max=64 \
+              --block-size=4096
+          done
+          ls -la dist-lfs
+
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: lfs-storage-images
+          path: dist-lfs/*.bin
+          retention-days: 14
+          include-hidden-files: false
+
+  # ---------------------------------------------------------------
+  # 3. Firmware matrix
+  # ---------------------------------------------------------------
+  # One row per hardware variant. Adding the planned 2.9" Rev A is a
+  # single additional include entry — uncomment the rev-a-29 row
+  # below (and adjust POC_BOARD once the board definition lands).
+  #
+  # Every column here is driven off the matrix row: sdkconfig dir,
+  # POC_BOARD, storage size label, partition offset. No variant-
+  # specific shell branching in the steps.
+  firmware:
+    runs-on: docker
+    container:
+      image: espressif/idf:v5.5.4
+    needs: webui_and_lfs
+    permissions:
+      contents: write
+    strategy:
+      # Keep the whole matrix reporting even if one variant breaks —
+      # otherwise a Rev A compile error starves Rev B / V8 of signal.
+      fail-fast: false
+      matrix:
+        include:
+          - variant_label: rev-a
+            poc_board: REV_A
+            sdkconfig_dir: build-rev-a
+            lfs_size_label: 4mb
+            partition_offset: "0x370000"
+          - variant_label: rev-b
+            poc_board: REV_B
+            sdkconfig_dir: build-rev-b
+            lfs_size_label: 8mb
+            partition_offset: "0x6F0000"
+          - variant_label: v8
+            poc_board: V8
+            sdkconfig_dir: build-v8
+            lfs_size_label: 16mb
+            partition_offset: "0xDF0000"
+          # Placeholder for the upcoming 2.9" EPD Rev A. Same MCU and
+          # 4 MB flash as Rev A, so it shares the 4mb storage image.
+          # Uncomment and point poc_board at the real board define
+          # once the hardware variant is wired in.
+          # - variant_label: rev-a-29
+          #   poc_board: REV_A_29
+          #   sdkconfig_dir: build-rev-a-29
+          #   lfs_size_label: 4mb
+          #   partition_offset: "0x370000"
+    steps:
+      - name: Install Node.js (for JS-based Forgejo actions)
+        shell: bash
+        run: |
+          apt-get update
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get install -y --no-install-recommends nodejs
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Short SHA
+        id: vars
+        shell: bash
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Cache ESP-IDF managed_components + per-variant build dir.
+      # Key reflects the inputs that actually change the build:
+      # dependency versions and sdkconfig fragments.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            managed_components
+            ${{ matrix.sdkconfig_dir }}
+          key: idf-v5.5.4-${{ matrix.variant_label }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.poc_board)) }}
+          restore-keys: |
+            idf-v5.5.4-${{ matrix.variant_label }}-
+
+      - name: Download prebuilt LFS images
+        uses: https://code.forgejo.org/forgejo/download-artifact@v7
+        with:
+          name: lfs-storage-images
+          path: dist-lfs
+
+      - name: Configure + build firmware
+        shell: bash
+        # The espressif/idf container's entrypoint sources export.sh
+        # but `shell: bash` bypasses the entrypoint, so source it
+        # explicitly here.
+        run: |
+          . /opt/esp/idf/export.sh
+          idf.py \
+            -B "${{ matrix.sdkconfig_dir }}" \
+            -D POC_BOARD=${{ matrix.poc_board }} \
+            -D SDKCONFIG="${{ matrix.sdkconfig_dir }}/sdkconfig" \
+            build
+
+      - name: Stage artifacts
+        shell: bash
+        # Flat per-variant directory with everything a flasher needs,
+        # plus the pre-packed LittleFS image picked by size label.
+        run: |
+          out="dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}"
+          mkdir -p "$out"
+          cp "${{ matrix.sdkconfig_dir }}/btclock_idf_proto.bin"              "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/bootloader/bootloader.bin"          "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/partition_table/partition-table.bin" "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/flash_args"                         "$out/" || true
+          cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
+          # SHA-256 of the app binary for OTA integrity checks.
+          ( cd "$out" && sha256sum btclock_idf_proto.bin > btclock_idf_proto.bin.sha256 )
+
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}
+          path: dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}/**
+          retention-days: 14
+          include-hidden-files: false
+
+  # ---------------------------------------------------------------
+  # 4. Release publication (tag pushes only)
+  # ---------------------------------------------------------------
+  # Collects every per-variant artifact, zips them up, and attaches
+  # the zips to a Forgejo release at the pushed tag. On
+  # workflow_dispatch (no tag) we skip the release creation and just
+  # re-publish the umbrella artifact so maintainers can sanity-check
+  # the pipeline without cutting a release.
+  release:
+    runs-on: docker
+    container:
+      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    needs: firmware
     permissions:
       contents: write
     steps:
@@ -27,29 +288,31 @@ jobs:
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends zip
+          apt-get install -y --no-install-recommends zip curl jq
 
       - uses: https://code.forgejo.org/forgejo/download-artifact@v7
         with:
-          # All variant artifacts share the btclock_v4- prefix.
           pattern: btclock_v4-*
           merge-multiple: false
           path: incoming
 
       - name: Package per-variant zips
         shell: bash
-        # One zip per variant — users on Rev A don't want Rev B blobs
-        # and vice versa. Tag name goes in the archive name so downloads
-        # are self-identifying.
+        # One zip per variant — Rev A users shouldn't have to sift
+        # through V8 blobs. Tag name (or "snapshot" on dispatch)
+        # replaces the short-sha suffix so downloads are self-
+        # identifying.
         run: |
           mkdir -p release
-          tag="${GITHUB_REF_NAME:-untagged}"
+          tag="${GITHUB_REF_NAME:-snapshot}"
           for d in incoming/btclock_v4-*; do
             [ -d "$d" ] || continue
             name="$(basename "$d")"
-            # Replace the short-sha suffix with the tag for release clarity.
             # Pattern: btclock_v4-<variant>-<sha>  ->  btclock_v4-<variant>-<tag>
-            variant="$(echo "$name" | awk -F- '{print $2"-"$3}' | sed 's/-[^-]*$//')"
+            # `<variant>` may contain dashes (e.g. rev-a, rev-a-29);
+            # strip only the trailing sha token.
+            variant="${name#btclock_v4-}"
+            variant="${variant%-*}"
             ( cd "$d" && zip -r "../../release/btclock_v4-${variant}-${tag}.zip" . )
           done
           ls -la release
@@ -59,3 +322,41 @@ jobs:
           name: release-${{ github.ref_name }}
           path: release/*.zip
           retention-days: 90
+
+      - name: Create Forgejo release and attach zips
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        # Forgejo exposes the Gitea-compatible release API. GITHUB_TOKEN
+        # is auto-injected by the runner with repo write scope for this
+        # workflow; no extra secret needed. If the release already
+        # exists (e.g. a re-run), we reuse its id and just upload the
+        # assets.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          api="${SERVER}/api/v1/repos/${REPO}/releases"
+          auth="Authorization: token ${GH_TOKEN}"
+
+          # Look up an existing release for this tag, else create it.
+          existing="$(curl -sSL -H "$auth" "${api}/tags/${TAG}" || true)"
+          rel_id="$(echo "$existing" | jq -r '.id // empty')"
+          if [ -z "$rel_id" ]; then
+            rel_id="$(curl -sSL -X POST -H "$auth" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg tag "$TAG" \
+                    '{tag_name:$tag, name:$tag, draft:false, prerelease:false}')" \
+              "$api" | jq -r '.id')"
+          fi
+          echo "release id: $rel_id"
+
+          for f in release/*.zip; do
+            [ -f "$f" ] || continue
+            echo "uploading $f"
+            curl -sSL -X POST -H "$auth" \
+              -H "Content-Type: application/zip" \
+              --data-binary @"$f" \
+              "${api}/${rel_id}/assets?name=$(basename "$f")"
+          done

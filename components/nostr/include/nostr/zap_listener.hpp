@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -19,6 +20,44 @@
 
 namespace btclock {
 namespace nostr {
+
+// Maximum age (in seconds) of a zap receipt we are willing to surface.
+// Doubles as the NIP-01 REQ `since` window and as a defensive host-side
+// drop gate on arrival: stored-event replays from buggy/permissive
+// relays — or mis-timed local clocks — would otherwise flash the device
+// through old receipts on every reconnect. 15 minutes matches the
+// user-visible "latest zap" semantics.
+constexpr int64_t kZapMaxAgeSeconds = 15 * 60;
+
+// Pure-logic decision: given wall-clock `now` (unix seconds), the
+// event's `event_created_at`, and the `last_shown_created_at` of the
+// most recent zap we already surfaced (0 if none), should this zap be
+// rendered?
+//
+// Rules (each test case in test_nostr_parse.cpp):
+//   - Future-dated events (created_at > now, e.g. clock skew) are
+//     clamped to "fresh enough" — we don't drop on clock skew.
+//   - Events older than `kZapMaxAgeSeconds` are dropped.
+//   - Exactly at the cutoff (age == kZapMaxAgeSeconds) is kept
+//     (inclusive on the lower bound, so a zap from 15 min 0 s ago
+//     still surfaces).
+//   - Events with `created_at <= last_shown_created_at` are dropped
+//     (only strictly-newer zaps win). `last_shown_created_at == 0`
+//     disables the dedupe check.
+//
+// Defined inline so host tests can pull it in via the header alone,
+// without linking the ZapListener translation unit (which references
+// SubscriptionManager methods the host tests don't build).
+inline bool ShouldShowZap(int64_t now, int64_t event_created_at,
+                          int64_t last_shown_created_at) {
+  if (last_shown_created_at > 0 &&
+      event_created_at <= last_shown_created_at) {
+    return false;
+  }
+  if (event_created_at > now) return true;
+  const int64_t age = now - event_created_at;
+  return age <= kZapMaxAgeSeconds;
+}
 
 class ZapListener {
  public:
@@ -53,6 +92,11 @@ class ZapListener {
   std::string recipient_;
   Callback on_zap_;
   bool started_ = false;
+  // Tracks the created_at of the last zap we passed to `on_zap_`.
+  // Used to drop duplicate / out-of-order stored-event replays that
+  // slip past the relay's `limit:1` (per NIP-01 `limit` is SHOULD,
+  // not MUST — a permissive relay can still send several).
+  int64_t last_shown_created_at_ = 0;
 };
 
 }  // namespace nostr

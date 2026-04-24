@@ -84,7 +84,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 63> kFields = {{
+inline constexpr std::array<FieldSpec, 64> kFields = {{
     // bitaxe — v3 DEFAULT_BITAXE_ENABLED=false, DEFAULT_BITAXE_HOSTNAME="bitaxe1".
     {prefs::kBitaxeEnabled,    FieldKind::kBool,   false, 0, 0,          false, 0, {}},
     {prefs::kBitaxeHostname,   FieldKind::kString, false, 0, 0,          false, 0, "bitaxe1"},
@@ -131,6 +131,12 @@ inline constexpr std::array<FieldSpec, 63> kFields = {{
     // gmtOffset pref was never read back. Legacy NVS entries stay
     // untouched — prefs::kGmtOffset still exists for any reader that
     // needs to migrate, but GET/PATCH no longer surface it.
+    // hideLeadZero — clock screen drops the leading zero on single-digit
+    // hours ("07:00" → "7:00"). Runtime: ScreenManager reads the pref on
+    // every Render and the on_settings_patched hook calls MarkDirty, so a
+    // PATCH repaints the next frame without a reboot. v4-only (no v3
+    // parallel). Default false preserves legacy HH:MM output.
+    {prefs::kHideLeadZero,     FieldKind::kBool,   false, 0, 0,          false, 0, {}},
     // v3 DEFAULT_HOSTNAME_PREFIX="btclock", DEFAULT_HTTP_AUTH_ENABLED=false,
     // DEFAULT_HTTP_AUTH_USERNAME="btclock". httpAuthPass default is "" in
     // the GET emitter because v3 explicitly never shipped the raw password

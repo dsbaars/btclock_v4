@@ -4,8 +4,11 @@
 #include "app/boot/helpers.hpp"
 #include "board/board.hpp"
 #include "boot_ui.hpp"
+#include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -44,6 +47,21 @@ void InitPanelsAndSplash(AppCtx& ctx) {
     ctx.panels[i] = std::make_unique<EpdPanel>(cfg);
   }
   for (auto& p : ctx.panels) ESP_ERROR_CHECK(p->Init());
+
+  // Install the EPD polarity flag BEFORE the splash paints. InitStorage
+  // does this again later (that's the canonical call site — it's also
+  // where TZ / LittleFS come online), but splash runs before storage
+  // init so the persisted invertedColor value would otherwise miss the
+  // first paint. Prefs::InitOnce is idempotent, and a corrupted NVS
+  // (the reason splash historically ran before storage init) falls back
+  // to the default `true` — same polarity the first data render would
+  // pick, so the "brick the screen on NVS corruption" concern that
+  // motivated the original ordering doesn't regress.
+  (void)Prefs::InitOnce();
+  {
+    Prefs p(prefs::kSettingsNs);
+    EpdSetGlobalInverted(p.GetBool(prefs::kInvertedColor, true));
+  }
 
   // --- Boot splash — letter-per-panel BTCLOCK[!]. ---
   const int64_t t0 = MsNow();

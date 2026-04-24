@@ -153,22 +153,26 @@ class EpdPanel {
   void WaitIdle(uint32_t timeout_ms);
   uint32_t BusyPollMs() const;
   esp_err_t WriteInitCommands();
-  esp_err_t LoadPartialLut();
   esp_err_t RewindRam();
   esp_err_t WriteVram(uint8_t write_cmd, const uint8_t* fb);
 
   Config cfg_;
-  bool partial_lut_loaded_ = false;
-  // Shadow of the frame currently on the panel. Used as the "previous
-  // frame" input to red VRAM on the next partial refresh so diffs are
-  // always computed against an accurate baseline (no post-activation
-  // resync, no ghosting from stale red-VRAM contents).
+  // Shadow of the frame currently on the panel. Kept for debug /
+  // future diff tooling; the render-time path no longer writes it
+  // back to the controller — the port to the GxEPD2 reference driver
+  // relies on the controller's internal previous-frame copy for
+  // partial refreshes (GxEPD2_213_GDEY0213B74.cpp) rather than a
+  // software shadow.
   uint8_t* shadow_ = nullptr;
   // Scratch buffer used when the global invertedColor flag is set —
   // WriteVram() inverts `fb` byte-for-byte into this buffer before
   // the SPI DMA. PSRAM-allocated on first use so the normal (non-
   // inverted) path pays no memory cost.
   uint8_t* invert_scratch_ = nullptr;
+  // Recorded by DrawFramebufferStart so WaitForRefresh knows whether
+  // to send the explicit power-off (only after partial — full
+  // implicitly powers off via the OTP waveform).
+  RefreshKind last_kind_ = RefreshKind::kFull;
 };
 
 }  // namespace btclock

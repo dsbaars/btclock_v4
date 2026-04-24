@@ -71,8 +71,12 @@ struct ClockLayout {
 // "HH:MM" (leading-zero-padded); earlier slots are blank. Caller
 // ensures digit_panels >= 5. If `valid` is false, all slots are ' '
 // so the renderer blanks the time area (SNTP not synced yet).
+// When `hide_leading_zero=true` and hour < 10, the tens-of-hours slot
+// is blanked so "07:05" renders as " 7:05". Minute digits are always
+// zero-padded (matches user-visible formatting: "7:05", never "7:5").
 ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
-                               size_t digit_panels);
+                               size_t digit_panels,
+                               bool hide_leading_zero = false);
 
 // Right-justify a 64-bit unsigned integer into `digits[slots]`. Same
 // blank-pad / leading-truncate rules as FormatDigits for uint32_t.

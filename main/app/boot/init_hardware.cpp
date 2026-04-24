@@ -123,6 +123,13 @@ void InitHardware(AppCtx& ctx) {
         ctx.frontlight->SetConfiguredBrightness(
             static_cast<uint16_t>(max_brightness));
       }
+      // flEffectDelay: drives staggered-flash cadence. Clamped to the
+      // schema range (0..1000) implicitly — Prefs returns an unsigned
+      // value and the stagger helper handles small/zero values by
+      // flooring the per-LED delay at 1ms.
+      const uint32_t effect_delay = settings.GetU32(
+          prefs::kFlEffectDelay, frontlight::kDefaultEffectDelayMs);
+      ctx.frontlight->SetEffectDelay(effect_delay);
     }
     // Fade up to the configured brightness at boot. Matches old
     // firmware, which powered the frontlight on once the panels were

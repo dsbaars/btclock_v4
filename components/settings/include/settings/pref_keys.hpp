@@ -60,6 +60,11 @@ inline constexpr const char* kFontName         = "fontName";
 inline constexpr const char* kFullRefreshMin   = "fullRefreshMin";
 inline constexpr const char* kGitReleaseUrl    = "gitReleaseUrl";
 inline constexpr const char* kGmtOffset        = "gmtOffset";
+// Clock screen: drop the leading zero on single-digit hours
+// ("07:00" → "7:00"). Minute always stays zero-padded. NVS 15-char
+// cap forces the short form — the old "hideTimeLeadingZero" name
+// would need 19 bytes. Key is stable once shipped; do not rename.
+inline constexpr const char* kHideLeadZero     = "hideLeadZero";
 inline constexpr const char* kHostnamePrefix   = "hostnamePrefix";
 inline constexpr const char* kHttpAuthEnabled  = "httpAuthEnabled";
 inline constexpr const char* kHttpAuthPass     = "httpAuthPass";
@@ -159,6 +164,7 @@ BTCLOCK_PREF_KEY_ASSERT(kFontName);
 BTCLOCK_PREF_KEY_ASSERT(kFullRefreshMin);
 BTCLOCK_PREF_KEY_ASSERT(kGitReleaseUrl);
 BTCLOCK_PREF_KEY_ASSERT(kGmtOffset);
+BTCLOCK_PREF_KEY_ASSERT(kHideLeadZero);
 BTCLOCK_PREF_KEY_ASSERT(kHostnamePrefix);
 BTCLOCK_PREF_KEY_ASSERT(kHttpAuthEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kHttpAuthPass);

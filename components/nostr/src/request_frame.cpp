@@ -77,6 +77,13 @@ std::string BuildReqJson(const std::string& sub_id, const Filter& f) {
     out.append("\"#p\":");
     AppendStringArray(out, f.p_tags);
   }
+  if (f.since > 0) {
+    sep();
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "\"since\":%llu",
+                  static_cast<unsigned long long>(f.since));
+    out.append(buf);
+  }
   if (f.limit > 0) {
     sep();
     char buf[24];

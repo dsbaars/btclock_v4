@@ -70,6 +70,10 @@ struct PanelTextInputs {
   int minute = 0;
   int mday = 0;
   int month = 0;
+  // Clock decoration. `hide_lead_zero=true` blanks the tens-of-hours
+  // cell for 0..9 so /api/status mirrors what the EPD paints
+  // ("07:05" → "  7:05") when the `hideLeadZero` pref is set.
+  bool hide_lead_zero = false;
   // Decoration flags. Mirror the on-device renderer's mode selection so
   // /api/status data[] matches what the EPDs actually paint — see
   // settings/pref_keys.hpp. Only the bits relevant to a given `kind`

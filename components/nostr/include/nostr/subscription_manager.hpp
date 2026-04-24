@@ -24,13 +24,14 @@ namespace nostr {
 class RelayClient;
 
 // A filter is a flat map of NIP-01 filter fields. We model only the
-// subset this firmware uses: kinds, authors, `#d`, `#p`, limit.
+// subset this firmware uses: kinds, authors, `#d`, `#p`, since, limit.
 // Extending is trivial — see `BuildReqJson` in subscription_manager.cpp.
 struct Filter {
   std::vector<uint32_t> kinds;
   std::vector<std::string> authors;    // lowercase hex pubkeys
   std::vector<std::string> d_tags;     // `#d` — NIP-33 parameterized slot
   std::vector<std::string> p_tags;     // `#p` — referenced pubkey (zaps)
+  uint64_t since = 0;                  // unix seconds; 0 => omit field
   int limit = 0;                       // 0 => omit field
 };
 

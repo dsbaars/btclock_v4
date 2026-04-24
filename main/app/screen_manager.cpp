@@ -39,6 +39,8 @@ struct RenderPrefs {
   bool block_fee_dec;
   bool suffix_price;
   bool mow_mode;
+  // Clock screen: drop the leading zero on single-digit hours.
+  bool hide_lead_zero;
   // verticalDesc: rotate label panels 90° CCW so "BLOCK/HEIGHT" etc.
   // read along the panel's long axis. Ports v3's verticalDesc pref
   // (see btclock_v3_fci/src/lib/drivers/epd/epd.cpp splitText).
@@ -62,6 +64,7 @@ RenderPrefs ReadRenderPrefs() {
   out.block_fee_dec    = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
   out.suffix_price     = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
   out.mow_mode         = prefs.GetBool(btclock::prefs::kMowMode, false);
+  out.hide_lead_zero   = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
   out.vertical_desc    = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
   out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
   out.full_refresh_min =
@@ -627,7 +630,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
           last_rendered_clock_min_,
           last_rendered_clock_mday_,
           last_rendered_clock_mon_,
-          force_full, rp.vertical_desc);
+          force_full, rp.vertical_desc, rp.hide_lead_zero);
       last_rendered_clock_valid_ = valid;
       if (valid) {
         last_rendered_clock_hour_ = tm_now.tm_hour;
@@ -788,6 +791,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   pti.use_mscw_time     = rp.use_mscw_time;
   pti.suffix_price      = rp.suffix_price;
   pti.mow_mode          = rp.mow_mode;
+  pti.hide_lead_zero    = rp.hide_lead_zero;
   // Bitaxe mirror fields. pti copies the raw snapshot values so the
   // panel_texts builder formats identically to what the EPD renderer
   // just painted; both share FormatBitaxeHashrate.

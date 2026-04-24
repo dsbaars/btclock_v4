@@ -27,6 +27,7 @@ add_executable(btclock_host_tests
     test_control_validators.cpp
     test_frontlight_fade.cpp
     test_frontlight_ambient_policy.cpp
+    test_frontlight_stagger.cpp
     test_mime.cpp
     test_net_util.cpp
     test_hostname.cpp
@@ -77,6 +78,7 @@ add_executable(btclock_host_tests
     ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
     ../main/io/frontlight_ambient_policy.cpp
+    ../main/io/frontlight_stagger.cpp
     ../main/io/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp

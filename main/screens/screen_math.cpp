@@ -281,7 +281,8 @@ MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats) {
 }
 
 ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
-                               std::size_t digit_panels) {
+                               std::size_t digit_panels,
+                               bool hide_leading_zero) {
   ClockLayout l;
   for (std::size_t i = 0; i < sizeof(l.digits); ++i) l.digits[i] = ' ';
   if (!valid || digit_panels < 5 || digit_panels > sizeof(l.digits)) {
@@ -290,7 +291,15 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
   const int h = hour < 0 ? 0 : (hour > 23 ? 23 : hour);
   const int m = minute < 0 ? 0 : (minute > 59 ? 59 : minute);
   const std::size_t base = digit_panels - 5;
-  l.digits[base + 0] = static_cast<char>('0' + (h / 10));
+  const char tens = static_cast<char>('0' + (h / 10));
+  // hide_leading_zero blanks the tens-of-hours cell for 0..9 so the
+  // display reads " 7:00" instead of "07:00"; two-digit hours (10..23)
+  // are unaffected. The colon and minute digits keep their slots so
+  // layout width stays constant — only the glyph in the leading slot
+  // changes. Matches the user-visible "7:00" example in the setting
+  // description: minute stays two-digit ("7:05", not "7:5").
+  l.digits[base + 0] =
+      (hide_leading_zero && h < 10) ? ' ' : tens;
   l.digits[base + 1] = static_cast<char>('0' + (h % 10));
   l.digits[base + 2] = ':';
   l.digits[base + 3] = static_cast<char>('0' + (m / 10));
