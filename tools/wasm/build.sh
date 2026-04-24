@@ -24,11 +24,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-IDF_PROTO_DIR="${REPO_ROOT}/idf_cpp_proto"
-SCREENS_DIR="${IDF_PROTO_DIR}/main/screens"
-MAIN_DIR="${IDF_PROTO_DIR}/main"
-FONTS_DIR="${IDF_PROTO_DIR}/components/fonts"
+# tools/wasm/ → repo root is two levels up. btclock_v4 keeps main/,
+# components/, etc. at the top (the old idf_cpp_proto/ intermediate
+# directory is gone post-extraction).
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SCREENS_DIR="${REPO_ROOT}/main/screens"
+MAIN_DIR="${REPO_ROOT}/main"
+FONTS_DIR="${REPO_ROOT}/components/fonts"
+DATA_CORE_DIR="${REPO_ROOT}/components/data_core"
 DIST_DIR="${SCRIPT_DIR}/dist"
 
 : "${EMSCRIPTEN_MIN_VERSION:=3.1.0}"
@@ -67,24 +70,31 @@ echo "[wasm] em++ ${em_version}, opt=${OPT_LEVEL}"
 echo "[wasm] compiling -> ${DIST_DIR}/btclock_datahandler.{js,wasm}"
 
 # Include roots:
-#   main/                       — so `#include "screens/…"` works and
-#                                 `#include "fonts_app.hpp"` resolves.
-#   main/screens/               — for common.hpp's `#include "wasm_panel.hpp"`
-#                                 (we drop wasm_panel.hpp on this path below).
-#   components/fonts/include    — font.hpp
-#   components/fonts            — stb_truetype.h (PRIV_INCLUDE_DIRS on device)
-#   tools/wasm                  — the shim EpdPanel header.
+#   main/                         — so `#include "screens/…"` works and
+#                                   `#include "fonts_app.hpp"` resolves.
+#   main/screens/                 — for common.hpp's `#include "wasm_panel.hpp"`
+#                                   (we drop wasm_panel.hpp on this path below).
+#   components/fonts/include      — font.hpp, mdi_codepoints.hpp
+#   components/fonts              — stb_truetype.h (PRIV_INCLUDE_DIRS on device)
+#   components/data_core/include  — data_core/snapshot.hpp (consumed by the
+#                                   bitaxe / mining-pool / nostr-zap renderers
+#                                   via `DataSnapshot::PoolStats` &c). On
+#                                   device the ESP-IDF component CMakeLists
+#                                   auto-adds this via INCLUDE_DIRS.
+#   tools/wasm                    — the shim EpdPanel header.
 em++ \
     -lembind \
-    -std=gnu++17 \
+    -std=gnu++20 \
     "${OPT_LEVEL}" \
     -DBTCLOCK_WASM_BUILD \
     -I"${MAIN_DIR}" \
     -I"${FONTS_DIR}/include" \
     -I"${FONTS_DIR}" \
+    -I"${DATA_CORE_DIR}/include" \
     -I"${SCRIPT_DIR}" \
     "${SCREENS_DIR}/common.cpp" \
     "${SCREENS_DIR}/screen_math.cpp" \
+    "${SCREENS_DIR}/panel_texts.cpp" \
     "${SCREENS_DIR}/block_height.cpp" \
     "${SCREENS_DIR}/btc_price.cpp" \
     "${SCREENS_DIR}/moscow_time.cpp" \
@@ -93,6 +103,11 @@ em++ \
     "${SCREENS_DIR}/halving.cpp" \
     "${SCREENS_DIR}/bitcoin_supply.cpp" \
     "${SCREENS_DIR}/market_cap.cpp" \
+    "${SCREENS_DIR}/mining_pool.cpp" \
+    "${SCREENS_DIR}/assets/pool_logos.cpp" \
+    "${SCREENS_DIR}/assets/bitaxe_logo.cpp" \
+    "${SCREENS_DIR}/bitaxe.cpp" \
+    "${SCREENS_DIR}/nostr_zap.cpp" \
     "${MAIN_DIR}/fonts_app.cpp" \
     "${FONTS_DIR}/font.cpp" \
     "${FONTS_DIR}/stb_truetype_impl.c" \

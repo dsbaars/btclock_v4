@@ -230,12 +230,41 @@ esp_err_t ProvisioningServer::HandleWifi(httpd_req_t* req) {
     return ESP_FAIL;
   }
 
-  ESP_LOGI(kTag, "credentials received: ssid='%s' pw=%d chars",
+  ESP_LOGI(kTag, "credentials received: ssid='%s' pw=%d chars — verifying",
            ssid.c_str(), static_cast<int>(pw.size()));
-  if (self->on_save_) self->on_save_(ssid, pw);
+  // Verify association BEFORE persisting. SoftAP stays up throughout so
+  // the user can retry without reflashing if the creds are rejected —
+  // the original "save and reboot" path bricked the device on any typo.
+  // 15 s covers slow DHCP on real networks; anything longer and the
+  // portal feels dead.
+  const esp_err_t try_err = self->wifi_->TryConnect(
+      ssid.c_str(), pw.c_str(), 15'000);
+  if (try_err == ESP_OK) {
+    ESP_LOGI(kTag, "creds verified; saving + rebooting");
+    if (self->on_save_) self->on_save_(ssid, pw);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, "{\"ok\":true}", 11);
+  }
 
+  // Didn't associate — surface a structured reason so the WebUI can
+  // show "wrong password", "SSID not found", or "timeout" precisely.
+  // last_disconnect_reason is 0 if we timed out before any disconnect.
+  const uint8_t reason = self->wifi_->last_disconnect_reason();
+  const char* code = "unknown";
+  if (try_err == ESP_ERR_TIMEOUT) code = "timeout";
+  else if (reason == 201) code = "no_ap_found";
+  else if (reason == 202) code = "auth_fail";
+  else if (reason == 203) code = "assoc_fail";
+  else if (reason == 204) code = "handshake_timeout";
+  else if (reason == 205) code = "connection_fail";
+  char body_out[96];
+  const int n = std::snprintf(body_out, sizeof(body_out),
+                              "{\"ok\":false,\"code\":\"%s\",\"reason\":%u}",
+                              code, static_cast<unsigned>(reason));
+  ESP_LOGW(kTag, "creds rejected: %s (reason=%u)", code, reason);
+  httpd_resp_set_status(req, "400 Bad Request");
   httpd_resp_set_type(req, "application/json");
-  return httpd_resp_send(req, "{\"ok\":true}", 11);
+  return httpd_resp_send(req, body_out, n > 0 ? n : 0);
 }
 
 esp_err_t ProvisioningServer::HandleAny(httpd_req_t* req) {

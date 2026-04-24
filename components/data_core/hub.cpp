@@ -47,6 +47,28 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
       changed = true;
     }
   }
+  // Bitaxe: a non-empty hostname in `other` is the "fresh sample"
+  // signal. Like pool stats, we merge the whole substruct as a unit so
+  // hashrate / diff / temp always come from the same poll tick.
+  if (!other.bitaxe.hostname.empty()) {
+    if (bitaxe.hostname != other.bitaxe.hostname ||
+        bitaxe.hashrate_ghs != other.bitaxe.hashrate_ghs ||
+        bitaxe.best_diff != other.bitaxe.best_diff ||
+        bitaxe.temperature_c != other.bitaxe.temperature_c ||
+        bitaxe.shares_accepted != other.bitaxe.shares_accepted) {
+      bitaxe = other.bitaxe;
+      changed = true;
+    }
+  }
+  // Latest zap — only the most recent wins. received_ms == 0 means
+  // "caller didn't populate the zap substruct"; skip so unrelated
+  // partial snapshots can't clobber a real receipt. Equal timestamps
+  // no-op so a retransmit of the same event doesn't spam update
+  // callbacks.
+  if (other.latest_zap.received_ms > latest_zap.received_ms) {
+    latest_zap = other.latest_zap;
+    changed = true;
+  }
   return changed;
 }
 

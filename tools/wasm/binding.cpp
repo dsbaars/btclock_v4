@@ -10,7 +10,7 @@
 // 2) render<Screen>FrameBuffer — drives the real template-on-N screen
 //    renderers from main/screens/*.cpp against an in-memory EpdPanel
 //    shim (tools/wasm/wasm_panel.hpp) backed by plain uint8_t arrays,
-//    then returns an Array<Uint8Array> of the 7 panel framebuffers.
+//    then returns an Array<Uint8Array> of the N panel framebuffers.
 //    JS unpacks the 1-bpp bytes onto a <canvas>. This is the pixel-
 //    accurate preview — same font rasterizer, same paint primitives,
 //    same rotation/stride as the physical EPD.
@@ -18,6 +18,14 @@
 // The two families live side by side so the HTML can switch between
 // them (text mode is cheap and always works; pixel mode matches the
 // device exactly).
+//
+// Preview-only runtime knobs (no device-firmware counterpart): the JS
+// side calls setRenderOptions(panels, font_family) to switch between
+// the 7-panel (REV_A/REV_B) and 8-panel (V8) layouts and to override
+// the big-digit font (antonio/oswald/dejavu) for validation across the
+// firmware's shipped font set. The renderer templates are already
+// instantiated for N=7 and N=8 in main/screens/*.cpp; we dispatch at
+// runtime into the right instantiation.
 
 #include <array>
 #include <cstdint>
@@ -48,9 +56,10 @@ using emscripten::val;
 
 namespace {
 
-// 7 panels — the current REV_B topology. 8-panel variants are a
-// follow-up (beads 90q stays in_progress for that).
-constexpr std::size_t kPanels = 7;
+// Max panels the shared framebuffer storage is sized for. Rev A/B are
+// 7, V8 is 8 — we budget for the bigger of the two and always allocate
+// the full 8 so switching between modes at runtime is free.
+constexpr std::size_t kMaxPanels = 8;
 // Fixed fb_storage size that the renderer templates take by reference.
 constexpr std::size_t kFbBytes = 16 * 296;
 
@@ -59,18 +68,28 @@ constexpr std::size_t kFbBytes = 16 * 296;
 // (296h * 16 = 4736 bytes). Only the 2.13" subrange is actually written
 // for the current panel kind — we allocate the full 16*296 anyway to
 // keep the template signature happy.
-using FbStorage = uint8_t[kPanels][kFbBytes];
+using FbStorage7 = uint8_t[7][kFbBytes];
+using FbStorage8 = uint8_t[8][kFbBytes];
 
-// One shared set of panels + framebuffers. The AppFonts object carries
-// the stb_truetype info_ pointers for each face — safe to cache across
-// calls (pure read paths, no internal state mutated per-draw).
+// One shared set of panels + framebuffers sized for the 8-panel
+// worst case. For 7-panel renders we pass a view over the first 7
+// slots via a reference-cast (see As7/As8 below). The AppFonts object
+// carries the stb_truetype info_ pointers for each face — safe to
+// cache across calls (pure read paths, no internal state mutated
+// per-draw).
 struct RenderContext {
-  std::array<std::unique_ptr<btclock::EpdPanel>, kPanels> panels;
-  FbStorage fbs{};
+  std::array<std::unique_ptr<btclock::EpdPanel>, kMaxPanels> panels;
+  uint8_t fbs[kMaxPanels][kFbBytes] = {};
   btclock::AppFonts fonts;
 
+  // Runtime-selectable preview state. `panels_active` is 7 or 8;
+  // `font_family` selects which face overrides the stock antonio slot
+  // on `fonts` before a render. 0=antonio (stock), 1=oswald, 2=dejavu.
+  std::size_t panels_active = 7;
+  int font_family = 0;
+
   RenderContext() {
-    for (std::size_t i = 0; i < kPanels; ++i) {
+    for (std::size_t i = 0; i < kMaxPanels; ++i) {
       panels[i] = std::make_unique<btclock::EpdPanel>(
           btclock::PanelKind::k2_13);
     }
@@ -82,13 +101,98 @@ RenderContext& Ctx() {
   return ctx;
 }
 
-// Zero every panel's framebuffer to "all white" (0xFF) so partial-
-// refresh paths that don't touch every panel still produce a valid
-// result. The device's EpdPanel::Init() also zeroes its shadow before
-// the first full refresh; we mirror that here.
-void ClearAllPanels() {
+// Cast helpers so the shared 8-wide fb storage can be handed to a
+// template instantiation that expects 7-wide storage (the template's
+// first-N elements overlap byte-for-byte with the 8-wide array).
+FbStorage7& As7(RenderContext& ctx) {
+  return *reinterpret_cast<FbStorage7*>(ctx.fbs);
+}
+FbStorage8& As8(RenderContext& ctx) {
+  return ctx.fbs;
+}
+
+// Matching std::array<unique_ptr<EpdPanel>, N> views over the first N
+// elements of ctx.panels. We can't reinterpret_cast the array (it has
+// non-trivial members), so build a fresh wrapper whose elements
+// alias-own no panels — we transfer-move in and out around the call.
+// Simpler: give the renderer a reference to a local std::array we
+// constructed by std::move'ing the first N unique_ptrs in, then move
+// them back after the call. This keeps lifetime tidy and doesn't leak.
+//
+// We return by value; caller should swap-back via the provided
+// RestorePanels helper once the render returns.
+template <std::size_t N>
+std::array<std::unique_ptr<btclock::EpdPanel>, N> BorrowPanels(
+    RenderContext& ctx) {
+  std::array<std::unique_ptr<btclock::EpdPanel>, N> out;
+  for (std::size_t i = 0; i < N; ++i) {
+    out[i] = std::move(ctx.panels[i]);
+  }
+  return out;
+}
+template <std::size_t N>
+void ReturnPanels(RenderContext& ctx,
+                  std::array<std::unique_ptr<btclock::EpdPanel>, N>& borrowed) {
+  for (std::size_t i = 0; i < N; ++i) {
+    ctx.panels[i] = std::move(borrowed[i]);
+  }
+}
+
+// Override the digit font on the shared AppFonts for the duration of
+// a render. The screen renderers read `fonts.antonio()` by name (the
+// big-digit face); swapping the backing Font for one constructed from
+// a different TTF blob lets the preview show Oswald / DejaVu digits
+// without any firmware-side plumbing.
+//
+// Why const_cast is OK here: `antonio()` returns `const Font&` but the
+// underlying `antonio_` member is a non-const data member of a non-
+// const AppFonts (we own `ctx.fonts`). Casting away const on a
+// reference to a non-const object is defined behaviour; the UB clause
+// only applies to objects that are truly const at the site of
+// declaration.
+//
+// Why the Font assignment is safe: `Font` has no user-declared
+// destructor, copy ctor, or copy-assignment — it gets a defaulted
+// memberwise operator=. Assigning a freshly-constructed Font over an
+// existing one shallow-copies (ttf_ptr, ttf_size, info_ pointer). The
+// previous stb_truetype info_ block leaks — one leak per font switch —
+// but `Font` already never destroys its info_ on device either, so
+// we're matching the existing lifetime model.
+void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
+  const uint8_t* ttf = btclock::kAntonioTtf;
+  std::size_t sz = btclock::kAntonioTtfSize;
+  switch (family) {
+    case 1:  // oswald
+      ttf = btclock::kOswaldTtf;
+      sz  = btclock::kOswaldTtfSize;
+      break;
+    case 2:  // dejavu
+      ttf = btclock::kDejaVuTtf;
+      sz  = btclock::kDejaVuTtfSize;
+      break;
+    default:
+      // family 0 (or unknown) → leave stock antonio in place.
+      return;
+  }
+  const_cast<btclock::Font&>(fonts.antonio()) = btclock::Font(ttf, sz);
+}
+
+// Rebuild `fonts.antonio()` back to the stock face so subsequent
+// renders with family=0 see the original Antonio. Called at the top of
+// every render to guarantee a clean starting point regardless of the
+// last frame's override.
+void ResetFontOverride(btclock::AppFonts& fonts) {
+  const_cast<btclock::Font&>(fonts.antonio()) =
+      btclock::Font(btclock::kAntonioTtf, btclock::kAntonioTtfSize);
+}
+
+// Zero every panel's framebuffer (up to `n`) to "all white" (0xFF) so
+// partial-refresh paths that don't touch every panel still produce a
+// valid result. The device's EpdPanel::Init() also zeroes its shadow
+// before the first full refresh; we mirror that here.
+void ClearPanels(std::size_t n) {
   auto& ctx = Ctx();
-  for (std::size_t i = 0; i < kPanels; ++i) {
+  for (std::size_t i = 0; i < n; ++i) {
     std::memset(ctx.fbs[i], 0xFF, kFbBytes);
   }
 }
@@ -109,18 +213,20 @@ void ClearAllPanels() {
 // grayscale buffer.
 //
 // Size per panel: logical_w * logical_h. For 2.13" rotated k180 that's
-// 122 * 250 = 30,500 bytes; 7 panels = ~213 KB per render call. We
+// 122 * 250 = 30,500 bytes; 8 panels = ~244 KB per render call. We
 // allocate these per-render (std::vector on the heap) and clone into
 // JS Uint8Arrays before freeing.
 struct AlphaBuffers {
   int w;
   int h;
-  std::array<std::vector<uint8_t>, kPanels> bufs;
+  std::size_t n;
+  std::array<std::vector<uint8_t>, kMaxPanels> bufs;
 
-  AlphaBuffers(int w_in, int h_in) : w(w_in), h(h_in) {
+  AlphaBuffers(int w_in, int h_in, std::size_t n_in)
+      : w(w_in), h(h_in), n(n_in) {
     const std::size_t bytes = static_cast<std::size_t>(w) *
                               static_cast<std::size_t>(h);
-    for (std::size_t i = 0; i < kPanels; ++i) {
+    for (std::size_t i = 0; i < n; ++i) {
       bufs[i].assign(bytes, 0);
     }
   }
@@ -128,52 +234,53 @@ struct AlphaBuffers {
 
 val AlphaBuffersToVal(const AlphaBuffers& ab) {
   val out = val::array();
-  for (std::size_t i = 0; i < kPanels; ++i) {
+  for (std::size_t i = 0; i < ab.n; ++i) {
     const std::size_t bytes = ab.bufs[i].size();
     val view = val(emscripten::typed_memory_view(bytes, ab.bufs[i].data()));
     // Clone so the JS side owns stable bytes past this call.
     val clone = val::global("Uint8Array").new_(view);
-    out.set(i, clone);
+    out.set(static_cast<int>(i), clone);
   }
   return out;
 }
 
-// Arm the alpha sidechannel at ctx.fbs[0..kPanels-1], keyed on each
-// panel's fb pointer. Caller must Clear() the sidechannel (or call this
-// with a fresh AlphaBuffers) before every render to avoid residue.
+// Arm the alpha sidechannel at ctx.fbs[0..n-1], keyed on each panel's
+// fb pointer. Caller must Clear() the sidechannel (or call this with a
+// fresh AlphaBuffers) before every render to avoid residue.
 void ArmAlphaSidechannel(AlphaBuffers& ab) {
   auto& ctx = Ctx();
-  const uint8_t* fb_ptrs[kPanels];
-  uint8_t* alpha_ptrs[kPanels];
-  for (std::size_t i = 0; i < kPanels; ++i) {
+  const uint8_t* fb_ptrs[kMaxPanels];
+  uint8_t* alpha_ptrs[kMaxPanels];
+  for (std::size_t i = 0; i < ab.n; ++i) {
     fb_ptrs[i] = ctx.fbs[i];
     alpha_ptrs[i] = ab.bufs[i].data();
   }
-  btclock::wasm_aa::SetPanelTargets(kPanels, fb_ptrs, alpha_ptrs,
+  btclock::wasm_aa::SetPanelTargets(ab.n, fb_ptrs, alpha_ptrs,
                                     ab.w, ab.h, /*stride=*/ab.w);
 }
 
-// Convert the shared kPanels * kFbBytes framebuffer array into a JS
-// Array<Uint8Array> where each element spans exactly the bytes the
-// panel actually uses (stride * height = 16 * 250 = 4000 for 2.13").
+// Convert the shared kMaxPanels * kFbBytes framebuffer array into a JS
+// Array<Uint8Array> of length `n`, each element spanning exactly the
+// bytes that panel actually uses (stride * height = 16 * 250 = 4000
+// for 2.13").
 //
 // typed_memory_view returns a Uint8Array view onto WASM linear memory
 // that stays valid across calls (until WASM memory grows and the view
 // is reset by emscripten itself). We clone into a fresh Uint8Array so
 // the JS side owns stable bytes even across subsequent renders.
-val FrameBuffersToVal() {
+val FrameBuffersToVal(std::size_t n) {
   auto& ctx = Ctx();
   const int stride = btclock::EpdPanel::kStride;
   const int height = ctx.panels[0]->Height();
   const std::size_t used = static_cast<std::size_t>(stride) * height;
 
   val out = val::array();
-  for (std::size_t i = 0; i < kPanels; ++i) {
+  for (std::size_t i = 0; i < n; ++i) {
     val view = val(emscripten::typed_memory_view(used, ctx.fbs[i]));
     // Copy into a new Uint8Array that the JS caller owns. For 4000
-    // bytes × 7 panels this is ~28 KB per render call — negligible.
+    // bytes × 8 panels this is ~32 KB per render call — negligible.
     val clone = val::global("Uint8Array").new_(view);
-    out.set(i, clone);
+    out.set(static_cast<int>(i), clone);
   }
   return out;
 }
@@ -185,6 +292,12 @@ val FrameBuffersToVal() {
 // ---------------------------------------------------------------------------
 
 namespace {
+
+// Text-mode still uses the compile-time kPanels that the label-drop
+// behaviour was tuned against. Preserved at 7 to keep text-mode output
+// identical to what it's always been; the panels-picker only affects
+// pixel-mode.
+constexpr std::size_t kTextPanels = 7;
 
 val DigitsToArray(const char* label, const std::array<char, 6>& d) {
   val a = val::array();
@@ -201,13 +314,13 @@ val parseBlockHeight(int block_height) {
                                       : static_cast<uint32_t>(block_height);
   // Label-drop parity: 7-digit heights (>=1_000_000 on a 7-panel board)
   // paint every panel as a digit; see BlockHeightDropsLabel.
-  if (btclock::BlockHeightDropsLabel(h, kPanels)) {
+  if (btclock::BlockHeightDropsLabel(h, kTextPanels)) {
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(h));
     val a = val::array();
     const std::size_t len = std::strlen(buf);
-    const std::size_t skip = len > kPanels ? len - kPanels : 0;
-    for (std::size_t i = 0; i < kPanels; ++i) {
+    const std::size_t skip = len > kTextPanels ? len - kTextPanels : 0;
+    for (std::size_t i = 0; i < kTextPanels; ++i) {
       char cell[2] = {buf[skip + i], '\0'};
       a.set(static_cast<int>(i), std::string(cell));
     }
@@ -344,91 +457,272 @@ val parseBitcoinSupply(int block_height, bool /*bigchars_unused*/,
 // Each render<Screen>FrameBuffer wipes the shared fb array, runs the
 // matching Render<Screen>Screen template (forcing a full refresh by
 // passing empty/zero prev-state), then returns an Array<Uint8Array>
-// of the 7 resulting panel buffers.
+// of the N resulting panel buffers where N is the preview's active
+// panel count (7 or 8 — set via setRenderOptions).
 // ---------------------------------------------------------------------------
 
 namespace {
 
+// Dispatch helpers — `F7` runs a template<7> render, `F8` runs the
+// template<8>. Keeps the per-screen binding code from ballooning
+// with parallel branches, and localises the swap-panels dance in one
+// place.
+template <typename F7, typename F8>
+void DispatchByPanels(F7&& f7, F8&& f8) {
+  auto& ctx = Ctx();
+  // Apply font-family override for this render, then reset after.
+  // Cheap (one Font ctor per render); guarantees family 0 always
+  // gets a clean stock Antonio regardless of what the previous
+  // render did.
+  ResetFontOverride(ctx.fonts);
+  ApplyFontOverride(ctx.fonts, ctx.font_family);
+
+  if (ctx.panels_active == 8) {
+    auto borrowed = BorrowPanels<8>(ctx);
+    f8(ctx, borrowed, As8(ctx));
+    ReturnPanels<8>(ctx, borrowed);
+  } else {
+    auto borrowed = BorrowPanels<7>(ctx);
+    f7(ctx, borrowed, As7(ctx));
+    ReturnPanels<7>(ctx, borrowed);
+  }
+}
+
 val renderBlockHeight(int block_height) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-  btclock::RenderBlockHeightScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBlockHeightScreen<7>(pans, fbs, c.fonts, bh, 0);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBlockHeightScreen<8>(pans, fbs, c.fonts, bh, 0);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderPriceData(int price_int, std::string currency) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   char price_buf[24];
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
   const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
-  btclock::RenderBtcPriceScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf,
-      /*prev_price=*/"", symbol_utf8);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBtcPriceScreen<7>(
+            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBtcPriceScreen<8>(
+            pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderSatsPerCurrency(int price_int, std::string currency,
                           bool /*with_sats_symbol_unused*/) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   char price_buf[24];
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
-  btclock::RenderMoscowTimeScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf,
-      /*prev_price=*/"", btclock::kSatsVariantDefault);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderMoscowTimeScreen<7>(
+            pans, fbs, c.fonts, currency, price_buf, "",
+            btclock::kSatsVariantDefault);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderMoscowTimeScreen<8>(
+            pans, fbs, c.fonts, currency, price_buf, "",
+            btclock::kSatsVariantDefault);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderBlockFees(int fee_sats_vb) {
   auto& ctx = Ctx();
-  ClearAllPanels();
-  btclock::RenderFeeRateScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts,
-      /*fee_sats_vb=*/fee_sats_vb < 0 ? 0 : fee_sats_vb,
-      /*prev_fee_sats_vb=*/-1);
-  return FrameBuffersToVal();
+  ClearPanels(ctx.panels_active);
+  const double fee = fee_sats_vb < 0 ? 0.0
+                                     : static_cast<double>(fee_sats_vb);
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderFeeRateScreen<7>(pans, fbs, c.fonts, fee, -1);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderFeeRateScreen<8>(pans, fbs, c.fonts, fee, -1);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-  btclock::RenderHalvingScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderHalvingScreen<7>(pans, fbs, c.fonts, bh, 0);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderHalvingScreen<8>(pans, fbs, c.fonts, bh, 0);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderMarketCap(int block_height, int price_int, std::string currency,
                     bool /*bigchars_unused*/) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   char price_buf[24];
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-  btclock::RenderMarketCapScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf, bh,
-      /*prev_price=*/"", /*prev_height=*/0);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderMarketCapScreen<7>(
+            pans, fbs, c.fonts, currency, price_buf, bh, "", 0);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderMarketCapScreen<8>(
+            pans, fbs, c.fonts, currency, price_buf, bh, "", 0);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 val renderBitcoinSupply(int block_height, bool /*bigchars_unused*/,
                         bool /*percent_unused*/) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   const uint32_t bh =
       block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-  btclock::RenderBitcoinSupplyScreen<kPanels>(
-      ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
-  return FrameBuffersToVal();
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBitcoinSupplyScreen<7>(pans, fbs, c.fonts, bh, 0);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBitcoinSupplyScreen<8>(pans, fbs, c.fonts, bh, 0);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
+}
+
+// --- Mining pool + bitaxe + nostr zap bindings -----------------------------
+//
+// These four screens don't take a plain integer like block height — they
+// consume a `DataSnapshot` sub-struct (PoolStats / BitaxeStats / LatestZap).
+// JS assembles a plain args list and we repack it into the struct on this
+// side so the binding surface stays simple strings + numbers.
+
+// Build a PoolStats from primitive args. `daily_sats < 0` → nullopt so
+// the renderer's "no-sample" branch fires; any non-negative value passes
+// through verbatim.
+btclock::DataSnapshot::PoolStats MakePoolStats(const std::string& name,
+                                               const std::string& hashrate,
+                                               double daily_sats) {
+  btclock::DataSnapshot::PoolStats out;
+  out.name = name;
+  out.hashrate = hashrate;
+  if (daily_sats >= 0.0) {
+    out.daily_sats = static_cast<int64_t>(daily_sats);
+  }
+  return out;
+}
+
+val renderMiningPoolHashrate(std::string pool_name, std::string hashrate) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  const auto stats = MakePoolStats(pool_name, hashrate, -1.0);
+  // Empty `prev_pool` triggers the renderer's full-refresh path — a must
+  // for the preview, which has no state across calls.
+  const btclock::DataSnapshot::PoolStats prev{};
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderMiningPoolHashrateScreen<7>(
+            pans, fbs, c.fonts, stats, prev);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderMiningPoolHashrateScreen<8>(
+            pans, fbs, c.fonts, stats, prev);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
+}
+
+val renderMiningPoolEarnings(std::string pool_name, double daily_sats) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  // hashrate not consumed by the earnings screen — pass empty string.
+  const auto stats = MakePoolStats(pool_name, "", daily_sats);
+  const btclock::DataSnapshot::PoolStats prev{};
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderMiningPoolEarningsScreen<7>(
+            pans, fbs, c.fonts, stats, prev);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderMiningPoolEarningsScreen<8>(
+            pans, fbs, c.fonts, stats, prev);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
+}
+
+val renderBitaxeHashrate(std::string hostname, double hashrate_ghs) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  std::optional<double> ghs;
+  if (hashrate_ghs > 0.0) ghs = hashrate_ghs;
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBitaxeHashrateScreen<7>(
+            pans, fbs, c.fonts, hostname, ghs,
+            /*force_full=*/true, /*prev_value=*/"");
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBitaxeHashrateScreen<8>(
+            pans, fbs, c.fonts, hostname, ghs,
+            /*force_full=*/true, /*prev_value=*/"");
+      });
+  return FrameBuffersToVal(ctx.panels_active);
+}
+
+val renderBitaxeBestDiff(std::string hostname, std::string best_diff) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  std::optional<std::string> bd;
+  if (!best_diff.empty()) bd = best_diff;
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderBitaxeBestDiffScreen<7>(
+            pans, fbs, c.fonts, hostname, bd,
+            /*force_full=*/true, /*prev_value=*/"");
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderBitaxeBestDiffScreen<8>(
+            pans, fbs, c.fonts, hostname, bd,
+            /*force_full=*/true, /*prev_value=*/"");
+      });
+  return FrameBuffersToVal(ctx.panels_active);
+}
+
+val renderNostrZap(double amount_sats) {
+  auto& ctx = Ctx();
+  ClearPanels(ctx.panels_active);
+  btclock::DataSnapshot::LatestZap zap;
+  if (amount_sats >= 0.0) {
+    zap.amount_sats = static_cast<int64_t>(amount_sats);
+  }
+  // message intentionally left empty — the renderer no longer paints it.
+  DispatchByPanels(
+      [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
+        btclock::RenderNostrZapScreen<7>(pans, fbs, c.fonts, zap);
+      },
+      [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
+        btclock::RenderNostrZapScreen<8>(pans, fbs, c.fonts, zap);
+      });
+  return FrameBuffersToVal(ctx.panels_active);
 }
 
 // ---------------------------------------------------------------------------
@@ -449,11 +743,15 @@ val renderBitcoinSupply(int block_height, bool /*bigchars_unused*/,
 template <typename Fn>
 val RunAlphaRender(Fn&& run_render) {
   auto& ctx = Ctx();
-  ClearAllPanels();
+  ClearPanels(ctx.panels_active);
   const int w = ctx.panels[0]->Width();
   const int h = ctx.panels[0]->Height();
-  AlphaBuffers ab(w, h);
+  AlphaBuffers ab(w, h, ctx.panels_active);
   ArmAlphaSidechannel(ab);
+  // Same font-override dance as the 1-bpp path — the AA and 1-bpp runs
+  // need to see identical font state or the two previews won't match.
+  ResetFontOverride(ctx.fonts);
+  ApplyFontOverride(ctx.fonts, ctx.font_family);
   run_render();
   btclock::wasm_aa::Clear();
   return AlphaBuffersToVal(ab);
@@ -464,8 +762,17 @@ val renderBlockHeightAlpha(int block_height) {
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-    btclock::RenderBlockHeightScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBlockHeightScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBlockHeightScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
@@ -476,9 +783,19 @@ val renderPriceDataAlpha(int price_int, std::string currency) {
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
     const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
-    btclock::RenderBtcPriceScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf,
-        /*prev_price=*/"", symbol_utf8);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBtcPriceScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
+          symbol_utf8);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBtcPriceScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
+          symbol_utf8);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
@@ -489,19 +806,38 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
     char price_buf[24];
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
-    btclock::RenderMoscowTimeScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf,
-        /*prev_price=*/"", btclock::kSatsVariantDefault);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMoscowTimeScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
+          btclock::kSatsVariantDefault);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMoscowTimeScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
+          btclock::kSatsVariantDefault);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
 val renderBlockFeesAlpha(int fee_sats_vb) {
   return RunAlphaRender([&]() {
     auto& ctx = Ctx();
-    btclock::RenderFeeRateScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts,
-        /*fee_sats_vb=*/fee_sats_vb < 0 ? 0 : fee_sats_vb,
-        /*prev_fee_sats_vb=*/-1);
+    const double fee = fee_sats_vb < 0 ? 0.0
+                                       : static_cast<double>(fee_sats_vb);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderFeeRateScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, fee, -1);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderFeeRateScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, fee, -1);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
@@ -510,8 +846,17 @@ val renderHalvingCountdownAlpha(int block_height, bool /*bigchars_unused*/) {
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-    btclock::RenderHalvingScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderHalvingScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderHalvingScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
@@ -525,9 +870,17 @@ val renderMarketCapAlpha(int block_height, int price_int,
                   price_int < 0 ? 0 : price_int);
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-    btclock::RenderMarketCapScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, currency, price_buf, bh,
-        /*prev_price=*/"", /*prev_height=*/0);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMarketCapScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, bh, "", 0);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMarketCapScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, bh, "", 0);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
 }
 
@@ -537,14 +890,133 @@ val renderBitcoinSupplyAlpha(int block_height, bool /*bigchars_unused*/,
     auto& ctx = Ctx();
     const uint32_t bh =
         block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
-    btclock::RenderBitcoinSupplyScreen<kPanels>(
-        ctx.panels, ctx.fbs, ctx.fonts, bh, /*prev_height=*/0);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBitcoinSupplyScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBitcoinSupplyScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, bh, 0);
+      ReturnPanels<7>(ctx, borrowed);
+    }
   });
+}
+
+val renderMiningPoolHashrateAlpha(std::string pool_name,
+                                  std::string hashrate) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    const auto stats = MakePoolStats(pool_name, hashrate, -1.0);
+    const btclock::DataSnapshot::PoolStats prev{};
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMiningPoolHashrateScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, stats, prev);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMiningPoolHashrateScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, stats, prev);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+val renderMiningPoolEarningsAlpha(std::string pool_name, double daily_sats) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    const auto stats = MakePoolStats(pool_name, "", daily_sats);
+    const btclock::DataSnapshot::PoolStats prev{};
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMiningPoolEarningsScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, stats, prev);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMiningPoolEarningsScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, stats, prev);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+val renderBitaxeHashrateAlpha(std::string hostname, double hashrate_ghs) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    std::optional<double> ghs;
+    if (hashrate_ghs > 0.0) ghs = hashrate_ghs;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBitaxeHashrateScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, hostname, ghs, true, "");
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBitaxeHashrateScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, hostname, ghs, true, "");
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+val renderBitaxeBestDiffAlpha(std::string hostname, std::string best_diff) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    std::optional<std::string> bd;
+    if (!best_diff.empty()) bd = best_diff;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBitaxeBestDiffScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, hostname, bd, true, "");
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBitaxeBestDiffScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, hostname, bd, true, "");
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+val renderNostrZapAlpha(double amount_sats) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    btclock::DataSnapshot::LatestZap zap;
+    if (amount_sats >= 0.0) {
+      zap.amount_sats = static_cast<int64_t>(amount_sats);
+    }
+    // message intentionally left empty — the renderer no longer paints it.
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderNostrZapScreen<8>(borrowed, As8(ctx), ctx.fonts, zap);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderNostrZapScreen<7>(borrowed, As7(ctx), ctx.fonts, zap);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
+// is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
+// 2=dejavu. Unknown font families fall back to stock. Call whenever
+// the user changes the UI selector; safe to call before every render.
+void setRenderOptions(int panels, int font_family) {
+  auto& ctx = Ctx();
+  ctx.panels_active = (panels == 8) ? 8 : 7;
+  if (font_family < 0 || font_family > 2) font_family = 0;
+  ctx.font_family = font_family;
 }
 
 // Panel dimension metadata — JS needs this to set the <canvas> size
 // and drive the 1-bpp iteration. Rotation is fixed at k180 to match
 // the REV_B solder orientation; native is 122x250 for 2.13" panels.
+// `panels` reflects the current setRenderOptions selection so the UI
+// can size its row correctly.
 val getPanelDimensions() {
   auto& ctx = Ctx();
   val o = val::object();
@@ -553,7 +1025,7 @@ val getPanelDimensions() {
   o.set("stride", btclock::EpdPanel::kStride);
   // 0 = k0, 1 = k90Cw, 2 = k180, 3 = k90Ccw (matches Rotation enum).
   o.set("rotation", 2);
-  o.set("panels", static_cast<int>(kPanels));
+  o.set("panels", static_cast<int>(ctx.panels_active));
   return o;
 }
 
@@ -580,6 +1052,15 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderMarketCapFrameBuffer", &renderMarketCap);
   emscripten::function("renderBitcoinSupplyFrameBuffer",
                        &renderBitcoinSupply);
+  emscripten::function("renderMiningPoolHashrateFrameBuffer",
+                       &renderMiningPoolHashrate);
+  emscripten::function("renderMiningPoolEarningsFrameBuffer",
+                       &renderMiningPoolEarnings);
+  emscripten::function("renderBitaxeHashrateFrameBuffer",
+                       &renderBitaxeHashrate);
+  emscripten::function("renderBitaxeBestDiffFrameBuffer",
+                       &renderBitaxeBestDiff);
+  emscripten::function("renderNostrZapFrameBuffer", &renderNostrZap);
 
   // AA mode (grayscale alpha, logical-coord, preview-only — one byte
   // per pixel, 0=white/no-ink..255=full-black-ink).
@@ -594,6 +1075,16 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderMarketCapAlphaBuffer", &renderMarketCapAlpha);
   emscripten::function("renderBitcoinSupplyAlphaBuffer",
                        &renderBitcoinSupplyAlpha);
+  emscripten::function("renderMiningPoolHashrateAlphaBuffer",
+                       &renderMiningPoolHashrateAlpha);
+  emscripten::function("renderMiningPoolEarningsAlphaBuffer",
+                       &renderMiningPoolEarningsAlpha);
+  emscripten::function("renderBitaxeHashrateAlphaBuffer",
+                       &renderBitaxeHashrateAlpha);
+  emscripten::function("renderBitaxeBestDiffAlphaBuffer",
+                       &renderBitaxeBestDiffAlpha);
+  emscripten::function("renderNostrZapAlphaBuffer", &renderNostrZapAlpha);
 
   emscripten::function("getPanelDimensions", &getPanelDimensions);
+  emscripten::function("setRenderOptions", &setRenderOptions);
 }

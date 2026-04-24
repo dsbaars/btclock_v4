@@ -61,6 +61,22 @@ constexpr bool kHasSecondMcp = true;
 constexpr bool kHasMcpResetGpio = true;
 constexpr gpio_num_t kMcpResetGpio = GPIO_NUM_21;
 
+// V8's MCP23017 address-strap pins (A0..A2 on each chip) are wired
+// to ESP32 GPIOs rather than hardwired resistors. Firmware MUST drive
+// these high/low before releasing RESET, otherwise both chips default
+// to 0x20 and collide on the bus (symptom: I2C scan finds one device,
+// second MCP NACKs every transaction). Values 000 → 0x20 (mcp1) and
+// 001 → 0x21 (mcp2) match the Arduino-era firmware's setupMcp().
+constexpr bool kHasMcpAddressGpios = true;
+constexpr std::array<gpio_num_t, 6> kMcpAddressGpios = {
+    GPIO_NUM_6,  GPIO_NUM_7,  GPIO_NUM_8,    // mcp1 A0, A1, A2
+    GPIO_NUM_9,  GPIO_NUM_10, GPIO_NUM_14,   // mcp2 A0, A1, A2
+};
+constexpr std::array<bool, 6> kMcpAddressLevels = {
+    false, false, false,                      // mcp1: 000 → 0x20
+    true,  false, false,                      // mcp2: 001 → 0x21
+};
+
 // --- EPD pin routing (everything on the expanders) ---
 constexpr PinSource kEpdCsSource = PinSource::kMcp2;
 constexpr PinSource kEpdBusySource = PinSource::kMcp1;

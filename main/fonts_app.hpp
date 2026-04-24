@@ -18,10 +18,20 @@ namespace btclock {
 // containing the UTF-8 encoding of U+E000+variant, null-terminated —
 // pass buf.data() to the render helpers.
 //
-// The "production default" variant is U+E007. Keep the caller pattern
-// glyph-by-index so a future NVS-backed preference can flip it at
-// runtime without touching call sites.
+// The "production default" variant is U+E007. The NVS-backed user
+// preference lives at ("ui", "sats_variant") and goes through
+// ClampSatsVariant() on read so an out-of-range stored value falls back
+// to the default rather than silently wrapping via the bitmask in
+// SatsGlyphUtf8.
 inline constexpr uint8_t kSatsVariantDefault = 7;
+inline constexpr uint8_t kSatsVariantMax = 15;
+
+// A stored value of e.g. 100 would mask to 4 in SatsGlyphUtf8, which
+// is a glyph the user never picked — prefer the documented default.
+inline constexpr uint8_t ClampSatsVariant(uint32_t raw) {
+  return raw <= kSatsVariantMax ? static_cast<uint8_t>(raw)
+                                : kSatsVariantDefault;
+}
 
 struct SatsGlyphUtf8Buf {
   std::array<char, 5> bytes{};
@@ -62,6 +72,11 @@ class AppFonts {
   // Subsetted to just the sats prefix glyph — only call for the literal
   // letter "S" when you want the sats marker rendered.
   const Font& sats_symbol() const { return sats_symbol_; }
+  // Material Design Icons subsetted to the few glyphs the firmware
+  // paints (lightning-bolt, pickaxe, rocket-launch at the time of
+  // writing). Pass the codepoints from mdi_codepoints.hpp. See
+  // tools/fonts/regen_mdi.sh to add more.
+  const Font& mdi() const { return mdi_; }
 
   // Resolve a FontFamily into its (regular, bold) pair. Antonio has no
   // separate bold variant — its regular is used for both roles; callers
@@ -75,6 +90,7 @@ class AppFonts {
   Font dejavu_;
   Font dejavu_bold_;
   Font sats_symbol_;
+  Font mdi_;
 };
 
 }  // namespace btclock

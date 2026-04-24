@@ -31,10 +31,15 @@ void RenderBlockHeightScreen(
   if (label_full_refresh && !now_overflow) {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
+    // Use the same font the digit panels use so the WASM preview's
+    // font-family swap (which rebinds `fonts.antonio()` in place)
+    // reaches the label too. The old oswald_bold hardcoding kept the
+    // label on Oswald regardless of the user's pick, which the photo
+    // review flagged as a visible Oswald/Dejavu/Antonio mismatch.
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, "BLOCK",
                   "HEIGHT",
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
   char new_digits[N];

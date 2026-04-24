@@ -20,11 +20,43 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 CONFIG_FREERTOS_HZ=1000
 
+# The main task runs the render + SSE status-broadcast path in
+# main.cpp's app_main loop. With the screen_manager renderer (font
+# rasterisation, on-stack panel composition) and an active SSE client
+# subscribed, the default 3584 B stack overflows during a rotation —
+# deterministic crash observed on Rev B with 'A stack overflow in task
+# main has been detected' and vApplicationStackOverflowHook in the
+# backtrace. 8 KiB gives ~2x headroom over the observed peak.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
 # TLS root certs for ws.btclock.dev — use the bundled CA store rather
 # than embedding a specific root, so the client keeps working if the
 # upstream cert is rotated under an existing trusted CA.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# TLS buffer tuning — Rev B has three concurrent TLS clients (price WSS
+# to ws.btclock.dev, Nostr WSS to relay.primal.net, mining-pool HTTPS
+# poller; the bitaxe poller is plain HTTP and pays no TLS cost). With
+# default symmetric 16 KiB IN + 4 KiB OUT per session, ~60 KiB of
+# internal heap is parked in mbedtls buffers even while idle — on 2 MB
+# PSRAM Rev B that leaves steady-state free internal heap at ~32 KiB,
+# too thin for handshake storms on reconnect. Three complementary knobs
+# below cut that cost:
+#
+#  1. DYNAMIC_BUFFER frees the IN/OUT buffers between TLS records so an
+#     idle connection holds ~0 bytes of buffer instead of ~20 KiB.
+#  2. SSL_IN_CONTENT_LEN=4096 caps the worst-case transient allocation
+#     at 4 KiB — safe for all clients: noderunners pool (~3 KiB),
+#     price WSS (4 KiB msgpack frames max), and Nostr zap receipts
+#     (multi-KB description tags are broken up at the TLS record layer,
+#     not the WS frame layer).
+#  3. SSL_OUT_CONTENT_LEN=2048 — we only send tiny subscribe frames +
+#     GET request lines, never >1 KiB.
+CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=4096
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 
 CONFIG_PARTITION_TABLE_CUSTOM=y
 # Flash size + partition CSV live in the per-variant sdkconfig.defaults.<rev>.

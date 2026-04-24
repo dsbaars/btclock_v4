@@ -1,4 +1,8 @@
-# V8: custom ESP32-S3 board → 16 MB flash, 8 panels, dual MCP.
+# V8: custom ESP32-S3 board → 16 MB flash, 8 panels, dual MCP,
+# octal PSRAM. Rev A/B inherit the repo default of quad PSRAM via
+# `sdkconfig.defaults`; V8's module is octal and fails to init at boot
+# without this explicit override (ROM-level abort before app_main).
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16mb.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions_16mb.csv"
+CONFIG_SPIRAM_MODE_OCT=y

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 #include "screens/screen_math.hpp"
 
@@ -193,4 +194,150 @@ TEST_CASE("ComputeClockLayout handles midnight and 23:59 edges") {
   CHECK(latest.digits[2] == ':');
   CHECK(latest.digits[3] == '5');
   CHECK(latest.digits[4] == '9');
+}
+
+TEST_CASE("SmallCharsGroups — USD market cap 1.568T across 6 panels") {
+  // Reproduces the live Rev B bug: cap = 1,567,956,610,000 (13 digits).
+  // Old single-digit-per-panel truncated to the last 6 digits; the
+  // correct layout puts 3-digit groups in the trailing panels with a
+  // currency separator " $ " just ahead.
+  const auto out = btclock::SmallCharsGroups(1'567'956'610'000ULL, " $ ", 6);
+  REQUIRE(out.size() == 6);
+  CHECK(out[0] == " $ ");
+  CHECK(out[1] == "  1");
+  CHECK(out[2] == "567");
+  CHECK(out[3] == "956");
+  CHECK(out[4] == "610");
+  CHECK(out[5] == "000");
+}
+
+TEST_CASE("SmallCharsGroups — no currency separator emits a blank filler") {
+  // Bitcoin Supply uses the same layout but with an empty ccy_cell;
+  // the separator slot then gets a single space so the visual gap is
+  // preserved.
+  const auto out = btclock::SmallCharsGroups(19'875'019ULL, "", 6);
+  REQUIRE(out.size() == 6);
+  // 19,875,019 → 8 digits → 3 groups, one sep, two blanks ahead.
+  CHECK(out[0].empty());
+  CHECK(out[1].empty());
+  CHECK(out[2] == " ");
+  CHECK(out[3] == " 19");
+  CHECK(out[4] == "875");
+  CHECK(out[5] == "019");
+}
+
+TEST_CASE("SmallCharsGroups — exact fit with separator slot") {
+  // 9-digit value + separator = 4 cells → fits a 4-slot panel exactly.
+  const auto out = btclock::SmallCharsGroups(123'456'789ULL, " $ ", 4);
+  REQUIRE(out.size() == 4);
+  CHECK(out[0] == " $ ");
+  CHECK(out[1] == "123");
+  CHECK(out[2] == "456");
+  CHECK(out[3] == "789");
+}
+
+// ----- LayoutMiningPoolEarnings -----
+//
+// These cases pin the formatter against silent regressions: the on-device
+// renderer and the /api/status mirror both call this helper, so a wrong
+// output here paints wrong pixels AND lies to the WebUI. Earlier versions
+// of the mining-pool screen allocated only 4 digit slots on a 7-panel
+// board; "50.0K" then got left-truncated to "0.0K" on the EPD — caught
+// at device-review time rather than here. After Bugs 2+3 freed panel 1
+// for digits, 5 slots are available and "50.0K" fits verbatim; we still
+// pin the formatter itself so a future renderer tweak can't reintroduce
+// the same class of bug.
+
+TEST_CASE("LayoutMiningPoolEarnings — zero sats renders as plain '0'") {
+  // Pleb-miner tier: ≤4-digit sats land verbatim. Zero is the explicit
+  // "got data, no earnings yet" case (distinct from `daily_sats=nullopt`).
+  const auto l = btclock::LayoutMiningPoolEarnings(0);
+  CHECK(l.valid);
+  CHECK(l.value == "0");
+  CHECK(l.unit_label == "SATS");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — single-digit sats verbatim") {
+  const auto one = btclock::LayoutMiningPoolEarnings(1);
+  CHECK(one.valid);
+  CHECK(one.value == "1");
+  CHECK(one.unit_label == "SATS");
+  const auto nine = btclock::LayoutMiningPoolEarnings(9);
+  CHECK(nine.value == "9");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — two/three-digit sats verbatim") {
+  CHECK(btclock::LayoutMiningPoolEarnings(99).value == "99");
+  CHECK(btclock::LayoutMiningPoolEarnings(100).value == "100");
+  CHECK(btclock::LayoutMiningPoolEarnings(999).value == "999");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — 1K..9K sats render verbatim (v3 convention)") {
+  // v3's parseMiningPoolStatsDailyEarnings has no 1K..9.99K branch — plebs
+  // with 1_000..9_999 sats/day see the raw four-digit number. We keep that
+  // so parity tests against old-firmware fixtures stay clean.
+  CHECK(btclock::LayoutMiningPoolEarnings(1000).value == "1000");
+  CHECK(btclock::LayoutMiningPoolEarnings(5000).value == "5000");
+  CHECK(btclock::LayoutMiningPoolEarnings(9999).value == "9999");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — 10K..99K gets one-decimal K suffix") {
+  // Lower bound of the K-suffix branch. "10.0K" = 5 chars, previously too
+  // wide for the 4-slot digit area; with panel-1 freed this fits verbatim.
+  CHECK(btclock::LayoutMiningPoolEarnings(10000).value == "10.0K");
+  CHECK(btclock::LayoutMiningPoolEarnings(10000).unit_label == "SATS");
+  // 50_000 sats/day — the user-visible bug ("0.0K") before the fix, pinned
+  // here so a regression shows up in tests rather than on the display.
+  CHECK(btclock::LayoutMiningPoolEarnings(50000).value == "50.0K");
+  // Upper bound.
+  CHECK(btclock::LayoutMiningPoolEarnings(99999).value == "99.9K");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — 100K..999K drops the decimal") {
+  CHECK(btclock::LayoutMiningPoolEarnings(100000).value == "100K");
+  CHECK(btclock::LayoutMiningPoolEarnings(500000).value == "500K");
+  CHECK(btclock::LayoutMiningPoolEarnings(999999).value == "999K");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — 1M..9.99M gets two decimals") {
+  CHECK(btclock::LayoutMiningPoolEarnings(1000000).value == "1.00M");
+  CHECK(btclock::LayoutMiningPoolEarnings(1500000).value == "1.50M");
+  CHECK(btclock::LayoutMiningPoolEarnings(9999999).value == "9.99M");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — 10M..99.9M gets one decimal") {
+  CHECK(btclock::LayoutMiningPoolEarnings(10000000).value == "10.0M");
+  CHECK(btclock::LayoutMiningPoolEarnings(25300000).value == "25.3M");
+  CHECK(btclock::LayoutMiningPoolEarnings(99999999).value == "99.9M");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — ≥1BTC/day switches to BTC label") {
+  // Whale tier: 1 BTC = 100_000_000 sats. Drop to integer-BTC display.
+  auto l = btclock::LayoutMiningPoolEarnings(100000000LL);
+  CHECK(l.valid);
+  CHECK(l.value == "1");
+  CHECK(l.unit_label == "BTC");
+  // 2.5 BTC/day: integer-BTC truncation matches v3.
+  l = btclock::LayoutMiningPoolEarnings(250000000LL);
+  CHECK(l.value == "2");
+  CHECK(l.unit_label == "BTC");
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — missing/negative daily_sats is invalid") {
+  // `-1` is the nullopt sentinel the renderer feeds in on missing data.
+  const auto l = btclock::LayoutMiningPoolEarnings(-1);
+  CHECK_FALSE(l.valid);
+}
+
+TEST_CASE("LayoutMiningPoolEarnings — int64_t max doesn't UB") {
+  // 9.22e18 sats = 92_233_720_368 BTC/day — far beyond any realistic
+  // value. Just make sure the formatter terminates with a BTC label and
+  // a non-empty integer string; the renderer truncates to its digit
+  // slots. Previous overflow guard would have tripped division-by-zero
+  // (etc.) for an unchecked int64 max.
+  const int64_t v = std::numeric_limits<int64_t>::max();
+  const auto l = btclock::LayoutMiningPoolEarnings(v);
+  CHECK(l.valid);
+  CHECK(l.unit_label == "BTC");
+  CHECK_FALSE(l.value.empty());
 }

@@ -51,6 +51,33 @@ class Wifi {
   // Block until state() == kConnected or timeout elapses.
   esp_err_t WaitConnected(uint32_t timeout_ms);
 
+  // Synchronous credential-check: attempts one association with the given
+  // creds and waits up to `timeout_ms` for either GOT_IP or a terminal
+  // disconnect reason (AUTH_FAIL / NO_AP_FOUND / ASSOC_FAIL / HANDSHAKE /
+  // CONNECTION_FAIL). Used by the provisioning portal to verify before
+  // saving to NVS. Does NOT auto-retry. Caller should have SoftAP up so
+  // the portal stays reachable for retries.
+  //   ESP_OK                    — got IP (creds work).
+  //   ESP_ERR_INVALID_RESPONSE  — terminal disconnect (wrong creds / wrong AP).
+  //   ESP_ERR_TIMEOUT           — neither GOT_IP nor terminal reason within
+  //                               the deadline.
+  // Last reason is available via last_disconnect_reason() after return.
+  esp_err_t TryConnect(const char* ssid, const char* password,
+                       uint32_t timeout_ms);
+
+  // Most recent STA disconnect reason code, or 0 before any disconnect.
+  // Reset to 0 at the start of each Connect()/TryConnect() call.
+  uint8_t last_disconnect_reason() const { return last_reason_.load(); }
+
+  // Consecutive STA disconnects with a terminal reason (AUTH_FAIL=202,
+  // NO_AP_FOUND=201, ASSOC_FAIL=203, HANDSHAKE_TIMEOUT=204,
+  // CONNECTION_FAIL=205) since the last successful GOT_IP. Used by
+  // wifi_guard to escalate back to provisioning after sustained failures.
+  // Transient reasons (AUTH_EXPIRE, ASSOC_LEAVE, etc.) don't count.
+  uint32_t consecutive_terminal_disconnects() const {
+    return terminal_strikes_.load();
+  }
+
   State state() const { return state_.load(); }
   // IPv4 as dotted-quad string, "0.0.0.0" while not connected.
   std::string ip() const;
@@ -105,6 +132,8 @@ class Wifi {
   std::atomic<State> state_{State::kIdle};
   std::atomic<uint32_t> ip_ = 0;
   std::atomic<bool> ap_mode_{false};
+  std::atomic<uint8_t> last_reason_{0};
+  std::atomic<uint32_t> terminal_strikes_{0};
   bool started_ = false;
   esp_event_handler_instance_t wifi_event_instance_ = nullptr;
   esp_event_handler_instance_t ip_event_instance_ = nullptr;

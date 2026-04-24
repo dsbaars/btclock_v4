@@ -28,6 +28,9 @@ class PublicPoolBase : public PoolDataSource {
   // with many bitaxe units can produce a ~20 KB body. Bump cap to
   // 64 KB (still tight enough that a runaway server won't eat heap).
   size_t max_response_bytes() const override { return 64 * 1024; }
+  // Solo pool — the /api/client/<user> response is workers + hashrate,
+  // no daily payout field. Both the hosted and local variants inherit.
+  bool SupportsDailyEarnings() const override { return false; }
 };
 
 class PublicPool : public PublicPoolBase {

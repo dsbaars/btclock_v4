@@ -28,6 +28,29 @@
 
 namespace btclock {
 
+struct MiningPoolMirror {
+  std::string name;        // Pool display label for slot 0 when no logo.
+  std::string hashrate;    // Raw integer H/s string (empty = no sample).
+  std::optional<int64_t> daily_sats;
+};
+
+// Bitaxe hashrate formatter. Given GH/s, emit a compact "<val><unit>"
+// string with the smallest-fitting suffix (GH/TH/PH). Used by both the
+// panel-text mirror and the EPD renderer so the WebUI and device agree
+// to the last digit. Pure-logic so host tests can pin it.
+std::string FormatBitaxeHashrate(double ghs);
+
+// Split the FormatBitaxeHashrate output into its numeric value (e.g.
+// "1.2", "527") and its two-char magnitude suffix ("GH" / "TH" / "PH").
+// The renderer pairs the suffix with "/S" to paint a split-text unit
+// panel; panel_texts emits the same "<suffix>/S" cell so /api/status
+// mirrors what the EPD shows.
+struct BitaxeHashrateParts {
+  std::string value;   // digits + optional '.'
+  std::string suffix;  // "GH" / "TH" / "PH"
+};
+BitaxeHashrateParts SplitBitaxeHashrate(double ghs);
+
 // Minimum context a panel-text build needs. A trimmed view of
 // `DataSnapshot` so host tests can construct inputs without including
 // the full snapshot header (which pulls std::map<string,string> but no
@@ -47,6 +70,38 @@ struct PanelTextInputs {
   int minute = 0;
   int mday = 0;
   int month = 0;
+  // Decoration flags. Mirror the on-device renderer's mode selection so
+  // /api/status data[] matches what the EPDs actually paint — see
+  // settings/pref_keys.hpp. Only the bits relevant to a given `kind`
+  // are consulted by BuildPanelTexts; the rest are ignored.
+  bool halving_as_blocks  = true;   // useBlkCountdown; false → "N/YRS N/DAYS..."
+  bool supply_big_chars   = true;   // false → 3-digit-group small chars
+  bool supply_percent     = false;  // overrides supply_big_chars when set
+  bool mcap_big_chars     = true;   // false → 3-digit-group small chars
+  // Moscow-time decoration. `use_sats_symbol=false` replaces the "STS"
+  // marker cell with a blank, matching the old firmware's
+  // parseSatsPerCurrency(..., useSatsSymbol=false) branch.
+  bool use_sats_symbol    = true;
+  // `use_mscw_time=false` forces the label to SATS/<CCY> even for the
+  // classic-range USD case. Default true preserves the legacy MSCW/TIME
+  // label on USD in the classic range.
+  bool use_mscw_time      = true;
+  // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
+  MiningPoolMirror pool{};
+  // Bitaxe screens. Empty hostname means "no sample yet" — mirror
+  // renders the OFFLINE fallback so the WebUI echoes what the panel
+  // paints. Values are the raw ones the data source wrote; the
+  // builder picks the hashrate suffix via FormatBitaxeHashrate.
+  std::string bitaxe_hostname;
+  std::optional<double> bitaxe_hashrate_ghs;
+  std::optional<std::string> bitaxe_best_diff;
+  // Zap notification inputs. Populated only when kind==kNostrZap;
+  // BuildNostrZap emits "ZAP" in slot 0 and the scaled amount
+  // right-justified across the remaining slots. `zap_message` is kept
+  // for future use (a message-capable screen can consume it without
+  // re-plumbing the relay listener) but is not currently rendered.
+  std::optional<int64_t> zap_amount_sats;
+  std::string zap_message;
 };
 
 // Build the `data[]` array, one string per panel, for `n_panels` panels.

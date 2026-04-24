@@ -1,13 +1,14 @@
 #include "mining_pool_common/pool_base.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include "data_core/hub.hpp"
 #include "data_core/snapshot.hpp"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "tls_gate/tls_gate.hpp"
@@ -18,13 +19,23 @@ namespace {
 
 constexpr const char* kTag = "pool.base";
 
-// esp_http_client event handler that appends response-body bytes into
-// a std::vector<char> accumulator. Stops appending once the cap is hit
-// so a misbehaving server cannot balloon the heap.
+// Response-body accumulator backed by PSRAM. Pool responses can reach
+// 32–64 KiB (public_pool worker list) — previously a std::vector<char>
+// did this on internal heap and crowded the ~32 KiB of steady-state
+// free DRAM. PSRAM has 1.9 MiB free on Rev B / 7 MiB on V8, so parking
+// these cold buffers there is essentially free. The buffer is only
+// walked once (by parse_response) after the HTTP transfer completes,
+// so the PSRAM access latency is irrelevant.
 struct FetchContext {
-  std::vector<char> body;
+  char* body = nullptr;
+  size_t size = 0;
   size_t cap = 0;
   bool truncated = false;
+  bool alloc_failed = false;
+
+  ~FetchContext() {
+    if (body) heap_caps_free(body);
+  }
 };
 
 esp_err_t http_event_handler(esp_http_client_event_t* evt) {
@@ -33,13 +44,25 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
   if (ctx == nullptr) return ESP_OK;
   if (evt->data == nullptr || evt->data_len <= 0) return ESP_OK;
   const size_t incoming = static_cast<size_t>(evt->data_len);
-  if (ctx->body.size() + incoming > ctx->cap) {
+  if (ctx->size + incoming > ctx->cap) {
     ctx->truncated = true;
     return ESP_OK;  // silently drop excess; we'll fail the parse
   }
-  ctx->body.insert(ctx->body.end(),
-                   static_cast<const char*>(evt->data),
-                   static_cast<const char*>(evt->data) + incoming);
+  // Lazy-allocate on first byte so empty responses don't touch heap at
+  // all. Prefer SPIRAM, fall back to internal — heap_caps_malloc_prefer
+  // handles both caps in one call.
+  if (ctx->body == nullptr) {
+    // +1 so the parser's trailing NUL always fits without a realloc.
+    ctx->body = static_cast<char*>(heap_caps_malloc_prefer(
+        ctx->cap + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+        MALLOC_CAP_8BIT));
+    if (ctx->body == nullptr) {
+      ctx->alloc_failed = true;
+      return ESP_OK;
+    }
+  }
+  std::memcpy(ctx->body + ctx->size, evt->data, incoming);
+  ctx->size += incoming;
   return ESP_OK;
 }
 
@@ -147,6 +170,12 @@ void PoolDataSource::PollOnce() {
     esp_http_client_cleanup(client);
     return;
   }
+  if (ctx.alloc_failed) {
+    ESP_LOGW(kTag, "%s: body alloc failed (cap=%u)", pool_name(),
+             static_cast<unsigned>(ctx.cap));
+    esp_http_client_cleanup(client);
+    return;
+  }
   if (ctx.truncated) {
     ESP_LOGW(kTag, "%s: response exceeded %u bytes, skipping parse",
              pool_name(), static_cast<unsigned>(ctx.cap));
@@ -155,14 +184,18 @@ void PoolDataSource::PollOnce() {
   }
   esp_http_client_cleanup(client);
 
+  if (ctx.body == nullptr) {
+    ESP_LOGW(kTag, "%s: empty response body", pool_name());
+    return;
+  }
   // cJSON expects a NUL-terminated C string; accumulator is raw bytes.
-  ctx.body.push_back('\0');
+  ctx.body[ctx.size] = '\0';
 
   ParsedStats parsed;
   parsed.name = pool_name();
-  if (!parse_response(ctx.body.data(), parsed)) {
+  if (!parse_response(ctx.body, parsed)) {
     ESP_LOGW(kTag, "%s: response parse failed (%u bytes)", pool_name(),
-             static_cast<unsigned>(ctx.body.size() - 1));
+             static_cast<unsigned>(ctx.size));
     return;
   }
   if (parsed.hashrate.empty()) {

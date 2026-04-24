@@ -27,6 +27,8 @@ class NoderunnersPool : public PoolDataSource {
   std::string api_url() const override;
   bool parse_response(const char* body, ParsedStats& out) const override;
   const char* pool_name() const override { return "noderunners"; }
+  // Solo pool — raw hashrate only, no payout stream to report.
+  bool SupportsDailyEarnings() const override { return false; }
 };
 
 }  // namespace mining_pools

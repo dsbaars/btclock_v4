@@ -1,17 +1,38 @@
 #include "screens/screens.hpp"
 
-#include <cstdio>
-#include <cstring>
+#include <array>
+#include <cstdlib>
 
 #include "screens/common.hpp"
+#include "screens/price_layout.hpp"
 
 namespace btclock {
 
-// Panel 0 = "BTC/<CCY>", panels 1..N-1 = integer price digits right-
-// justified, with an optional currency-symbol glyph placed one slot
-// before the first digit when the value leaves at least one blank slot.
-// On overflow (price has as many digits as slots) the symbol is dropped
-// rather than truncating a digit. Fractional precision tracked in lx0.12.
+namespace {
+
+// Parse the raw price string into a double. Returns -1.0 on parse
+// failure so callers can blank the digit area. Mirrors the guards in
+// `PriceInt` (common.cpp) but keeps the fractional part.
+double ParsePriceDouble(const std::string& s) {
+  if (s.empty()) return -1.0;
+  char* endp = nullptr;
+  const double p = std::strtod(s.c_str(), &endp);
+  if (endp == s.c_str()) return -1.0;
+  if (!(p >= 0.0)) return -1.0;
+  // Same upper bound as PriceInt — keeps multiply overflow in
+  // market-cap math bounded (supply * price ≤ 2e9 * 21e6 ≈ 4.2e16).
+  if (p > 2e9) return -1.0;
+  return p;
+}
+
+}  // namespace
+
+// Panel 0 = "BTC/<CCY>", panels 1..N-1 = one character per slot,
+// right-justified. Layout is computed by `LayoutBtcPrice`, which
+// handles the integer / decimal-precision / currency-glyph-placement
+// decisions in one spot (also consumed by panel_texts.cpp for WebUI
+// parity). Partial refresh: compare the per-cell (char + is-symbol)
+// tuple to the previous frame and repaint only the cells that changed.
 
 template <size_t N>
 void RenderBtcPriceScreen(
@@ -27,40 +48,31 @@ void RenderBtcPriceScreen(
   if (full_refresh) {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
+    // Inherit the digit font so the WASM preview's swappable antonio
+    // slot carries the label too (Bug 1 — see block_height.cpp for the
+    // full note). The old oswald_bold left labels on Oswald even when
+    // the user picked a different digit font.
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, "BTC",
                   currency.c_str(),
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
-  auto layout = [use_symbol](int32_t v, char* digits, bool* is_sym) {
+  std::array<char, kDigitPanels> new_digits;
+  std::array<char, kDigitPanels> old_digits;
+  std::array<bool, kDigitPanels> new_sym;
+  std::array<bool, kDigitPanels> old_sym;
+  LayoutBtcPrice<kDigitPanels>(ParsePriceDouble(price), use_symbol,
+                               new_digits, new_sym);
+  if (!full_refresh) {
+    LayoutBtcPrice<kDigitPanels>(ParsePriceDouble(prev_price), use_symbol,
+                                 old_digits, old_sym);
+  } else {
     for (size_t i = 0; i < kDigitPanels; ++i) {
-      digits[i] = ' ';
-      is_sym[i] = false;
+      old_digits[i] = ' ';
+      old_sym[i] = false;
     }
-    const int32_t vv = v < 0 ? 0 : v;
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(vv));
-    const size_t len = std::strlen(buf);
-    if (len >= kDigitPanels) {
-      for (size_t i = 0; i < kDigitPanels; ++i)
-        digits[i] = buf[len - kDigitPanels + i];
-      return;
-    }
-    const size_t pad = kDigitPanels - len;
-    for (size_t i = pad; i < kDigitPanels; ++i) digits[i] = buf[i - pad];
-    if (use_symbol && pad > 0) is_sym[pad - 1] = true;
-  };
-
-  const int32_t new_p = PriceInt(price);
-  const int32_t old_p = full_refresh ? -1 : PriceInt(prev_price);
-
-  char new_digits[kDigitPanels];
-  char old_digits[kDigitPanels];
-  bool new_sym[kDigitPanels];
-  bool old_sym[kDigitPanels];
-  layout(new_p, new_digits, new_sym);
-  if (!full_refresh) layout(old_p, old_digits, old_sym);
+  }
 
   std::array<bool, kDigitPanels> update{};
   for (size_t i = 0; i < kDigitPanels; ++i) {
@@ -73,17 +85,23 @@ void RenderBtcPriceScreen(
     auto lfb = PrepFb(panels, fb_storage, 1 + i);
     ClearFb(lfb, /*white=*/true);
     if (new_sym[i]) {
+      // Currency glyph cell — baseline via `kDigitRef` so the glyph
+      // lines up with the digits on adjacent panels.
       DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
                        symbol_utf8, kDigitRef, fonts.antonio(), 180.0f,
                        /*white_text=*/false);
+    } else if (new_digits[i] == '.') {
+      // Dedicated '.' cell. Using the dot-inclusive local ref keeps the
+      // dot's vertical position consistent with the digits while leaving
+      // the shared `kDigitRef` untouched.
+      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, ".",
+                       kPriceDotRef, fonts.antonio(), 180.0f, false);
     } else if (new_digits[i] != ' ') {
       const char one[2] = {new_digits[i], '\0'};
-      // Use the digit-only ref so digits share the same baseline as
-      // the currency-symbol panel and the digits on block-height /
-      // Moscow-time slots. Don't widen this with punctuation: the
-      // comma's descender would push `ref_box.below_baseline` up and
-      // lower the baseline by 11 px on this screen only (see
-      // test_host/test_screen_ref_chars for the regression).
+      // Plain digit cell. Uses the shared digit-only ref so this
+      // baseline matches block-height / Moscow-time / the symbol cell.
+      // Do NOT widen this with '.' — the shared-ref widening regression
+      // is covered in test_host/test_screen_ref_chars.cpp.
       DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
                        kDigitRef, fonts.antonio(), 180.0f, false);
     }

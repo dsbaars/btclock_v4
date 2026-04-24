@@ -24,9 +24,14 @@
 #include <string>
 #include <vector>
 
+#include "app/catalogs.hpp"
 #include "app/frontlight_controller.hpp"
 #include "app/led_controller.hpp"
+#include "app/light_sensor.hpp"
+#include "app/mining_pool_selector.hpp"
+#include "bitaxe/bitaxe_source.hpp"
 #include "app/screen_manager.hpp"
+#include "app/screen_slot_map.hpp"
 #include "app/time_sync.hpp"
 #include "app/wifi_guard.hpp"
 #include "bh1750.hpp"
@@ -56,11 +61,16 @@
 #include "mcp23017.hpp"
 #include "net_util.hpp"
 #include "nostr/nostr_data_source.hpp"
+#include "ota_manager.hpp"
+#include "settings/factory_reset.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
 #include "pca9685.hpp"
 #include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 #include "provisioning_server.hpp"
 #include "provisioning_ui.hpp"
 #include "sdkconfig.h"
@@ -144,9 +154,14 @@ extern "C" void app_main() {
   using namespace btclock::board;
 
   ESP_LOGI(kTag, "BTClock IDF C++ PoC — boot");
-  ESP_LOGI(kTag, "psram=%uB heap=%uB",
+  // Label "heap" as the internal free bytes specifically — the default
+  // allocator can pull from PSRAM on S3, which made the old print
+  // report free > size when compared against the internal-only total
+  // the status endpoints publish.
+  ESP_LOGI(kTag, "psram=%uB heap_internal_free=%uB",
            static_cast<unsigned>(esp_psram_get_size()),
-           static_cast<unsigned>(esp_get_free_heap_size()));
+           static_cast<unsigned>(
+               heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
 
   btclock::InitLeds(kNeopixel, kNeopixelCount);
   // DND predicate goes in before the first effect post so the boot
@@ -158,8 +173,30 @@ extern "C" void app_main() {
   // --- I2C bus + peripherals ---
   btclock::I2cBus i2c(I2C_NUM_0, kI2cSda, kI2cScl);
 
+  // V8: drive the 6 MCP address-strap GPIOs BEFORE releasing RESET,
+  // otherwise both MCP23017s latch to the default 000 → 0x20 and
+  // collide on the I2C bus (symptom: bus scan finds one device only).
+  // Matches the old Arduino firmware's setupMcp().
+  if constexpr (kHasMcpAddressGpios) {
+    uint64_t mask = 0;
+    for (gpio_num_t pin : kMcpAddressGpios) {
+      mask |= 1ULL << static_cast<int>(pin);
+    }
+    gpio_config_t cfg = {};
+    cfg.pin_bit_mask = mask;
+    cfg.mode = GPIO_MODE_OUTPUT;
+    cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+    cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+    cfg.intr_type = GPIO_INTR_DISABLE;
+    ESP_ERROR_CHECK(gpio_config(&cfg));
+    for (size_t i = 0; i < kMcpAddressGpios.size(); ++i) {
+      gpio_set_level(kMcpAddressGpios[i], kMcpAddressLevels[i] ? 1 : 0);
+    }
+  }
+
   // V8: pulse the shared MCP RESET line once before any I2C transaction.
-  // >= 5 µs low is the datasheet minimum; 5 ms is conservative.
+  // >= 5 µs low is the datasheet minimum; 5 ms is conservative. Address
+  // straps set just above must be stable before this pulse.
   if constexpr (kHasMcpResetGpio) {
     gpio_config_t cfg = {};
     cfg.pin_bit_mask = 1ULL << static_cast<int>(kMcpResetGpio);
@@ -214,9 +251,20 @@ extern "C" void app_main() {
   }
 
   std::optional<btclock::Bh1750> bh;
+  std::unique_ptr<btclock::LightSensor> light_sensor;
   if constexpr (kHasAmbientLight) {
     bh.emplace(i2c, kBhAddr);
-    ESP_ERROR_CHECK(bh->Begin());
+    // Init() probes the bus, so a depopulated/absent sensor reports
+    // ESP_ERR_NOT_FOUND rather than aborting the boot — the downstream
+    // LightSensor manager then stays in IsAvailable()==false mode and
+    // /api/settings suppresses the lightLevel field.
+    const esp_err_t ierr = bh->Init();
+    if (ierr != ESP_OK) {
+      ESP_LOGW(kTag, "BH1750 init failed: %s — continuing without ambient",
+               esp_err_to_name(ierr));
+    }
+    light_sensor = std::make_unique<btclock::LightSensor>(*bh);
+    light_sensor->Start();
   }
 
   // --- SSD1680 bus + panels ---
@@ -265,6 +313,18 @@ extern "C" void app_main() {
   // --- WiFi + NVS + optional provisioning portal ---
   ESP_ERROR_CHECK(btclock::Prefs::InitOnce());
 
+  // Install the EPD polarity flag from NVS before the first data-driven
+  // render. Boot splash above already painted (non-inverted) — that's
+  // intentional: a corrupted NVS shouldn't leave a user staring at a
+  // black screen. The first post-provisioning paint will honour the
+  // stored value. Default `true` matches BuildGetResponse's shipping
+  // default (white-on-black for the black-hardware majority).
+  {
+    btclock::Prefs p(btclock::prefs::kSettingsNs);
+    btclock::EpdSetGlobalInverted(
+        p.GetBool(btclock::prefs::kInvertedColor, true));
+  }
+
   // Set the process-wide TZ from NVS (namespace "time", key "tz")
   // before anything that calls localtime_r. The clock screen, log
   // timestamps, and any future scheduling code all rely on it being
@@ -305,10 +365,23 @@ extern "C" void app_main() {
   std::string ap_ssid;
   std::string ap_pw;
 
+  // Soft watchdog for multi-minute STA outages. Loaded here so the
+  // setting applies even before the main loop starts pumping ticks.
+  // Default 10 min matches Arduino main.cpp::checkWiFiConnection();
+  // range clamp mirrors the schema (0 disables, ≤ 120).
+  uint32_t wifi_reboot_minutes = 10;
+  {
+    btclock::Prefs settings_for_wifi(btclock::prefs::kSettingsNs);
+    wifi_reboot_minutes =
+        settings_for_wifi.GetU32(btclock::prefs::kWifiRebootMin, 10);
+    if (wifi_reboot_minutes > 120) wifi_reboot_minutes = 120;
+  }
+  btclock::OutageWatchdog outage_watchdog(wifi_reboot_minutes);
+
   if (!ssid.empty()) {
     ESP_ERROR_CHECK(wifi.Start());
     ESP_ERROR_CHECK(wifi.Connect(ssid.c_str(), pw.c_str()));
-    btclock::WaitForConnected(wifi);
+    btclock::WaitForConnected(wifi, net_prefs);
     ESP_ERROR_CHECK(btclock::StartSntpSync());
   } else {
     ap_ssid = MakeApSsid();
@@ -359,11 +432,43 @@ extern "C" void app_main() {
   // reads this at each receipt.
   static std::atomic<bool> flash_on_zap_enabled{true};
   static std::atomic<bool> flash_frontlight_on_zap_enabled{false};
+  // Zap notification-screen preferences (nostrZapNotify + scrnRestoreZap).
+  // Cached atomics so the worker-thread callback can read them without
+  // hitting NVS on every receipt. Defaults mirror the old firmware
+  // (notify=true, auto-restore=true).
+  static std::atomic<bool> zap_notify_screen_enabled{true};
+  static std::atomic<bool> zap_screen_auto_restore{true};
+  // Flag raised by the zap callback; the main render loop clears it.
+  // atomic<bool> is lock-free on ESP32 so the callback and the main
+  // task can touch it without a mutex.
+  static std::atomic<bool> zap_notify_pending{false};
 
   // Active currency set. For now hardcoded; beads lx0.11+ tracks the
   // NVS-backed config. Antonio's subset covers $/£/¥/€ symbols.
   const std::vector<std::string> kCurrencies = {"USD", "EUR", "GBP", "JPY"};
   btclock::ScreenManager sm(MsNow(), kCurrencies);
+  // Sats-symbol glyph index (0..15) lives in the "ui" namespace so it
+  // can sit alongside future user-facing display prefs (color, layout)
+  // rather than cohabiting with network / Nostr creds. ClampSatsVariant
+  // defends against an out-of-range stored value — see fonts_app.hpp.
+  {
+    btclock::Prefs ui_prefs("ui");
+    sm.SetSatsVariant(btclock::ClampSatsVariant(
+        ui_prefs.GetU32("sats_variant", btclock::kSatsVariantDefault)));
+  }
+  // Rotation skip hook: honours the pool capability flag so solo pools
+  // don't cycle onto the earnings slot even if the user's persisted
+  // `screen71Visible` is still true. Evaluated per-tick so a PATCH that
+  // flips miningPoolName picks up on the next rotation step without a
+  // reboot. NVS GetString is cached after the first open — the hit is
+  // effectively free.
+  sm.SetSkipPredicate([](btclock::ScreenType kind) -> bool {
+    if (kind != btclock::ScreenType::kMiningPoolEarnings) return false;
+    btclock::Prefs prefs(btclock::prefs::kSettingsNs);
+    const std::string name =
+        prefs.GetString(btclock::prefs::kMiningPoolName, "");
+    return !btclock::mining_pools::PoolSupportsDailyEarnings(name);
+  });
 
   if (wifi.is_ap_mode()) {
     const int64_t t0 = MsNow();
@@ -433,6 +538,16 @@ extern "C" void app_main() {
         flash_frontlight_on_zap_enabled.store(
             fl_prefs.GetBool("flFlashOnZap", false));
       }
+      // Notification-screen gates live in the "settings" namespace
+      // alongside the other renderer-behaviour flags so a WebUI PATCH
+      // round-trips without poking two namespaces.
+      {
+        btclock::Prefs settings_prefs(btclock::prefs::kSettingsNs);
+        zap_notify_screen_enabled.store(
+            settings_prefs.GetBool(btclock::prefs::kNostrZapNotify, true));
+        zap_screen_auto_restore.store(
+            settings_prefs.GetBool(btclock::prefs::kScrnRestoreZap, true));
+      }
       if (zap_enable && !zap_relay_url.empty() && zap_pub.size() == 64) {
         zap_relay =
             std::make_unique<btclock::nostr::RelayClient>(zap_relay_url);
@@ -441,19 +556,44 @@ extern "C" void app_main() {
         zap_listener = std::make_unique<btclock::nostr::ZapListener>(
             *zap_subs, std::string("zap"), zap_pub);
         btclock::FrontlightController* fl_ptr = frontlight.get();
+        btclock::DataHub* hub_ptr = hub.get();
         zap_listener->SetOnZap(
-            [fl_ptr](const btclock::nostr::ZapListener::ZapInfo& z) {
+            [fl_ptr, hub_ptr, main_task](
+                const btclock::nostr::ZapListener::ZapInfo& z) {
               const uint64_t sats = z.amount_msat / 1000ULL;
               const std::string eid =
                   z.raw ? z.raw->id.substr(0, 8) : std::string("?");
               ESP_LOGI(kTag, "zap: %llu sats id=%s…",
                        static_cast<unsigned long long>(sats), eid.c_str());
               ESP_LOGD(kTag, "zap bolt11: %s", z.bolt11.c_str());
-              if (flash_on_zap_enabled.load()) {
-                btclock::PostLedEffect(btclock::LedEffect::kZap);
+              // Always update the snapshot so /api/status can echo the
+              // latest receipt regardless of whether we pop the screen —
+              // matches the spec choice of "nostrZapNotify gates the
+              // override + LED flash only, not the data side".
+              if (hub_ptr) {
+                btclock::DataSnapshot patch;
+                patch.latest_zap.amount_sats =
+                    static_cast<int64_t>(sats);
+                patch.latest_zap.message = z.content;
+                patch.latest_zap.received_ms = MsNow();
+                hub_ptr->Report(patch);
               }
-              if (fl_ptr && flash_frontlight_on_zap_enabled.load()) {
-                fl_ptr->ZapFlash();
+              // Notify + LED flash only fire when the user hasn't
+              // disabled them. Keep both gated by the same pref so a
+              // "quiet" user experience is opt-in via a single toggle.
+              if (zap_notify_screen_enabled.load()) {
+                if (flash_on_zap_enabled.load()) {
+                  btclock::PostLedEffect(btclock::LedEffect::kZap);
+                }
+                if (fl_ptr && flash_frontlight_on_zap_enabled.load()) {
+                  fl_ptr->ZapFlash();
+                }
+                // Signal the main loop to flip ScreenManager into the
+                // zap overlay. The hub Report above also wakes main_task
+                // via the on-update callback; the pending flag picks
+                // that wake up and dispatches SetZapNotify.
+                zap_notify_pending.store(true);
+                xTaskNotifyGive(main_task);
               }
             });
         ESP_ERROR_CHECK(zap_relay->Start());
@@ -471,6 +611,23 @@ extern "C" void app_main() {
                  zap_pub.size() == 64 ? "set" : "<invalid>");
       }
     }
+    // Optional mining-pool HTTPS poller. Only the selected pool polls
+    // (old-firmware behaviour — a single DataSnapshot::pool producer
+    // avoids last-writer-wins races). Gated on settings/miningPoolStats;
+    // disabled-by-default keeps Wi-Fi-bandwidth impact zero for users
+    // who don't mine. See app/mining_pool_selector.{hpp,cpp}.
+    if (auto pool_src = btclock::mining_pools::MakeActivePoolSource()) {
+      hub->AddSource(std::move(pool_src));
+    }
+
+    // Optional Bitaxe LAN poller. Gated on settings/bitaxeEnabled +
+    // a non-empty settings/bitaxeHostname. When both screens (hashrate
+    // + best-diff) are in the rotation they paint "OFFLINE" until the
+    // first poll lands.
+    if (auto bitaxe_src = btclock::bitaxe::MakeBitaxeSource()) {
+      hub->AddSource(std::move(bitaxe_src));
+    }
+
     hub->SetOnUpdate([main_task](const btclock::DataSnapshot&) {
       xTaskNotifyGive(main_task);
     });
@@ -590,6 +747,24 @@ extern "C" void app_main() {
   };
   auto dnd_adapter = std::make_unique<DndAdapter>();
 
+  // LightSensor adapter — thin forwarder so the webserver component
+  // doesn't have to pull in bh1750.hpp or FreeRTOS. Stateless apart
+  // from the pointer; nullable LightSensor means the adapter is only
+  // constructed when the board actually has a BH1750.
+  struct LightSensorAdapter : btclock::LightSensorIface {
+    explicit LightSensorAdapter(btclock::LightSensor* ls) : ls_(ls) {}
+    bool IsAvailable() const override {
+      return ls_ && ls_->IsAvailable();
+    }
+    float GetLux() const override { return ls_ ? ls_->GetLux() : -1.0f; }
+    btclock::LightSensor* ls_;
+  };
+  std::unique_ptr<LightSensorAdapter> light_sensor_adapter;
+  if (light_sensor) {
+    light_sensor_adapter =
+        std::make_unique<LightSensorAdapter>(light_sensor.get());
+  }
+
   // Timer adapter — pause / restart the screen-rotation deadline from
   // the HTTP task. ScreenManager is owned on the main task; the
   // adapter's writes are plain scalar updates so a cross-task poke is
@@ -605,6 +780,45 @@ extern "C" void app_main() {
   };
   auto timer_adapter = std::make_unique<TimerAdapter>(sm, MsNow);
 
+  // Factory-reset trigger shared by the HTTP endpoint and the
+  // all-buttons-held hardware combo. Renders a "RESETTING" splash onto
+  // the EPD chain (so the user gets visual confirmation that the wipe
+  // is happening) and then calls PerformFactoryReset(), which erases
+  // NVS and reboots. The helper is [[noreturn]] — nothing after it
+  // runs. Invoked from the httpd worker task (endpoint path) or the
+  // button poll task (combo path); in both cases the main task may be
+  // mid-frame on the panels, but the imminent reboot makes any torn
+  // frame moot, and the helper's 2 s vTaskDelay gives the final SPI
+  // transfers time to drain.
+  auto factory_reset_trigger = [&]() {
+    const std::size_t n = static_cast<std::size_t>(kNumPanels);
+    std::vector<std::string> cells(n, std::string(" "));
+    // "ERASING" fits 7-panel boards exactly and centers with one right
+    // pad on 8-panel V8. "RESETTING" would truncate to "RESETTI" on
+    // 7-panel which reads as a different word — pick a shorter message
+    // that renders intact on every variant.
+    static constexpr char kMsg[] = "ERASING";
+    const std::size_t msg_len = sizeof(kMsg) - 1;
+    const std::size_t take = msg_len < n ? msg_len : n;
+    const std::size_t pad = (n - take) / 2;
+    for (std::size_t i = 0; i < take; ++i) {
+      cells[pad + i] = std::string(1, kMsg[i]);
+    }
+    sm.SetCustomCells(std::move(cells), MsNow());
+    if (hub) {
+      sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+    } else {
+      // AP mode still needs a visible splash. Use an empty snapshot —
+      // the custom-cells path doesn't read data from it anyway.
+      sm.Render(panels, fb_storage, fonts, btclock::DataSnapshot{});
+    }
+    btclock::settings::PerformFactoryReset();
+  };
+
+  if (buttons) {
+    buttons->SetOnAllButtonsLongPress(factory_reset_trigger);
+  }
+
   std::unique_ptr<btclock::ControlServer> ctrl;
   std::unique_ptr<btclock::SseServer> sse;
   if (!wifi.is_ap_mode()) {
@@ -614,10 +828,117 @@ extern "C" void app_main() {
     ccfg.currencies = kCurrencies;
     ccfg.num_screens = kNumPanels;
     ccfg.hw_name = btclock::board::kHardwareName;
+    // Populates /api/settings `availablePools` so the WebUI dropdown
+    // matches the compiled-in pool list. Kept in sync with the factory
+    // in mining_pool_selector.cpp.
+    ccfg.available_pools = btclock::mining_pools::AvailablePoolNames();
     ccfg.frontlight = fl_adapter.get();
     ccfg.leds = leds_adapter.get();
     ccfg.dnd = dnd_adapter.get();
     ccfg.timer = timer_adapter.get();
+    ccfg.light_sensor = light_sensor_adapter.get();
+    // Mirror freshly-PATCHed DND fields into the singleton so the LED
+    // and frontlight suppressor predicates (`dnd::Instance().IsActive()`,
+    // evaluated on every frame) switch over to the new window without a
+    // reboot. Settings persist to the `settings` namespace via the PATCH
+    // handler; the singleton reads/writes its own `dnd` namespace, so
+    // this hook is also what keeps the two namespaces in sync at
+    // runtime.
+    ccfg.on_factory_reset = factory_reset_trigger;
+    // tzString PATCH -> setenv("TZ", ...) + tzset() so the clock screen
+    // follows the new zone without reboot. Old firmware applied the zone
+    // inline inside the PATCH handler; we keep the split so the webserver
+    // component stays independent of the timezone component.
+    ccfg.on_tz_changed = [](const std::string& zone) {
+      if (zone.empty()) return;
+      (void)btclock::timezone::SetTimezoneByName(zone.c_str());
+    };
+    // invertedColor PATCH hook — flip the EPD polarity flag + mark the
+    // screen dirty so the next frame paints a full-refresh with the new
+    // polarity. The data-driven render path runs on the main task's
+    // event loop; the dirty flag is plain scalar state so poking it
+    // from the httpd worker is safe without a command-queue hop.
+    {
+      btclock::ScreenManager* sm_ptr = &sm;
+      ccfg.on_inverted_color_changed = [sm_ptr](bool v) {
+        btclock::EpdSetGlobalInverted(v);
+        sm_ptr->MarkDirty();
+      };
+    }
+    ccfg.on_dnd_changed = [] {
+      btclock::Prefs settings_ns(btclock::prefs::kSettingsNs);
+      auto& d = btclock::dnd::Instance();
+      d.SetTimeEnabled(
+          settings_ns.GetBool(btclock::prefs::kDndTimeEnabled, false));
+      d.SetTimeRange(
+          static_cast<uint8_t>(
+              settings_ns.GetU32(btclock::prefs::kDndStartHour, 22) & 0xFFu),
+          static_cast<uint8_t>(
+              settings_ns.GetU32(btclock::prefs::kDndStartMin, 0) & 0xFFu),
+          static_cast<uint8_t>(
+              settings_ns.GetU32(btclock::prefs::kDndEndHour, 7) & 0xFFu),
+          static_cast<uint8_t>(
+              settings_ns.GetU32(btclock::prefs::kDndEndMin, 0) & 0xFFu));
+    };
+    // Runtime catalogues for GET /api/settings drop-downs. Copies of the
+    // constexpr arrays in app/catalogs.hpp; the settings handler holds
+    // std::vector<std::string> slots so we materialise the views here
+    // rather than refactoring the settings API type.
+    for (const auto& f : btclock::catalogs::kAvailableFonts) {
+      ccfg.available_fonts.emplace_back(f);
+    }
+    for (const auto& c : btclock::catalogs::kAvailableCurrencies) {
+      ccfg.available_currencies.emplace_back(c);
+    }
+    for (const auto& s : btclock::catalogs::kScreenKinds) {
+      ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label)});
+    }
+    // Nostr zap-relay liveness — read on every /api/status so the WebUI's
+    // connection badge tracks reality instead of the hardcoded-false we
+    // used before the ZapListener was wired.
+    {
+      btclock::nostr::RelayClient* zap_ptr = zap_relay.get();
+      if (zap_ptr != nullptr) {
+        ccfg.nostr_connected = [zap_ptr]() { return zap_ptr->connected(); };
+      }
+    }
+    // Capability gate — lets /api/settings and /api/show/screen know that
+    // the mining-pool earnings slot is useless on a solo pool (no per-user
+    // payout to render; the screen would forever show "0 SATS"). Evaluated
+    // per-request so switching pool via PATCH /api/settings takes effect on
+    // the next GET. Read is a cheap cached NVS lookup.
+    ccfg.screen_is_hidden = [](int api_id) -> bool {
+      if (api_id != btclock::slot_map::kApiIdMiningPoolEarnings) return false;
+      btclock::Prefs prefs(btclock::prefs::kSettingsNs);
+      const std::string name =
+          prefs.GetString(btclock::prefs::kMiningPoolName, "");
+      return !btclock::mining_pools::PoolSupportsDailyEarnings(name);
+    };
+
+    // POST /api/show/screen?s=<api_id> and the `currentScreen` field in
+    // /api/status both speak the settings-catalog id the WebUI persists —
+    // not ScreenManager's dense slot index. Bridge the two with pure-logic
+    // helpers (app/screen_slot_map.hpp) so the HTTP handler stays free of
+    // ScreenManager internals. api_id_to_slot lands per-currency screens
+    // on whichever currency is currently displayed, matching the old
+    // firmware's "stay on my current currency when I pick a new screen"
+    // UX.
+    {
+      btclock::ScreenManager* sm_ptr = &sm;
+      ccfg.api_id_to_slot = [sm_ptr](int api_id) -> int {
+        const auto& ccs = sm_ptr->currencies();
+        std::size_t pref = 0;
+        const std::string& cur = sm_ptr->current_currency();
+        for (std::size_t i = 0; i < ccs.size(); ++i) {
+          if (ccs[i] == cur) { pref = i; break; }
+        }
+        return btclock::slot_map::SlotForApiId(api_id, ccs.size(), pref);
+      };
+      ccfg.slot_to_api_id = [sm_ptr](std::size_t slot) -> int {
+        return btclock::slot_map::ApiIdForSlot(
+            slot, sm_ptr->currencies().size());
+      };
+    }
     ctrl = std::make_unique<btclock::ControlServer>(std::move(ccfg));
     // SSE lifecycle: construct before Start() so RegisterRoute fires
     // in the same handler-registration pass as /api/*. The SseServer
@@ -631,6 +952,37 @@ extern "C" void app_main() {
       ctrl.reset();
       sse.reset();
     }
+  }
+
+  // OTA manager — stores release URL + per-variant asset name so the
+  // /api/firmware/auto_update handler can kick off a pull update. The
+  // release_url is read from NVS so a user-set override (GET/PATCH
+  // /api/settings `gitReleaseUrl`) is honoured without a rebuild.
+  {
+    btclock::settings::NvsPrefs ota_prefs(btclock::prefs::kSettingsNs);
+    btclock::OtaManager::Config ocfg;
+    ocfg.release_url = ota_prefs.GetString(btclock::prefs::kGitReleaseUrl, "");
+    // Asset naming mirrors the Arduino release workflow:
+    //   btclock_<variant>_ota.bin  / btclock_<variant>_webui.bin
+    // The variant slug matches the old `BOARD` define — lowercased
+    // with underscores. Rev A / Rev B / V8 are the only shipping
+    // variants today. Kept behind POC_BOARD_* macros because the
+    // human-readable kHardwareName ("Rev B") contains a space.
+#if defined(POC_BOARD_REV_A)
+    ocfg.firmware_asset = "btclock_rev_a_ota.bin";
+    ocfg.webui_asset = "btclock_rev_a_webui.bin";
+#elif defined(POC_BOARD_REV_B)
+    ocfg.firmware_asset = "btclock_rev_b_ota.bin";
+    ocfg.webui_asset = "btclock_rev_b_webui.bin";
+#elif defined(POC_BOARD_V8)
+    ocfg.firmware_asset = "btclock_v8_ota.bin";
+    ocfg.webui_asset = "btclock_v8_webui.bin";
+#else
+    // TODO: fill in exact filename once a release ships for this variant.
+    ocfg.firmware_asset = "btclock_unknown_ota.bin";
+    ocfg.webui_asset = "btclock_unknown_webui.bin";
+#endif
+    btclock::GetOtaManager().Init(ocfg);
   }
 
   // Re-hook DataHub on-update so fresh snapshots also fan out to SSE
@@ -725,6 +1077,18 @@ extern "C" void app_main() {
             hub->StartAll();
           }
           break;
+        case Kind::kShowCustom: {
+          // Payload landed on ControlServer::pending_custom_ alongside
+          // the command; pull it here before touching ScreenManager so
+          // a concurrent second request can't slip its payload between
+          // the pull and the apply.
+          std::vector<std::string> cells;
+          if (ctrl->TakePendingCustomCells(&cells)) {
+            sm.SetCustomCells(std::move(cells), MsNow());
+            re_render = true;
+          }
+          break;
+        }
       }
       if (re_render && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
@@ -733,24 +1097,78 @@ extern "C" void app_main() {
 
     btclock::ButtonInput ev{};
     if (xQueueReceive(button_q, &ev, 0) == pdTRUE) {
-      bool rotated = false;
-      if (ev.event == btclock::ButtonEvent::kClick) {
-        rotated = sm.NextScreen(MsNow());
-      } else if (ev.event == btclock::ButtonEvent::kLongPress) {
-        rotated = sm.PrevScreen(MsNow());
+      // Only the falling-edge kClick drives actions today; kLongPress
+      // events are intentionally dropped until someone finds them a
+      // semantic. Mirrors the brief: "ignore long-press for now".
+      if (ev.event != btclock::ButtonEvent::kClick) continue;
+      bool re_render = false;
+      bool show_debug = false;
+      switch (ev.id) {
+        case btclock::ButtonId::k0:
+          // Pause / resume auto-rotate. The current slot stays up.
+          sm.TogglePaused();
+          ESP_LOGI(kTag, "button: pause=%d", sm.IsPaused() ? 1 : 0);
+          // No re-render — the screen content is unchanged; publish
+          // status so the WebUI timer flag updates.
+          break;
+        case btclock::ButtonId::k1:
+          // Next screen — same as auto-rotate step, Restart() resets
+          // the rotation deadline so we don't immediately advance again.
+          if (!sm.IsDebug()) {
+            sm.NextScreen(MsNow());
+            re_render = true;
+          }
+          break;
+        case btclock::ButtonId::k2:
+          if (!sm.IsDebug()) {
+            sm.PrevScreen(MsNow());
+            re_render = true;
+          }
+          break;
+        case btclock::ButtonId::k3: {
+          // Toggle debug overlay. Entry renders via RenderDebug (full-
+          // refresh, no data snapshot); exit marks dirty so the normal
+          // render path repaints the underlying data slot.
+          const bool now_debug = sm.ToggleDebug(MsNow());
+          show_debug = now_debug;
+          re_render = !now_debug;
+          break;
+        }
       }
-      if (rotated && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
-      if (rotated) publish_status();
+      if (show_debug) {
+        btclock::DebugScreenInfo info;
+        info.ip = wifi.ip();
+        info.ssid = ssid;
+        info.free_heap = static_cast<uint32_t>(
+            heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+        info.free_psram = static_cast<uint32_t>(
+            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+        info.hw_name = btclock::board::kHardwareName;
+        info.built = __DATE__;
+        info.uptime_s = static_cast<uint32_t>(MsNow() / 1000);
+        sm.RenderDebug(panels, fb_storage, fonts, info);
+      } else if (re_render && hub) {
+        sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      }
+      publish_status();
       continue;
     }
 
     const uint32_t got = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
     const int64_t now_ms = MsNow();
 
+    // Soft watchdog pump — skipped in AP/provisioning mode, where the
+    // whole point is that there's no STA connection to watch.
+    if (!wifi.is_ap_mode()) {
+      outage_watchdog.Tick(wifi, static_cast<uint32_t>(now_ms));
+    }
+
     if (now_ms - last_heartbeat_ms >= 10'000) {
       uint16_t port = 0;
       mcp.ReadPort(&port);
-      const float lux = bh.has_value() ? bh->ReadLux() : -1.0f;
+      // Prefer the cached reading from the poll task so we don't race
+      // on the I2C bus with it. Falls back to -1.0 when no sensor.
+      const float lux = light_sensor ? light_sensor->GetLux() : -1.0f;
       ESP_LOGI(kTag, "t=%llds buttons=0x%X lux=%.1f heap=%u psram=%u",
                static_cast<long long>(now_ms / 1000),
                static_cast<unsigned>(port & 0xF), lux,
@@ -763,6 +1181,20 @@ extern "C" void app_main() {
       // board has no frontlight or no ambient sensor.
       if (frontlight) frontlight->OnAmbientLux(lux);
       last_heartbeat_ms = now_ms;
+    }
+
+    // Zap notification: push the overlay onto ScreenManager from the
+    // main task. The atomic flag was raised by the zap listener's worker-
+    // thread callback, so doing the mutation here keeps ScreenManager
+    // single-threaded. Expected bool for exchange — clear the flag
+    // before dispatching.
+    bool pending_zap = true;
+    if (zap_notify_pending.compare_exchange_strong(pending_zap, false) &&
+        hub) {
+      sm.SetZapNotify(now_ms, zap_screen_auto_restore.load());
+      sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      publish_status();
+      continue;
     }
 
     if (sm.MaybeAutoRotate(now_ms, kAutoRotateMs) && hub) {

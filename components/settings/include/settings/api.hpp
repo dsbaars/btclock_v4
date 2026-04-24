@@ -58,6 +58,10 @@ struct DeviceContext {
   int32_t num_screens = 3;
   bool has_frontlight = false;
   bool has_light_level = false;
+  // Most recent lux reading. Only emitted into the JSON when
+  // `has_light_level` is also true, matching the old firmware's
+  // hide-when-unavailable behaviour.
+  float light_level = 0.0f;
   std::string hw_rev;
   std::string fs_rev;
   std::string git_rev;
@@ -77,6 +81,14 @@ struct DeviceContext {
     std::string name;
   };
   std::vector<Screen> screens;
+  // Screen api_ids the GET response must omit from `screens[]` even
+  // though they are otherwise in the catalogue — e.g. the mining-pool
+  // earnings slot when the active pool has no per-user payout stream.
+  // PATCH validation still accepts these ids so a client posting the
+  // full legacy shape is not rejected; the renderer simply skips the
+  // hidden slot in rotation (main/app/screen_manager.cpp reads the
+  // same capability directly).
+  std::vector<int> hidden_screen_ids;
 };
 
 // Build the full GET /api/settings body. Caller owns the returned
@@ -86,7 +98,8 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx);
 // Outcome of ApplyPatch.
 enum class PatchStatus : uint8_t {
   kOk,              // 200 OK
-  kBadRequest,      // malformed JSON or per-field validation failure
+  kBadRequest,      // malformed JSON, out-of-range number, missing context
+  kBadField,        // per-field type mismatch or catalog rejection
 };
 
 struct PatchResult {

@@ -1,0 +1,52 @@
+name: "Host tests"
+
+# Pure-logic unit tests (test_host/) run on every push and PR.
+# No ESP-IDF toolchain needed — just gcc + cmake.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  host_tests:
+    runs-on: docker
+    container:
+      # catthehacker's js-24.04 ships Node + Python + git + basic build
+      # tools, which JS-based actions (actions/checkout, actions/cache)
+      # require. The slimmer debian:stable-slim image was failing on
+      # checkout with "node: executable file not found in $PATH".
+      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Host tests don't consume the webui submodule, but recursive
+          # keeps the checkout graph consistent with the firmware job.
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          # cmake is present in the base image but pin the install step
+          # so the workflow stays self-documenting if the base image ever
+          # stops shipping it.
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential cmake
+
+      - name: Configure
+        shell: bash
+        run: cmake -S test_host -B build-host
+
+      - name: Build
+        shell: bash
+        run: cmake --build build-host --parallel
+
+      - name: Run
+        shell: bash
+        run: ./build-host/btclock_host_tests

@@ -41,6 +41,8 @@ add_executable(btclock_host_tests
     test_mining_pool_public_pool.cpp
     test_mining_pool_ckpool.cpp
     test_mining_pool_gobrrr.cpp
+    test_bitaxe_parser.cpp
+    test_bitaxe_panel_texts.cpp
     test_screen_math.cpp
     test_webui_upload_bounds.cpp
     test_timezone.cpp
@@ -48,18 +50,32 @@ add_executable(btclock_host_tests
     test_led_color_parse.cpp
     test_datahandler_parity.cpp
     test_settings_api.cpp
+    test_settings_catalogs.cpp
     test_dnd.cpp
     test_screen_rotation.cpp
+    test_screen_slot_map.cpp
     test_panel_texts.cpp
+    test_price_layout.cpp
+    test_show_text_parse.cpp
     test_sse_frame.cpp
+    test_heap_metrics.cpp
+    test_sats_variant.cpp
+    test_auth_gate_logic.cpp
+    test_wifi_outage_watchdog.cpp
+    test_bh1750_math.cpp
+    test_light_metrics.cpp
     ../main/app/frontlight_fader.cpp
     ../main/app/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
+    ../main/screens/assets/pool_logos.cpp
+    ../components/bitaxe/src/bitaxe_parser.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
     ../components/webserver/mime.cpp
+    ../components/webserver/show_text_parse.cpp
     ../components/webserver/sse_frame.cpp
+    ../components/webserver/auth_gate_logic.cpp
     ../components/settings/settings_api.cpp
     ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
@@ -81,10 +97,13 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_public_pool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_ckpool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_gobrrr/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/bitaxe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_fs/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/timezone/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/settings/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/fonts/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/bh1750/include
 )
 
 find_package(Threads REQUIRED)

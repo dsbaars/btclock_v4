@@ -4,3 +4,14 @@ managed_components/
 dependencies.lock
 sdkconfig
 sdkconfig.old
+
+# Claude Code scratch: agent transcripts, per-agent worktrees, memory.
+.claude/
+
+# Local photos / captures from the hardware-operator agents.
+photos/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

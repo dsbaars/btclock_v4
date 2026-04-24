@@ -15,11 +15,17 @@ constexpr const char* kTag = "buttons";
 constexpr uint32_t kPollPeriodMs = 20;
 constexpr uint32_t kDebounceMs = 40;
 constexpr uint32_t kLongPressMs = 800;
+// 5 s hold of all four buttons fires the factory-reset combo.
+// Intentionally much longer than kLongPressMs so a user who rests a
+// hand across the bezel can't trigger a wipe by accident.
+constexpr uint32_t kAllLongPressMs = 5000;
 
 // 40 ms / 20 ms = 2 consecutive identical samples to accept a change.
 constexpr uint8_t kDebounceTicks = kDebounceMs / kPollPeriodMs;
 // 800 ms / 20 ms = 40 ticks of continuous press to trigger long-press.
 constexpr uint16_t kLongPressTicks = kLongPressMs / kPollPeriodMs;
+// 5000 ms / 20 ms = 250 ticks for the all-buttons combo.
+constexpr uint32_t kAllLongPressTicks = kAllLongPressMs / kPollPeriodMs;
 
 // Bit mask for pins 0..3 on the MCP23017 port word.
 constexpr uint16_t kButtonMask = 0x000F;
@@ -134,6 +140,29 @@ void ButtonReader::Run() {
           (void)xQueueSend(queue_, &ev, 0);
         }
       }
+    }
+
+    // All-buttons-held factory-reset detector. Runs on the debounced
+    // .pressed states so a bouncy contact on one button can't stall
+    // the combo timer. Counter advances only while all four are held
+    // and resets the instant any button is released, matching a user's
+    // expectation that "let go" cancels the combo.
+    bool all_held = true;
+    for (uint8_t i = 0; i < kNumButtons; ++i) {
+      if (!state_[i].pressed) { all_held = false; break; }
+    }
+    if (all_held) {
+      if (all_pressed_ticks_ < UINT32_MAX) ++all_pressed_ticks_;
+      if (!all_long_fired_ && all_pressed_ticks_ >= kAllLongPressTicks) {
+        all_long_fired_ = true;
+        if (all_long_press_cb_) {
+          ESP_LOGW(kTag, "all-buttons long-press: factory reset combo");
+          all_long_press_cb_();
+        }
+      }
+    } else {
+      all_pressed_ticks_ = 0;
+      all_long_fired_ = false;
     }
   }
 }

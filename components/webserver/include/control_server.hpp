@@ -94,6 +94,18 @@ class TimerIface {
   virtual void Restart() = 0;
 };
 
+// Ambient-light sensor surface. Exposed through ControlServer::Config
+// so the settings/status handlers can emit `hasLightLevel`/`lightLevel`
+// without the webserver component depending on the BH1750 driver. The
+// concrete adapter in main.cpp forwards to `btclock::LightSensor`.
+// Nullptr (or IsAvailable() == false) -> response suppresses the field.
+class LightSensorIface {
+ public:
+  virtual ~LightSensorIface() = default;
+  virtual bool IsAvailable() const = 0;
+  virtual float GetLux() const = 0;
+};
+
 // NeoPixel-side counterpart to FrontlightIface. Keeps the webserver
 // component independent of `main/app/led_controller.hpp` (which drags
 // FreeRTOS + RMT + NVS into every TU that includes it). `main.cpp`
@@ -141,6 +153,13 @@ struct ControlCommand {
     kPrevScreen,
     kStopDataSources,
     kRestartDataSources,
+    // Runtime-pushed custom screen. The per-panel string payload doesn't
+    // fit in this trivially-copyable struct (up to 8 × multi-char
+    // strings), so the payload is stored on ControlServer::pending_custom_
+    // and consumed by main via TakePendingCustomCells() when it handles
+    // this kind. If two requests race, the later payload wins — matches
+    // the old EPDManager::setContent which overwrites unconditionally.
+    kShowCustom,
   };
   Kind kind;
   int32_t arg_i = 0;
@@ -176,6 +195,11 @@ class ControlServer {
     // Screen-rotation timer. Nullptr -> /api/action/pause and
     // /api/action/timer_restart respond 503.
     TimerIface* timer = nullptr;
+    // Ambient-light sensor. Nullptr (or IsAvailable() == false) ->
+    // /api/settings response reports `hasLightLevel: false` and
+    // suppresses the `lightLevel` number. Rev A / V8 have no BH1750
+    // and wire this as nullptr.
+    LightSensorIface* light_sensor = nullptr;
 
     // Full rotatable-screen catalogue used by /api/settings. Order
     // here is the fallback rotation order (the WebUI shows this as
@@ -194,6 +218,72 @@ class ControlServer {
     std::vector<std::string> available_fonts;
     std::vector<std::string> available_pools;
     std::vector<std::string> available_currencies;
+
+    // Fires when PATCH /api/settings writes any DND field (schedule
+    // enable or the hh:mm window). The callback is expected to mirror
+    // the fresh NVS values into the runtime DND subsystem so the LED
+    // and frontlight suppressors pick up the new window immediately —
+    // without this hook, the cached snapshot inside `dnd::Instance()`
+    // keeps serving the old values until reboot. Nullable; a null
+    // callback reproduces the pre-hook behaviour.
+    std::function<void()> on_dnd_changed;
+
+    // Fires when PATCH /api/settings writes `tzString`. The callback
+    // receives the IANA zone name (validated-but-not-yet-applied to the
+    // process TZ) and is expected to call timezone::SetTimezoneByName
+    // so the clock screen, log timestamps, and any scheduled work pick
+    // up the new zone without a reboot. Nullable: when unwired the zone
+    // only takes effect on the next boot (InitFromNvs reads the settings
+    // namespace directly).
+    std::function<void(const std::string&)> on_tz_changed;
+
+    // Fires when PATCH /api/settings writes `invertedColor`. The
+    // callback receives the stored bool; main installs it on the EPD
+    // driver (`EpdSetGlobalInverted`) and marks the screen dirty so the
+    // next frame repaints with the new polarity. Nullable — an unwired
+    // callback leaves the change deferred to reboot (main.cpp reads the
+    // pref once at InitOnce + first Render).
+    std::function<void(bool)> on_inverted_color_changed;
+
+    // Fires on POST /api/factory_reset after the confirmation gate has
+    // accepted the body. The callback is expected to render a
+    // "RESETTING" splash on the EPDs and then call
+    // btclock::settings::PerformFactoryReset(). Because the helper is
+    // [[noreturn]], control never comes back to the HTTP task — the
+    // response has already been sent before we invoke the callback.
+    // Nullable: a null callback responds 503 so the WebUI can tell
+    // the user why the reset didn't take effect.
+    std::function<void()> on_factory_reset;
+
+    // Live Nostr zap-relay connection state. Non-null only when the
+    // zap listener is wired (nostrZapNotify=true + valid relay URL +
+    // 64-char zap pubkey). Returns false while the WebSocket is
+    // disconnected or reconnecting so /api/status `connectionStatus.nostr`
+    // mirrors reality — a stale "true" here would mask relay failures
+    // from the WebUI's health indicator.
+    std::function<bool()> nostr_connected;
+
+    // Probes a catalogue `screens[].id` for runtime suppression. Returns
+    // true when the currently-configured environment makes the screen
+    // useless (e.g. mining-pool earnings on a solo pool that only reports
+    // hashrate). The /api/settings GET handler drops hidden ids from the
+    // emitted `screens[]` and POST /api/show/screen?s=<id> rejects them
+    // with 409 so a stale WebUI button can't force the slot back on.
+    // Nullable — a null hook keeps every catalogue entry visible.
+    std::function<bool(int)> screen_is_hidden;
+
+    // Maps a settings-catalog `screens[].id` (api_id: 0, 3, 4, 6, 10,
+    // 20, 30, 40) to the dense rotation slot that ScreenManager tracks.
+    // Wired in main.cpp; non-null when the rotation subsystem is up.
+    // Returns a negative value when the api_id isn't in the current
+    // rotation — the HTTP handler responds 400 in that case rather
+    // than silently wrapping to slot 0.
+    //
+    // The inverse (slot -> api_id) is needed for /api/status's
+    // `currentScreen` field so the WebUI can match it against the
+    // picker's button ids.
+    std::function<int(int)> api_id_to_slot;
+    std::function<int(size_t)> slot_to_api_id;
   };
 
   explicit ControlServer(Config cfg);
@@ -210,6 +300,12 @@ class ControlServer {
   // Pop one pending command into `out`. Non-blocking. The main task
   // calls this once per event-loop iteration.
   bool TryPopCommand(ControlCommand* out);
+
+  // Consume the most-recently-posted custom-cells payload that goes
+  // with a `kShowCustom` command. Returns true iff a payload was
+  // waiting; `*out` gets one string per panel (caller-sized view of the
+  // board's panel count). Safe to call concurrently with the HTTP task.
+  bool TakePendingCustomCells(std::vector<std::string>* out);
 
   // Snapshot of live status emitted by the main task so /api/status
   // responses reflect the actual screen state without poking the
@@ -248,6 +344,8 @@ class ControlServer {
   static esp_err_t TrampolineRestart(httpd_req_t* req);
   static esp_err_t TrampolineShowScreen(httpd_req_t* req);
   static esp_err_t TrampolineShowCurrency(httpd_req_t* req);
+  static esp_err_t TrampolineShowText(httpd_req_t* req);
+  static esp_err_t TrampolineShowCustom(httpd_req_t* req);
   static esp_err_t TrampolineScreenNext(httpd_req_t* req);
   static esp_err_t TrampolineScreenPrev(httpd_req_t* req);
   static esp_err_t TrampolineStopDataSources(httpd_req_t* req);
@@ -270,6 +368,9 @@ class ControlServer {
   static esp_err_t TrampolineDndDisable(httpd_req_t* req);
   static esp_err_t TrampolineActionPause(httpd_req_t* req);
   static esp_err_t TrampolineActionTimerRestart(httpd_req_t* req);
+  static esp_err_t TrampolineFirmwareAutoUpdate(httpd_req_t* req);
+  static esp_err_t TrampolineUploadFirmware(httpd_req_t* req);
+  static esp_err_t TrampolineFactoryReset(httpd_req_t* req);
   static esp_err_t TrampolineNotImplemented(httpd_req_t* req);
   static esp_err_t TrampolineOptions(httpd_req_t* req);
   static esp_err_t TrampolineStatic(httpd_req_t* req);
@@ -281,6 +382,8 @@ class ControlServer {
   esp_err_t HandleRestart(httpd_req_t* req);
   esp_err_t HandleShowScreen(httpd_req_t* req);
   esp_err_t HandleShowCurrency(httpd_req_t* req);
+  esp_err_t HandleShowText(httpd_req_t* req);
+  esp_err_t HandleShowCustom(httpd_req_t* req);
   esp_err_t HandleScreenNext(httpd_req_t* req);
   esp_err_t HandleScreenPrev(httpd_req_t* req);
   esp_err_t HandleStopDataSources(httpd_req_t* req);
@@ -303,6 +406,9 @@ class ControlServer {
   esp_err_t HandleDndDisable(httpd_req_t* req);
   esp_err_t HandleActionPause(httpd_req_t* req);
   esp_err_t HandleActionTimerRestart(httpd_req_t* req);
+  esp_err_t HandleFirmwareAutoUpdate(httpd_req_t* req);
+  esp_err_t HandleUploadFirmware(httpd_req_t* req);
+  esp_err_t HandleFactoryReset(httpd_req_t* req);
   esp_err_t HandleStatic(httpd_req_t* req);
 
   bool PostCommand(const ControlCommand& cmd);
@@ -323,6 +429,18 @@ class ControlServer {
   // single std::mutex is more than enough.
   mutable std::mutex status_mu_;
   LiveStatus status_;
+
+  // Side-channel payload for /api/show/text and /api/show/custom —
+  // strings don't fit in the trivially-copyable ControlCommand struct
+  // that goes through the FreeRTOS queue. Protected by its own mutex
+  // rather than sharing `status_mu_` so a slow Render() on the main
+  // task can't block an incoming HTTP handler. "Latest wins": if two
+  // requests land before main consumes the pending slot, the later
+  // payload overwrites the earlier — matches the old firmware's
+  // EPDManager::setContent which also overwrites unconditionally.
+  mutable std::mutex pending_custom_mu_;
+  bool pending_custom_valid_ = false;
+  std::vector<std::string> pending_custom_cells_;
 };
 
 }  // namespace btclock

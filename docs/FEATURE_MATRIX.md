@@ -71,13 +71,13 @@ renderers under [`main/screens/`](../main/screens).
 | Sats per currency (`SCREEN_SATS_PER_CURRENCY`, Moscow-time) | screen_handler.cpp | [moscow_time.cpp](../main/screens/moscow_time.cpp) | Implemented (USD + EUR/GBP/JPY) | — |
 | BTC ticker (`SCREEN_BTC_TICKER`) | screen_handler.cpp | [btc_price.cpp](../main/screens/btc_price.cpp) | Implemented (multi-currency) | — |
 | Time / clock (`SCREEN_TIME`) | screen_handler.cpp | [clock.cpp](../main/screens/clock.cpp) | Implemented (blocks-mode) | `btclock_v3_fci-lx0.13` |
-| Halving countdown (`SCREEN_HALVING_COUNTDOWN`) | screen_handler.cpp | [halving.cpp](../main/screens/halving.cpp) | Partial: blocks-mode only; years/days/hours/mins mode deferred | `btclock_v3_fci-lx0.14` |
+| Halving countdown (`SCREEN_HALVING_COUNTDOWN`) | screen_handler.cpp | [halving.cpp](../main/screens/halving.cpp) | Implemented (blocks-mode + years/days/hours/mins time-mode via `as_blocks` flag) | `btclock_v3_fci-lx0.14` |
 | Block fee rate (`SCREEN_BLOCK_FEE_RATE`) | screen_handler.cpp | [fee_rate.cpp](../main/screens/fee_rate.cpp) | Partial: integer sats/vB only; no "sat/vB" unit glyph; blockfee2 decimal variant pending | `btclock_v3_fci-wbr`, `btclock_v3_fci-znf` |
-| Market cap (`SCREEN_MARKET_CAP`) | screen_handler.cpp | [market_cap.cpp](../main/screens/market_cap.cpp) | Implemented bigChars ($1.56T form) by default; small-char 3-digit-group mode still deferred | `btclock_v3_fci-33e` |
-| Bitcoin supply (`SCREEN_BITCOIN_SUPPLY`) | screen_handler.cpp | [bitcoin_supply.cpp](../main/screens/bitcoin_supply.cpp) | Implemented bigChars (19.9M) + supplyPercent (93.48 %) modes; small-char 3-digit-group still deferred | `btclock_v3_fci-33e` |
+| Market cap (`SCREEN_MARKET_CAP`) | screen_handler.cpp | [market_cap.cpp](../main/screens/market_cap.cpp) | Implemented bigChars ($1.56T form) by default; small-char 3-digit-group mode exposed through panel_texts for /api/status, renderer still paints bigChars only | `btclock_v3_fci-33e` |
+| Bitcoin supply (`SCREEN_BITCOIN_SUPPLY`) | screen_handler.cpp | [bitcoin_supply.cpp](../main/screens/bitcoin_supply.cpp) | Implemented bigChars (19.9M) + supplyPercent (93.48 %) modes; small-char 3-digit-group mirror available via panel_texts, renderer pending | `btclock_v3_fci-33e` |
 | Mining pool hashrate / earnings (`SCREEN_MINING_POOL_STATS_*`) | screen_handler.cpp | — | Missing (7 data sources landed; renderer pending) | `btclock_v3_fci-lcw.1` |
 | Bitaxe hashrate / best difficulty (`SCREEN_BITAXE_*`) | screen_handler.cpp | — | Missing | `btclock_v3_fci-lcw.2` |
-| Runtime-pushed custom / text / countdown (`SCREEN_CUSTOM`, `SCREEN_COUNTDOWN`) | screen_handler.cpp, actions.cpp `/api/show/text` | Route stubbed 501 | Stubbed | `btclock_v3_fci-odc` |
+| Runtime-pushed custom / text / countdown (`SCREEN_CUSTOM`, `SCREEN_COUNTDOWN`) | screen_handler.cpp, actions.cpp `/api/show/text` | [show_custom.cpp](../main/screens/show_custom.cpp) — /api/show/text + /api/show/custom wired; SCREEN_COUNTDOWN still missing | Partial (countdown variant pending) | `btclock_v3_fci-odc` |
 | User-configurable rotation order | [config.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/config.cpp) `rebuildScreenMappings`, default `DEFAULT_SCREEN_ORDER` | — | Missing | `btclock_v3_fci-jek` |
 | Steal focus on new block (auto-flip to block screen) | `DEFAULT_STEAL_FOCUS`, ScreenHandler | Partial: `ConsumeNewBlock` drives LED flash only | Partial | `btclock_v3_fci-wn6` |
 | Full periodic refresh (EPD ghost clear) | `DEFAULT_MINUTES_FULL_REFRESH` | — | Missing | `btclock_v3_fci-6fi` |
@@ -125,8 +125,8 @@ token pointing at the follow-up issue.
 | `POST /api/restart` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/screen` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/currency` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
-| `POST /api/show/text` | actions.cpp | Stubbed 501 | Stubbed | `btclock_v3_fci-odc` |
-| `POST /api/show/custom` | (derived: custom screen) | Stubbed 501 | Stubbed | `btclock_v3_fci-odc` |
+| `POST /api/show/text` | actions.cpp | [control_server.cpp::HandleShowText](../components/webserver/control_server.cpp) — accepts `?t=` and `{"text":"..."}`, one char per panel uppercased | Implemented | `btclock_v3_fci-odc` |
+| `POST /api/show/custom` | (derived: custom screen) | [control_server.cpp::HandleShowCustom](../components/webserver/control_server.cpp) — bare array or `{"cells":[...]}`, verbatim per panel | Implemented | `btclock_v3_fci-odc` |
 | `POST /api/screen/next` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/screen/previous` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/action/pause` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → `ScreenManager::SetPaused(true)` via `TimerIface` | Implemented | — |
@@ -147,11 +147,11 @@ token pointing at the follow-up issue.
 | `GET /api/frontlight/status` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (JSON: enabled/duty/target/threshold/auto-off) | — |
 | `POST /api/frontlight/brightness` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (validated duty → fade) | — |
 | `POST /upload/firmware` | [ota_routes.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver/ota_routes.cpp) | Stubbed 501 | Stubbed | `btclock_v3_fci-5b2` |
-| `POST /upload/webui` | ota_routes.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → [`FlashWebuiImage`](../components/btclock_fs/littlefs.cpp) | Implemented (streams blob to `storage` partition, reboots; no HTTP auth yet — TODO tied to `equ`) | `btclock_v3_fci-5b2` |
+| `POST /upload/webui` | ota_routes.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → [`FlashWebuiImage`](../components/btclock_fs/littlefs.cpp) | Implemented (streams blob to `storage` partition, reboots; gated by HTTP Basic auth when `httpAuthEnabled`) | `btclock_v3_fci-5b2` |
 | `POST /api/firmware/auto_update` | ota_routes.cpp | Stubbed 501 | Stubbed | `btclock_v3_fci-5b2` |
 | SSE event stream (`/events`) | [webserver.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver/webserver.cpp) | [sse_server.cpp](../components/webserver/sse_server.cpp) | Implemented (async `/events` chunked stream; welcome + `status` broadcasts on lights/DND/settings/timer mutations + DataHub updates + screen rotations; 5 s keep-alive comment frame; max 4 clients) | `btclock_v3_fci-0sg` |
-| Static WebUI file server (`/`) | webserver.cpp `serveStatic` | [control_server.cpp `HandleStatic`](../components/webserver/control_server.cpp) | Implemented (gzip-aware, Cache-Control, 503 on FS-unmounted, auth TODO) | `btclock_v3_fci-equ` |
-| HTTP Basic auth gate | webserver.cpp `requireHttpAuth` | — | Missing | `btclock_v3_fci-equ` |
+| Static WebUI file server (`/`) | webserver.cpp `serveStatic` | [control_server.cpp `HandleStatic`](../components/webserver/control_server.cpp) | Implemented (gzip-aware, Cache-Control, 503 on FS-unmounted; intentionally ungated so the bundle can load before the first /api call triggers the Basic prompt) | `btclock_v3_fci-equ` |
+| HTTP Basic auth gate | webserver.cpp `requireHttpAuth` | [auth_gate.cpp](../components/webserver/auth_gate.cpp) | Implemented (every /api/* handler + SSE gated on `httpAuthEnabled`; constant-time compare; empty-pass lockout guard) | `btclock_v4-9x3` |
 | Screen-order REST API | config.cpp + settings.cpp (3xh/36t closed) | PATCH `/api/settings` screens[] reorder: full-catalog requirement, dup/range validation, CSV persisted to `screenOrder` NVS | Partial: on-device `ScreenManager` doesn't yet read `screenOrder` back at boot | `btclock_v3_fci-jek` |
 
 ## Provisioning / WiFi

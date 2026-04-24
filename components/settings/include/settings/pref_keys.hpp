@@ -105,6 +105,10 @@ inline constexpr const char* kUseMscwTime      = "useMscwTime";
 inline constexpr const char* kUseSatsSymbol    = "useSatsSymbol";
 inline constexpr const char* kVerticalDesc     = "verticalDesc";
 inline constexpr const char* kWifiConfigured   = "wifiConfigured";
+// Minutes of continuous STA disconnect before a soft reboot. Ported
+// from the Arduino main.cpp::checkWiFiConnection() 10-min brute-force
+// recovery path; 0 disables. Key is truncated to the NVS 15-char cap.
+inline constexpr const char* kWifiRebootMin    = "wifiRebootMin";
 inline constexpr const char* kWpTimeout        = "wpTimeout";
 
 // NVS namespace that holds every key listed above. One namespace keeps
@@ -200,6 +204,7 @@ BTCLOCK_PREF_KEY_ASSERT(kUseMscwTime);
 BTCLOCK_PREF_KEY_ASSERT(kUseSatsSymbol);
 BTCLOCK_PREF_KEY_ASSERT(kVerticalDesc);
 BTCLOCK_PREF_KEY_ASSERT(kWifiConfigured);
+BTCLOCK_PREF_KEY_ASSERT(kWifiRebootMin);
 BTCLOCK_PREF_KEY_ASSERT(kWpTimeout);
 BTCLOCK_PREF_KEY_ASSERT(kSettingsNs);
 

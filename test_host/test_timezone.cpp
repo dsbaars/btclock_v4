@@ -27,6 +27,18 @@ TEST_CASE("timezone: well-known IANA zones round-trip to POSIX") {
         std::string_view{"NZST-12NZDT,M9.5.0,M4.1.0/3"});
 }
 
+TEST_CASE("timezone: Europe/Brussels resolves to a DST-aware POSIX string") {
+  // Regression for the "tzString written to settings NVS namespace,
+  // never applied" live-device bug. The IANA name we ship in
+  // GET /api/settings must round-trip to a POSIX string that encodes
+  // the DST window — a fixed-offset fallback (e.g. "CET-1") would drift
+  // an hour in summer. Brussels shares the CET cluster with
+  // Amsterdam/Berlin/Paris, so verify the canonical expansion.
+  const std::string_view posix = PosixForIana("Europe/Brussels");
+  REQUIRE(!posix.empty());
+  CHECK(posix == std::string_view{"CET-1CEST,M3.5.0,M10.5.0/3"});
+}
+
 TEST_CASE("timezone: unknown zones return an empty view") {
   CHECK(PosixForIana("").empty());
   CHECK(PosixForIana("Not/A_Real_Zone").empty());

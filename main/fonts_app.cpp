@@ -13,7 +13,8 @@ AppFonts::AppFonts()
       oswald_bold_(kOswaldBoldTtf, kOswaldBoldTtfSize),
       dejavu_(kDejaVuTtf, kDejaVuTtfSize),
       dejavu_bold_(kDejaVuBoldTtf, kDejaVuBoldTtfSize),
-      sats_symbol_(kSatoshiSymbolTtf, kSatoshiSymbolTtfSize) {}
+      sats_symbol_(kSatoshiSymbolTtf, kSatoshiSymbolTtfSize),
+      mdi_(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfSize) {}
 #else
 namespace {
 size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
@@ -30,7 +31,9 @@ AppFonts::AppFonts()
       dejavu_bold_(kDejaVuBoldTtf,
                    SizeBetween(kDejaVuBoldTtf, kDejaVuBoldTtfEnd)),
       sats_symbol_(kSatoshiSymbolTtf,
-                   SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)) {}
+                   SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)),
+      mdi_(kMaterialDesignIconsTtf,
+           SizeBetween(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfEnd)) {}
 #endif
 
 FontBundle AppFonts::Bundle(FontFamily f) const {

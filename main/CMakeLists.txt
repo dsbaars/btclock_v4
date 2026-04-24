@@ -3,8 +3,10 @@ idf_component_register(
          "fonts_app.cpp" "boot_ui.cpp" "provisioning_ui.cpp"
          "app/frontlight_fader.cpp" "app/frontlight_controller.cpp"
          "app/led_controller.cpp" "app/led_curves.cpp"
+         "app/light_sensor.cpp"
          "app/wifi_guard.cpp"
          "app/time_sync.cpp" "app/screen_manager.cpp"
+         "app/mining_pool_selector.cpp"
          "screens/common.cpp" "screens/screen_math.cpp"
          "screens/panel_texts.cpp"
          "screens/block_height.cpp"
@@ -12,10 +14,20 @@ idf_component_register(
          "screens/fee_rate.cpp"
          "screens/clock.cpp" "screens/halving.cpp"
          "screens/bitcoin_supply.cpp" "screens/market_cap.cpp"
+         "screens/mining_pool.cpp" "screens/bitaxe.cpp"
+         "screens/assets/pool_logos.cpp"
+         "screens/assets/bitaxe_logo.cpp"
+         "screens/show_custom.cpp"
+         "screens/nostr_zap.cpp"
+         "screens/debug.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer esp_psram esp_wifi i2c_bus mcp23017 pca9685
              bh1750 epd_ssd1680 fonts wifi prefs btclock_fs webserver qrcode
-             data_core btclock_data buttons nostr timezone dnd
+             data_core btclock_data buttons nostr timezone dnd settings ota
+             mining_pool_common mining_pool_braiins mining_pool_ckpool
+             mining_pool_gobrrr mining_pool_noderunners mining_pool_ocean
+             mining_pool_public_pool mining_pool_satoshi_radio
+             bitaxe
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

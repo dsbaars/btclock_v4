@@ -19,21 +19,25 @@ namespace btclock {
 // Layout (matches old firmware `parseBlockFees`):
 //   Panel 0            — "FEE/RATE" split-text label
 //   Panels 1..N-2      — fee digits, right-justified ("X.YY" or int)
-//   Panel N-1          — "sat/vB" unit text
+//   Panel N-1          — "sat" / "vB" unit split-text (Bug 4 — the
+//                        literal "sat/vB" single-line label was too
+//                        cramped and the `/` divider didn't line up
+//                        with the FEE/RATE paired label; split-text
+//                        makes them a visual pair).
 //
 // Partial refresh: label and unit are static after first paint; only
 // the digit panels with a glyph change get flagged for repaint.
 
 namespace {
-// Ref-char string for the "sat/vB" unit glyph. Includes exactly the
-// codepoints in the text (sorted + deduped). Using a focused ref here
-// avoids picking up descenders from unrelated glyphs, so the unit's
-// baseline lands consistently inside the small-text panel.
-constexpr const char* kUnitRef = "/Bastv";
-// Pixel height for the unit text. Smaller than digits (180 px) so the
-// full "sat/vB" string fits inside the narrow panel with visible margin.
-// The exact value was tuned against Antonio at the 122x250 panel rect.
-constexpr float kUnitPx = 60.0f;
+// Ref-char string for the split-text unit glyphs. Includes exactly the
+// codepoints in the text (sorted + deduped). A focused ref avoids
+// picking up descenders from unrelated glyphs, so the unit's baseline
+// lands consistently inside the split-text panel.
+constexpr const char* kUnitRef = "Bastv";
+// Pixel height for the unit split-text (top="sat", bottom="vB"). Matches
+// the split-text body size used by the FEE/RATE label panel so the
+// label and unit panels look like a paired frame around the digits.
+constexpr float kUnitPx = 54.0f;
 }  // namespace
 
 template <size_t N>
@@ -51,10 +55,12 @@ void RenderFeeRateScreen(
   if (full_refresh) {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
+    // Inherit the digit font so the WASM preview's swappable antonio
+    // slot carries the label too (Bug 1 — see block_height.cpp).
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, "FEE",
                   "RATE",
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
   std::array<char, kDigitPanels> new_digits;
@@ -86,13 +92,15 @@ void RenderFeeRateScreen(
     }
   }
 
-  // Panel N-1 — "sat/vB" unit text. Static after first paint.
+  // Panel N-1 — "sat" over "vB" split-text unit. Static after first paint.
+  // Inherits the digit font (Bug 1) so the WASM preview's font swap
+  // carries through to the unit label too.
   if (full_refresh) {
     auto lfb = PrepFb(panels, fb_storage, kUnitPanel);
     ClearFb(lfb, /*white=*/true);
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                     "sat/vB", kUnitRef, fonts.antonio(), kUnitPx,
-                     /*white_text=*/false);
+    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "sat", "vB",
+                  kUnitRef, fonts.antonio(), kUnitPx,
+                  /*white_text=*/false);
   }
 
   const RefreshKind kind =

@@ -99,10 +99,45 @@ esp_err_t Wifi::Connect(const char* ssid, const char* password) {
 
   ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &cfg), kTag,
                       "set_config");
+  // Fresh attempt — callers use last_disconnect_reason() to tell "still
+  // connecting" from "just failed," which requires a 0 baseline here.
+  last_reason_.store(0);
   state_.store(State::kConnecting);
   esp_wifi_connect();
   ESP_LOGI(kTag, "connecting to '%s'", ssid);
   return ESP_OK;
+}
+
+esp_err_t Wifi::TryConnect(const char* ssid, const char* password,
+                           uint32_t timeout_ms) {
+  // APSTA is expected (portal keeps SoftAP up) but the function works in
+  // pure STA mode too. In APSTA the OnEvent auto-retry path is gated on
+  // !ap_mode_ so a failure here won't trigger background reconnection.
+  ESP_RETURN_ON_ERROR(Connect(ssid, password), kTag, "try_connect");
+
+  const TickType_t deadline =
+      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  while (xTaskGetTickCount() < deadline) {
+    if (state_.load() == State::kConnected) {
+      return ESP_OK;
+    }
+    const uint8_t reason = last_reason_.load();
+    const bool terminal =
+        reason == 201 || reason == 202 || reason == 203 ||
+        reason == 204 || reason == 205;
+    if (terminal) {
+      // Stop the STA machinery so the portal can retry from a clean state.
+      esp_wifi_disconnect();
+      state_.store(State::kIdle);
+      return ESP_ERR_INVALID_RESPONSE;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  // No conclusive result. Disconnect so background retries don't linger
+  // and the portal can present a fresh attempt.
+  esp_wifi_disconnect();
+  state_.store(State::kIdle);
+  return ESP_ERR_TIMEOUT;
 }
 
 esp_err_t Wifi::WaitConnected(uint32_t timeout_ms) {
@@ -135,6 +170,13 @@ esp_err_t Wifi::StartSoftAp(const char* ssid, const char* password) {
 
   if (!netif_ap_) netif_ap_ = esp_netif_create_default_wifi_ap();
   if (!netif_ap_) return ESP_FAIL;
+  // APSTA needs BOTH netifs, otherwise STA can associate but DHCP
+  // never runs and no GOT_IP event fires — breaks the provisioning
+  // portal's TryConnect verify-before-save. Create the STA netif
+  // alongside the AP one even though the current code path doesn't
+  // call Start() on the empty-SSID branch.
+  if (!netif_sta_) netif_sta_ = esp_netif_create_default_wifi_sta();
+  if (!netif_sta_) return ESP_FAIL;
 
   if (!started_) {
     wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -357,7 +399,22 @@ void Wifi::OnEvent(esp_event_base_t base, int32_t id, void* data) {
   }
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     const auto* ev = static_cast<wifi_event_sta_disconnected_t*>(data);
-    ESP_LOGW(kTag, "disconnected reason=%u", ev ? ev->reason : 0);
+    const uint8_t reason = ev ? ev->reason : 0;
+    ESP_LOGW(kTag, "disconnected reason=%u", reason);
+    last_reason_.store(reason);
+    // Terminal reasons flag creds/AP faults that won't self-heal; non-
+    // terminal reasons (AP reboot, roaming, interference) are transient
+    // and MUST NOT bump the N-strikes counter or we'd nuke good creds
+    // every time a router hiccups.
+    const bool terminal =
+        reason == 201 ||  // NO_AP_FOUND
+        reason == 202 ||  // AUTH_FAIL
+        reason == 203 ||  // ASSOC_FAIL
+        reason == 204 ||  // HANDSHAKE_TIMEOUT
+        reason == 205;    // CONNECTION_FAIL
+    if (terminal) {
+      terminal_strikes_.fetch_add(1);
+    }
     state_.store(State::kDisconnected);
     ip_.store(0);
     // Only auto-retry if we were actually trying to be a STA (not in
@@ -371,6 +428,10 @@ void Wifi::OnEvent(esp_event_base_t base, int32_t id, void* data) {
     const auto* ev = static_cast<ip_event_got_ip_t*>(data);
     ip_.store(ev->ip_info.ip.addr);
     state_.store(State::kConnected);
+    // Successful association clears the failure counter — one good
+    // connect wipes out all prior strikes, matching the "transient AP
+    // reboot" recovery path.
+    terminal_strikes_.store(0);
     ESP_LOGI(kTag, "got ip " IPSTR, IP2STR(&ev->ip_info.ip));
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_AP_STACONNECTED) {
     const auto* ev = static_cast<wifi_event_ap_staconnected_t*>(data);

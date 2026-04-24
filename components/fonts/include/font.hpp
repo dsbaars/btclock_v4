@@ -144,6 +144,15 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const Font& font, float pixel_height,
                    bool white_text);
 
+// Render one glyph (by raw codepoint) centred on the panel, sized via
+// its own bitmap bbox rather than the digit-ref baseline — MDI icons
+// live in the Private Use Area so `kDigitRef` contains none of their
+// codepoints and would compute a zero reference box.
+void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
+                           std::uint32_t codepoint,
+                           const Font& font, float pixel_height,
+                           bool white_text);
+
 // Mini-markdown renderer for multi-line text with inline-bold lines.
 //
 // Format:
@@ -197,6 +206,8 @@ extern const uint8_t kDejaVuBoldTtf[];
 extern const size_t kDejaVuBoldTtfSize;
 extern const uint8_t kSatoshiSymbolTtf[];
 extern const size_t kSatoshiSymbolTtfSize;
+extern const uint8_t kMaterialDesignIconsTtf[];
+extern const size_t kMaterialDesignIconsTtfSize;
 #else
 extern const uint8_t kAntonioTtf[] asm("_binary_Antonio_ttf_start");
 extern const uint8_t kAntonioTtfEnd[] asm("_binary_Antonio_ttf_end");
@@ -214,6 +225,13 @@ extern const uint8_t kSatoshiSymbolTtf[] asm(
     "_binary_SatoshiSymbol_ttf_start");
 extern const uint8_t kSatoshiSymbolTtfEnd[] asm(
     "_binary_SatoshiSymbol_ttf_end");
+// Material Design Icons — subsetted to just the icons the firmware
+// actually paints. Regenerate via tools/fonts/regen_mdi.sh; the
+// codepoint constants for each icon live in mdi_codepoints.hpp.
+extern const uint8_t kMaterialDesignIconsTtf[] asm(
+    "_binary_MaterialDesignIcons_ttf_start");
+extern const uint8_t kMaterialDesignIconsTtfEnd[] asm(
+    "_binary_MaterialDesignIcons_ttf_end");
 #endif
 
 }  // namespace btclock

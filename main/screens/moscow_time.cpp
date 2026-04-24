@@ -6,17 +6,23 @@ namespace btclock {
 
 // "Moscow time" = round(1e8 / price_usd) = sats per USD, shown as the
 // raw integer right-justified across the digit panels with an optional
-// sats glyph placed one panel before the first digit. 6 digits fit
-// without a symbol.
+// sats glyph placed one panel before the first digit.
+//
+// Digit-slot count is N-1 (all panels after the label). Bug 3 — the
+// previous layout hard-coded 6 digit slots so the 8-panel V8 variant
+// left panel 7 blank; the old firmware parseSatsPerCurrency instead
+// uses every slot (pad + digits, STS marker just before the first
+// digit), which is what V8 hardware needs to look like.
 
 template <size_t N>
 void RenderMoscowTimeScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& currency, const std::string& price,
-    const std::string& prev_price, uint8_t sats_variant) {
+    const std::string& prev_price, uint8_t sats_variant,
+    bool use_sats_symbol, bool use_mscw_time) {
   static_assert(N >= 7, "Moscow-time layout needs at least 7 panels");
-  constexpr size_t kDigitPanels = 6;
+  constexpr size_t kDigitPanels = N - 1;
   const bool full_refresh = prev_price.empty();
 
   const int32_t new_sats = SatsPerUnit(price);
@@ -28,18 +34,25 @@ void RenderMoscowTimeScreen(
   if (full_refresh) {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
+    // useMscwTime=false forces SATS/<CCY> regardless of range — matches
+    // the old firmware's opt-out (some users prefer the uniform label).
     const bool moscow =
-        currency == "USD" && new_sats > 0 && new_sats < 100000;
+        use_mscw_time && currency == "USD" && new_sats > 0 && new_sats < 100000;
     const char* top = moscow ? "MSCW" : "SATS";
     const char* bot = moscow ? "TIME" : currency.c_str();
+    // Inherit the digit font so the WASM preview's swappable antonio
+    // slot carries the label too (Bug 1 — see block_height.cpp).
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, top, bot,
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
-  const DigitLayout now = ComputeMoscowLayout(new_sats, /*use_symbol=*/true);
-  const DigitLayout before =
-      ComputeMoscowLayout(old_sats, /*use_symbol=*/true);
+  // use_sats_symbol=false feeds `use_symbol=false` into the layout so
+  // the marker cell never gets flagged — the EPD paints a blank there.
+  const auto now =
+      ComputeMoscowLayoutN<kDigitPanels>(new_sats, use_sats_symbol);
+  const auto before =
+      ComputeMoscowLayoutN<kDigitPanels>(old_sats, use_sats_symbol);
 
   const auto glyph = SatsGlyphUtf8(sats_variant);
 
@@ -92,10 +105,10 @@ void RenderMoscowTimeScreen(
 template void RenderMoscowTimeScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    const std::string&, uint8_t);
+    const std::string&, uint8_t, bool, bool);
 template void RenderMoscowTimeScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    const std::string&, uint8_t);
+    const std::string&, uint8_t, bool, bool);
 
 }  // namespace btclock

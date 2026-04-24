@@ -95,6 +95,16 @@ enum class RefreshKind : uint8_t {
 // parallel: the per-panel controller refresh (~800 ms partial, ~2.3 s
 // full) is the dominant cost, and runs concurrently once activation
 // has been dispatched. Shared-SPI writes still serialise.
+//
+// Global polarity switch — SetGlobalInverted() toggles an every-byte
+// XOR 0xFF applied during VRAM writes so the physical pixels flip from
+// black-on-white (default) to white-on-black without any renderer
+// change. Read at boot from `settings/invertedColor` and flipped via
+// PATCH /api/settings; callers should MarkDirty on ScreenManager so
+// the next paint does a full refresh with the new polarity.
+void EpdSetGlobalInverted(bool inverted);
+bool EpdGetGlobalInverted();
+
 class EpdPanel {
  public:
   struct Config {
@@ -154,6 +164,11 @@ class EpdPanel {
   // always computed against an accurate baseline (no post-activation
   // resync, no ghosting from stale red-VRAM contents).
   uint8_t* shadow_ = nullptr;
+  // Scratch buffer used when the global invertedColor flag is set —
+  // WriteVram() inverts `fb` byte-for-byte into this buffer before
+  // the SPI DMA. PSRAM-allocated on first use so the normal (non-
+  // inverted) path pays no memory cost.
+  uint8_t* invert_scratch_ = nullptr;
 };
 
 }  // namespace btclock

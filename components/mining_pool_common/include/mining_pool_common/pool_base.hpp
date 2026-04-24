@@ -76,6 +76,19 @@ class PoolDataSource : public DataSource {
   // worker list) raise this. Default 32 KB.
   virtual size_t max_response_bytes() const { return 32 * 1024; }
 
+ public:
+  // Whether this pool reports a usable per-user daily sats value. Solo
+  // pools (CKPool, Noderunners, Satoshi Radio, Public Pool) only publish
+  // raw hashrate — there's no payout stream to aggregate — so the
+  // kMiningPoolEarnings screen would forever read "0 SATS". Plugins for
+  // those override this to `false`; the /api/settings builder, screen
+  // rotation, and POST /api/show/screen?s=71 all gate on this so the
+  // earnings slot stays off when a solo pool is active.
+  //
+  // Default `true` keeps parity with the old firmware for every pool
+  // that actually exposes daily_sats (Ocean, Braiins, GoBrrr Pool).
+  virtual bool SupportsDailyEarnings() const { return true; }
+
  private:
   static void TaskTrampoline(void* arg);
   void Run();

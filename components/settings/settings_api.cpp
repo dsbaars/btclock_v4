@@ -140,17 +140,28 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // screen<ID>Visible (default true). `order` is the index in
   // DeviceContext::screens — the catalogue is fed in already sorted
   // by the current rotation order.
+  //
+  // Capability-hidden ids (e.g. mining-pool earnings on a solo pool)
+  // are dropped from the emitted list but stay in `ctx.screens` so
+  // PATCH validation still recognises them. `order` is recomputed from
+  // the filtered index so the WebUI's array assumption — positions are
+  // contiguous from 0 — holds even after a hidden slot is removed.
+  const std::set<int> hidden(ctx.hidden_screen_ids.begin(),
+                             ctx.hidden_screen_ids.end());
   cJSON* screens_arr = cJSON_AddArrayToObject(root, "screens");
+  size_t emit_order = 0;
   for (size_t i = 0; i < ctx.screens.size(); ++i) {
     const auto& s = ctx.screens[i];
+    if (hidden.count(s.id) > 0) continue;
     cJSON* obj = cJSON_CreateObject();
     cJSON_AddNumberToObject(obj, "id", static_cast<double>(s.id));
     cJSON_AddStringToObject(obj, "name", s.name.c_str());
     char vkey[24];
     std::snprintf(vkey, sizeof(vkey), "screen%dVisible", s.id);
     cJSON_AddBoolToObject(obj, "enabled", prefs.GetBool(vkey, true));
-    cJSON_AddNumberToObject(obj, "order", static_cast<double>(i));
+    cJSON_AddNumberToObject(obj, "order", static_cast<double>(emit_order));
     cJSON_AddItemToArray(screens_arr, obj);
+    ++emit_order;
   }
 
   // DND nested block. Mirrors old firmware's dnd JSON in settings.cpp.
@@ -166,6 +177,12 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // visibility. Boards without a PCA9685 skip the entire section.
   AddBool(root, "hasFrontlight", ctx.has_frontlight);
   AddBool(root, "hasLightLevel", ctx.has_light_level);
+  // Old firmware only surfaces `lightLevel` when the sensor is actually
+  // present; WebUI key exists to hide the readout panel otherwise.
+  if (ctx.has_light_level) {
+    cJSON_AddNumberToObject(root, "lightLevel",
+                            static_cast<double>(ctx.light_level));
+  }
 
   // Old firmware hides these behind a strlen > 0 check for safety.
   // Matches: never ship the raw password, just a "set" indicator.
@@ -245,34 +262,143 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     const std::string key = item->string;
 
     if (key == "screens" || key == "dnd" || key == "actCurrencies" ||
-        key == "timePerScreen" || key == "txPower" || key == "invertedColor") {
+        key == "timePerScreen" || key == "txPower" || key == "invertedColor" ||
+        key == "tzOffset") {
       continue;  // handled below
     }
 
     const FieldSpec* spec = FindField(key);
     if (!spec) continue;  // unknown field — silent skip (old-firmware behaviour)
 
-    if (!ApplyScalar(*spec, item, writer)) {
-      // Type mismatch or out-of-range. Matches old firmware's generic
-      // loop which `settings[k].is<T>()` gated each type — a mismatch
-      // is silent. Range violations are a new safety net here; keep
-      // the silent-skip to avoid breaking WebUI probes.
-      if (spec->min_value != 0 || spec->max_value != 0) {
-        // Explicit range — surface as error so tests can catch
-        // regressions in the WebUI's bounds.
-        result.status = PatchStatus::kBadRequest;
-        result.error = std::string("range:") + std::string(spec->key);
+    // Catalog-based validation. `fontName` must be one of the renderer's
+    // bundled fonts; `miningPoolName` must be one of the registered pool
+    // implementations. An empty catalog disables the check (host tests
+    // without a DeviceContext still want the write to succeed).
+    if (key == "fontName" && !ctx.available_fonts.empty()) {
+      if (!cJSON_IsString(item) || !item->valuestring) {
+        result.status = PatchStatus::kBadField;
+        result.error = "fontName:bad_type";
         cJSON_Delete(root);
         return result;
       }
-      continue;
+      bool ok = false;
+      for (const auto& f : ctx.available_fonts) {
+        if (f == item->valuestring) { ok = true; break; }
+      }
+      if (!ok) {
+        result.status = PatchStatus::kBadField;
+        result.error = "fontName:unknown";
+        cJSON_Delete(root);
+        return result;
+      }
+    }
+    if (key == "miningPoolName" && !ctx.available_pools.empty()) {
+      if (!cJSON_IsString(item) || !item->valuestring) {
+        result.status = PatchStatus::kBadField;
+        result.error = "miningPoolName:bad_type";
+        cJSON_Delete(root);
+        return result;
+      }
+      bool ok = false;
+      for (const auto& p : ctx.available_pools) {
+        if (p == item->valuestring) { ok = true; break; }
+      }
+      if (!ok) {
+        result.status = PatchStatus::kBadField;
+        result.error = "miningPoolName:unknown";
+        cJSON_Delete(root);
+        return result;
+      }
+    }
+    // nostrPubKey: 64-char lowercase hex. The relay libraries reject a
+    // malformed key anyway, but doing the check here keeps NVS clean.
+    if (key == "nostrPubKey" || key == "nostrZapPubkey") {
+      if (!cJSON_IsString(item) || !item->valuestring) {
+        result.status = PatchStatus::kBadField;
+        result.error = key + ":bad_type";
+        cJSON_Delete(root);
+        return result;
+      }
+      const std::string s = item->valuestring;
+      if (!s.empty()) {
+        if (s.size() != 64) {
+          result.status = PatchStatus::kBadField;
+          result.error = key + ":bad_length";
+          cJSON_Delete(root);
+          return result;
+        }
+        for (char c : s) {
+          const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                           (c >= 'A' && c <= 'F');
+          if (!hex) {
+            result.status = PatchStatus::kBadField;
+            result.error = key + ":bad_hex";
+            cJSON_Delete(root);
+            return result;
+          }
+        }
+      }
+    }
+
+    if (!ApplyScalar(*spec, item, writer)) {
+      // Type mismatch or out-of-range. Old firmware's generic loop was
+      // `settings[k].is<T>()`-gated — a mismatch was silent. Here we
+      // surface structured errors so the WebUI can report the field
+      // back to the user; any integration that relied on the silent-
+      // skip behaviour should send the right type.
+      const bool has_range = spec->min_value != 0 || spec->max_value != 0;
+      if (has_range) {
+        // Either a non-number (can't evaluate range) or out-of-range —
+        // both get surfaced so tests can lock the WebUI's bounds.
+        if (!cJSON_IsNumber(item) && spec->kind != FieldKind::kBool &&
+            spec->kind != FieldKind::kString) {
+          result.status = PatchStatus::kBadField;
+          result.error = std::string(spec->key) + ":bad_type";
+        } else {
+          result.status = PatchStatus::kBadRequest;
+          result.error = std::string("range:") + std::string(spec->key);
+        }
+        cJSON_Delete(root);
+        return result;
+      }
+      // No explicit range → treat as a bad type (the only other way
+      // ApplyScalar returns false). Structured error; matches the new
+      // convention the task spec calls out.
+      result.status = PatchStatus::kBadField;
+      result.error = std::string(spec->key) + ":bad_type";
+      cJSON_Delete(root);
+      return result;
     }
     result.touched_keys.emplace_back(key);
     if (spec->boot_only) result.reboot_required = true;
   }
 
+  // tzOffset (minutes) -> gmtOffset (seconds). Matches the old firmware
+  // path so the WebUI's "UTC offset" field still lands. Reboot-required
+  // because gmtOffset only feeds boot-time NTP init.
+  {
+    cJSON* tz = cJSON_GetObjectItemCaseSensitive(root, "tzOffset");
+    if (cJSON_IsNumber(tz)) {
+      const double d = tz->valuedouble;
+      // Keep the sanity cap generous (±24h covers every real IANA zone).
+      if (d < -24 * 60 || d > 24 * 60) {
+        result.status = PatchStatus::kBadRequest;
+        result.error = "tzOffset:range";
+        cJSON_Delete(root);
+        return result;
+      }
+      writer.SetI32(prefs::kGmtOffset, static_cast<int32_t>(d * 60.0));
+      result.touched_keys.emplace_back(prefs::kGmtOffset);
+      result.reboot_required = true;
+    }
+  }
+
   // invertedColor: also writes fgColor/bgColor siblings. Matches the
-  // old firmware's special case in onApiSettingsPatch.
+  // old firmware's special case in onApiSettingsPatch. No
+  // `reboot_required` — the EPD driver carries a global polarity flag
+  // that flips at render time, and the webserver's
+  // on_inverted_color_changed hook installs the new value + marks the
+  // screen dirty for a live full-refresh repaint.
   {
     cJSON* inv = cJSON_GetObjectItemCaseSensitive(root, "invertedColor");
     if (cJSON_IsBool(inv)) {
@@ -283,7 +409,6 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       writer.SetU32(prefs::kFgColor, v ? 0xFFFFu : 0u);
       writer.SetU32(prefs::kBgColor, v ? 0u : 0xFFFFu);
       result.touched_keys.emplace_back("invertedColor");
-      result.reboot_required = true;  // kInvertedColor is boot-only
     }
   }
 
@@ -372,6 +497,15 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       if (any_order) {
         std::set<int> catalog;
         for (const auto& c : ctx.screens) catalog.insert(c.id);
+        // Capability-hidden ids (e.g. earnings slot on a solo pool)
+        // never appear in the GET screens[] the WebUI sees, so a reorder
+        // round-tripped through the picker covers only the *visible*
+        // subset. Carve them out of the "complete reorder" comparison —
+        // but keep them in the catalog for dup-id / unknown-id checks
+        // (so an old client that DID include 71 still lands a valid
+        // write, matching the PATCH-still-accepts-71 host test).
+        std::set<int> effective_catalog = catalog;
+        for (int hid : ctx.hidden_screen_ids) effective_catalog.erase(hid);
         std::set<int> seen_ids;
         std::set<int> seen_orders;
         std::vector<std::pair<int, int>> pairs;
@@ -412,7 +546,13 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
           }
           pairs.emplace_back(iord, iid);
         }
-        if (!catalog.empty() && seen_ids.size() != catalog.size()) {
+        // Accept either "every visible slot" (effective_catalog) or
+        // "every catalog slot including hidden ones" — the latter is the
+        // pre-gate legacy shape that an older WebUI still sends. Both
+        // mean "full reorder, not a partial one".
+        if (!catalog.empty() &&
+            seen_ids.size() != effective_catalog.size() &&
+            seen_ids.size() != catalog.size()) {
           result.status = PatchStatus::kBadRequest;
           result.error = "screens:incomplete";
           cJSON_Delete(root);

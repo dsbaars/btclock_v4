@@ -51,9 +51,45 @@ struct DataSnapshot {
   };
   PoolStats pool{};
 
-  // Reserved for sources not yet implemented — Bitaxe stats will add
-  // fields here once that source lands. Adding new fields is an ABI
-  // addition only, safe for all existing screens.
+  // --- Bitaxe miner stats ---
+  // Populated by the components/bitaxe/ local-network HTTP poller
+  // against `http://<hostname>/api/system/info`. Only relevant on the
+  // two Bitaxe screens; renderers test `.hostname.empty()` or the
+  // individual optionals to decide "OFFLINE" vs real values.
+  struct BitaxeStats {
+    // Echoed from the `bitaxeHostname` NVS pref so renderer labels can
+    // show which device the stats belong to. Empty = disabled / not
+    // configured.
+    std::string hostname;
+    // Current hashrate reported by AxeOS in GH/s (float). Hub never
+    // rescales; the renderer + panel_texts builder decide whether to
+    // collapse to "123GH" / "1.2TH" for display.
+    std::optional<double> hashrate_ghs;
+    // Best share difficulty as AxeOS reports it — historically a
+    // suffixed human string like "15.6M"; newer AxeOS returns a raw
+    // number, which the parser canonicalises into the same string
+    // form so the snapshot is homogeneous.
+    std::optional<std::string> best_diff;
+    // Optional supplementary fields — not currently painted on-screen
+    // but exposed for future screens / /api/status consumers without a
+    // second schema bump.
+    std::optional<double> temperature_c;
+    std::optional<int32_t> shares_accepted;
+  };
+  BitaxeStats bitaxe{};
+
+  // Most-recent NIP-57 zap receipt. Populated by the zap-listener
+  // callback in main.cpp. Only the newest event is kept — older zaps
+  // don't queue because the notification screen is a transient
+  // single-shot overlay (see ScreenManager::SetZapNotify). Merge rules:
+  // the entry with the larger `received_ms` wins, so a partial snapshot
+  // with a stale zap can't overwrite a fresher one.
+  struct LatestZap {
+    std::optional<int64_t> amount_sats;   // msat / 1000, rounded
+    std::string message;                  // zapper's content, trimmed
+    int64_t received_ms = 0;              // monotonic ms for timeout
+  };
+  LatestZap latest_zap{};
 
   // Merge non-empty fields of `other` into `this`. Returns true iff any
   // field actually changed — callers use that to suppress spurious

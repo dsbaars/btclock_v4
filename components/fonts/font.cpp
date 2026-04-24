@@ -401,6 +401,48 @@ void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
                    y_offset_px);
 }
 
+void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
+                           std::uint32_t codepoint, const Font& font,
+                           float pixel_height, bool white_text) {
+  // MDI glyphs live in U+F0000..U+FFFFF (PUA Plane 15); DrawTextLandscape
+  // walks a UTF-8 null-terminated string, so encode the codepoint here
+  // rather than plumbing a codepoint path through the text pipeline.
+  // All MDI icons land in the 4-byte UTF-8 range.
+  char buf[5] = {0};
+  std::size_t n = 0;
+  if (codepoint < 0x80u) {
+    buf[n++] = static_cast<char>(codepoint);
+  } else if (codepoint < 0x800u) {
+    buf[n++] = static_cast<char>(0xC0u | (codepoint >> 6));
+    buf[n++] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+  } else if (codepoint < 0x10000u) {
+    buf[n++] = static_cast<char>(0xE0u | (codepoint >> 12));
+    buf[n++] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+    buf[n++] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+  } else {
+    buf[n++] = static_cast<char>(0xF0u | (codepoint >> 18));
+    buf[n++] = static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu));
+    buf[n++] = static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu));
+    buf[n++] = static_cast<char>(0x80u | (codepoint & 0x3Fu));
+  }
+  buf[n] = '\0';
+
+  // Centre on the glyph's own bbox. Using kDigitRef here would return a
+  // zero-height box (MDI codepoints aren't in the ref string) and land
+  // the baseline off-panel.
+  const auto m = font.GetMetrics(static_cast<int>(codepoint), pixel_height);
+  int left_bearing = 0;
+  const int ink_w = MeasureInkWidth(buf, font, pixel_height, &left_bearing);
+  const int x_origin = (panel_w - ink_w) / 2 - left_bearing;
+  // MDI glyphs have yoff ≤ 0 (bitmap top is above the baseline). Pick a
+  // baseline so the bitmap sits vertically centred on the panel.
+  const int glyph_h = m.h > 0 ? m.h : static_cast<int>(pixel_height + 0.5f);
+  const int top_y = (panel_h - glyph_h) / 2;
+  const int y_baseline = top_y - m.yoff;
+  DrawTextLandscape(fb, x_origin, y_baseline, buf, font, pixel_height,
+                    white_text);
+}
+
 void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
                 bool (*get_module)(int, int, const void*),
                 const void* ctx, bool white_bg) {

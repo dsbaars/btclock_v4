@@ -1,0 +1,11 @@
+# actionlint validates GitHub Actions semantics; Forgejo Actions is
+# a compatible-ish dialect with two local conventions that aren't
+# valid GHA:
+#   - `runs-on: docker` picks the Forgejo docker runner
+#   - `uses: https://code.forgejo.org/...@ref` targets Forgejo actions
+# The first is fixed by declaring `docker` as a self-hosted label
+# here; the second is a syntax the tool can't express, so we silence
+# those lines via -ignore flags in our invocation instead of here.
+self-hosted-runner:
+  labels:
+    - docker

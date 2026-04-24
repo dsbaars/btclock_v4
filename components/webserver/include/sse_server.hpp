@@ -28,10 +28,10 @@
 //   * The status JSON itself. That builder lives next to the other
 //     /api/status code in control_server.cpp so there's one source of
 //     truth; we just take a pre-serialised string.
-//   * Auth. HTTP Basic auth is a /api/* follow-up tracked under equ;
-//     when that lands the entry handler here must call the same gate
-//     before `httpd_req_async_handler_begin`. SSE is a long-lived GET
-//     and mid-stream re-auth isn't a thing.
+//   * Auth policy decisions. `HandleEvents` calls `RequireHttpAuth`
+//     before the async detach so SSE is gated identically to the rest
+//     of /api/*. The helper itself lives next to the REST-side gate
+//     in `auth_gate.hpp`.
 
 #pragma once
 

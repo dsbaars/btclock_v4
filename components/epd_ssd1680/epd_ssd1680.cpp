@@ -1,5 +1,6 @@
 #include "epd_ssd1680.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 
@@ -10,6 +11,18 @@
 #include "freertos/task.h"
 
 namespace btclock {
+
+// Global polarity flag — when true, WriteVram inverts each byte with
+// XOR 0xFF before the SPI DMA. One flag is enough: the panels all share
+// the same framebuffer-bit convention (1 = white, 0 = black) so flipping
+// at the flush layer gives every renderer the inverted look without any
+// per-renderer change. std::atomic so a PATCH-driven toggle on the
+// webserver task is visible to the main task's next render.
+static std::atomic<bool> g_inverted{false};
+
+void EpdSetGlobalInverted(bool inverted) { g_inverted.store(inverted); }
+bool EpdGetGlobalInverted() { return g_inverted.load(); }
+
 namespace {
 constexpr const char* kTag = "ssd1680";
 
@@ -208,6 +221,7 @@ EpdPanel::EpdPanel(const Config& cfg) : cfg_(cfg) {
 
 EpdPanel::~EpdPanel() {
   if (shadow_ != nullptr) heap_caps_free(shadow_);
+  if (invert_scratch_ != nullptr) heap_caps_free(invert_scratch_);
 }
 
 int EpdPanel::Width() const {
@@ -287,8 +301,26 @@ esp_err_t EpdPanel::WriteVram(uint8_t write_cmd, const uint8_t* fb) {
   ESP_RETURN_ON_ERROR(RewindRam(), kTag, "rewind");
   ESP_RETURN_ON_ERROR(cfg_.bus->SendCommand(cfg_.cs, write_cmd), kTag,
                       "vram.cmd");
+  const size_t n = static_cast<size_t>(FrameBytes());
+  const uint8_t* to_send = fb;
+  if (g_inverted.load()) {
+    // Lazy-allocate the per-panel scratch in PSRAM. ~4KB per 2.13"
+    // panel, allocated only when the user actually enables the
+    // inverted mode so normal installs pay no memory cost.
+    if (invert_scratch_ == nullptr) {
+      invert_scratch_ = static_cast<uint8_t*>(
+          heap_caps_malloc(n, MALLOC_CAP_SPIRAM));
+      if (invert_scratch_ == nullptr) {
+        ESP_LOGE(kTag, "invert scratch alloc failed for panel cs=%s",
+                 cfg_.cs.Describe());
+        return ESP_ERR_NO_MEM;
+      }
+    }
+    for (size_t i = 0; i < n; ++i) invert_scratch_[i] = fb[i] ^ 0xFFu;
+    to_send = invert_scratch_;
+  }
   ESP_RETURN_ON_ERROR(
-      cfg_.bus->SendData(cfg_.cs, fb, static_cast<size_t>(FrameBytes())),
+      cfg_.bus->SendData(cfg_.cs, to_send, n),
       kTag, "vram.data");
   return ESP_OK;
 }

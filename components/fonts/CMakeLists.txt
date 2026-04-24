@@ -7,5 +7,6 @@ idf_component_register(
                 "assets/OswaldBold.ttf"
                 "assets/DejaVu.ttf" "assets/DejaVuBold.ttf"
                 "assets/SatoshiSymbol.ttf"
+                "assets/MaterialDesignIcons.ttf"
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

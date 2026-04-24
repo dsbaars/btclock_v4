@@ -4,9 +4,9 @@
 # dependency. The NVS-backed adapter (include/settings/nvs_store.hpp)
 # wraps btclock::Prefs for the on-device build.
 idf_component_register(
-    SRCS "settings_api.cpp"
+    SRCS "settings_api.cpp" "factory_reset.cpp"
     INCLUDE_DIRS "include"
     REQUIRES json
-    PRIV_REQUIRES prefs
+    PRIV_REQUIRES prefs nvs_flash
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

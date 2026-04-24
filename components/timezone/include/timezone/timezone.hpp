@@ -45,6 +45,14 @@ namespace btclock::timezone {
 inline constexpr const char* kNvsNamespace = "time";
 inline constexpr const char* kNvsKey = "tz";
 
+// The WebUI-facing settings subsystem persists the same IANA name under
+// the "settings" namespace as `tzString` (matches the old firmware's
+// Preferences layout). GetTimezoneName() prefers this location so a
+// PATCH /api/settings that sets `tzString` takes effect on next boot
+// without needing a second write into the legacy "time" namespace.
+inline constexpr const char* kSettingsNamespace = "settings";
+inline constexpr const char* kSettingsKey = "tzString";
+
 // Fallback IANA zone when the stored value is missing or unknown.
 inline constexpr const char* kDefaultZone = "UTC";
 

@@ -60,9 +60,11 @@ void RenderClockScreen(
       std::snprintf(top, sizeof(top), "-");
       std::snprintf(bot, sizeof(bot), "-");
     }
+    // Inherit the digit font so the WASM preview's swappable antonio
+    // slot carries the date split-text too (Bug 1 — see block_height).
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, top, bot,
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
   const ClockLayout now =

@@ -7,10 +7,12 @@ set(_PORTAL_GZ "${CMAKE_CURRENT_BINARY_DIR}/portal.html.gz")
 
 idf_component_register(
     SRCS "provisioning_server.cpp" "dns_hijack.cpp" "control_server.cpp"
-         "mime.cpp" "sse_server.cpp" "sse_frame.cpp"
+         "mime.cpp" "sse_server.cpp" "sse_frame.cpp" "show_text_parse.cpp"
+         "auth_gate.cpp" "auth_gate_logic.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi prefs esp_wifi lwip esp_app_format
-             data_core esp_psram json btclock_fs vfs settings
+             data_core esp_psram json btclock_fs vfs settings ota
+             app_update
     EMBED_FILES "${_PORTAL_GZ}"
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "auth_gate.hpp"
 #include "esp_log.h"
 #include "esp_timer.h"
 
@@ -56,6 +57,13 @@ esp_err_t SseServer::TrampolineEvents(httpd_req_t* req) {
 }
 
 esp_err_t SseServer::HandleEvents(httpd_req_t* req) {
+  // Auth runs in the sync dispatch phase — before async detach — so
+  // the 401 goes out on the regular (non-chunked) response path and
+  // the browser's EventSource reconnect loop sees a clean status.
+  // Mid-stream re-auth isn't a concept for SSE: once connected the
+  // socket stays open for the session's lifetime.
+  if (!RequireHttpAuth(req)) return ESP_OK;
+
   {
     std::lock_guard<std::mutex> lk(mu_);
     if (clients_.size() >= cfg_.max_clients) {

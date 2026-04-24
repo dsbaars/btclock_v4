@@ -157,6 +157,131 @@ for (let i = 1; i <= 6; i++) {
         `fractional=${f}`);
 }
 
+// --- preview-only runtime knobs -------------------------------------------
+//
+// Two settings live on the binding to support preview.html's font picker
+// and 7-vs-8 panel toggle. They must not change any on-device behaviour —
+// the firmware doesn't call either of these. This section exercises both:
+//
+//   setRenderOptions(panels, fontFamily)
+//     panels: 7 or 8
+//     fontFamily: 0 antonio (stock), 1 oswald, 2 dejavu
+//
+// Assertions:
+//   1. panels=8 makes every render function emit 8 buffers.
+//   2. Switching font family produces a materially different pixel
+//      count (oswald is a narrower/thinner digit shape vs antonio —
+//      different ink coverage on the same value guarantees the font
+//      swap actually reached stb_truetype).
+//   3. Resetting back to (7, antonio) reproduces the original buffer
+//      counts — no leaked state.
+console.log("\npreview knobs — setRenderOptions:");
+// Baseline: 7 panels, stock antonio. Keep the ink count so we can
+// diff against an alt-font render.
+mod.setRenderOptions(7, 0);
+const baselineBh = mod.renderBlockHeightFrameBuffer(833333);
+const baselineInk = countBlackPixels(baselineBh[1]);
+check("baseline (7, antonio) renders 7 panels", baselineBh.length === 7,
+      `got ${baselineBh.length}`);
+
+// Oswald. Panels should still be 7; the first digit panel's ink count
+// should differ from the antonio baseline.
+mod.setRenderOptions(7, 1);
+const oswaldBh = mod.renderBlockHeightFrameBuffer(833333);
+check("oswald render still 7 panels", oswaldBh.length === 7,
+      `got ${oswaldBh.length}`);
+const oswaldInk = countBlackPixels(oswaldBh[1]);
+check("oswald digit panel still has ink", oswaldInk > 50,
+      `ink=${oswaldInk}`);
+check("oswald ink differs from antonio ink", oswaldInk !== baselineInk,
+      `antonio=${baselineInk} oswald=${oswaldInk}`);
+
+// DejaVu.
+mod.setRenderOptions(7, 2);
+const dejavuBh = mod.renderBlockHeightFrameBuffer(833333);
+const dejavuInk = countBlackPixels(dejavuBh[1]);
+check("dejavu digit panel still has ink", dejavuInk > 50,
+      `ink=${dejavuInk}`);
+check("dejavu ink differs from antonio ink", dejavuInk !== baselineInk,
+      `antonio=${baselineInk} dejavu=${dejavuInk}`);
+
+// 8-panel mode. V8 board topology: one extra digit panel vs Rev A/B.
+// Panel-count should climb; dims should reflect the switch too.
+mod.setRenderOptions(8, 0);
+const dims8 = mod.getPanelDimensions();
+check("dims panels=8 after setRenderOptions(8)", dims8.panels === 8,
+      `got ${dims8.panels}`);
+const bh8 = mod.renderBlockHeightFrameBuffer(833333);
+check("renderBlockHeight 8 panels returns 8 buffers",
+      bh8.length === 8, `got ${bh8.length}`);
+for (let i = 0; i < bh8.length; i++) {
+  check(`panel8[${i}] byte length`, bh8[i].byteLength === used,
+        `got ${bh8[i].byteLength}`);
+}
+// 833333 is 6 digits, so the 7-digit-cell V8 board right-justifies:
+// panel[0]=label, panel[1] stays blank (leading pad), panel[2..7] show
+// the six digits. Assert the label + all 6 digit panels have ink,
+// and treat panel[1] as expected-blank rather than failing on it.
+check(`panel8[0] label has ink`, countBlackPixels(bh8[0]) > 100);
+check(`panel8[1] leading-pad is blank`,
+      countBlackPixels(bh8[1]) === 0,
+      `black=${countBlackPixels(bh8[1])}`);
+for (let i = 2; i < bh8.length; i++) {
+  const n = countBlackPixels(bh8[i]);
+  check(`panel8[${i}] has ink`, n > 50, `black=${n}`);
+}
+
+// Back to the baseline — the subsequent smoke expectations below (none
+// right now, but keeps the test robust if any are added later) shouldn't
+// see residue from 8-panel/alt-font state.
+mod.setRenderOptions(7, 0);
+const restoredDims = mod.getPanelDimensions();
+check("dims restored to panels=7", restoredDims.panels === 7,
+      `got ${restoredDims.panels}`);
+
+// --- DataSnapshot-backed screens (mining pool / bitaxe / nostr zap) -------
+//
+// Each of these was added when the firmware gained the matching renderer
+// (api_ids 70/71/80/81 + nostr zap overlay). Assert the bindings exist,
+// return 7 Uint8Arrays of the right size, and that the icon panel
+// (slot 0) picks up ink from the MDI subset we're rasterising.
+console.log("\npixel mode — DataSnapshot-backed screens:");
+
+function checkScreen(name, fbs) {
+  check(`${name} returns 7 buffers`, fbs.length === 7, `got ${fbs.length}`);
+  for (let i = 0; i < fbs.length; i++) {
+    check(`${name} panel[${i}] is Uint8Array`, fbs[i] instanceof Uint8Array);
+    check(`${name} panel[${i}] byte length`, fbs[i].byteLength === used,
+          `got ${fbs[i].byteLength}`);
+  }
+  // Icon panel (slot 0) or label panel must have ink for every variant.
+  check(`${name} panel[0] has ink`, countBlackPixels(fbs[0]) > 50,
+        `black=${countBlackPixels(fbs[0])}`);
+}
+
+// Mining pool hashrate: 200 PH/s — pool name seeds the header panel, the
+// hashrate string seeds the digit tail. Pickaxe icon on panel 0.
+checkScreen("mining-pool-hashrate",
+            mod.renderMiningPoolHashrateFrameBuffer("Ocean",
+                "200000000000000000"));
+
+// Mining pool earnings: 50000 sats/day — digits + "SATS" unit tail.
+checkScreen("mining-pool-earnings",
+            mod.renderMiningPoolEarningsFrameBuffer("Ocean", 50000));
+
+// Bitaxe hashrate: 1.2 TH/s expressed as 1200 GH/s on the wire.
+checkScreen("bitaxe-hashrate",
+            mod.renderBitaxeHashrateFrameBuffer("bitaxe-alpha", 1200));
+
+// Bitaxe best-diff: arbitrary AxeOS-formatted "15.6M" string.
+checkScreen("bitaxe-best-diff",
+            mod.renderBitaxeBestDiffFrameBuffer("bitaxe-alpha", "15.6M"));
+
+// Nostr zap overlay: 21k sats. Message is kept in the data snapshot
+// but no longer rendered.
+checkScreen("nostr-zap",
+            mod.renderNostrZapFrameBuffer(21000));
+
 if (process.exitCode === 1) {
   console.log("\nSMOKE TEST FAILED");
 } else {

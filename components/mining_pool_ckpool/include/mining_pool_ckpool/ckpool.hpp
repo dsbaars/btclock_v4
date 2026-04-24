@@ -34,6 +34,11 @@ class CKPoolBase : public PoolDataSource {
   // Regional mirror base URL — e.g. "https://solo.ckpool.org" vs
   // "https://eusolo.ckpool.org". No trailing slash.
   virtual std::string base_url() const = 0;
+
+  // Solo pool — every regional mirror only reports hashrate, never a
+  // per-user daily payout. Declared once on the base so both CKPool and
+  // EUCKPool inherit the same capability without drift.
+  bool SupportsDailyEarnings() const override { return false; }
 };
 
 class CKPool : public CKPoolBase {

@@ -60,7 +60,7 @@ struct FieldSpec {
 //
 // Range bounds only where the old firmware enforced them or where a
 // bad value crashes hardware (brightness > 8-bit, hour > 23, etc.).
-inline constexpr std::array<FieldSpec, 58> kFields = {{
+inline constexpr std::array<FieldSpec, 64> kFields = {{
     {prefs::kBitaxeEnabled,    FieldKind::kBool,   false, 0, 0},
     {prefs::kBitaxeHostname,   FieldKind::kString, false, 0, 0},
     {prefs::kBlockFeeDec,      FieldKind::kBool,   false, 0, 0},
@@ -76,19 +76,33 @@ inline constexpr std::array<FieldSpec, 58> kFields = {{
     {prefs::kFlDisable,        FieldKind::kBool,   false, 0, 0},
     {prefs::kFlEffectDelay,    FieldKind::kUint,   false, 0, 1000},
     {prefs::kFlFlashOnUpd,     FieldKind::kBool,   false, 0, 0},
+    // flFlashOnZap: runtime-editable (zap-receipt LED pulse gate) —
+    // old firmware exposed it through the generic bool loop.
+    {prefs::kFlFlashOnZap,     FieldKind::kBool,   false, 0, 0},
     {prefs::kFlMaxBrightness,  FieldKind::kUint,   false, 0, 65535},
     {prefs::kFlOffWhenDark,    FieldKind::kBool,   false, 0, 0},
     {prefs::kFontName,         FieldKind::kString, true,  0, 0},
     {prefs::kFullRefreshMin,   FieldKind::kUint,   false, 0, 24 * 60},
     {prefs::kGitReleaseUrl,    FieldKind::kString, false, 0, 0},
+    // gmtOffset: boot-only — only read by NTP init (sntp_set_time_sync*)
+    // and not re-applied live. Minutes-based input (`tzOffset`) is
+    // handled separately in ApplyPatch; direct PATCH of gmtOffset is
+    // accepted as a seconds-based integer for parity with the raw pref.
+    {prefs::kGmtOffset,        FieldKind::kInt,    true,  0, 0},
     {prefs::kHostnamePrefix,   FieldKind::kString, true,  0, 0},
     {prefs::kHttpAuthEnabled,  FieldKind::kBool,   true,  0, 0},
     {prefs::kHttpAuthPass,     FieldKind::kString, true,  0, 0},
     {prefs::kHttpAuthUser,     FieldKind::kString, true,  0, 0},
     {prefs::kInverseButtons,   FieldKind::kBool,   false, 0, 0},
-    {prefs::kInvertedColor,    FieldKind::kBool,   true,  0, 0},
+    // invertedColor: runtime — the EPD driver toggles a global polarity
+    // flag (EpdSetGlobalInverted) and main's on_inverted_color_changed
+    // hook marks the screen dirty so the next paint repaints with the
+    // new polarity. No reboot required.
+    {prefs::kInvertedColor,    FieldKind::kBool,   false, 0, 0},
     {prefs::kLedBrightness,    FieldKind::kUint,   false, 0, 255},
     {prefs::kLedFlashOnUpd,    FieldKind::kBool,   false, 0, 0},
+    // ledFlashOnZap: runtime — LED pulse gate checked per zap receipt.
+    {prefs::kLedFlashOnZap,    FieldKind::kBool,   false, 0, 0},
     {prefs::kLedTestOnPower,   FieldKind::kBool,   false, 0, 0},
     {prefs::kLocalPoolHost,    FieldKind::kString, true,  0, 0},
     {prefs::kLuxLightToggle,   FieldKind::kUint,   false, 0, 65535},
@@ -119,6 +133,16 @@ inline constexpr std::array<FieldSpec, 58> kFields = {{
     {prefs::kUseBlkCountdown,  FieldKind::kBool,   false, 0, 0},
     {prefs::kUseMscwTime,      FieldKind::kBool,   false, 0, 0},
     {prefs::kUseSatsSymbol,    FieldKind::kBool,   false, 0, 0},
+    // verticalDesc: runtime — affects EPD layout on next render.
+    {prefs::kVerticalDesc,     FieldKind::kBool,   false, 0, 0},
+    // wifiRebootOutageMinutes: soft-watchdog that reboots after N
+    // minutes of continuous STA disconnect. 0 disables. Runtime-
+    // applied: wifi_guard's tick re-reads the member on every fire,
+    // so a live PATCH doesn't require reboot.
+    {prefs::kWifiRebootMin,    FieldKind::kUint,   false, 0, 120},
+    // wpTimeout: WiFiManager captive-portal timeout (seconds). Boot-only
+    // because the portal only reads it during provisioning bring-up.
+    {prefs::kWpTimeout,        FieldKind::kUint,   true,  0, 3600},
 }};
 
 // Lookup by key. Returns nullptr if unknown. Linear scan — N ~ 60,

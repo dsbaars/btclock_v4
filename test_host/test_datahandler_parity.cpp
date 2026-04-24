@@ -406,6 +406,24 @@ Out RenderPriceDataSuffixMow(uint32_t price, char ccy) {
   return out;
 }
 
+// parseHalvingCountdown asBlocks=false — years/days/hours/mins labels
+// across slots[2..5], "BIT/COIN" + "HAL/VING" pair in slots[0..1], and
+// "TO/GO" terminator in slot[6]. Port of lib/btclock/data_handler.cpp
+// parseHalvingCountdown's time-mode branch.
+Out RenderHalvingCountdownTime(uint32_t height) {
+  Out out;
+  out.fill("");
+  const auto tb = btclock::HalvingCountdownBreakdown(height);
+  out[0] = "BIT/COIN";
+  out[1] = "HAL/VING";
+  out[7 - 5] = std::to_string(tb.years)   + "/YRS";
+  out[7 - 4] = std::to_string(tb.days)    + "/DAYS";
+  out[7 - 3] = std::to_string(tb.hours)   + "/HRS";
+  out[7 - 2] = std::to_string(tb.minutes) + "/MINS";
+  out[7 - 1] = "TO/GO";
+  return out;
+}
+
 // parseBlockFees — label "FEE/RATE", fee digits across slots[1..5],
 // unit "sat/vB" at slot[6]. Decimal (".%2f") below 10, integer rounded
 // above. Matches old firmware's lib/btclock/data_handler.cpp.
@@ -803,4 +821,46 @@ TEST_CASE("parseBitcoinSupply — BitcoinSupplySmallChars") {
   CHECK(out[0] == "BTC/SUPPLY");
   CHECK(out[7 - 3] == " 18");
   CHECK(out[7 - 2] == "537");
+}
+
+// --- parseHalvingCountdown (time-mode) ---
+//
+// Layout: "BIT/COIN" + "HAL/VING" header in slots[0..1], four
+// year/day/hour/min "N/UNIT" labels in slots[2..5], "TO/GO" in slot[6].
+// Old firmware has no Unity test for this branch; the parity coverage
+// is new and pins behaviour byte-for-byte against the reference impl
+// (lib/btclock/data_handler.cpp::parseHalvingCountdown).
+
+TEST_CASE("parseHalvingCountdown — TimeMode at block 0 (full interval)") {
+  // height=0 → blocks_to_halving = 210_000 → 2_100_000 minutes =
+  // 3 years, 363 days, 8 hours, 0 minutes using the old firmware's
+  // 525_600-min/year floor cascade (not calendar years).
+  const auto out = RenderHalvingCountdownTime(0);
+  CHECK(out[0] == "BIT/COIN");
+  CHECK(out[1] == "HAL/VING");
+  CHECK(out[7 - 5] == "3/YRS");
+  CHECK(out[7 - 4] == "363/DAYS");
+  CHECK(out[7 - 3] == "8/HRS");
+  CHECK(out[7 - 2] == "0/MINS");
+  CHECK(out[7 - 1] == "TO/GO");
+}
+
+TEST_CASE("parseHalvingCountdown — TimeMode near a halving (1 block out)") {
+  // height=209_999 → 1 block remaining → 10 minutes total.
+  const auto out = RenderHalvingCountdownTime(209999);
+  CHECK(out[0] == "BIT/COIN");
+  CHECK(out[1] == "HAL/VING");
+  CHECK(out[7 - 5] == "0/YRS");
+  CHECK(out[7 - 4] == "0/DAYS");
+  CHECK(out[7 - 3] == "0/HRS");
+  CHECK(out[7 - 2] == "10/MINS");
+  CHECK(out[7 - 1] == "TO/GO");
+}
+
+TEST_CASE("parseHalvingCountdown — TimeMode reset at exact halving block") {
+  // Same carry-over rule as HalvingCountdown: at the exact halving block
+  // the countdown rolls over to a full 210_000 interval.
+  const auto a = RenderHalvingCountdownTime(0);
+  const auto b = RenderHalvingCountdownTime(210000);
+  for (size_t i = 0; i < 7; ++i) CHECK(a[i] == b[i]);
 }

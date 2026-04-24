@@ -1,0 +1,61 @@
+name: "Release bundle"
+
+# Tag-triggered: waits for the matrix firmware build to finish, then
+# downloads every variant's artifact and re-publishes them together
+# under a single "release-<tag>" umbrella artifact. Mirrors the spirit
+# of v3_fci's release job without creating an actual Forgejo release
+# object yet — that's a follow-up once we're confident the artifact
+# contents are right.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  bundle:
+    runs-on: docker
+    container:
+      # catthehacker's js-24.04 ships Node (required for actions/* which
+      # are JS actions) + basic CLI tools; we only need zip on top.
+      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Install tools
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends zip
+
+      - uses: https://code.forgejo.org/forgejo/download-artifact@v7
+        with:
+          # All variant artifacts share the btclock_v4- prefix.
+          pattern: btclock_v4-*
+          merge-multiple: false
+          path: incoming
+
+      - name: Package per-variant zips
+        shell: bash
+        # One zip per variant — users on Rev A don't want Rev B blobs
+        # and vice versa. Tag name goes in the archive name so downloads
+        # are self-identifying.
+        run: |
+          mkdir -p release
+          tag="${GITHUB_REF_NAME:-untagged}"
+          for d in incoming/btclock_v4-*; do
+            [ -d "$d" ] || continue
+            name="$(basename "$d")"
+            # Replace the short-sha suffix with the tag for release clarity.
+            # Pattern: btclock_v4-<variant>-<sha>  ->  btclock_v4-<variant>-<tag>
+            variant="$(echo "$name" | awk -F- '{print $2"-"$3}' | sed 's/-[^-]*$//')"
+            ( cd "$d" && zip -r "../../release/btclock_v4-${variant}-${tag}.zip" . )
+          done
+          ls -la release
+
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: release/*.zip
+          retention-days: 90

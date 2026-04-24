@@ -3,24 +3,27 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "screens/common.hpp"
 
 namespace btclock {
 
-// parseMarketCap port. Two modes — both char-per-panel to dodge any
-// small-char font plumbing:
+// parseMarketCap port. Two modes:
 //
 //   big_chars=true  — "<sym><N.NN>T" formatted via FormatNumberWithSuffix,
 //                     right-padded with blanks, one character per panel.
 //                     Matches old firmware's bigChars branch and the
 //                     parity helper RenderMarketCapBigChars.
 //
-//   big_chars=false — plain integer digit string (legacy path). Still
-//                     silently truncates for real-mainnet market caps
-//                     (USD > 1e12 today). The old-firmware small-char
-//                     3-digit-group mode is tracked for a follow-up
-//                     via btclock_v3_fci-33e.
+//   big_chars=false — 3-digit-group small-chars layout. Each trailing
+//                     panel renders 3 digits at medium font so a 13-digit
+//                     USD cap (1.5T) fits across 5 panels; a currency
+//                     separator " $ " / " € " sits one slot ahead of the
+//                     first group. Mirror is SmallCharsGroups in
+//                     screen_math; /api/status data[] paints the same
+//                     cells so the WebUI and EPD agree.
 //
 // Currency glyph rendering: the old firmware encodes CCY as a single
 // byte ('$', '[', ']', '^'); we map to the UTF-8 form via
@@ -97,10 +100,12 @@ void RenderMarketCapScreen(
   if (full_refresh) {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
+    // Inherit the digit font so the WASM preview's swappable antonio
+    // slot carries the label too (Bug 1 — see block_height.cpp).
     DrawSplitText(lfb, lfb.native_width, lfb.native_height,
                   currency.c_str(), "MCAP",
                   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.oswald_bold(), 54.0f, /*white_text=*/false);
+                  fonts.antonio(), 54.0f, /*white_text=*/false);
   }
 
   const int32_t new_price = PriceInt(price);
@@ -128,8 +133,12 @@ void RenderMarketCapScreen(
 
   MarketCapBigCell new_cells[kDigitPanels];
   MarketCapBigCell old_cells[kDigitPanels];
-  char new_digits[kDigitPanels];
-  char old_digits[kDigitPanels];
+  std::vector<std::string> new_sc_cells;
+  std::vector<std::string> old_sc_cells;
+  // Separator cell literal: matches SmallCharsGroups' " X " form so
+  // the mirror and renderer diff the same bytes. Rendered as a UTF-8
+  // glyph below when currency_utf8 is available.
+  const std::string ccy_cell = std::string(" ") + currency_byte + " ";
 
   if (big_chars) {
     LayoutMarketCapBigChars<kDigitPanels>(now_cap, currency_byte, new_cells);
@@ -137,8 +146,10 @@ void RenderMarketCapScreen(
       LayoutMarketCapBigChars<kDigitPanels>(prev_cap, currency_byte, old_cells);
     }
   } else {
-    FormatDigits64(now_cap, new_digits, kDigitPanels);
-    if (!full_refresh) FormatDigits64(prev_cap, old_digits, kDigitPanels);
+    new_sc_cells = SmallCharsGroups(now_cap, ccy_cell, kDigitPanels);
+    if (!full_refresh) {
+      old_sc_cells = SmallCharsGroups(prev_cap, ccy_cell, kDigitPanels);
+    }
   }
 
   std::array<bool, kDigitPanels> update{};
@@ -150,7 +161,7 @@ void RenderMarketCapScreen(
                   new_cells[i].is_currency_glyph !=
                       old_cells[i].is_currency_glyph;
     } else {
-      update[i] = new_digits[i] != old_digits[i];
+      update[i] = new_sc_cells[i] != old_sc_cells[i];
     }
   }
 
@@ -171,11 +182,23 @@ void RenderMarketCapScreen(
                          kDigitRef, fonts.antonio(), 180.0f,
                          /*white_text=*/false);
       }
-    } else if (new_digits[i] != ' ') {
-      const char one[2] = {new_digits[i], '\0'};
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                       kDigitRef, fonts.antonio(), 180.0f,
-                       /*white_text=*/false);
+    } else {
+      const auto& cell = new_sc_cells[i];
+      if (cell.empty()) continue;
+      if (cell == ccy_cell && currency_utf8[0] != '\0') {
+        // Render the currency separator as its UTF-8 glyph at medium
+        // size so weight matches the 3-digit groups either side.
+        DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
+                         currency_utf8, kDigitRef, fonts.antonio(), 90.0f,
+                         /*white_text=*/false);
+      } else if (cell != " ") {
+        // Three-digit group (possibly with leading spaces like "  1").
+        // Medium font size so three digits fit panel-width; matches the
+        // old firmware's showChars(fontMedium) for length>1 cells.
+        DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
+                         cell.c_str(), kDigitRef, fonts.antonio(), 90.0f,
+                         /*white_text=*/false);
+      }
     }
   }
 

@@ -46,6 +46,19 @@ esp_err_t SetTimezoneByName(const char* iana_name) {
 }
 
 std::string GetTimezoneName() {
+  // The settings subsystem writes the PATCHed `tzString` into the
+  // "settings" namespace alongside the rest of the WebUI-exposed prefs.
+  // Prefer that when present — the legacy ("time"/"tz") location only
+  // exists for installs that ran the IDF firmware before tzString was
+  // plumbed through PATCH. We keep it as a fallback rather than a
+  // one-shot migration so reverting the firmware can still find the
+  // user's zone.
+  {
+    btclock::Prefs settings_prefs(kSettingsNamespace);
+    const std::string from_settings =
+        settings_prefs.GetString(kSettingsKey, "");
+    if (!from_settings.empty()) return from_settings;
+  }
   btclock::Prefs prefs(kNvsNamespace);
   std::string value = prefs.GetString(kNvsKey, kDefaultZone);
   if (value.empty()) value = kDefaultZone;

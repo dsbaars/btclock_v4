@@ -23,6 +23,8 @@ class SatoshiRadioPool : public PoolDataSource {
   std::string api_url() const override;
   bool parse_response(const char* body, ParsedStats& out) const override;
   const char* pool_name() const override { return "satoshiradio"; }
+  // Solo pool — ckpool-family per-user JSON exposes only hashrate1m.
+  bool SupportsDailyEarnings() const override { return false; }
 };
 
 }  // namespace mining_pools

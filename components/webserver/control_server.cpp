@@ -1,6 +1,10 @@
 #include "control_server.hpp"
+#include "auth_gate.hpp"
 #include "control_validators.hpp"
+#include "heap_metrics.hpp"
+#include "light_metrics.hpp"
 #include "mime.hpp"
+#include "show_text_parse.hpp"
 #include "sse_server.hpp"
 
 #include <algorithm>
@@ -17,6 +21,7 @@
 #include <sys/stat.h>
 
 #include "cJSON.h"
+#include "ota_manager.hpp"
 #include "settings/api.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
@@ -24,6 +29,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_ota_ops.h"
 #include "esp_psram.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -35,12 +41,13 @@ namespace btclock {
 namespace {
 constexpr const char* kTag = "ctrl-api";
 
-// Auth — the old Arduino server gates every route on an HTTP Basic
-// check when httpAuthEnabled is true. Porting that requires the full
-// settings subsystem (otaPass/httpAuthPass), which isn't in the IDF
-// port yet. Follow-up work should add a Require* helper at the top of
-// each handler here; for now every endpoint is open. Do NOT expose the
-// device to the public internet until this lands.
+// Auth — every non-static /api/* handler starts with
+// `RequireHttpAuth(req)` which reads `httpAuthEnabled` from NVS and
+// either passes through (factory default, or already-authenticated
+// credential) or sends a 401 itself. The helper returns false on 401
+// and the handler must return ESP_OK so esp_http_server doesn't
+// double-respond. HandleStatic and HandleOptions are intentionally
+// ungated — see the WHY comments above each.
 
 // Response helpers -----------------------------------------------------
 
@@ -231,6 +238,34 @@ cJSON* BuildLightsStatusArray(const LedsIface::Status& st) {
   return arr;
 }
 
+// Read the full request body into a malloc'd, NUL-terminated buffer.
+// Caller owns + frees. Returns nullptr on error.
+//
+// Hoisted to the top-of-file anonymous namespace so every HandleXxx
+// method below can use it — historically only the /api/lights/set
+// handler needed it and the helper sat next to that, but the
+// /api/show/text + /api/show/custom handlers now share the same
+// pattern and live earlier in the file.
+char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
+  if (req->content_len == 0 || req->content_len > max_bytes) return nullptr;
+  char* buf = static_cast<char*>(malloc(req->content_len + 1));
+  if (!buf) return nullptr;
+  int total = 0;
+  while (total < static_cast<int>(req->content_len)) {
+    const int r =
+        httpd_req_recv(req, buf + total,
+                       static_cast<size_t>(
+                           static_cast<int>(req->content_len) - total));
+    if (r <= 0) {
+      free(buf);
+      return nullptr;
+    }
+    total += r;
+  }
+  buf[total] = '\0';
+  return buf;
+}
+
 }  // namespace
 
 // --- ControlServer --------------------------------------------------
@@ -261,6 +296,16 @@ bool ControlServer::TryPopCommand(ControlCommand* out) {
 bool ControlServer::PostCommand(const ControlCommand& cmd) {
   if (!cmd_queue_) return false;
   return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(50)) == pdTRUE;
+}
+
+bool ControlServer::TakePendingCustomCells(std::vector<std::string>* out) {
+  if (!out) return false;
+  std::lock_guard<std::mutex> lk(pending_custom_mu_);
+  if (!pending_custom_valid_) return false;
+  *out = std::move(pending_custom_cells_);
+  pending_custom_cells_.clear();
+  pending_custom_valid_ = false;
+  return true;
 }
 
 void ControlServer::ApplyCors(httpd_req_t* req) {
@@ -315,6 +360,8 @@ esp_err_t ControlServer::Start() {
   reg("/api/restart", HTTP_POST, TrampolineRestart);
   reg("/api/show/screen", HTTP_POST, TrampolineShowScreen);
   reg("/api/show/currency", HTTP_POST, TrampolineShowCurrency);
+  reg("/api/show/text", HTTP_POST, TrampolineShowText);
+  reg("/api/show/custom", HTTP_POST, TrampolineShowCustom);
   reg("/api/screen/next", HTTP_POST, TrampolineScreenNext);
   reg("/api/screen/previous", HTTP_POST, TrampolineScreenPrev);
   reg("/api/stop_datasources", HTTP_POST, TrampolineStopDataSources);
@@ -337,6 +384,9 @@ esp_err_t ControlServer::Start() {
   reg("/api/dnd/disable", HTTP_POST, TrampolineDndDisable);
   reg("/api/action/pause", HTTP_POST, TrampolineActionPause);
   reg("/api/action/timer_restart", HTTP_POST, TrampolineActionTimerRestart);
+  reg("/api/firmware/auto_update", HTTP_POST, TrampolineFirmwareAutoUpdate);
+  reg("/upload/firmware", HTTP_POST, TrampolineUploadFirmware);
+  reg("/api/factory_reset", HTTP_POST, TrampolineFactoryReset);
 
   // Long-lived SSE stream for the WebUI's live-refresh. Registered
   // via SseServer::RegisterRoute so the handler owns its own client
@@ -357,33 +407,6 @@ esp_err_t ControlServer::Start() {
   // CORS preflights. Browsers send OPTIONS before any non-simple
   // cross-origin request (Content-Type: application/json qualifies).
   reg("/api/*", HTTP_OPTIONS, TrampolineOptions);
-
-  // Stubs — see swagger.yml; these need their subsystems ported first.
-  // Track via the named beads issues or "pending" when none exists.
-  struct Stub {
-    const char* uri;
-    httpd_method_t method;
-    const char* tracking;
-  };
-  static const Stub kStubs[] = {
-      // Misc.
-      {"/api/show/text", HTTP_POST, "pending"},
-      {"/api/show/custom", HTTP_POST, "pending"},
-      // OTA — not in the PoC scope (tracked by btclock_v3_fci-5b2).
-      {"/api/firmware/auto_update", HTTP_POST, "btclock_v3_fci-5b2"},
-      {"/upload/firmware", HTTP_POST, "btclock_v3_fci-5b2"},
-  };
-  for (const auto& s : kStubs) {
-    const httpd_uri_t entry = {.uri = s.uri,
-                               .method = s.method,
-                               .handler = TrampolineNotImplemented,
-                               // For stubs the handler needs to know
-                               // *which* tracking token to emit, so
-                               // user_ctx points at the token itself
-                               // rather than `this`.
-                               .user_ctx = const_cast<char*>(s.tracking)};
-    httpd_register_uri_handler(server_, &entry);
-  }
 
   // Static WebUI catch-all. MUST be registered last: esp_http_server
   // walks hd_calls in registration order and returns the first match
@@ -429,6 +452,12 @@ esp_err_t ControlServer::TrampolineShowScreen(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineShowCurrency(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleShowCurrency(req);
+}
+esp_err_t ControlServer::TrampolineShowText(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleShowText(req);
+}
+esp_err_t ControlServer::TrampolineShowCustom(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleShowCustom(req);
 }
 esp_err_t ControlServer::TrampolineScreenNext(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleScreenNext(req);
@@ -501,6 +530,17 @@ esp_err_t ControlServer::TrampolineActionTimerRestart(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)
       ->HandleActionTimerRestart(req);
 }
+esp_err_t ControlServer::TrampolineFirmwareAutoUpdate(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)
+      ->HandleFirmwareAutoUpdate(req);
+}
+esp_err_t ControlServer::TrampolineUploadFirmware(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)
+      ->HandleUploadFirmware(req);
+}
+esp_err_t ControlServer::TrampolineFactoryReset(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleFactoryReset(req);
+}
 
 esp_err_t ControlServer::TrampolineStatic(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleStatic(req);
@@ -516,6 +556,7 @@ esp_err_t ControlServer::TrampolineNotImplemented(httpd_req_t* req) {
 // --- Implemented handlers ------------------------------------------
 
 esp_err_t ControlServer::HandleStatus(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   const std::string body = BuildStatusJson();
   if (body.empty()) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
@@ -545,7 +586,16 @@ std::string ControlServer::BuildStatusJson() const {
     live = status_;
   }
 
-  cJSON_AddNumberToObject(root, "currentScreen", live.current_slot);
+  // `currentScreen` is the settings-catalog `screens[].id` (api_id) so
+  // the WebUI's ScreenButtons can compare it against the button it
+  // rendered (status.currentScreen === s.id). When no slot_to_api_id
+  // hook is wired we fall back to the raw slot — matches legacy
+  // behaviour for tests / host-only builds.
+  const int32_t current_api_id =
+      cfg_.slot_to_api_id
+          ? cfg_.slot_to_api_id(static_cast<size_t>(live.current_slot))
+          : live.current_slot;
+  cJSON_AddNumberToObject(root, "currentScreen", current_api_id);
   cJSON_AddNumberToObject(root, "numScreens", live.slot_count);
   // `timerRunning` mirrors the old firmware's isTimerActive() — false
   // while the screen-rotation pause is armed. Prefer the real timer
@@ -554,16 +604,24 @@ std::string ControlServer::BuildStatusJson() const {
   const bool timer_running =
       cfg_.timer ? !cfg_.timer->IsPaused() : live.timer_running;
   cJSON_AddBoolToObject(root, "timerRunning", timer_running);
-  cJSON_AddBoolToObject(root, "isOTAUpdating", false);  // TODO: OTA port
+  cJSON_AddBoolToObject(root, "isOTAUpdating",
+                        GetOtaManager().IsUpdating());
 
   const int64_t uptime_s = esp_timer_get_time() / 1000000;
   cJSON_AddNumberToObject(root, "espUptime", static_cast<double>(uptime_s));
-  cJSON_AddNumberToObject(
-      root, "espFreeHeap",
-      static_cast<double>(esp_get_free_heap_size()));
-  cJSON_AddNumberToObject(
-      root, "espHeapSize",
-      static_cast<double>(heap_caps_get_total_size(MALLOC_CAP_INTERNAL)));
+  // "espFreeHeap"/"espHeapSize" describe INTERNAL SRAM only; PSRAM is
+  // split into espFreePsram/espPsramSize so the free <= size invariant
+  // holds. See heap_metrics.hpp for the full field contract.
+  const std::size_t psram_free_bytes =
+      esp_psram_is_initialized() ? heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
+                                 : 0;
+  const std::size_t psram_total_bytes =
+      esp_psram_is_initialized() ? esp_psram_get_size() : 0;
+  AttachHeapMetricsJson(root,
+                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                        heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
+                        psram_free_bytes,
+                        psram_total_bytes);
 
   cJSON* conn = cJSON_AddObjectToObject(root, "connectionStatus");
   // The PoC currently only runs the btclock WS v2 source. "V2" tracks
@@ -573,7 +631,12 @@ std::string ControlServer::BuildStatusJson() const {
   cJSON_AddBoolToObject(conn, "price", v2_up);
   cJSON_AddBoolToObject(conn, "blocks", v2_up);
   cJSON_AddBoolToObject(conn, "V2", v2_up);
-  cJSON_AddBoolToObject(conn, "nostr", false);
+  // Nostr tracks the zap-relay WebSocket's live state when wired. An
+  // unset provider means the listener isn't configured (nostrZapNotify
+  // off or relay URL blank) — report false in that case so the WebUI
+  // badge correctly shows "not connected" rather than an implicit "N/A".
+  cJSON_AddBoolToObject(conn, "nostr",
+                        cfg_.nostr_connected ? cfg_.nostr_connected() : false);
 
   cJSON_AddNumberToObject(root, "rssi", CurrentRssi());
   cJSON_AddStringToObject(root, "currency",
@@ -612,6 +675,18 @@ std::string ControlServer::BuildStatusJson() const {
   cJSON_AddStringToObject(dnd, "endTime", buf);
   cJSON_AddBoolToObject(dnd, "active", ds.active);
 
+  // Ambient-light sensor reading. Gated on "do we have a valid recent
+  // reading" (adapter's IsAvailable()) rather than on a build-time
+  // POC_BOARD macro — boards that shipped with a BH1750 footprint but
+  // no part soldered still report no lux, and that stays consistent
+  // with /api/settings' `hasLightLevel` which feeds off the same hook.
+  // Rev A / V8 wire light_sensor=nullptr so the field is suppressed.
+  const bool light_available =
+      cfg_.light_sensor && cfg_.light_sensor->IsAvailable();
+  const float light_lux =
+      light_available ? cfg_.light_sensor->GetLux() : -1.0f;
+  AttachLightLevelJson(root, light_available, light_lux);
+
   // LEDs — mirror the per-pixel state, same shape /api/lights/status
   // returns. BuildLightsStatusArray reverses the index order to match
   // the old firmware's numPixels-i-1 convention.
@@ -633,26 +708,26 @@ std::string ControlServer::BuildStatusJson() const {
 }
 
 esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   cJSON* root = cJSON_CreateObject();
   if (!root) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
     return ESP_FAIL;
   }
 
-  cJSON_AddNumberToObject(
-      root, "espFreeHeap",
-      static_cast<double>(esp_get_free_heap_size()));
-  cJSON_AddNumberToObject(
-      root, "espHeapSize",
-      static_cast<double>(heap_caps_get_total_size(MALLOC_CAP_INTERNAL)));
-
-  const size_t psram_free =
+  // Same internal-vs-PSRAM contract as BuildStatusJson — the helper
+  // guarantees free <= size per pool and prevents the two endpoints
+  // from drifting.
+  const std::size_t psram_free =
       esp_psram_is_initialized() ? heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
                                  : 0;
-  cJSON_AddNumberToObject(root, "espFreePsram",
-                          static_cast<double>(psram_free));
-  cJSON_AddNumberToObject(root, "espPsramSize",
-                          static_cast<double>(esp_psram_get_size()));
+  const std::size_t psram_total =
+      esp_psram_is_initialized() ? esp_psram_get_size() : 0;
+  AttachHeapMetricsJson(root,
+                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                        heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
+                        psram_free,
+                        psram_total);
 
   // LittleFS usage — zero-out on error so the WebUI panel still
   // renders. Mount lives in main.cpp (see beads-bq0 / btclock_fs).
@@ -673,18 +748,21 @@ esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleFullRefresh(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kFullRefresh};
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleIdentify(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kIdentify};
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleRestart(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   // Old firmware flushes the response body before calling esp_restart
   // via a delayed task — the connection has to close cleanly or the
   // WebUI gets a TCP-reset error. Do the same: respond first, post
@@ -695,20 +773,107 @@ esp_err_t ControlServer::HandleRestart(httpd_req_t* req) {
   return ESP_OK;
 }
 
+esp_err_t ControlServer::HandleFactoryReset(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Require a small JSON body with an explicit confirmation token so a
+  // stray POST (curl typo, CSRF, a router probing the LAN) can't wipe
+  // NVS. The exact string "ERASE" was picked because it's short enough
+  // to type by hand and different from any other control surface so
+  // the WebUI can document it verbatim.
+  constexpr std::size_t kMaxBody = 256;
+  char* body = ReadFullBody(req, kMaxBody);
+  std::string body_str = body ? std::string(body) : std::string();
+  free(body);
+
+  cJSON* root = cJSON_Parse(body_str.c_str());
+  const cJSON* confirm =
+      root ? cJSON_GetObjectItemCaseSensitive(root, "confirm") : nullptr;
+  const bool ok = confirm && cJSON_IsString(confirm) &&
+                  confirm->valuestring &&
+                  std::string(confirm->valuestring) == "ERASE";
+  cJSON_Delete(root);
+
+  if (!ok) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"confirmation required\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+
+  if (!cfg_.on_factory_reset) {
+    // No handler wired up (e.g. AP-mode boot that never gets here, or a
+    // unit-test harness). Surface as 503 rather than silently 200 so
+    // the user knows nothing happened.
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"factory reset not wired\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+
+  // Send the response BEFORE running the callback — the callback
+  // renders the splash and then calls PerformFactoryReset() which
+  // reboots and never returns. If we sent after, the client would see
+  // a TCP reset instead of a clean response.
+  httpd_resp_set_type(req, kJsonType);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  const char kBody[] = "{\"msg\":\"factory reset scheduled\"}";
+  httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+
+  cfg_.on_factory_reset();
+  // The callback doesn't return — PerformFactoryReset() is [[noreturn]].
+  // Ret statement is here just to keep the control-flow analyser happy.
+  return ESP_OK;
+}
+
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   char buf[16];
   if (!QueryParam(req, "s", buf, sizeof(buf))) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing s");
     return ESP_FAIL;
   }
-  const int idx = atoi(buf);
+  // `s` is the settings-catalog `screens[].id` (api_id) — what the WebUI's
+  // screen-picker buttons post (ScreenButtons.svelte). Translate to the
+  // dense ScreenManager slot here so the rest of the pipeline keeps its
+  // zero-based slot model. An unresolved api_id means the id isn't
+  // currently in the rotation (e.g. caller sent a stale catalog entry);
+  // return 400 rather than silently wrapping to slot 0.
+  const int api_id = atoi(buf);
+  // Capability gate: a WebUI built against a richer pool (e.g. Ocean)
+  // still has the mining-pool-earnings button and the user could POST
+  // it after reconfiguring to a solo pool. Reject with 409 Conflict so
+  // the client can surface a clear "that pool doesn't publish payouts"
+  // message — 400 would be a lie (the id itself is valid), 503 would
+  // imply a transient outage.
+  if (cfg_.screen_is_hidden && cfg_.screen_is_hidden(api_id)) {
+    char body[96];
+    const int n = std::snprintf(
+        body, sizeof(body),
+        "{\"error\":\"screen %d unavailable for active pool\"}", api_id);
+    httpd_resp_set_status(req, "409 Conflict");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_send(req, body, n);
+    return ESP_OK;
+  }
+  int slot = api_id;
+  if (cfg_.api_id_to_slot) {
+    slot = cfg_.api_id_to_slot(api_id);
+    if (slot < 0) {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "unknown screen id");
+      return ESP_FAIL;
+    }
+  }
   ControlCommand cmd{ControlCommand::Kind::kShowScreen};
-  cmd.arg_i = idx;
+  cmd.arg_i = slot;
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleShowCurrency(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   char buf[16];
   if (!QueryParam(req, "c", buf, sizeof(buf))) {
     httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "missing c");
@@ -731,25 +896,120 @@ esp_err_t ControlServer::HandleShowCurrency(httpd_req_t* req) {
   return SendEmptyOk(req);
 }
 
+esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Accept either ?t=TEXT (old-firmware wire format, preserved by the
+  // OneParamRewrite /api/show/text/{text} → ?t=) or a JSON body
+  // {"text":"..."}. The query-param path takes precedence when both
+  // are supplied so a URL-rewritten call can't be quietly silenced by
+  // a stray request body.
+  std::string text;
+  {
+    char qbuf[256];
+    if (QueryParam(req, "t", qbuf, sizeof(qbuf))) {
+      text.assign(qbuf);
+    }
+  }
+
+  // Size the panel vector to the active board's panel count; ControlServer
+  // doesn't know this directly, so we rely on cfg_.num_screens (set by
+  // main.cpp from the NUM_SCREENS panel array size). This keeps the
+  // split-across-panels heuristic aligned with what the renderer paints.
+  const std::size_t n_panels = cfg_.num_screens ? cfg_.num_screens : 7;
+
+  ShowTextParseResult parsed;
+  if (!text.empty()) {
+    // Query-param path — uppercase + one-char-per-panel, matching the
+    // old firmware's onApiShowText. The pure parser takes JSON only, so
+    // the split runs inline here.
+    parsed.ok = true;
+    parsed.cells.assign(n_panels, std::string());
+    for (std::size_t i = 0; i < text.size() && i < n_panels; ++i) {
+      const unsigned char u = static_cast<unsigned char>(text[i]);
+      parsed.cells[i].assign(
+          1, static_cast<char>(u < 0x80 ? std::toupper(u) : u));
+    }
+  } else {
+    // Fall back to JSON body. Bound it well below any realistic use
+    // case; one-char-per-panel caps the useful payload at ~16 bytes,
+    // but we leave room for whitespace + JSON punctuation + future
+    // extensions. 1 KiB matches other /api/* POST bodies in this file.
+    constexpr std::size_t kMaxBody = 1024;
+    char* body = ReadFullBody(req, kMaxBody);
+    std::string body_str = body ? std::string(body) : std::string();
+    free(body);
+    parsed = ParseShowTextBody(body_str, n_panels);
+  }
+  if (!parsed.ok) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, parsed.error.c_str());
+    return ESP_FAIL;
+  }
+  {
+    std::lock_guard<std::mutex> lk(pending_custom_mu_);
+    pending_custom_cells_ = std::move(parsed.cells);
+    pending_custom_valid_ = true;
+  }
+  ControlCommand cmd{ControlCommand::Kind::kShowCustom};
+  PostCommand(cmd);
+  return SendEmptyOk(req);
+}
+
+esp_err_t ControlServer::HandleShowCustom(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Per-panel string array — authoritative exact layout. Old-firmware
+  // actions.cpp:90 AsyncCallbackJsonWebHandler path reads the JSON
+  // body as an array-of-strings and writes each entry straight into
+  // EPDManager's content array. 8 KiB caps the body at ~1 KiB/panel
+  // which is plenty for any reasonable label and still well under the
+  // control-server's other JSON bounds.
+  constexpr std::size_t kMaxBody = 8 * 1024;
+  char* body = ReadFullBody(req, kMaxBody);
+  if (!body) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+    return ESP_FAIL;
+  }
+  std::string body_str(body);
+  free(body);
+
+  const std::size_t n_panels = cfg_.num_screens ? cfg_.num_screens : 7;
+  ShowTextParseResult parsed = ParseShowCustomBody(body_str, n_panels);
+  if (!parsed.ok) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, parsed.error.c_str());
+    return ESP_FAIL;
+  }
+  {
+    std::lock_guard<std::mutex> lk(pending_custom_mu_);
+    pending_custom_cells_ = std::move(parsed.cells);
+    pending_custom_valid_ = true;
+  }
+  ControlCommand cmd{ControlCommand::Kind::kShowCustom};
+  PostCommand(cmd);
+  return SendEmptyOk(req);
+}
+
 esp_err_t ControlServer::HandleScreenNext(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kNextScreen};
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleScreenPrev(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kPrevScreen};
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleStopDataSources(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kStopDataSources};
   PostCommand(cmd);
   return SendEmptyOk(req);
 }
 
 esp_err_t ControlServer::HandleRestartDataSources(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   ControlCommand cmd{ControlCommand::Kind::kRestartDataSources};
   PostCommand(cmd);
   return SendEmptyOk(req);
@@ -762,6 +1022,7 @@ esp_err_t ControlServer::HandleRestartDataSources(httpd_req_t* req) {
 // misleading 501.
 
 esp_err_t ControlServer::HandleFrontlightOn(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.frontlight) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
@@ -776,6 +1037,7 @@ esp_err_t ControlServer::HandleFrontlightOn(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleFrontlightOff(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.frontlight) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
@@ -790,6 +1052,7 @@ esp_err_t ControlServer::HandleFrontlightOff(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleFrontlightFlash(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.frontlight) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
@@ -803,6 +1066,7 @@ esp_err_t ControlServer::HandleFrontlightFlash(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.frontlight) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
@@ -833,6 +1097,7 @@ esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.frontlight) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
@@ -871,8 +1136,8 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
 //                                objects {"red":..,"green":..,"blue":..}
 //                                or {"hex":"#RRGGBB"}.
 //
-// TODO(auth): gate behind HTTP Basic auth once the auth subsystem
-// lands (same deferred TODO as the rest of the control server).
+// Each handler below runs RequireHttpAuth() up front so the lights
+// surface is gated identically to the rest of /api/*.
 
 namespace {
 
@@ -909,31 +1174,13 @@ bool ParseHex6(std::string_view s, uint32_t* out) {
   return true;
 }
 
-// Read the full request body into a malloc'd, NUL-terminated buffer.
-// Caller owns + frees. Returns nullptr on error.
-char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
-  if (req->content_len == 0 || req->content_len > max_bytes) return nullptr;
-  char* buf = static_cast<char*>(malloc(req->content_len + 1));
-  if (!buf) return nullptr;
-  int total = 0;
-  while (total < static_cast<int>(req->content_len)) {
-    const int r =
-        httpd_req_recv(req, buf + total,
-                       static_cast<size_t>(
-                           static_cast<int>(req->content_len) - total));
-    if (r <= 0) {
-      free(buf);
-      return nullptr;
-    }
-    total += r;
-  }
-  buf[total] = '\0';
-  return buf;
-}
+// ReadFullBody hoisted to the top-of-file anonymous namespace; callers
+// in this block use that definition.
 
 }  // namespace
 
 esp_err_t ControlServer::HandleLightsStatus(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.leds) return SendLedsUnavailable(req);
   const LedsIface::Status st = cfg_.leds->GetStatus();
   cJSON* arr = BuildLightsStatusArray(st);
@@ -947,6 +1194,7 @@ esp_err_t ControlServer::HandleLightsStatus(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleLightsColor(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.leds) return SendLedsUnavailable(req);
   char buf[16];
   if (!QueryParam(req, "c", buf, sizeof(buf))) {
@@ -976,6 +1224,7 @@ esp_err_t ControlServer::HandleLightsColor(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleLightsOff(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.leds) return SendLedsUnavailable(req);
   cfg_.leds->SetSolidColor(0);
   BroadcastStatus();
@@ -984,6 +1233,7 @@ esp_err_t ControlServer::HandleLightsOff(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.leds) return SendLedsUnavailable(req);
   constexpr size_t kMaxBody = 1024;
   char* body = ReadFullBody(req, kMaxBody);
@@ -1058,6 +1308,7 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
 // request size — the body is a single field.
 
 esp_err_t ControlServer::HandleWifiTxPower(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   constexpr size_t kMaxBody = 128;
   if (req->content_len == 0 || req->content_len > kMaxBody) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
@@ -1107,10 +1358,9 @@ esp_err_t ControlServer::HandleWifiTxPower(httpd_req_t* req) {
 // U_SPIFFS flow (src/lib/net/webserver/ota_routes.cpp asyncFileUpdateHandler
 // command == U_SPIFFS).
 //
-// TODO(auth): require HTTP Basic auth once btclock_v3_fci-equ's auth
-// gate lands. A hostile network can brick the device today — anyone
-// can POST an arbitrary blob and force a reboot. DO NOT expose this
-// endpoint to the public internet until the gate is in.
+// Auth: gated by RequireHttpAuth() in HandleUploadWebui — once
+// httpAuthEnabled is true an unauthenticated POST here can't flash
+// anything.
 
 namespace {
 
@@ -1149,6 +1399,8 @@ void ScheduleReboot(uint32_t delay_ms) {
 }  // namespace
 
 esp_err_t ControlServer::HandleUploadWebui(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!RequireOtaEnabled(req)) return ESP_OK;
   const size_t part_size = btclock::GetLittleFsPartitionSize();
   if (part_size == 0) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
@@ -1212,6 +1464,106 @@ esp_err_t ControlServer::HandleUploadWebui(httpd_req_t* req) {
   return ESP_OK;
 }
 
+// --- Firmware OTA handlers ----------------------------------------
+// Pull-OTA: kick off a background task that does the release-JSON
+// lookup, downloads the asset, verifies SHA-256, and reboots on
+// success. The HTTP response comes back immediately — the update is
+// observed via /api/status `isOTAUpdating`.
+
+esp_err_t ControlServer::HandleFirmwareAutoUpdate(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!RequireOtaEnabled(req)) return ESP_OK;
+  const esp_err_t rc = GetOtaManager().TriggerAutoUpdate();
+  if (rc == ESP_ERR_INVALID_STATE) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"msg\":\"Update already in progress\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+  if (rc != ESP_OK) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        esp_err_to_name(rc));
+    return ESP_FAIL;
+  }
+  return SendJson(req, "{\"msg\":\"Firmware update triggered\"}");
+}
+
+// Push-OTA: mirrors HandleUploadWebui's body-streaming pattern but
+// targets the next OTA app partition via OtaManager.
+esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!RequireOtaEnabled(req)) return ESP_OK;
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  if (!next) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "no ota partition");
+    return ESP_FAIL;
+  }
+
+  const size_t expected = req->content_len;
+  if (expected > next->size) {
+    httpd_resp_set_status(req, "413 Payload Too Large");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    char body[96];
+    std::snprintf(body, sizeof(body),
+                  "{\"error\":\"oversize\",\"max\":%u}",
+                  static_cast<unsigned>(next->size));
+    httpd_resp_send(req, body, strlen(body));
+    return ESP_FAIL;
+  }
+
+  // Optional ?sha256=<64-hex>. When present the upload is rejected
+  // unless the streamed bytes hash to the supplied digest.
+  char sha_buf[80] = {};
+  const bool have_sha = QueryParam(req, "sha256", sha_buf, sizeof(sha_buf));
+
+  ESP_LOGW(kTag, "firmware upload starting: content-length=%u partition=%u",
+           static_cast<unsigned>(expected),
+           static_cast<unsigned>(next->size));
+
+  size_t written = 0;
+  const esp_err_t rc = GetOtaManager().WritePushImage(
+      &HttpdRecvTrampoline, req, expected,
+      have_sha ? sha_buf : nullptr, &written);
+
+  if (rc == ESP_ERR_INVALID_STATE) {
+    // Already updating — pull-OTA is in progress, or a previous push
+    // hasn't released the flag yet. 503 matches the pull-OTA response.
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"msg\":\"Update already in progress\"}";
+    httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+    return ESP_FAIL;
+  }
+  if (rc == ESP_ERR_INVALID_CRC) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"sha256 mismatch\"}";
+    httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+    return ESP_FAIL;
+  }
+  if (rc != ESP_OK) {
+    ESP_LOGE(kTag, "firmware upload failed: %s", esp_err_to_name(rc));
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        esp_err_to_name(rc));
+    return ESP_FAIL;
+  }
+
+  ESP_LOGW(kTag, "firmware upload ok: bytes=%u; rebooting in 500ms",
+           static_cast<unsigned>(written));
+  char body[96];
+  std::snprintf(body, sizeof(body),
+                "{\"result\":\"ok\",\"bytes\":%u}",
+                static_cast<unsigned>(written));
+  SendJson(req, body);
+  ScheduleReboot(500);
+  return ESP_OK;
+}
+
 // --- Static WebUI handler -----------------------------------------
 // Serves gzipped and plain assets out of /lfs/www/. Registered as a
 // catch-all /* GET handler, so it's the final fallback after every
@@ -1220,10 +1572,9 @@ esp_err_t ControlServer::HandleUploadWebui(httpd_req_t* req) {
 //
 // Auth: deliberately unguarded. The WebUI needs its own bundle (HTML,
 // JS, CSS) before the user can possibly authenticate, and the static
-// assets don't reveal any state beyond their shipped bytes.
-// TODO(auth): once equ's basic-auth gate lands, require it here for
-// non-root paths — not for "/" so the browser can load the HTML and
-// be prompted for credentials via a 401 on the first /api call.
+// assets don't reveal any state beyond their shipped bytes. The first
+// /api/* call the page makes triggers the 401 + Basic prompt, which
+// is the correct place for the browser credential dialog.
 
 esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   // Throttled 503 log so boot races (LittleFS still mounting) or
@@ -1384,7 +1735,15 @@ btclock::settings::DeviceContext BuildDeviceContext(
   ctx.tx_power = tx;
   ctx.num_screens = static_cast<int32_t>(cfg.num_screens);
   ctx.has_frontlight = cfg.frontlight != nullptr;
-  ctx.has_light_level = false;  // TODO(bh1750): surface from sensor once wired
+  // Sensor-present gate: absent (nullptr adapter) OR present-but-uninit
+  // (Init() failed / sensor unsoldered) both report as "no lux". The
+  // adapter's IsAvailable() folds both cases so we don't have to.
+  if (cfg.light_sensor && cfg.light_sensor->IsAvailable()) {
+    ctx.has_light_level = true;
+    ctx.light_level = cfg.light_sensor->GetLux();
+  } else {
+    ctx.has_light_level = false;
+  }
   ctx.hw_rev = cfg.hw_name;
   ctx.fs_rev = "";
   const esp_app_desc_t* desc = esp_app_get_description();
@@ -1397,6 +1756,13 @@ btclock::settings::DeviceContext BuildDeviceContext(
   ctx.available_currencies = cfg.available_currencies;
   for (const auto& s : cfg.screens_catalog) {
     ctx.screens.push_back({s.id, s.name});
+    // Let the suppression probe filter capability-gated slots — today
+    // this is just mining-pool earnings on a solo pool. Evaluated at
+    // request time so a PATCH changing `miningPoolName` takes effect on
+    // the next GET without a reboot.
+    if (cfg.screen_is_hidden && cfg.screen_is_hidden(s.id)) {
+      ctx.hidden_screen_ids.push_back(s.id);
+    }
   }
   return ctx;
 }
@@ -1404,6 +1770,7 @@ btclock::settings::DeviceContext BuildDeviceContext(
 }  // namespace
 
 esp_err_t ControlServer::HandleSettingsGet(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   btclock::settings::NvsPrefs prefs(btclock::prefs::kSettingsNs);
   const auto ctx = BuildDeviceContext(cfg_);
   cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
@@ -1417,6 +1784,7 @@ esp_err_t ControlServer::HandleSettingsGet(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   // 16 KB ceiling — the old firmware's AsyncCallbackJsonWebHandler
   // defaulted to 16384 bytes. Any PATCH larger than this is either
   // the WebUI sending a full object (rare — it PATCHes deltas) or an
@@ -1461,9 +1829,56 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   // Re-broadcast runtime-editable fields via the LED controller so
   // /api/lights reflects the new state without a reboot. Only the
   // fields the LED subsystem cares about need to be pushed here —
-  // other runtime consumers (DND, screen rotation, timezone) will
-  // pick up the new NVS values on their next read.
-  // TODO(btclock_v3_fci-equ): wire DND change hooks to LedController.
+  // other runtime consumers (screen rotation, timezone) will pick up
+  // the new NVS values on their next read.
+  //
+  // DND is the exception: its suppressor predicate is evaluated every
+  // frame against an in-memory cache in `dnd::Instance()`, so a bare
+  // NVS write here would stay invisible until reboot reloads that
+  // cache. Fire the configured hook so main.cpp can copy the fresh
+  // schedule into the singleton and the LED/frontlight gates react on
+  // the next tick.
+  if (cfg_.on_dnd_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kDndEnabled ||
+          k == btclock::prefs::kDndTimeEnabled ||
+          k == btclock::prefs::kDndStartHour ||
+          k == btclock::prefs::kDndStartMin ||
+          k == btclock::prefs::kDndEndHour ||
+          k == btclock::prefs::kDndEndMin) {
+        cfg_.on_dnd_changed();
+        break;
+      }
+    }
+  }
+
+  // tzString: apply live so the clock screen follows the new zone
+  // without reboot. Old firmware did the same — it called setenv/tzset
+  // inside the settings-save handler rather than deferring to boot.
+  if (cfg_.on_tz_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kTzString) {
+        const std::string zone = prefs.GetString(btclock::prefs::kTzString, "");
+        cfg_.on_tz_changed(zone);
+        break;
+      }
+    }
+  }
+
+  // invertedColor: EPD polarity flips on the next render. The handler
+  // below installs the flag on the driver + marks the screen dirty so
+  // the user sees the colour swap within one frame. The touched-keys
+  // list uses "invertedColor" (JSON field name), not the NVS key
+  // (identical in this case), because ApplyPatch emplaces the JSON key.
+  if (cfg_.on_inverted_color_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == "invertedColor") {
+        cfg_.on_inverted_color_changed(
+            prefs.GetBool(btclock::prefs::kInvertedColor, false));
+        break;
+      }
+    }
+  }
 
   // Response body mirrors old firmware: 200 OK with an empty body
   // when no reboot is required, {"rebootRequired":true} otherwise.
@@ -1477,6 +1892,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
 // --- DND + timer-pause handlers ------------------------------------
 
 esp_err_t ControlServer::HandleDndStatus(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.dnd) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no dnd");
     return ESP_FAIL;
@@ -1505,6 +1921,7 @@ esp_err_t ControlServer::HandleDndStatus(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleDndEnable(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.dnd) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no dnd");
     return ESP_FAIL;
@@ -1515,6 +1932,7 @@ esp_err_t ControlServer::HandleDndEnable(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleDndDisable(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.dnd) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no dnd");
     return ESP_FAIL;
@@ -1525,6 +1943,7 @@ esp_err_t ControlServer::HandleDndDisable(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleActionPause(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.timer) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no timer");
     return ESP_FAIL;
@@ -1535,6 +1954,7 @@ esp_err_t ControlServer::HandleActionPause(httpd_req_t* req) {
 }
 
 esp_err_t ControlServer::HandleActionTimerRestart(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.timer) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no timer");
     return ESP_FAIL;

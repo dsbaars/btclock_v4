@@ -9,6 +9,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -82,6 +84,47 @@ struct DigitLayout {
 // SATS/MSCW label on 7-digit sats (price < ~$100) and fills all 7
 // panels. Not fixed here — tracked in btclock_v3_fci-f7y.
 DigitLayout ComputeMoscowLayout(int32_t sats, bool use_symbol);
+
+// Templated variant used by the V8 8-panel layout (Bug 3). The 6-slot
+// fixed `ComputeMoscowLayout` left panel 7 blank; this helper adapts to
+// an arbitrary digit-slot count so the renderer can fill all N-1 slots.
+// Returns all-blank on `sats<0`. On overflow (> Slots digits), leading
+// digits are truncated and no sats symbol is emitted.
+template <size_t Slots>
+struct MoscowLayoutN {
+  std::array<char, Slots> digits{};
+  std::array<bool, Slots> is_sats{};
+  MoscowLayoutN() {
+    for (size_t i = 0; i < Slots; ++i) {
+      digits[i] = ' ';
+      is_sats[i] = false;
+    }
+  }
+};
+
+template <size_t Slots>
+inline MoscowLayoutN<Slots> ComputeMoscowLayoutN(int32_t sats,
+                                                 bool use_symbol) {
+  MoscowLayoutN<Slots> l;
+  if (sats < 0) return l;
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(sats));
+  const size_t len = std::strlen(buf);
+  if (len >= Slots) {
+    const size_t start = len - Slots;
+    for (size_t i = 0; i < Slots; ++i) l.digits[i] = buf[start + i];
+    return l;
+  }
+  const size_t pad = Slots - len;
+  for (size_t i = 0; i < Slots; ++i) {
+    l.digits[i] = (i < pad) ? ' ' : buf[i - pad];
+  }
+  if (use_symbol && pad > 0) {
+    l.is_sats[pad - 1] = true;
+    l.digits[pad - 1] = ' ';
+  }
+  return l;
+}
 
 // UTF-8 currency symbol for the given ISO code, or "" if no glyph is
 // available yet (the Antonio subset covers $, £, ¥, €; see

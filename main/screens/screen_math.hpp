@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace btclock {
 
@@ -77,6 +78,20 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
 // blank-pad / leading-truncate rules as FormatDigits for uint32_t.
 void FormatDigits64(uint64_t v, char* digits, std::size_t slots);
 
+// 3-digit-group layout shared by Market Cap (small-chars mode) and
+// Bitcoin Supply (small-chars mode). Splits `value` into groups of 3
+// digits right-aligned across the trailing slots, prepends the optional
+// `ccy_cell` separator (for Market Cap), and leaves earlier slots
+// blank. Output vector has exactly `slots` entries; caller decides
+// whether `slots` includes a label panel (for panel-text mirror) or
+// excludes it (for the on-device renderer iterating over the digit
+// panels). Ports lib/btclock/data_handler.cpp::parseMarketCap and
+// parseBitcoinSupply small-chars branches so the device and /api/status
+// mirror agree byte-for-byte.
+std::vector<std::string> SmallCharsGroups(uint64_t value,
+                                          const std::string& ccy_cell,
+                                          std::size_t slots);
+
 // K/M/B/T/Q suffix form of an integer, e.g. 1_020_825_000_000 → "1.02T".
 // `num_characters` is the total width budget (including the suffix
 // letter): the more space, the more decimal places are packed in. When
@@ -98,5 +113,47 @@ inline bool BlockHeightDropsLabel(uint32_t height, std::size_t panels) {
                                 static_cast<unsigned>(height));
   return len >= 0 && static_cast<std::size_t>(len) >= panels;
 }
+
+// Halving countdown breakdown: the number of whole years, days, hours
+// and minutes until the next halving, assuming 10-minute blocks. Ports
+// the floor-arithmetic cascade from lib/btclock/data_handler.cpp's
+// parseHalvingCountdown time-mode branch (asBlocks=false). Separated out
+// so the renderer and the panel-texts mirror compute identical values.
+struct HalvingTimeBreakdown {
+  uint32_t years = 0;
+  uint32_t days = 0;
+  uint32_t hours = 0;
+  uint32_t minutes = 0;
+};
+HalvingTimeBreakdown HalvingCountdownBreakdown(uint32_t block_height);
+
+// Mining pool hashrate parse. The data source lands the pool's raw
+// hashrate string (integer H/s as reported, with no suffix) in the
+// snapshot; the renderer rescales to the highest unit that still leaves
+// at least one significant digit and trims trailing zeros. `value` on
+// empty / invalid input is "0" with "H/S" label — the renderer uses
+// that as the "no data yet" indicator. `max_chars` caps the digit width
+// (including the '.') — the renderer passes the count of digit panels.
+// Output matches the old firmware utils.cpp parseHashrateString so the
+// KH/MH/GH/TH/PH/EH/ZH ladder and rounding behaviour are identical.
+struct MiningPoolHashrateLayout {
+  std::string value;  // "1.3", "645", "123.4" etc.; empty/unknown → "0"
+  std::string unit;   // "PH/S", "TH/S", … ; fallback "H/S"
+};
+MiningPoolHashrateLayout LayoutMiningPoolHashrate(
+    const std::string& hashrate_raw, unsigned int max_chars = 4);
+
+// Mining pool daily earnings format. Mirrors old firmware
+// parseMiningPoolStatsDailyEarnings — sats below 10k render verbatim,
+// 10K..99.9K and 1M..99.9M get one decimal, 100K..999K and 1M..9.99M
+// get integer+K/M suffix, and 1 BTC/day or more drops to a BTC label
+// with the whole-BTC count. Returns the value string and the unit label
+// the renderer should print on the trailing panel.
+struct MiningPoolEarningsLayout {
+  std::string value;        // "21000", "12.3K", "1.50M", "1"
+  std::string unit_label;   // "SATS" or "BTC" depending on magnitude
+  bool valid = false;       // false when daily_sats is absent / negative
+};
+MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats);
 
 }  // namespace btclock

@@ -52,6 +52,12 @@ constexpr bool kHasSecondMcp = false;   // V8 has a second MCP23017 @ 0x21
 constexpr uint16_t kMcp2Addr = 0x00;
 constexpr bool kHasMcpResetGpio = false; // V8 gates MCP bootstrap via GPIO
 constexpr gpio_num_t kMcpResetGpio = GPIO_NUM_NC;
+// Address straps are hardwired on this variant; empty-array stubs so
+// the `if constexpr (kHasMcpAddressGpios)` block in main() still
+// resolves its identifier lookups even though the branch is discarded.
+constexpr bool kHasMcpAddressGpios = false;
+constexpr std::array<gpio_num_t, 0> kMcpAddressGpios = {};
+constexpr std::array<bool, 0> kMcpAddressLevels = {};
 
 // --- EPD pin routing (where CS / BUSY / RESET physically live) ---
 constexpr PinSource kEpdCsSource = PinSource::kNative;

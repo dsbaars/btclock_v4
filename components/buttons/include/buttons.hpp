@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
@@ -47,6 +48,18 @@ class ButtonReader {
   // Spawns the background polling task. Safe to call once.
   esp_err_t Start();
 
+  // Install a one-shot callback fired when all four MCP1 buttons
+  // (pins 0..3) are simultaneously held for 5 s. Used as the
+  // factory-reset hardware trigger so a user can wipe NVS without a
+  // working WiFi/WebUI. The callback runs on the poll task; keep it
+  // non-blocking or post work onto another task. Fires at most once
+  // per continuous hold — the detector re-arms only after at least
+  // one of the four buttons is released. Safe to call before or
+  // after Start(); a null callback disables the detector.
+  void SetOnAllButtonsLongPress(std::function<void()> cb) {
+    all_long_press_cb_ = std::move(cb);
+  }
+
  private:
   static constexpr uint8_t kNumButtons = 4;
 
@@ -75,6 +88,14 @@ class ButtonReader {
   TaskHandle_t task_ = nullptr;
   volatile bool stop_ = false;
   State state_[kNumButtons]{};
+  // All-buttons-held detector state. Incremented only while every
+  // entry in `state_` reports .pressed; resets to 0 on any release.
+  // Saturates so a very long hold can't wrap. `all_long_fired_`
+  // prevents the callback firing a second time during one continuous
+  // hold — the user has to release at least one button to re-arm.
+  uint32_t all_pressed_ticks_ = 0;
+  bool all_long_fired_ = false;
+  std::function<void()> all_long_press_cb_;
 };
 
 }  // namespace btclock

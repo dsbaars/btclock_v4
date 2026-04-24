@@ -13,7 +13,7 @@
     --accent: #f7931a;
   }
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
-  main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
   h1 { font-size: 1.3rem; }
   .todo {
     background: #fff3cd;
@@ -89,26 +89,52 @@
 </head>
 <body>
 <main>
-  <h1>BTClock IDF-port screen preview</h1>
+  <h1>BTClock screen preview</h1>
   <p class="status">
-    Exercises the ESP-IDF C++ port's screen-layout helpers
-    (<code>idf_cpp_proto/main/screens/common.cpp</code> +
-    <code>fee_rate_layout.hpp</code>) compiled via Emscripten. Each screen
-    cell below maps to one 2.13" EPD panel in the 7-panel rotation.
+    Exercises the ESP-IDF port's screen-layout helpers
+    (<code>main/screens/common.cpp</code> +
+    <code>fee_rate_layout.hpp</code>) compiled via Emscripten. Each cell
+    below maps to one 2.13" EPD panel in the selected rotation: 7 panels
+    for Rev A / Rev B, 8 panels for V8.
   </p>
+
+  <fieldset>
+    <legend>Layout</legend>
+    <div class="row">
+      <label>Font
+        <select id="fontFamily">
+          <option value="0">antonio (stock)</option>
+          <option value="1">oswald</option>
+          <option value="2">dejavu</option>
+        </select>
+      </label>
+      <label>Panels
+        <select id="panelsCount">
+          <option value="7">7 (Rev A / Rev B)</option>
+          <option value="8">8 (V8)</option>
+        </select>
+      </label>
+    </div>
+    <p class="status">
+      Font selection swaps the big-digit face; the small label on
+      panel&nbsp;0 stays Oswald-bold (that's a separate slot on
+      <code>AppFonts</code> and not currently exposed to the preview).
+    </p>
+  </fieldset>
 
   <fieldset>
     <legend>View mode</legend>
     <div class="row">
-      <button id="modeText" class="secondary active" type="button">Text cells</button>
-      <button id="modePixel" class="secondary" type="button">Pixel preview</button>
+      <!-- Pixel mode is the primary intent of this tool — what the
+           e-paper actually paints — so it's the default. Text-cells
+           stays available for quick layout-logic checks. -->
+      <button id="modePixel" class="secondary active" type="button">Pixel preview</button>
+      <button id="modeText" class="secondary" type="button">Text cells</button>
     </div>
     <div id="pixelOptions" class="row">
       <label><input type="checkbox" id="aaEnabled" /> Anti-aliased (show alpha)</label>
     </div>
     <p class="status">
-      <strong>Text cells</strong>: shows what each panel's data layout
-      resolves to as plain strings — fast, cheap, no font rendering.
       <strong>Pixel preview</strong>: runs the actual
       <code>main/screens/*.cpp</code> renderers + stb_truetype font
       rasterizer and draws each panel onto a canvas. Without AA this is
@@ -116,6 +142,8 @@
       180° to match REV_B solder orientation); with AA enabled the
       preview uses the raw grayscale alpha stb_truetype produces BEFORE
       the 1-bpp threshold — smoother glyph edges, not what the EPD shows.
+      <strong>Text cells</strong>: shows what each panel's data layout
+      resolves to as plain strings — fast, cheap, no font rendering.
     </p>
   </fieldset>
 
@@ -147,6 +175,37 @@
     <div class="row">
       <label><input type="checkbox" id="withSatsSymbol" checked /> sats: draw sats-glyph prefix</label>
     </div>
+    <!-- Mining pool / bitaxe / nostr zap inputs. These feed the newer
+         renderers that consume DataSnapshot sub-structs (PoolStats,
+         BitaxeStats, LatestZap) rather than the legacy parse*() integer
+         args. Defaults pick plausible production values. -->
+    <div class="row">
+      <label>Pool name
+        <input type="text" id="poolName" value="Ocean" />
+      </label>
+      <label>Pool hashrate (H/s)
+        <input type="number" id="poolHashrate" value="200000000000000000" min="0" step="1" />
+      </label>
+      <label>Pool daily sats
+        <input type="number" id="poolDailySats" value="50000" min="0" step="1" />
+      </label>
+    </div>
+    <div class="row">
+      <label>Bitaxe hostname
+        <input type="text" id="bitaxeHost" value="bitaxe-alpha" />
+      </label>
+      <label>Bitaxe hashrate (GH/s)
+        <input type="number" id="bitaxeHashrate" value="1200" min="0" step="1" />
+      </label>
+      <label>Bitaxe best diff
+        <input type="text" id="bitaxeBestDiff" value="15.6M" />
+      </label>
+    </div>
+    <div class="row">
+      <label>Zap amount (sats)
+        <input type="number" id="zapAmount" value="21000" min="0" step="1" />
+      </label>
+    </div>
     <div class="row">
       <button id="run">Render all</button>
     </div>
@@ -165,8 +224,12 @@
   const modePixelBtn = document.getElementById("modePixel");
   const pixelOptions = document.getElementById("pixelOptions");
   const aaEnabledEl  = document.getElementById("aaEnabled");
+  const fontSelectEl = document.getElementById("fontFamily");
+  const panelsSelectEl = document.getElementById("panelsCount");
 
-  let viewMode = "text";  // "text" | "pixel"
+  // Pixel mode is the primary use-case — start there. Users can still
+  // flip to text mode for a pure-logic sanity check.
+  let viewMode = "pixel";
 
   // Each FN carries three binding names: text-mode (parse*), pixel 1-bpp
   // (render*FrameBuffer), and pixel AA (render*AlphaBuffer). Same args
@@ -207,6 +270,29 @@
       pixelFn: "renderBitcoinSupplyFrameBuffer",
       alphaFn: "renderBitcoinSupplyAlphaBuffer",
       args: (i) => [i.blockHeight, false, false] },
+    // --- Newer DataSnapshot-based screens. No parse* text binding —
+    //     they don't map onto a single-integer / currency-string input
+    //     the way the legacy parse* helpers do. Text mode skips these.
+    { title: "Mining pool hashrate",
+      pixelFn: "renderMiningPoolHashrateFrameBuffer",
+      alphaFn: "renderMiningPoolHashrateAlphaBuffer",
+      args: (i) => [i.poolName, i.poolHashrate] },
+    { title: "Mining pool earnings",
+      pixelFn: "renderMiningPoolEarningsFrameBuffer",
+      alphaFn: "renderMiningPoolEarningsAlphaBuffer",
+      args: (i) => [i.poolName, i.poolDailySats] },
+    { title: "Bitaxe hashrate",
+      pixelFn: "renderBitaxeHashrateFrameBuffer",
+      alphaFn: "renderBitaxeHashrateAlphaBuffer",
+      args: (i) => [i.bitaxeHost, i.bitaxeHashrate] },
+    { title: "Bitaxe best difficulty",
+      pixelFn: "renderBitaxeBestDiffFrameBuffer",
+      alphaFn: "renderBitaxeBestDiffAlphaBuffer",
+      args: (i) => [i.bitaxeHost, i.bitaxeBestDiff] },
+    { title: "Nostr zap",
+      pixelFn: "renderNostrZapFrameBuffer",
+      alphaFn: "renderNostrZapAlphaBuffer",
+      args: (i) => [i.zapAmount] },
   ];
 
   function readInputs() {
@@ -216,10 +302,33 @@
       blockFees:      parseInt(document.getElementById("blockFees").value, 10) || 0,
       currency:       document.getElementById("currency").value,
       withSatsSymbol: document.getElementById("withSatsSymbol").checked,
+      // DataSnapshot-backed screen inputs. Strings stay as-is; numbers
+      // are parsed with parseFloat so large-hashrate values that exceed
+      // 2^31 don't truncate on the way through.
+      poolName:       document.getElementById("poolName").value,
+      poolHashrate:   document.getElementById("poolHashrate").value,
+      poolDailySats:  parseFloat(document.getElementById("poolDailySats").value) || 0,
+      bitaxeHost:     document.getElementById("bitaxeHost").value,
+      bitaxeHashrate: parseFloat(document.getElementById("bitaxeHashrate").value) || 0,
+      bitaxeBestDiff: document.getElementById("bitaxeBestDiff").value,
+      zapAmount:      parseFloat(document.getElementById("zapAmount").value) || 0,
     };
   }
 
   // --- Text mode rendering ---
+  //
+  // Pads the returned string array to `wantLen` panels with blanks at
+  // the FRONT — matches how the pixel renderers right-justify digit
+  // content on a wider board (V8: 8 cells, with the 8th/leftmost digit
+  // slot blank until a 7-digit value shows up).
+  function padCellsLeft(arr, wantLen) {
+    if (arr.length >= wantLen) return arr;
+    const pad = new Array(wantLen - arr.length).fill(" ");
+    // Keep the label (arr[0]) on slot 0, insert pads after it. That
+    // mirrors the pixel side where panel[0] is always the label.
+    return [arr[0], ...pad, ...arr.slice(1)];
+  }
+
   function renderTextRow(title, arr, rawRepr) {
     const section = document.createElement("fieldset");
     const legend = document.createElement("legend");
@@ -361,14 +470,22 @@
     outputs.appendChild(section);
   }
 
-  function runTextMode(mod, inputs) {
+  function runTextMode(mod, inputs, panelsCount) {
     for (const fn of FNS) {
+      // DataSnapshot-backed screens don't have a parse* text binding —
+      // they can't be expressed as a single-integer layout dump. Skip
+      // them so text mode still works for the legacy screens.
+      if (!fn.textFn) continue;
       const rawArgs = fn.args(inputs);
       try {
         const result = mod[fn.textFn](...rawArgs);
-        const arr = Array.isArray(result)
+        // The parse* helpers only know about 7-panel layouts; pad the
+        // returned array to the selected panels count so the text view
+        // lines up with the pixel view next to it.
+        let arr = Array.isArray(result)
           ? result
           : Array.from({ length: 7 }, (_, i) => result[i] ?? "");
+        arr = padCellsLeft(arr, panelsCount);
         renderTextRow(
           `${fn.title} — ${fn.textFn}(${rawArgs.map((a) => JSON.stringify(a)).join(", ")})`,
           arr,
@@ -377,7 +494,7 @@
       } catch (err) {
         renderTextRow(
           `${fn.title} — error`,
-          ["ERR", "ERR", "ERR", "ERR", "ERR", "ERR", "ERR"],
+          new Array(panelsCount).fill("ERR"),
           String(err && err.stack ? err.stack : err)
         );
       }
@@ -410,10 +527,21 @@
     }
   }
 
+  // Push the current font / panels picks down to the binding before
+  // firing any render. The binding maintains this as global state so
+  // subsequent render*FrameBuffer calls see it automatically.
+  function syncRenderOptions(mod) {
+    const panels = parseInt(panelsSelectEl.value, 10) || 7;
+    const font = parseInt(fontSelectEl.value, 10) || 0;
+    mod.setRenderOptions(panels, font);
+    return { panels, font };
+  }
+
   function runAll(mod, inputs) {
     outputs.innerHTML = "";
+    const { panels } = syncRenderOptions(mod);
     if (viewMode === "text") {
-      runTextMode(mod, inputs);
+      runTextMode(mod, inputs, panels);
     } else {
       runPixelMode(mod, inputs);
     }
@@ -428,6 +556,8 @@
       const trigger = () => runAll(mod, readInputs());
       document.getElementById("run").addEventListener("click", trigger);
       controls.addEventListener("input", trigger);
+      fontSelectEl.addEventListener("change", trigger);
+      panelsSelectEl.addEventListener("change", trigger);
 
       function applyModeVisibility() {
         if (viewMode === "pixel") pixelOptions.classList.add("visible");

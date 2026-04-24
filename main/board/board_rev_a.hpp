@@ -54,6 +54,14 @@ constexpr bool kHasSecondMcp = false;
 constexpr uint16_t kMcp2Addr = 0x00;
 constexpr bool kHasMcpResetGpio = false;
 constexpr gpio_num_t kMcpResetGpio = GPIO_NUM_NC;
+// Address straps are hardwired on this variant, but the main() boot
+// path references kMcpAddressGpios / kMcpAddressLevels inside an
+// `if constexpr (kHasMcpAddressGpios)` guard. `if constexpr` still
+// requires identifier lookup on the discarded branch, so empty arrays
+// are the cleanest no-op stub (the range-for compiles into nothing).
+constexpr bool kHasMcpAddressGpios = false;
+constexpr std::array<gpio_num_t, 0> kMcpAddressGpios = {};
+constexpr std::array<bool, 0> kMcpAddressLevels = {};
 
 // --- EPD pin routing (same as Rev B: native CS/BUSY, RESET on MCP1) ---
 constexpr PinSource kEpdCsSource = PinSource::kNative;

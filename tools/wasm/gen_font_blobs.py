@@ -14,6 +14,8 @@ FONTS = [
     ("DejaVu.ttf", "kDejaVuTtf", "kDejaVuTtfSize"),
     ("DejaVuBold.ttf", "kDejaVuBoldTtf", "kDejaVuBoldTtfSize"),
     ("SatoshiSymbol.ttf", "kSatoshiSymbolTtf", "kSatoshiSymbolTtfSize"),
+    ("MaterialDesignIcons.ttf", "kMaterialDesignIconsTtf",
+     "kMaterialDesignIconsTtfSize"),
 ]
 
 

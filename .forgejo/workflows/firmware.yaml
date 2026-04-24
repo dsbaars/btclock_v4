@@ -1,0 +1,163 @@
+name: "Firmware build"
+
+# Per-variant ESP-IDF build + WebUI bundle + LittleFS storage image.
+# Runs on push to main, on version tags, and on PRs. The tag trigger
+# produces the same artifact shape that release.yaml then collects.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: docker
+    container:
+      # espressif/idf:v5.5.4 ships IDF + Python + toolchains pre-installed
+      # (~2 GB image, cached on the runner). It is Ubuntu-based but does
+      # NOT include Node.js; the first workflow step installs Node so
+      # actions/checkout@v6 (a JS action) can execute — otherwise we get
+      # "node: executable file not found in $PATH" before checkout runs.
+      image: espressif/idf:v5.5.4
+    permissions:
+      contents: write
+      checks: write
+    # fail-fast=false so a Rev A failure doesn't starve Rev B / V8 of
+    # build signal — we usually want the whole matrix's state visible.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: REV_A
+            sdkconfig_dir: build-rev-a
+            storage_size: 421888    # 0x67000, from partitions_4mb.csv
+          - variant: REV_B
+            sdkconfig_dir: build-rev-b
+            storage_size: 839680    # 0xCD000, from partitions_8mb.csv
+          - variant: V8
+            sdkconfig_dir: build-v8
+            storage_size: 2097152   # 0x200000, from partitions_16mb.csv
+    steps:
+      - name: Install Node.js (for JS-based Forgejo actions)
+        shell: bash
+        # NodeSource's 24.x setup script pins a known-good LTS. The
+        # espressif image ships curl + ca-certificates + git already.
+        run: |
+          apt-get update
+          curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+          apt-get install -y --no-install-recommends nodejs
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Short SHA
+        id: vars
+        shell: bash
+        run: echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Cache the ESP-IDF managed_components / build deps per variant.
+      # Key inputs:
+      # - dependencies.lock: component versions + hashes.
+      # - sdkconfig.defaults + sdkconfig.defaults.<variant>: changes here
+      #   force a fresh configure.
+      # - variant: different POC_BOARD selects different sdkconfig, so
+      #   cache contents differ.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            managed_components
+            ${{ matrix.sdkconfig_dir }}
+          key: idf-v5.5.4-${{ matrix.variant }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.variant)) }}
+          restore-keys: |
+            idf-v5.5.4-${{ matrix.variant }}-
+
+      # pnpm 10.33.0 matches the `packageManager` pin in data/package.json.
+      # The bundled action sets up pnpm cache + binary in one go.
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: data/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: data/pnpm-lock.yaml
+
+      - name: Build WebUI
+        shell: bash
+        working-directory: data
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          python3 gzip_build.py
+
+      - name: Install littlefs-python
+        shell: bash
+        # Pinned to the version currently installed on the developer
+        # machine — LittleFS image format is layout-stable across minor
+        # versions of littlefs-python, but we pin so CI output is
+        # byte-identical to local `idf.py flash`. The espressif/idf
+        # image keeps pip in its managed virtualenv (no system pip3);
+        # sourcing export.sh puts that venv on PATH.
+        run: |
+          . /opt/esp/idf/export.sh
+          pip install littlefs-python==0.15.0
+
+      - name: Build LittleFS storage image
+        shell: bash
+        # Each step runs in a fresh shell, so the IDF venv (where
+        # littlefs-python was installed in the previous step) isn't on
+        # PATH until we source export.sh again.
+        run: |
+          . /opt/esp/idf/export.sh
+          mkdir -p dist-ci
+          littlefs-python create \
+            data/build_gz \
+            "dist-ci/storage-${{ matrix.variant }}.bin" \
+            -v \
+            --fs-size=${{ matrix.storage_size }} \
+            --name-max=64 \
+            --block-size=4096
+
+      - name: Configure + build firmware
+        shell: bash
+        # The espressif/idf image sources export.sh via its entrypoint,
+        # but `shell: bash` bypasses that, so source it explicitly.
+        run: |
+          . /opt/esp/idf/export.sh
+          idf.py \
+            -B "${{ matrix.sdkconfig_dir }}" \
+            -D POC_BOARD=${{ matrix.variant }} \
+            -D SDKCONFIG="${{ matrix.sdkconfig_dir }}/sdkconfig" \
+            build
+
+      - name: Stage artifacts
+        shell: bash
+        # One self-contained directory per variant with everything a
+        # flasher needs: app, bootloader, partition table, OTA data
+        # pointer, and the LittleFS storage image. Flat layout so users
+        # downloading from CI don't have to traverse build-<variant>/.
+        run: |
+          out="dist-ci/btclock_v4-${{ matrix.variant }}-${{ steps.vars.outputs.short_sha }}"
+          mkdir -p "$out"
+          cp "${{ matrix.sdkconfig_dir }}/btclock_idf_proto.bin"              "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/bootloader/bootloader.bin"          "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/partition_table/partition-table.bin" "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
+          cp "dist-ci/storage-${{ matrix.variant }}.bin"                      "$out/storage.bin"
+          # SHA-256 of the app binary for OTA integrity checks downstream.
+          ( cd "$out" && sha256sum btclock_idf_proto.bin > btclock_idf_proto.bin.sha256 )
+
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: btclock_v4-${{ matrix.variant }}-${{ steps.vars.outputs.short_sha }}
+          path: dist-ci/btclock_v4-${{ matrix.variant }}-${{ steps.vars.outputs.short_sha }}/**
+          retention-days: 14
+          include-hidden-files: false

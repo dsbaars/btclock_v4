@@ -109,18 +109,36 @@ copyrights are indeterminate per the embedded name-table notice.
 The `SatoshiSymbol_source.woff2` is retained in-tree so downstream
 licence review can trace the artifact.
 
+## MaterialDesignIcons
+
+Subsetted from `Templarian/MaterialDesign-Webfont` on GitHub. Only the
+handful of glyphs the firmware actually paints (Bitaxe, mining pool
+stats, nostr zap notification screens) are kept — the full upstream
+font is ~1.3 MB with 10k+ glyphs. The subsetted bundle is regenerated
+by `tools/fonts/regen_mdi.sh`, which reads the list of icons from the
+script itself and parses the upstream `materialdesignicons.css` to
+resolve each icon name to its codepoint.
+
+The codepoint constants exposed to C++ live in
+`components/fonts/include/mdi_codepoints.hpp` (auto-generated
+alongside the TTF).
+
+Licensed under Apache-2.0 by Pictogrammers / upstream MDI maintainers,
+compatible with this repo's Apache-2.0 licence.
+
 ## Sizes
 
 In-tree byte counts (`wc -c`), rounded:
 
-| Font           | Size    | Glyphs kept |
-|----------------|--------:|------------:|
-| Antonio        |  22.3 KB |          98 |
-| Oswald         |   8.9 KB |          95 |
-| OswaldBold     |   8.9 KB |          95 |
-| DejaVu         |  21.2 KB |          95 |
-| DejaVuBold     |  19.2 KB |          95 |
-| SatoshiSymbol  |   3.5 KB |          16 |
+| Font                  | Size    | Glyphs kept |
+|-----------------------|--------:|------------:|
+| Antonio               |  22.3 KB |          98 |
+| Oswald                |   8.9 KB |          95 |
+| OswaldBold            |   8.9 KB |          95 |
+| DejaVu                |  21.2 KB |          95 |
+| DejaVuBold            |  19.2 KB |          95 |
+| SatoshiSymbol         |   3.5 KB |          16 |
+| MaterialDesignIcons   |   1.0 KB |           3 |
 
 The `SatoshiSymbol_source.woff2` archive (2.1 KB) is kept alongside
 the TTF for provenance and is not compiled into firmware.
