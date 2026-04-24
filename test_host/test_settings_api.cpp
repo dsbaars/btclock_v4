@@ -455,7 +455,7 @@ TEST_CASE("PATCH timePerScreen converts minutes to seconds") {
   CHECK(prefs.u32_["timerSeconds"] == 300u);
 }
 
-TEST_CASE("PATCH actCurrencies validates against available list") {
+TEST_CASE("PATCH actCurrencies filters against available list") {
   FakePrefs prefs;
   auto ok = btclock::settings::ApplyPatch(
       "{\"actCurrencies\":[\"USD\",\"JPY\"]}",
@@ -463,12 +463,52 @@ TEST_CASE("PATCH actCurrencies validates against available list") {
   CHECK(ok.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["actCurrencies"] == "USD,JPY");
 
+  // Unknown codes are silently dropped (not a hard 400) so an older
+  // cached client that still sends a legacy code doesn't wipe out the
+  // rest of the PATCH. The surviving codes get persisted.
   FakePrefs prefs2;
-  auto bad = btclock::settings::ApplyPatch(
-      "{\"actCurrencies\":[\"USD\",\"XYZ\"]}",
+  auto partial = btclock::settings::ApplyPatch(
+      "{\"actCurrencies\":[\"USD\",\"XYZ\",\"EUR\"]}",
       DefaultCtx(), prefs2, prefs2);
+  CHECK(partial.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs2.str_["actCurrencies"] == "USD,EUR");
+
+  // Non-string entries still hard-fail — that's a malformed client,
+  // not a catalogue-drift case.
+  FakePrefs prefs3;
+  auto bad = btclock::settings::ApplyPatch(
+      "{\"actCurrencies\":[\"USD\",42]}",
+      DefaultCtx(), prefs3, prefs3);
   CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
-  CHECK(bad.error == "currency:unknown");
+  CHECK(bad.error == "currency:not_string");
+}
+
+TEST_CASE("GET actCurrencies filters legacy NVS codes not in catalogue") {
+  // Simulate an upgrade: user has an older firmware's richer list
+  // persisted (CNY/BRL/AED were all valid before the prune). The GET
+  // response should drop them rather than expose codes the upstream
+  // price websocket can no longer serve.
+  FakePrefs prefs;
+  prefs.str_["actCurrencies"] = "USD,BRL,EUR,CNY,JPY,AED";
+  cJSON* root =
+      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root != nullptr);
+
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "actCurrencies");
+  REQUIRE(cJSON_IsArray(arr));
+  std::vector<std::string> kept;
+  cJSON* it = nullptr;
+  cJSON_ArrayForEach(it, arr) {
+    REQUIRE(cJSON_IsString(it));
+    kept.emplace_back(it->valuestring);
+  }
+  // Order is preserved, only the out-of-catalogue codes drop out.
+  REQUIRE(kept.size() == 3u);
+  CHECK(kept[0] == "USD");
+  CHECK(kept[1] == "EUR");
+  CHECK(kept[2] == "JPY");
+
+  cJSON_Delete(root);
 }
 
 TEST_CASE("PATCH screens visibility only") {

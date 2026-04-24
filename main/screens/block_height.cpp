@@ -1,5 +1,6 @@
 #include "screens/screens.hpp"
 
+#include <array>
 #include <cstring>
 
 #include "screens/common.hpp"
@@ -18,7 +19,7 @@ void RenderBlockHeightScreen(
   const bool prev_overflow =
       !full_refresh && BlockHeightDropsLabel(prev_height, N);
   // Transitioning into or out of label-drop forces a full repaint:
-  // the label panel's content changes (digit ↔ "BLOCK/HEIGHT") and
+  // the label panel's content changes (digit <-> "BLOCK/HEIGHT") and
   // every digit panel shifts position.
   const bool layout_changed = now_overflow != prev_overflow;
   const bool label_full_refresh = full_refresh || layout_changed;
@@ -27,21 +28,6 @@ void RenderBlockHeightScreen(
   const size_t prev_digit_panels = prev_overflow ? N : N - 1;
   const size_t digit_base = now_overflow ? 0 : 1;
 
-  // Panel 0 — label only when the height fits within N-1 panels.
-  if (label_full_refresh && !now_overflow) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // Use the same font the digit panels use so the WASM preview's
-    // font-family swap (which rebinds `fonts.antonio()` in place)
-    // reaches the label too. The old oswald_bold hardcoding kept the
-    // label on Oswald regardless of the user's pick, which the photo
-    // review flagged as a visible Oswald/Dejavu/Antonio mismatch.
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "BLOCK",
-                  "HEIGHT",
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   char new_digits[N];
   char old_digits[N];
   FormatDigits(block_height, new_digits, digit_panels);
@@ -49,39 +35,33 @@ void RenderBlockHeightScreen(
     FormatDigits(prev_height, old_digits, prev_digit_panels);
   }
 
+  std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
-  for (size_t i = 0; i < digit_panels; ++i) {
-    update[i] = full_refresh || layout_changed ||
-                new_digits[i] != old_digits[i];
+
+  // Panel 0 — label in the non-overflow case. In the 7-digit overflow
+  // case panel 0 becomes the leading digit; that's the `digit_base=0`
+  // branch below. When overflow changes frame-to-frame the whole
+  // screen goes full-refresh via `layout_changed`.
+  if (!now_overflow) {
+    slots[0] = PaintSlot{PaintSlot::kLabelSplit, "BLOCK/HEIGHT", nullptr, 0, 0};
+    update[0] = label_full_refresh;
   }
 
+  // Digit panels — right-justified across `digit_panels` cells starting
+  // at `digit_base`. FormatDigits has already emitted ' ' for leading
+  // pad positions; PaintSlot::kDigit treats ' ' as "don't paint" so
+  // leading cells stay blank after the ClearFb.
   for (size_t i = 0; i < digit_panels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, digit_base + i);
-    ClearFb(lfb, /*white=*/true);
-    if (new_digits[i] != ' ') {
-      const char one[2] = {new_digits[i], '\0'};
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                       kDigitRef, fonts.antonio(), 180.0f,
-                       /*white_text=*/false);
-    }
+    const size_t panel_idx = digit_base + i;
+    slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                 std::string(1, new_digits[i]),
+                                 nullptr, 0, 0};
+    update[panel_idx] = full_refresh || layout_changed ||
+                        new_digits[i] != old_digits[i];
   }
 
-  const RefreshKind kind =
-      label_full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (label_full_refresh && !now_overflow) {
-    panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  }
-  for (size_t i = 0; i < digit_panels; ++i) {
-    if (!update[i]) continue;
-    panels[digit_base + i]->DrawFramebufferStart(
-        fb_storage[digit_base + i], kind);
-  }
-  if (label_full_refresh && !now_overflow) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < digit_panels; ++i) {
-    if (!update[i]) continue;
-    panels[digit_base + i]->WaitForRefresh();
-  }
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  label_full_refresh);
 }
 
 template void RenderBlockHeightScreen<7>(

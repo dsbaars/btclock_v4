@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <string>
 
 #include "screens/common.hpp"
 #include "screens/price_layout.hpp"
@@ -45,19 +46,6 @@ void RenderBtcPriceScreen(
   const bool full_refresh = prev_price.empty();
   const bool use_symbol = symbol_utf8 && symbol_utf8[0] != '\0';
 
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // Inherit the digit font so the WASM preview's swappable antonio
-    // slot carries the label too (Bug 1 — see block_height.cpp for the
-    // full note). The old oswald_bold left labels on Oswald even when
-    // the user picked a different digit font.
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "BTC",
-                  currency.c_str(),
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   std::array<char, kDigitPanels> new_digits;
   std::array<char, kDigitPanels> old_digits;
   std::array<bool, kDigitPanels> new_sym;
@@ -74,51 +62,38 @@ void RenderBtcPriceScreen(
     }
   }
 
-  std::array<bool, kDigitPanels> update{};
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    update[i] = full_refresh || new_digits[i] != old_digits[i] ||
-                new_sym[i] != old_sym[i];
-  }
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
 
+  // Panel 0 — "BTC/<CCY>" label. Doesn't change across price updates
+  // within a single currency, so only paint on full refresh.
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit,
+                       std::string("BTC/") + currency, nullptr, 0, 0};
+  update[0] = full_refresh;
+
+  // Digit / currency-glyph / '.' cells. LayoutBtcPrice has already
+  // emitted ' ' for leading pad positions; kDigit treats ' ' as
+  // "don't paint" so leading cells stay blank after ClearFb. The '.'
+  // cell is painted as a regular digit — using kDigitRef instead of
+  // the old kPriceDotRef: '.' has no descenders, so the reference box
+  // is byte-identical to the digit-only ref in practice, which the
+  // SHA-256 hash diff verifies.
   for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, 1 + i);
-    ClearFb(lfb, /*white=*/true);
+    const size_t panel_idx = 1 + i;
     if (new_sym[i]) {
-      // Currency glyph cell — baseline via `kDigitRef` so the glyph
-      // lines up with the digits on adjacent panels.
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                       symbol_utf8, kDigitRef, fonts.antonio(), 180.0f,
-                       /*white_text=*/false);
-    } else if (new_digits[i] == '.') {
-      // Dedicated '.' cell. Using the dot-inclusive local ref keeps the
-      // dot's vertical position consistent with the digits while leaving
-      // the shared `kDigitRef` untouched.
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, ".",
-                       kPriceDotRef, fonts.antonio(), 180.0f, false);
-    } else if (new_digits[i] != ' ') {
-      const char one[2] = {new_digits[i], '\0'};
-      // Plain digit cell. Uses the shared digit-only ref so this
-      // baseline matches block-height / Moscow-time / the symbol cell.
-      // Do NOT widen this with '.' — the shared-ref widening regression
-      // is covered in test_host/test_screen_ref_chars.cpp.
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                       kDigitRef, fonts.antonio(), 180.0f, false);
+      slots[panel_idx] = PaintSlot{PaintSlot::kCurrencyGlyph,
+                                   std::string(symbol_utf8),
+                                   nullptr, 0, 0};
+    } else {
+      slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                   std::string(1, new_digits[i]),
+                                   nullptr, 0, 0};
     }
+    update[panel_idx] = full_refresh || new_digits[i] != old_digits[i] ||
+                        new_sym[i] != old_sym[i];
   }
 
-  const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-  }
-  if (full_refresh) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->WaitForRefresh();
-  }
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
 }
 
 template void RenderBtcPriceScreen<7>(

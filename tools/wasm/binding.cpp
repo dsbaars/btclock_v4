@@ -138,52 +138,37 @@ void ReturnPanels(RenderContext& ctx,
   }
 }
 
-// Override the digit font on the shared AppFonts for the duration of
-// a render. The screen renderers read `fonts.antonio()` by name (the
-// big-digit face); swapping the backing Font for one constructed from
-// a different TTF blob lets the preview show Oswald / DejaVu digits
-// without any firmware-side plumbing.
+// Override the digit/label/small_chars/unit font roles on the shared
+// AppFonts for the duration of a render. The screen renderers reach
+// for `fonts.digit()` / `fonts.label()` / etc. via the role accessors;
+// `SetFamily` rebinds all four swappable roles to the selected family
+// at once, leaving `icon` and `sats_glyph` on their dedicated subset
+// fonts (which carry glyphs the family fonts don't have).
 //
-// Why const_cast is OK here: `antonio()` returns `const Font&` but the
-// underlying `antonio_` member is a non-const data member of a non-
-// const AppFonts (we own `ctx.fonts`). Casting away const on a
-// reference to a non-const object is defined behaviour; the UB clause
-// only applies to objects that are truly const at the site of
-// declaration.
-//
-// Why the Font assignment is safe: `Font` has no user-declared
-// destructor, copy ctor, or copy-assignment — it gets a defaulted
-// memberwise operator=. Assigning a freshly-constructed Font over an
-// existing one shallow-copies (ttf_ptr, ttf_size, info_ pointer). The
-// previous stb_truetype info_ block leaks — one leak per font switch —
-// but `Font` already never destroys its info_ on device either, so
-// we're matching the existing lifetime model.
+// 0 = antonio (stock), 1 = oswald, 2 = dejavu. Unknown families fall
+// back to antonio — same semantics as the old ApplyFontOverride.
 void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
-  const uint8_t* ttf = btclock::kAntonioTtf;
-  std::size_t sz = btclock::kAntonioTtfSize;
+  btclock::FontFamily f = btclock::FontFamily::kAntonio;
   switch (family) {
-    case 1:  // oswald
-      ttf = btclock::kOswaldTtf;
-      sz  = btclock::kOswaldTtfSize;
+    case 1:
+      f = btclock::FontFamily::kOswald;
       break;
-    case 2:  // dejavu
-      ttf = btclock::kDejaVuTtf;
-      sz  = btclock::kDejaVuTtfSize;
+    case 2:
+      f = btclock::FontFamily::kDejaVu;
       break;
     default:
-      // family 0 (or unknown) → leave stock antonio in place.
-      return;
+      f = btclock::FontFamily::kAntonio;
+      break;
   }
-  const_cast<btclock::Font&>(fonts.antonio()) = btclock::Font(ttf, sz);
+  fonts.SetFamily(f);
 }
 
-// Rebuild `fonts.antonio()` back to the stock face so subsequent
-// renders with family=0 see the original Antonio. Called at the top of
-// every render to guarantee a clean starting point regardless of the
-// last frame's override.
+// Reset the roles back to the stock Antonio family so a render with
+// family=0 starts clean regardless of what the previous render did.
+// Called at the top of every render alongside ApplyFontOverride so the
+// sequence is idempotent.
 void ResetFontOverride(btclock::AppFonts& fonts) {
-  const_cast<btclock::Font&>(fonts.antonio()) =
-      btclock::Font(btclock::kAntonioTtf, btclock::kAntonioTtfSize);
+  fonts.SetFamily(btclock::FontFamily::kAntonio);
 }
 
 // Zero every panel's framebuffer (up to `n`) to "all white" (0xFF) so

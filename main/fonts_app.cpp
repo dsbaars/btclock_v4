@@ -51,4 +51,25 @@ FontBundle AppFonts::Bundle(FontFamily f) const {
   return {&dejavu_, &dejavu_bold_};
 }
 
+void AppFonts::SetFamily(FontFamily f) {
+  const Font* regular = &antonio_;
+  switch (f) {
+    case FontFamily::kAntonio:
+      regular = &antonio_;
+      break;
+    case FontFamily::kOswald:
+      regular = &oswald_;
+      break;
+    case FontFamily::kDejaVu:
+      regular = &dejavu_;
+      break;
+  }
+  role_digit_ = regular;
+  role_label_ = regular;
+  role_small_chars_ = regular;
+  role_unit_ = regular;
+  // icon and sats_glyph stay locked — the family fonts don't carry the
+  // MDI PUA codepoints or the subsetted 'S' glyph.
+}
+
 }  // namespace btclock

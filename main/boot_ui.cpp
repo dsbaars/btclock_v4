@@ -15,7 +15,7 @@ void RenderSplashScreen(
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts) {
   static_assert(N <= 8, "kSplashLetters only spells out eight glyphs");
 
-  const Font& font = fonts.antonio();
+  const Font& font = fonts.digit();
 
   for (size_t i = 0; i < N; ++i) {
     LandscapeFb lfb = {};

@@ -67,7 +67,7 @@ void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     return;
   }
 
-  const Font& font = fonts.antonio();
+  const Font& font = fonts.digit();
   const float px = PickPixelHeight(cell.c_str(), lfb.native_width, font);
   DrawTextCentered(lfb, lfb.native_width, lfb.native_height, cell.c_str(),
                    kAnyRef, font, px, /*white_text=*/false);

@@ -1,4 +1,4 @@
-#include "app/light_sensor.hpp"
+#include "io/light_sensor.hpp"
 
 #include "esp_log.h"
 

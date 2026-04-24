@@ -1880,6 +1880,21 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     }
   }
 
+  // fontName: rebind the AppFonts role accessors and mark the screen
+  // dirty so the next full refresh repaints with the new family. The
+  // touched-keys list uses the JSON field name ("fontName"); the NVS
+  // key happens to match. Nullable hook — if main.cpp didn't wire it,
+  // the change takes effect at the next reboot.
+  if (cfg_.on_font_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == "fontName") {
+        cfg_.on_font_changed(
+            prefs.GetString(btclock::prefs::kFontName, "antonio"));
+        break;
+      }
+    }
+  }
+
   // Response body mirrors old firmware: 200 OK with an empty body
   // when no reboot is required, {"rebootRequired":true} otherwise.
   BroadcastStatus();

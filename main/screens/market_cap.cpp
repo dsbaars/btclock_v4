@@ -1,9 +1,9 @@
 #include "screens/screens.hpp"
 
-#include <algorithm>
+#include <array>
 #include <cstdio>
-#include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "screens/common.hpp"
@@ -97,17 +97,6 @@ void RenderMarketCapScreen(
 
   const bool full_refresh = prev_price.empty() || prev_height == 0;
 
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // Inherit the digit font so the WASM preview's swappable antonio
-    // slot carries the label too (Bug 1 — see block_height.cpp).
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height,
-                  currency.c_str(), "MCAP",
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   const int32_t new_price = PriceInt(price);
   const int32_t old_price = full_refresh ? -1 : PriceInt(prev_price);
   const uint64_t now_cap =
@@ -152,68 +141,59 @@ void RenderMarketCapScreen(
     }
   }
 
-  std::array<bool, kDigitPanels> update{};
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (full_refresh) {
-      update[i] = true;
-    } else if (big_chars) {
-      update[i] = new_cells[i].c != old_cells[i].c ||
-                  new_cells[i].is_currency_glyph !=
-                      old_cells[i].is_currency_glyph;
-    } else {
-      update[i] = new_sc_cells[i] != old_sc_cells[i];
-    }
-  }
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
 
+  // Panel 0 — "<CCY>/MCAP" label. Static within a currency across price
+  // updates, so only paint on full refresh.
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit,
+                       currency + std::string("/MCAP"), nullptr, 0, 0};
+  update[0] = full_refresh;
+
+  // Digit / currency-glyph / 3-digit-group cells. big_chars branch maps
+  // to kDigit / kCurrencyGlyph at 180 pt; small-chars branch maps to
+  // kSmallGroup at 90 pt (and kCurrencyGlyph painted at the small_chars
+  // 90 pt via a local kCurrencyGlyph analogue — see below).
   for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, 1 + i);
-    ClearFb(lfb, /*white=*/true);
+    const size_t panel_idx = 1 + i;
     if (big_chars) {
       const auto& cell = new_cells[i];
-      if (cell.c == ' ') continue;
-      if (cell.is_currency_glyph && currency_utf8[0] != '\0') {
-        DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                         currency_utf8, kDigitRef, fonts.antonio(), 180.0f,
-                         /*white_text=*/false);
+      if (cell.c == ' ') {
+        slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
+      } else if (cell.is_currency_glyph && currency_utf8[0] != '\0') {
+        slots[panel_idx] = PaintSlot{PaintSlot::kCurrencyGlyph,
+                                     std::string(currency_utf8),
+                                     nullptr, 0, 0};
       } else {
-        const char one[2] = {cell.c, '\0'};
-        DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                         kDigitRef, fonts.antonio(), 180.0f,
-                         /*white_text=*/false);
+        slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                     std::string(1, cell.c),
+                                     nullptr, 0, 0};
       }
+      update[panel_idx] =
+          full_refresh || cell.c != old_cells[i].c ||
+          cell.is_currency_glyph != old_cells[i].is_currency_glyph;
     } else {
       const auto& cell = new_sc_cells[i];
-      if (cell.empty()) continue;
-      if (cell == ccy_cell && currency_utf8[0] != '\0') {
-        // Render the currency separator as its UTF-8 glyph at medium
-        // size so weight matches the 3-digit groups either side.
-        DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                         currency_utf8, kDigitRef, fonts.antonio(), 90.0f,
-                         /*white_text=*/false);
-      } else if (cell != " ") {
-        // Three-digit group (possibly with leading spaces like "  1").
-        // Medium font size so three digits fit panel-width; matches the
-        // old firmware's showChars(fontMedium) for length>1 cells.
-        DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                         cell.c_str(), kDigitRef, fonts.antonio(), 90.0f,
-                         /*white_text=*/false);
+      if (cell.empty()) {
+        slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
+      } else if (cell == ccy_cell && currency_utf8[0] != '\0') {
+        // Currency separator rendered at small_chars 90 pt so weight
+        // matches the 3-digit groups either side. Piggy-back on
+        // kSmallGroup (same font + size).
+        slots[panel_idx] = PaintSlot{PaintSlot::kSmallGroup,
+                                     std::string(currency_utf8),
+                                     nullptr, 0, 0};
+      } else if (cell == " ") {
+        slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
+      } else {
+        slots[panel_idx] =
+            PaintSlot{PaintSlot::kSmallGroup, cell, nullptr, 0, 0};
       }
+      update[panel_idx] = full_refresh || cell != old_sc_cells[i];
     }
   }
 
-  const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-  }
-  if (full_refresh) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->WaitForRefresh();
-  }
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
 }
 
 template void RenderMarketCapScreen<7>(

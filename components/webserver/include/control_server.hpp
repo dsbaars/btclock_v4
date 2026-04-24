@@ -107,7 +107,7 @@ class LightSensorIface {
 };
 
 // NeoPixel-side counterpart to FrontlightIface. Keeps the webserver
-// component independent of `main/app/led_controller.hpp` (which drags
+// component independent of `main/io/led_controller.hpp` (which drags
 // FreeRTOS + RMT + NVS into every TU that includes it). `main.cpp`
 // wires up a thin adapter that forwards these calls to the controller's
 // namespace-level functions.
@@ -244,6 +244,15 @@ class ControlServer {
     // callback leaves the change deferred to reboot (main.cpp reads the
     // pref once at InitOnce + first Render).
     std::function<void(bool)> on_inverted_color_changed;
+
+    // Fires when PATCH /api/settings writes `fontName`. The callback
+    // receives the new id string (already validated against
+    // available_fonts by the settings layer) and is expected to call
+    // AppFonts::SetFamily() + ScreenManager::MarkDirty() so the next
+    // frame paints with the newly selected family. Nullable — an
+    // unwired callback defers the change to reboot, which is what the
+    // firmware did before this hook existed.
+    std::function<void(const std::string&)> on_font_changed;
 
     // Fires on POST /api/factory_reset after the confirmation gate has
     // accepted the body. The callback is expected to render a

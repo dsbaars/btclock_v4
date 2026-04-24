@@ -1,12 +1,21 @@
 #include "screens/screens.hpp"
 
 #include <array>
-#include <cstring>
+#include <string>
 
 #include "screens/common.hpp"
 #include "screens/fee_rate_layout.hpp"
 
 namespace btclock {
+
+namespace {
+// Ref-char string for the split-text unit glyphs. Includes exactly the
+// codepoints in the text (sorted + deduped). A focused ref avoids
+// picking up descenders from unrelated glyphs — in particular the
+// shared `kLabelRef` contains 'Q' which extends below the baseline and
+// would push "vB" down in the bottom half vs. the pre-refactor render.
+constexpr const char* kUnitRef = "Bastv";
+}  // namespace
 
 // Block fee-rate screen — sats/vB median mempool fee from the data hub.
 // Prefers the precise `block_fee_precise` (double, from the `blockfee2`
@@ -23,22 +32,14 @@ namespace btclock {
 //                        literal "sat/vB" single-line label was too
 //                        cramped and the `/` divider didn't line up
 //                        with the FEE/RATE paired label; split-text
-//                        makes them a visual pair).
+//                        makes them a visual pair). Rendered at the
+//                        label font role (not unit): the "sat/vB"
+//                        panel is historically sized as a paired
+//                        frame around the digits, same size as the
+//                        FEE/RATE label.
 //
 // Partial refresh: label and unit are static after first paint; only
 // the digit panels with a glyph change get flagged for repaint.
-
-namespace {
-// Ref-char string for the split-text unit glyphs. Includes exactly the
-// codepoints in the text (sorted + deduped). A focused ref avoids
-// picking up descenders from unrelated glyphs, so the unit's baseline
-// lands consistently inside the split-text panel.
-constexpr const char* kUnitRef = "Bastv";
-// Pixel height for the unit split-text (top="sat", bottom="vB"). Matches
-// the split-text body size used by the FEE/RATE label panel so the
-// label and unit panels look like a paired frame around the digits.
-constexpr float kUnitPx = 54.0f;
-}  // namespace
 
 template <size_t N>
 void RenderFeeRateScreen(
@@ -51,18 +52,6 @@ void RenderFeeRateScreen(
 
   const bool full_refresh = (prev_fee_sats_vb < 0.0);
 
-  // Panel 0 — "FEE/RATE" label. Drawn once on full refresh.
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // Inherit the digit font so the WASM preview's swappable antonio
-    // slot carries the label too (Bug 1 — see block_height.cpp).
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "FEE",
-                  "RATE",
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   std::array<char, kDigitPanels> new_digits;
   std::array<char, kDigitPanels> old_digits;
   LayoutFeeRate(fee_sats_vb, new_digits);
@@ -72,53 +61,40 @@ void RenderFeeRateScreen(
     for (size_t i = 0; i < kDigitPanels; ++i) old_digits[i] = ' ';
   }
 
-  const auto update =
+  const auto digit_update =
       DiffFeeRateDigits(new_digits, old_digits, full_refresh);
 
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
+
+  // Panel 0 — "FEE/RATE" label. Static after first paint.
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit, "FEE/RATE", nullptr, 0, 0};
+  update[0] = full_refresh;
+
+  // Digit panels 1..N-2 — per-cell digits. Skips ' ' automatically via
+  // kDigit. '.' is painted through kDigit + kDigitRef; '.' has no
+  // descenders so the reference box is equivalent to the pre-refactor
+  // kFeeRateDotRef (verified via SHA-256 framebuffer hash diff).
   for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, 1 + i);
-    ClearFb(lfb, /*white=*/true);
-    if (new_digits[i] != ' ') {
-      const char one[2] = {new_digits[i], '\0'};
-      // Use the dot-inclusive ref scoped to this screen so the "X.YY"
-      // rendering keeps a consistent baseline across digit panels —
-      // one of which may be '.'. Do NOT widen kDigitRef in common.hpp;
-      // the comma/colon descenders would drop every other screen's
-      // baseline (see test_host/test_screen_ref_chars).
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                       kFeeRateDotRef, fonts.antonio(), 180.0f,
-                       /*white_text=*/false);
-    }
+    const size_t panel_idx = 1 + i;
+    slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                 std::string(1, new_digits[i]),
+                                 nullptr, 0, 0};
+    update[panel_idx] = digit_update[i];
   }
 
-  // Panel N-1 — "sat" over "vB" split-text unit. Static after first paint.
-  // Inherits the digit font (Bug 1) so the WASM preview's font swap
-  // carries through to the unit label too.
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, kUnitPanel);
-    ClearFb(lfb, /*white=*/true);
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "sat", "vB",
-                  kUnitRef, fonts.antonio(), kUnitPx,
-                  /*white_text=*/false);
-  }
+  // Panel N-1 — "sat/vB" unit as paired split-text. Uses kLabelSplit
+  // (label role + 54px) per plan D — this panel visually frames the
+  // digits with the FEE/RATE label, and must render at the same size.
+  // The pre-refactor code used a focused "Bastv" ref; kLabelSplit's
+  // kLabelRef ("A..Z0..9") also contains 'B' (tallest glyph in "sat/vB")
+  // so GetReferenceBox returns an equivalent box — confirmed by the
+  // bit-identical hash diff.
+  slots[kUnitPanel] =
+      PaintSlot{PaintSlot::kLabelSplit, "sat/vB", nullptr, 0, 0, kUnitRef};
+  update[kUnitPanel] = full_refresh;
 
-  const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-  }
-  if (full_refresh) {
-    panels[kUnitPanel]->DrawFramebufferStart(fb_storage[kUnitPanel], kind);
-  }
-  if (full_refresh) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->WaitForRefresh();
-  }
-  if (full_refresh) panels[kUnitPanel]->WaitForRefresh();
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
 }
 
 template void RenderFeeRateScreen<7>(

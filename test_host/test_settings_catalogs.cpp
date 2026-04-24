@@ -118,13 +118,40 @@ TEST_CASE("availableCurrencies is a plain-string array of ISO-4217 codes") {
       CHECK(ch <= 'Z');
     }
   }
+
+  // Pin the exact 7-code set the upstream price websocket
+  // (ws.btclock.dev/api/v2/currencies) publishes. If the upstream
+  // list grows and the firmware needs to follow, the new code goes
+  // into main/app/catalogs.hpp *and* gets added here. Drift in the
+  // other direction — firmware advertising a code the WS can't
+  // serve — surfaces as a permanently-empty price panel.
+  REQUIRE(cJSON_GetArraySize(arr) == 7);
+
+  // Order is deterministic and matches the catalogue declaration so
+  // the WebUI's drop-down keeps the same sort across firmware builds.
+  const std::vector<std::string> expected_order = {
+      "USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY",
+  };
+  std::size_t i = 0;
+  cJSON_ArrayForEach(it, arr) {
+    REQUIRE(cJSON_IsString(it));
+    REQUIRE(i < expected_order.size());
+    CHECK(std::string(it->valuestring) == expected_order[i]);
+    ++i;
+  }
+
+  // Set-membership check as well, so the failure message is clearer
+  // when someone drops an entry (the order-check would cascade into
+  // N confusing mismatches instead of "CHF missing").
   const auto codes = StringArrayToSet(arr);
-  // Pin the four the ScreenManager defaults to so a regression can't
-  // silently break the existing user base's `actCurrencies` prefs.
   CHECK(codes.count("USD") == 1);
   CHECK(codes.count("EUR") == 1);
   CHECK(codes.count("GBP") == 1);
+  CHECK(codes.count("CAD") == 1);
+  CHECK(codes.count("CHF") == 1);
+  CHECK(codes.count("AUD") == 1);
   CHECK(codes.count("JPY") == 1);
+  CHECK(codes.size() == 7);
 
   cJSON_Delete(root);
 }

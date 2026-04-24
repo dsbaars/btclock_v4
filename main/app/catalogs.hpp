@@ -43,12 +43,14 @@ inline constexpr std::array<std::string_view, 3> kAvailableFonts = {
 };
 
 // ISO 4217 codes the price / moscow-time / market-cap screens can
-// render. Matches the price websocket's default currency list plus the
-// handful of extras that the old firmware has always exposed — keep the
-// list additive so existing users' `actCurrencies` NVS strings don't
-// get validated-out on upgrade. Same note on plain strings as fonts.
-inline constexpr std::array<std::string_view, 10> kAvailableCurrencies = {
-    "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "AED", "BRL", "CNY",
+// render. Must stay in lock-step with the upstream price websocket
+// (ws.btclock.dev/api/v2/currencies) — advertising codes the backend
+// doesn't actually publish leaves the WebUI's picker showing options
+// that never produce a price tick. settings_api's GET drops any legacy
+// `actCurrencies` entries that fall outside this set, and PATCH silently
+// skips unknown codes, so shrinking this list is safe for upgrades.
+inline constexpr std::array<std::string_view, 7> kAvailableCurrencies = {
+    "USD", "EUR", "GBP", "CAD", "CHF", "AUD", "JPY",
 };
 
 // One entry per rotatable screen. `api_id` is what gets serialised into

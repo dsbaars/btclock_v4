@@ -1,11 +1,10 @@
 #include "screens/screens.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "screens/common.hpp"
 
@@ -40,28 +39,17 @@ void RenderBitcoinSupplyScreen(
 
   const bool full_refresh = (prev_height == 0);
 
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // Inherit the digit font so the WASM preview's swappable antonio
-    // slot carries the label too (Bug 1 — see block_height.cpp).
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, "BTC",
-                  "SUPPLY",
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   const uint64_t now_supply = SupplyAtBlock(block_height);
   const uint64_t prev_supply =
       full_refresh ? 0 : SupplyAtBlock(prev_height);
 
-  // Per-panel string (one entry per digit panel). Slot 0 = label,
-  // handled above. Each entry is either:
+  // Per-panel string (one entry per digit panel). Slot 0 = label.
+  // Each entry is either:
   //   - a single char (digit or ' ') from the percentage / big-chars
   //     layouts
   //   - a 3-char group "NNN" / "  1" from the small-chars layout
-  //   - the special " % " marker that paints as a unit label on the
-  //     trailing panel of the percent mode
+  //   - the special " % " marker that paints as a "%" digit on the
+  //     trailing panel of the percent mode.
   struct Cell {
     std::string s;      // "" → don't paint; single char or 3-char group
     bool is_percent_label = false;
@@ -120,48 +108,43 @@ void RenderBitcoinSupplyScreen(
     build_cells(prev_supply, big_chars, show_percent, old_cells);
   }
 
-  std::array<bool, kDigitPanels> update{};
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    update[i] = full_refresh ||
-                new_cells[i].s != old_cells[i].s ||
-                new_cells[i].is_percent_label !=
-                    old_cells[i].is_percent_label;
-  }
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
 
+  // Panel 0 — "BTC/SUPPLY" label. Static after first paint.
+  slots[0] =
+      PaintSlot{PaintSlot::kLabelSplit, "BTC/SUPPLY", nullptr, 0, 0};
+  update[0] = full_refresh;
+
+  // Digit / group cells. Single-char → kDigit (180 px digit font).
+  // 3-char group → kSmallGroup (90 px small_chars font). The percent
+  // marker on the trailing panel paints as a "%" digit cell — matches
+  // the pre-refactor inline DrawTextCentered with digit font at 180 pt.
   for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, 1 + i);
-    ClearFb(lfb, /*white=*/true);
+    const size_t panel_idx = 1 + i;
     const auto& cell = new_cells[i];
     if (cell.is_percent_label) {
-      // " % " label on the trailing panel — paint at split-text scale so
-      // it reads as a unit label, not a digit (matches the fee-rate
-      // "sat/vB" trailing-label pattern).
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, "%",
-                       "%", fonts.antonio(), 180.0f, /*white_text=*/false);
-    } else if (!cell.s.empty() && cell.s != " ") {
-      // Single char → full-size digit; 3-char group → medium font so
-      // "NNN" fits panel-width, matching old firmware showChars dispatch
-      // (fontBig for len==1, fontMedium for len>1).
-      const float pt = (cell.s.size() == 1) ? 180.0f : 90.0f;
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                       cell.s.c_str(), kDigitRef, fonts.antonio(), pt,
-                       /*white_text=*/false);
+      slots[panel_idx] =
+          PaintSlot{PaintSlot::kDigit, std::string("%"), nullptr, 0, 0};
+    } else if (cell.s.empty()) {
+      slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
+    } else if (cell.s.size() == 1) {
+      // Single char → full-size digit. A ' ' here short-circuits to
+      // no-paint in PaintSlotIntoFb (kDigit).
+      slots[panel_idx] =
+          PaintSlot{PaintSlot::kDigit, cell.s, nullptr, 0, 0};
+    } else {
+      // 3-char group → medium font so "NNN" fits panel-width.
+      slots[panel_idx] =
+          PaintSlot{PaintSlot::kSmallGroup, cell.s, nullptr, 0, 0};
     }
+    update[panel_idx] = full_refresh ||
+                        new_cells[i].s != old_cells[i].s ||
+                        new_cells[i].is_percent_label !=
+                            old_cells[i].is_percent_label;
   }
 
-  const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-  }
-  if (full_refresh) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->WaitForRefresh();
-  }
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
 }
 
 template void RenderBitcoinSupplyScreen<7>(

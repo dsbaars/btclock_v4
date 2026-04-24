@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+#include <initializer_list>
+
 #include "app/screen_slot_map.hpp"
 
 namespace sm = btclock::slot_map;

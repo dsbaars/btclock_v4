@@ -1,4 +1,4 @@
-#include "app/led_controller.hpp"
+#include "io/led_controller.hpp"
 
 #include <algorithm>
 #include <array>
@@ -7,7 +7,7 @@
 #include <functional>
 #include <mutex>
 
-#include "app/led_curves.hpp"
+#include "io/led_curves.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"

@@ -1,4 +1,4 @@
-#include "app/frontlight_controller.hpp"
+#include "io/frontlight_controller.hpp"
 
 #include <cassert>
 

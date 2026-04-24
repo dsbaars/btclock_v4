@@ -64,8 +64,9 @@ add_executable(btclock_host_tests
     test_wifi_outage_watchdog.cpp
     test_bh1750_math.cpp
     test_light_metrics.cpp
-    ../main/app/frontlight_fader.cpp
-    ../main/app/led_curves.cpp
+    test_font_roles.cpp
+    ../main/io/frontlight_fader.cpp
+    ../main/io/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
     ../main/screens/assets/pool_logos.cpp

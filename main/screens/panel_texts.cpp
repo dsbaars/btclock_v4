@@ -101,11 +101,16 @@ double PriceDoubleLocal(const std::string& price_str) {
 
 // UTF-8 currency symbol for the given ISO code, or "" if none available.
 // Mirrors common.cpp's CurrencySymbolUtf8 (kept local for header purity).
+// CAD / AUD share $; CHF has no single-char glyph so the renderer gets
+// the ISO code — it'll fit in the currency-separator slot.
 const char* CurrencySymbolLocal(const std::string& ccy) {
   if (ccy == "USD") return "$";
   if (ccy == "EUR") return "\xE2\x82\xAC";
   if (ccy == "GBP") return "\xC2\xA3";
   if (ccy == "JPY") return "\xC2\xA5";
+  if (ccy == "CAD") return "$";
+  if (ccy == "AUD") return "$";
+  if (ccy == "CHF") return "CHF";
   return "";
 }
 
@@ -525,8 +530,8 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats) {
   if (!amount_sats || *amount_sats < 0) return "?";
   const int64_t v = *amount_sats;
   if (v < 1000) {
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v));
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(v));
     return buf;
   }
   double x = static_cast<double>(v);

@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-#include "app/frontlight_fader.hpp"
+#include "io/frontlight_fader.hpp"
 
 using btclock::FrontlightFader;
 

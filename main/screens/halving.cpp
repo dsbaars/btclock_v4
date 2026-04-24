@@ -1,5 +1,6 @@
 #include "screens/screens.hpp"
 
+#include <array>
 #include <cstdio>
 #include <string>
 
@@ -12,6 +13,7 @@ namespace btclock {
 //
 //   as_blocks=true  — blocks-remaining; panel 0 "HAL/VING" label,
 //                     remaining panels carry right-justified digits.
+//                     Uses the shared PaintDataScreen helper.
 //   as_blocks=false — time breakdown; panels 0..1 carry "BIT/COIN"
 //                     + "HAL/VING" split-text headers, panels 2..5
 //                     carry "N/YRS", "N/DAYS", "N/HRS", "N/MINS",
@@ -19,8 +21,10 @@ namespace btclock {
 //
 // Time-mode uses DrawSplitText for per-panel "N/UNIT" labels so both
 // the number and the unit suffix share the panel — same split-text
-// style the FEE/RATE and BIT/COIN headers use. Diff-based partial
-// refresh keeps only changed panels repainting.
+// style the FEE/RATE and BIT/COIN headers use. It stays out of
+// PaintDataScreen per plan D.4: every panel is an ad-hoc per-screen
+// split and wiring each into a PaintSlot doesn't remove meaningful
+// duplication vs. just keeping the existing DrawSplitText loop.
 
 namespace {
 
@@ -41,9 +45,9 @@ std::array<std::string, 7> TimeModeSlots(uint32_t block_height) {
 }
 
 // Paint a "N/UNIT" slot as two-line split text so the number stays big
-// and the unit label (UNIT) floats underneath. Uses the digit font
-// (antonio) so the WASM preview's font-family swap carries through —
-// see block_height.cpp for the full Bug 1 note.
+// and the unit label (UNIT) floats underneath. Uses the label role so
+// the user's `fontName` pick flows through — see block_height.cpp for
+// the Bug 1 note.
 void DrawSlashSplit(auto& lfb, const AppFonts& fonts,
                     const std::string& cell) {
   const std::size_t slash = cell.find('/');
@@ -53,17 +57,17 @@ void DrawSlashSplit(auto& lfb, const AppFonts& fonts,
     DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
                      cell.c_str(),
                      "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                     fonts.antonio(), 54.0f, /*white_text=*/false);
+                     fonts.label(), 54.0f, /*white_text=*/false);
     return;
   }
   const std::string top = cell.substr(0, slash);
   const std::string bot = cell.substr(slash + 1);
-  // Inherit the digit font so split-text slots follow the user's
-  // font pick in the preview (Bug 1 — see block_height.cpp).
+  // Label role so split-text slots follow the user's font pick in the
+  // preview (Bug 1 — see block_height.cpp).
   DrawSplitText(lfb, lfb.native_width, lfb.native_height,
                 top.c_str(), bot.c_str(),
                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                fonts.antonio(), 54.0f, /*white_text=*/false);
+                fonts.label(), 54.0f, /*white_text=*/false);
 }
 
 }  // namespace
@@ -79,17 +83,6 @@ void RenderHalvingScreen(
   const bool full_refresh = (prev_height == 0);
 
   if (as_blocks) {
-    if (full_refresh) {
-      auto lfb = PrepFb(panels, fb_storage, 0);
-      ClearFb(lfb, /*white=*/true);
-      // Inherit the digit font so the label follows the preview font
-      // pick (Bug 1 — see block_height.cpp).
-      DrawSplitText(lfb, lfb.native_width, lfb.native_height, "HAL",
-                    "VING",
-                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                    fonts.antonio(), 54.0f, /*white_text=*/false);
-    }
-
     const uint32_t now_rem = HalvingCountdown(block_height);
     const uint32_t prev_rem =
         full_refresh ? 0 : HalvingCountdown(prev_height);
@@ -99,35 +92,24 @@ void RenderHalvingScreen(
     FormatDigits(now_rem, new_digits, kDigitPanels);
     if (!full_refresh) FormatDigits(prev_rem, old_digits, kDigitPanels);
 
-    std::array<bool, kDigitPanels> update{};
+    std::array<PaintSlot, N> slots{};
+    std::array<bool, N> update{};
+
+    // Panel 0 — "HAL/VING" label. Static after first paint.
+    slots[0] = PaintSlot{PaintSlot::kLabelSplit, "HAL/VING", nullptr, 0, 0};
+    update[0] = full_refresh;
+
+    // Digit panels 1..N-1 — right-justified blocks-remaining. ' ' pad
+    // cells short-circuit to no paint inside kDigit.
     for (size_t i = 0; i < kDigitPanels; ++i) {
-      update[i] = full_refresh || new_digits[i] != old_digits[i];
+      const size_t panel_idx = 1 + i;
+      slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                   std::string(1, new_digits[i]),
+                                   nullptr, 0, 0};
+      update[panel_idx] = full_refresh || new_digits[i] != old_digits[i];
     }
 
-    for (size_t i = 0; i < kDigitPanels; ++i) {
-      if (!update[i]) continue;
-      auto lfb = PrepFb(panels, fb_storage, 1 + i);
-      ClearFb(lfb, /*white=*/true);
-      if (new_digits[i] != ' ') {
-        const char one[2] = {new_digits[i], '\0'};
-        DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                         kDigitRef, fonts.antonio(), 180.0f,
-                         /*white_text=*/false);
-      }
-    }
-
-    const RefreshKind kind =
-        full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-    if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-    for (size_t i = 0; i < kDigitPanels; ++i) {
-      if (!update[i]) continue;
-      panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-    }
-    if (full_refresh) panels[0]->WaitForRefresh();
-    for (size_t i = 0; i < kDigitPanels; ++i) {
-      if (!update[i]) continue;
-      panels[1 + i]->WaitForRefresh();
-    }
+    PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
     return;
   }
 
@@ -136,6 +118,10 @@ void RenderHalvingScreen(
   // "BIT/COIN|HAL/VING" header stays glued and slot 2 (the first digit
   // position on the 7-panel form) becomes blank on the 8-panel form.
   // This mirrors what panel_texts.cpp emits for the WebUI status.
+  //
+  // Stays outside PaintDataScreen per plan D.4: every panel is a per-
+  // slot DrawSplitText with slot-specific content that doesn't fit the
+  // label/digit/unit shape the helper was designed around.
   const auto new_slots = TimeModeSlots(block_height);
   const auto old_slots = full_refresh
                              ? std::array<std::string, 7>{}

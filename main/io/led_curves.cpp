@@ -1,4 +1,4 @@
-#include "app/led_curves.hpp"
+#include "io/led_curves.hpp"
 
 #include <cctype>
 #include <cstdio>

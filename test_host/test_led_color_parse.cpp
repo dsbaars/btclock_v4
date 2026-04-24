@@ -10,7 +10,7 @@
 #include <cstring>
 #include <string_view>
 
-#include "app/led_curves.hpp"
+#include "io/led_curves.hpp"
 
 using btclock::led_curves::FormatHexColor;
 using btclock::led_curves::ParseHexColor;

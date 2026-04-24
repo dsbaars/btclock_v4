@@ -128,10 +128,18 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     }
   }
   {
+    // Legacy NVS blobs may carry codes that are no longer in
+    // availableCurrencies (e.g. older firmware exposed CNY/BRL/AED).
+    // Filter to the current catalogue so the WebUI's "active" picker
+    // doesn't display options that the upstream price feed can't serve
+    // and that PATCH would later reject.
     const std::string csv =
         prefs.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+    std::set<std::string> valid;
+    for (const auto& c : ctx.available_currencies) valid.insert(c);
     cJSON* arr = cJSON_AddArrayToObject(root, "actCurrencies");
     for (const auto& code : SplitCsv(csv)) {
+      if (!valid.empty() && !valid.count(code)) continue;
       cJSON_AddItemToArray(arr, cJSON_CreateString(code.c_str()));
     }
   }
@@ -441,9 +449,13 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
   }
 
   // actCurrencies: WebUI sends an array of codes. Validate + CSV-join
-  // before persisting to match the stored form. Unknown codes are
-  // rejected so the UI can't write garbage into the active-currency
-  // rotation list.
+  // before persisting to match the stored form. Unknown codes (e.g. a
+  // stale cached client still sending a currency that was in an older
+  // availableCurrencies list) are silently dropped rather than failing
+  // the whole PATCH — the GET response filters legacy NVS entries the
+  // same way, so accepting a partial write keeps upgrades smooth.
+  // Type errors (non-string entries) still hard-fail because they
+  // indicate a malformed client, not a catalogue drift.
   {
     cJSON* cur = cJSON_GetObjectItemCaseSensitive(root, "actCurrencies");
     if (cJSON_IsArray(cur)) {
@@ -458,12 +470,7 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
           return result;
         }
         std::string code = it->valuestring;
-        if (!valid.empty() && !valid.count(code)) {
-          result.status = PatchStatus::kBadRequest;
-          result.error = "currency:unknown";
-          cJSON_Delete(root);
-          return result;
-        }
+        if (!valid.empty() && !valid.count(code)) continue;  // drop unknown
         if (!joined.empty()) joined.push_back(',');
         joined.append(code);
       }

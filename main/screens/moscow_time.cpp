@@ -1,5 +1,8 @@
 #include "screens/screens.hpp"
 
+#include <array>
+#include <string>
+
 #include "screens/common.hpp"
 
 namespace btclock {
@@ -28,25 +31,6 @@ void RenderMoscowTimeScreen(
   const int32_t new_sats = SatsPerUnit(price);
   const int32_t old_sats = full_refresh ? -1 : SatsPerUnit(prev_price);
 
-  // Panel 0 — label. USD in the classic Moscow-time range (> 1 USD per
-  // sat) gets "MSCW/TIME"; otherwise "SATS/<CCY>". Label doesn't change
-  // across price updates within the same range, so only on full refresh.
-  if (full_refresh) {
-    auto lfb = PrepFb(panels, fb_storage, 0);
-    ClearFb(lfb, /*white=*/true);
-    // useMscwTime=false forces SATS/<CCY> regardless of range — matches
-    // the old firmware's opt-out (some users prefer the uniform label).
-    const bool moscow =
-        use_mscw_time && currency == "USD" && new_sats > 0 && new_sats < 100000;
-    const char* top = moscow ? "MSCW" : "SATS";
-    const char* bot = moscow ? "TIME" : currency.c_str();
-    // Inherit the digit font so the WASM preview's swappable antonio
-    // slot carries the label too (Bug 1 — see block_height.cpp).
-    DrawSplitText(lfb, lfb.native_width, lfb.native_height, top, bot,
-                  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                  fonts.antonio(), 54.0f, /*white_text=*/false);
-  }
-
   // use_sats_symbol=false feeds `use_symbol=false` into the layout so
   // the marker cell never gets flagged — the EPD paints a blank there.
   const auto now =
@@ -56,50 +40,43 @@ void RenderMoscowTimeScreen(
 
   const auto glyph = SatsGlyphUtf8(sats_variant);
 
-  // Sats-glyph pixel-height is deliberately lower than the digit height.
-  // The Satoshi Symbol font fills its em-box (ink width ≈ em-width), so
-  // rendering it at the digit pixel-height would leave much less visual
-  // margin around the glyph than Antonio digits get around themselves.
-  // 130 keeps the glyph the same vertical size as digit ink (both ≈
-  // 120-130 px) while shrinking the horizontal ink so symmetric panel
-  // centering yields margins close to digit-panel margins — no manual
-  // x-shift needed.
-  constexpr float kSatsPixelHeight = 130.0f;
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
 
-  std::array<bool, kDigitPanels> update{};
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    update[i] = full_refresh ||
-                now.digits[i] != before.digits[i] ||
-                now.is_sats[i] != before.is_sats[i];
-  }
+  // Panel 0 — label. USD in the classic Moscow-time range (> 1 USD per
+  // sat) gets "MSCW/TIME"; otherwise "SATS/<CCY>". useMscwTime=false
+  // forces SATS/<CCY> regardless of range — matches the old firmware's
+  // opt-out (some users prefer the uniform label). Label doesn't change
+  // across price updates within the same range, so only paint on full
+  // refresh — mirrors the pre-refactor "if (full_refresh)" guard.
+  const bool moscow =
+      use_mscw_time && currency == "USD" && new_sats > 0 && new_sats < 100000;
+  const std::string label_text =
+      moscow ? std::string("MSCW/TIME") : (std::string("SATS/") + currency);
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit, label_text, nullptr, 0, 0};
+  update[0] = full_refresh;
 
+  // Digit panels — right-justified across `kDigitPanels` cells starting
+  // at panel 1. `is_sats[i]` flags the sats-glyph cell one slot before
+  // the first digit; paint it via kSatsGlyph at the sats_glyph-specific
+  // pixel height. Blank pad cells stay blank after ClearFb.
   for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    auto lfb = PrepFb(panels, fb_storage, 1 + i);
-    ClearFb(lfb, /*white=*/true);
+    const size_t panel_idx = 1 + i;
     if (now.is_sats[i]) {
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                       glyph.c_str(), glyph.c_str(), fonts.sats_symbol(),
-                       kSatsPixelHeight, /*white_text=*/false);
-    } else if (now.digits[i] != ' ') {
-      const char one[2] = {now.digits[i], '\0'};
-      DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                       kDigitRef, fonts.antonio(), 180.0f, false);
+      slots[panel_idx] = PaintSlot{PaintSlot::kSatsGlyph,
+                                   std::string(glyph.c_str()),
+                                   nullptr, 0, 0};
+    } else {
+      slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
+                                   std::string(1, now.digits[i]),
+                                   nullptr, 0, 0};
     }
+    update[panel_idx] = full_refresh ||
+                        now.digits[i] != before.digits[i] ||
+                        now.is_sats[i] != before.is_sats[i];
   }
 
-  const RefreshKind kind =
-      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
-  if (full_refresh) panels[0]->DrawFramebufferStart(fb_storage[0], kind);
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->DrawFramebufferStart(fb_storage[1 + i], kind);
-  }
-  if (full_refresh) panels[0]->WaitForRefresh();
-  for (size_t i = 0; i < kDigitPanels; ++i) {
-    if (!update[i]) continue;
-    panels[1 + i]->WaitForRefresh();
-  }
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh);
 }
 
 template void RenderMoscowTimeScreen<7>(

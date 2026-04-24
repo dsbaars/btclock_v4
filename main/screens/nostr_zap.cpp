@@ -103,7 +103,7 @@ void RenderNostrZapScreen(
   // one-off overlay. FitTextPx shrinks only if the word wouldn't fit;
   // at 140 px cap "ZAP" sits comfortably within panel width.
   PaintCentered(panels, fb_storage, kLabelSlot, "ZAP",
-                fonts.antonio(), /*max_px=*/140.0f, /*min_px=*/40.0f,
+                fonts.label(), /*max_px=*/140.0f, /*min_px=*/40.0f,
                 /*ref_chars=*/kLabelRef);
 
   // Amount spreads across every tail cell — no message snippet, no
@@ -128,7 +128,7 @@ void RenderNostrZapScreen(
       PaintBlank(panels, fb_storage, slot);
     } else {
       const char one[2] = {glyph, '\0'};
-      PaintCentered(panels, fb_storage, slot, one, fonts.antonio(),
+      PaintCentered(panels, fb_storage, slot, one, fonts.digit(),
                     /*max_px=*/110.0f, /*min_px=*/24.0f,
                     /*ref_chars=*/kZapRef);
     }

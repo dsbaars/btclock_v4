@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 #include "font.hpp"
 
@@ -64,19 +65,38 @@ class AppFonts {
  public:
   AppFonts();
 
-  const Font& antonio() const { return antonio_; }
-  const Font& oswald() const { return oswald_; }
+  // Kept callable because debug.cpp and provisioning_ui.cpp render
+  // preformatted text (IP addresses, status lines) whose typography is
+  // hard-coded to DejaVu. show_custom.cpp's split-text path is locked
+  // to Oswald-bold by the custom-label feature spec. Every other
+  // surface reaches for the role accessors below.
   const Font& oswald_bold() const { return oswald_bold_; }
   const Font& dejavu() const { return dejavu_; }
   const Font& dejavu_bold() const { return dejavu_bold_; }
-  // Subsetted to just the sats prefix glyph — only call for the literal
-  // letter "S" when you want the sats marker rendered.
-  const Font& sats_symbol() const { return sats_symbol_; }
   // Material Design Icons subsetted to the few glyphs the firmware
   // paints (lightning-bolt, pickaxe, rocket-launch at the time of
   // writing). Pass the codepoints from mdi_codepoints.hpp. See
   // tools/fonts/regen_mdi.sh to add more.
   const Font& mdi() const { return mdi_; }
+
+  // Role-based accessors. Screens should reach for these rather than the
+  // named accessors above so the selectable `fontName` preference can
+  // rebind families at runtime without every call site knowing which
+  // family is active. `icon` and `sats_glyph` are locked to the
+  // dedicated subsetted fonts — they carry glyphs the family fonts
+  // don't have.
+  const Font& digit() const { return *role_digit_; }
+  const Font& label() const { return *role_label_; }
+  const Font& small_chars() const { return *role_small_chars_; }
+  const Font& unit() const { return *role_unit_; }
+  const Font& icon() const { return *role_icon_; }
+  const Font& sats_glyph() const { return *role_sats_glyph_; }
+
+  // Rebind the four swappable roles (digit/label/small_chars/unit) to
+  // the given family. `icon` and `sats_glyph` stay on their dedicated
+  // fonts. Called from init_screen_manager at boot (reads NVS) and
+  // from the PATCH /api/settings `fontName` hook at runtime.
+  void SetFamily(FontFamily f);
 
   // Resolve a FontFamily into its (regular, bold) pair. Antonio has no
   // separate bold variant — its regular is used for both roles; callers
@@ -91,6 +111,26 @@ class AppFonts {
   Font dejavu_bold_;
   Font sats_symbol_;
   Font mdi_;
+
+  // Role bindings. Default all four swappable roles to Antonio so boot
+  // before SetFamily() call is identical to the historical behaviour.
+  const Font* role_digit_ = &antonio_;
+  const Font* role_label_ = &antonio_;
+  const Font* role_small_chars_ = &antonio_;
+  const Font* role_unit_ = &antonio_;
+  const Font* role_icon_ = &mdi_;
+  const Font* role_sats_glyph_ = &sats_symbol_;
 };
+
+// Map the NVS `fontName` string ("antonio" / "oswald" / "dejavu") to a
+// FontFamily. Unknown values fall back to kAntonio — the day-1 default
+// that every built-in screen was tuned against. Defined inline so host
+// tests can call it without linking AppFonts (whose ctor references
+// TTF-blob symbols that only exist in an IDF build).
+inline FontFamily ParseFontFamily(const std::string& id) {
+  if (id == "oswald") return FontFamily::kOswald;
+  if (id == "dejavu") return FontFamily::kDejaVu;
+  return FontFamily::kAntonio;
+}
 
 }  // namespace btclock

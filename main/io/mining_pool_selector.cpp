@@ -1,4 +1,4 @@
-#include "app/mining_pool_selector.hpp"
+#include "io/mining_pool_selector.hpp"
 
 #include <string>
 

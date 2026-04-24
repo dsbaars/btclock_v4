@@ -8,7 +8,7 @@
 
 #include <cstdint>
 
-#include "app/led_curves.hpp"
+#include "io/led_curves.hpp"
 
 using btclock::led_curves::Breath;
 using btclock::led_curves::Ramp;

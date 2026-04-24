@@ -165,14 +165,14 @@ token pointing at the follow-up issue.
 | `GET /api/version` (hw/fw/idf) | status.cpp (nested) | provisioning_server.cpp | Implemented | — |
 | Captive-portal DNS hijack | WiFiManager | [dns_hijack.cpp](../components/webserver/dns_hijack.cpp) | Implemented | — |
 | mDNS advertisement (`http._tcp`) | webserver.cpp `MDNS.begin(...)` | — | Missing | `btclock_v3_fci-equ` |
-| Auto-reconnect + 10-minute reboot on WiFi loss | main.cpp `checkWiFiConnection` | [wifi_guard.cpp](../main/app/wifi_guard.cpp) (block-until-connected only) | Partial: no long-outage reboot timer | `btclock_v3_fci-79f` |
+| Auto-reconnect + 10-minute reboot on WiFi loss | main.cpp `checkWiFiConnection` | [wifi_guard.cpp](../main/io/wifi_guard.cpp) (block-until-connected only) | Partial: no long-outage reboot timer | `btclock_v3_fci-79f` |
 
 ## LED + light subsystems
 
 Old firmware is in
 [`src/lib/drivers/leds/led_handler.cpp`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/leds/led_handler.cpp)
 (3-in-1: NeoPixel state, DND, frontlight/PCA9685 fade). IDF PoC's
-[`app/led_controller.cpp`](../main/app/led_controller.cpp) now carries the
+[`io/led_controller.cpp`](../main/io/led_controller.cpp) now carries the
 production-path subset of the effect catalog plus NVS-backed prefs for
 brightness / block-flash colour / disable / flash-on-update.
 
@@ -180,10 +180,10 @@ brightness / block-flash colour / disable / flash-on-update.
 |---|---|---|---|---|
 | NeoPixel FreeRTOS task + queue | led_handler.cpp | led_controller.cpp | Implemented | — |
 | Boot / idle / block-flash effects | led_handler.cpp `LED_FLASH_*` | led_controller.cpp | Implemented | — |
-| Full effect catalog (production subset — identify, zap, heartbeat, data errors, WiFi states, flash-{success,error,update}, boot-failed, power-test) | led_handler.cpp `LED_*` constants | [led_controller.cpp](../main/app/led_controller.cpp) + [led_curves.cpp](../main/app/led_curves.cpp) | Implemented (progress-25/50/75/100 + start/pause-timer intentionally not ported — old firmware's setup-timer flow isn't in the PoC) | `btclock_v3_fci-fxh` |
+| Full effect catalog (production subset — identify, zap, heartbeat, data errors, WiFi states, flash-{success,error,update}, boot-failed, power-test) | led_handler.cpp `LED_*` constants | [led_controller.cpp](../main/io/led_controller.cpp) + [led_curves.cpp](../main/io/led_curves.cpp) | Implemented (progress-25/50/75/100 + start/pause-timer intentionally not ported — old firmware's setup-timer flow isn't in the PoC) | `btclock_v3_fci-fxh` |
 | LED brightness + color + flash-on-update prefs (`DEFAULT_LED_BRIGHTNESS`, `BlockFlashColor`) | led_handler.cpp + defaults.hpp | led_controller.cpp — NVS namespace `"led"` keys `brightness`/`blockFlashCol`/`disable`/`flashUpdate` | Implemented | — |
 | `DisableLeds` NVS toggle | defaults.hpp | led_controller.cpp — `"led"/"disable"` | Implemented | — |
-| Frontlight PCA9685 channels init | led_handler.cpp `#ifdef HAS_FRONTLIGHT` | [frontlight_controller.cpp](../main/app/frontlight_controller.cpp) drives fade on boot | Implemented | `btclock_v3_fci-7ma` |
+| Frontlight PCA9685 channels init | led_handler.cpp `#ifdef HAS_FRONTLIGHT` | [frontlight_controller.cpp](../main/io/frontlight_controller.cpp) drives fade on boot | Implemented | `btclock_v3_fci-7ma` |
 | Frontlight fade + flash-on-block + flash-on-zap | led_handler.cpp `frontlightFadeIn/OutAll` | frontlight_controller.cpp — fade + block-flash wired from `ConsumeNewBlock`; zap-flash event exposed but no Nostr source to trigger it yet | Partial: zap-flash awaits Nostr source (`btclock_v3_fci-lcw`) | `btclock_v3_fci-7ma` |
 | Ambient-light auto-off (BH1750) | main.cpp `handleFrontlight` | main.cpp heartbeat feeds lux to `FrontlightController::OnAmbientLux`; threshold runtime-configurable, NVS persistence deferred | Partial: no NVS persistence of threshold/enable | `btclock_v3_fci-7ma`, `btclock_v3_fci-jwz` |
 | NeoPixel zap-flash trigger wiring | led_handler.cpp `LED_EFFECT_NOSTR_ZAP` | led_controller.cpp exposes `LedEffect::kZap`; call site in main.cpp stubbed with `TODO(zap-wiring)` | Partial: effect ported, awaits `ZapListener` callback in nostr init path | `btclock_v3_fci-fxh`, `btclock_v3_fci-lcw` |

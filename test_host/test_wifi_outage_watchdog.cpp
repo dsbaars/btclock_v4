@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include "app/wifi_guard.hpp"
+#include "io/wifi_guard.hpp"
 
 TEST_CASE("ShouldOutageReboot: zero outage_minutes disables the watchdog") {
   // Even hours of disconnect must not reboot when the user sets 0.

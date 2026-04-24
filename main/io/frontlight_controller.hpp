@@ -23,7 +23,7 @@
 #include <cstdint>
 #include <functional>
 
-#include "app/frontlight_fader.hpp"
+#include "io/frontlight_fader.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "pca9685.hpp"

@@ -6,6 +6,8 @@
 // stale 0 / null readout), and emit it as a one-decimal float when
 // one is.
 
+#include <string>
+
 #include "cJSON.h"
 #include "doctest.h"
 #include "light_metrics.hpp"
