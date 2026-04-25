@@ -23,15 +23,15 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 }  // namespace
 
 void InitNetwork(AppCtx& ctx) {
   Prefs net_prefs("net");
   const std::string ssid =
-      net_prefs.GetString("ssid", CONFIG_POC_WIFI_SSID);
+      net_prefs.GetString("ssid", CONFIG_BTCLOCK_WIFI_SSID);
   const std::string pw =
-      net_prefs.GetString("pw", CONFIG_POC_WIFI_PASSWORD);
+      net_prefs.GetString("pw", CONFIG_BTCLOCK_WIFI_PASSWORD);
 
   ctx.wifi = std::make_unique<Wifi>();
   ctx.sta_ssid = ssid;
@@ -73,7 +73,7 @@ void InitNetwork(AppCtx& ctx) {
           np.SetString("ssid", new_ssid.c_str());
           np.SetString("pw", new_pw.c_str());
           np.Commit();
-          ESP_LOGI("poc", "creds saved; rebooting");
+          ESP_LOGI("btclock", "creds saved; rebooting");
           vTaskDelay(pdMS_TO_TICKS(1000));
           esp_restart();
         });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# build.sh — compile the IDF-port's screen stack to WebAssembly.
+# build.sh — compile the firmware's screen stack to WebAssembly.
 #
 # Two bindings families ship in the same blob (see binding.cpp):
 #   - parse*               : text-mode, pure-logic helpers only
@@ -17,16 +17,15 @@
 #   1. Install emsdk (https://emscripten.org/docs/getting_started/downloads.html)
 #      or `brew install emscripten`.
 #   2. If using emsdk:  source ~/emsdk/emsdk_env.sh
-#   3. Run:              ./idf_cpp_proto/tools/wasm/build.sh
-#   4. Serve:            python3 -m http.server 8000 --directory idf_cpp_proto/tools/wasm
+#   3. Run:              ./tools/wasm/build.sh
+#   4. Serve:            python3 -m http.server 8000 --directory tools/wasm
 #      then visit        http://localhost:8000/preview.html
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# tools/wasm/ → repo root is two levels up. btclock_v4 keeps main/,
-# components/, etc. at the top (the old idf_cpp_proto/ intermediate
-# directory is gone post-extraction).
+# tools/wasm/ → repo root is two levels up. main/, components/, etc.
+# live at the top of the tree.
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SCREENS_DIR="${REPO_ROOT}/main/screens"
 MAIN_DIR="${REPO_ROOT}/main"

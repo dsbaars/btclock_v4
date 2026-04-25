@@ -1,7 +1,7 @@
 // HTTP control-API server — the runtime counterpart to the provisioning
 // portal. Started in STA mode after WiFi comes up. Mirrors the endpoints
 // exposed by the production firmware (src/lib/net/webserver/*) so the
-// existing WebUI in data/ can drive the IDF PoC unchanged.
+// existing WebUI in data/ can drive the firmware unchanged.
 //
 // The endpoint surface is defined by data/static/swagger.yml. Endpoints
 // whose backing subsystem has not yet been ported to IDF (DND, lights,
@@ -317,6 +317,24 @@ class ControlServer {
     // mirrors reality — a stale "true" here would mask relay failures
     // from the WebUI's health indicator.
     std::function<bool()> nostr_connected;
+
+    // Live data-source connection state for the /api/status
+    // `connectionStatus.price` / `connectionStatus.blocks` / `V2`
+    // fields. Each callback returns the current connection state of the
+    // corresponding upstream:
+    //   * price_connected  — price channel (Kraken on dataSource=1,
+    //                        the v2 WS on dataSource=0)
+    //   * blocks_connected — blocks/fees channel (mempool.space on
+    //                        dataSource=1, the v2 WS on dataSource=0)
+    //   * v2_connected     — true only when the btclock_v2 source is the
+    //                        active source AND its socket is up
+    // All three are nullable. When null, the GET /api/status handler
+    // falls back to a "hub is wired" heuristic, which was the pre-bd
+    // behaviour and is approximately correct only on the v2 path.
+    // bd btclock_v4-1xc.
+    std::function<bool()> price_connected;
+    std::function<bool()> blocks_connected;
+    std::function<bool()> v2_connected;
 
     // Fires when PATCH /api/settings touches a runtime-editable nostr
     // key (`nostrZapPubkey`, `nostrZapNotify`, `ledFlashOnZap`,

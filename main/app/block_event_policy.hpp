@@ -29,15 +29,20 @@ struct BlockEventPolicy {
   //   - steal_focus=false → never steal.
   //   - Already on kBlockHeight → no-op (the normal render path will
   //     refresh the digits).
-  //   - Transient overlays (kDebug, kCustom, kNostrZap) are respected
-  //     — the user or a pending notification owns the screen, so a
-  //     block arrival must not yank them off.
+  //   - kDebug + kNostrZap are respected: kDebug means the user is
+  //     mid-debug and a yank would lose context; kNostrZap is a short-
+  //     lived overlay with its own timeout that auto-restores the prior
+  //     screen, so layering a steal underneath would skip the restore.
+  //   - kCustom is NOT protected — a /api/show/text override is sticky
+  //     until the next nav, but stealFocus is the user opting into
+  //     "yes, please yank me off whatever I'm on when a block lands".
+  //     A custom-text screen would otherwise stay up forever even
+  //     though stealFocus is on.
   static constexpr bool ShouldSteal(bool steal_focus, ScreenType current) {
     if (!steal_focus) return false;
     switch (current) {
       case ScreenType::kBlockHeight:
       case ScreenType::kDebug:
-      case ScreenType::kCustom:
       case ScreenType::kNostrZap:
         return false;
       default:

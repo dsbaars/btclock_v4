@@ -1,0 +1,10 @@
+# BTClock v4 NVS pre-seed: frontlight enabled + white-on-black
+# Namespace and keys must match components/settings/include/settings/pref_keys.hpp.
+# Boolean prefs are stored as u32 (Prefs::SetBool delegates to nvs_set_u32).
+# Color values follow GxEPD2: 0xFFFF = white, 0x0000 = black.
+key,type,encoding,value
+settings,namespace,,
+flDisable,data,u32,0
+invertedColor,data,u32,1
+fgColor,data,u32,65535
+bgColor,data,u32,0

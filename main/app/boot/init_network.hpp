@@ -2,7 +2,7 @@
 // and the long-outage soft watchdog.
 //
 // Reads the STA credentials from NVS namespace "net" (keys "ssid",
-// "pw") with a fallback to CONFIG_POC_WIFI_* sdkconfig values. Empty
+// "pw") with a fallback to CONFIG_BTCLOCK_WIFI_* sdkconfig values. Empty
 // SSID puts the device in SoftAP provisioning mode: a generated
 // BTClock-XXXX SSID + persistent random password, a captive
 // ProvisioningServer, and a DNS hijack that sends every query to the

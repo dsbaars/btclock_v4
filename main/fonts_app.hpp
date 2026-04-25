@@ -1,8 +1,9 @@
 // Application-side font bundle.
 //
 // Loads every TTF the firmware ships and exposes them both by name
-// (antonio / oswald / dejavu) and via a selectable FontFamily enum
-// that the production firmware's `fontName` preference maps to.
+// (antonio / oswald / inter / sourceSerif / merriweather / bitter /
+// atkinson) and via a selectable FontFamily enum that the production
+// firmware's `fontName` preference maps to.
 
 #pragma once
 
@@ -50,10 +51,19 @@ inline SatsGlyphUtf8Buf SatsGlyphUtf8(uint8_t variant) {
   return out;
 }
 
+// Numeric ids are intentionally stable across builds so the WASM
+// binding's setRenderOptions(panels, font_family) selector and the WebUI
+// dropdown can map by integer id without reaching for a string table.
+// Order: 0 antonio, 1 oswald, 2 inter, 3 sourceSerif, 4 merriweather,
+// 5 bitter, 6 atkinson — matches preview.html's <option value=…>.
 enum class FontFamily : uint8_t {
   kAntonio = 0,
   kOswald = 1,
-  kDejaVu = 2,
+  kInter = 2,
+  kSourceSerif = 3,
+  kMerriweather = 4,
+  kBitter = 5,
+  kAtkinson = 6,
 };
 
 struct FontBundle {
@@ -67,12 +77,15 @@ class AppFonts {
 
   // Kept callable because debug.cpp and provisioning_ui.cpp render
   // preformatted text (IP addresses, status lines) whose typography is
-  // hard-coded to DejaVu. show_custom.cpp's split-text path is locked
-  // to Oswald-bold by the custom-label feature spec. Every other
-  // surface reaches for the role accessors below.
+  // hard-coded to the body-text font. Atkinson Hyperlegible is the
+  // designated body face since it's purpose-built for legibility at
+  // small sizes on low-DPI displays — the role DejaVu used to fill.
+  // show_custom.cpp's split-text path is locked to Oswald-bold by the
+  // custom-label feature spec. Every other surface reaches for the role
+  // accessors below.
   const Font& oswald_bold() const { return oswald_bold_; }
-  const Font& dejavu() const { return dejavu_; }
-  const Font& dejavu_bold() const { return dejavu_bold_; }
+  const Font& atkinson() const { return atkinson_; }
+  const Font& atkinson_bold() const { return atkinson_bold_; }
   // Material Design Icons subsetted to the few glyphs the firmware
   // paints (lightning-bolt, pickaxe, rocket-launch at the time of
   // writing). Pass the codepoints from mdi_codepoints.hpp. See
@@ -100,15 +113,24 @@ class AppFonts {
 
   // Resolve a FontFamily into its (regular, bold) pair. Antonio has no
   // separate bold variant — its regular is used for both roles; callers
-  // that specifically need bold markup should use Oswald or DejaVu.
+  // that specifically need bold markup should use Oswald or any of the
+  // serif/legible families.
   FontBundle Bundle(FontFamily f) const;
 
  private:
   Font antonio_;
   Font oswald_;
   Font oswald_bold_;
-  Font dejavu_;
-  Font dejavu_bold_;
+  Font inter_;
+  Font inter_bold_;
+  Font source_serif_;
+  Font source_serif_bold_;
+  Font merriweather_;
+  Font merriweather_bold_;
+  Font bitter_;
+  Font bitter_bold_;
+  Font atkinson_;
+  Font atkinson_bold_;
   Font sats_symbol_;
   Font mdi_;
 
@@ -122,14 +144,21 @@ class AppFonts {
   const Font* role_sats_glyph_ = &sats_symbol_;
 };
 
-// Map the NVS `fontName` string ("antonio" / "oswald" / "dejavu") to a
+// Map the NVS `fontName` string ("antonio" / "oswald" / "inter" /
+// "sourceSerif" / "merriweather" / "bitter" / "atkinson") to a
 // FontFamily. Unknown values fall back to kAntonio — the day-1 default
-// that every built-in screen was tuned against. Defined inline so host
-// tests can call it without linking AppFonts (whose ctor references
-// TTF-blob symbols that only exist in an IDF build).
+// every built-in screen was tuned against. Devices upgrading from a
+// build that stored "dejavu" land here too: kAntonio is the safe fallback.
+// Defined inline so host tests can call it without linking AppFonts
+// (whose ctor references TTF-blob symbols that only exist in an IDF
+// build).
 inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "oswald") return FontFamily::kOswald;
-  if (id == "dejavu") return FontFamily::kDejaVu;
+  if (id == "inter") return FontFamily::kInter;
+  if (id == "sourceSerif") return FontFamily::kSourceSerif;
+  if (id == "merriweather") return FontFamily::kMerriweather;
+  if (id == "bitter") return FontFamily::kBitter;
+  if (id == "atkinson") return FontFamily::kAtkinson;
   return FontFamily::kAntonio;
 }
 

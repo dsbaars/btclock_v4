@@ -110,6 +110,12 @@ struct AppCtx {
   // list without poking through DataHub internals. Cleared in
   // sources.cpp::WireDataSources when AP-mode skips the source bring-up.
   BtclockDataSource* btclock_ws = nullptr;
+  // Non-owning back-ref to the mempool+kraken source when dataSource=1.
+  // Used by /api/status to surface the two channels' live connection
+  // state separately (price → kraken, blocks → mempool); null on every
+  // other dataSource path. Forward-declared instead of #included to
+  // keep app_ctx.hpp's include footprint small.
+  class MempoolKrakenSource* mempool_kraken = nullptr;
   std::unique_ptr<ScreenManager> sm;
   std::vector<std::string> currencies;
 

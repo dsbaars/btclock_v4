@@ -4,6 +4,7 @@
 #include "app/boot/helpers.hpp"
 #include "board/board.hpp"
 #include "boot_ui.hpp"
+#include "epd/factory.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -12,7 +13,7 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 }  // namespace
 
 void InitPanelsAndSplash(AppCtx& ctx) {
@@ -37,14 +38,21 @@ void InitPanelsAndSplash(AppCtx& ctx) {
 
   ctx.epd_bus.emplace(SPI2_HOST, kEpdSpiSclk, kEpdSpiMosi, kEpdDc,
                       4 * 1000 * 1000, 16 * 296 + 64);
+  // Driver dispatch is compile-time inside epd::CreatePanel — the
+  // factory keys off BTCLOCK_PANEL_<X> from the top-level CMakeLists.
+  // Default is GDEY0213B74 (2.13", 122x250); -DBTCLOCK_PANEL=2_9 swaps
+  // to GDEY029T94 (2.9", 128x296), -DBTCLOCK_PANEL=7_5 to GDEY075T7
+  // (7.5", 800x480). Pin straps (CS/DC/RST/BUSY) come from BoardConfig
+  // and are panel-agnostic, so any board × any panel configures.
+  // Multi-panel boards (V8) hold one driver instance per CS line, all
+  // bound to the same EpdBus.
   for (int i = 0; i < kNumPanels; ++i) {
-    EpdPanel::Config cfg = {};
-    cfg.bus = &*ctx.epd_bus;
-    cfg.cs = make_pin(kEpdCsSource, kEpdCs[i]);
-    cfg.busy = make_pin(kEpdBusySource, kEpdBusy[i]);
-    cfg.reset = make_pin(kEpdResetSource, kEpdResetMcp[i]);
-    cfg.kind = PanelKind::k2_13;
-    ctx.panels[i] = std::make_unique<EpdPanel>(cfg);
+    epd::PanelConfig pcfg = {};
+    pcfg.bus = &*ctx.epd_bus;
+    pcfg.cs = make_pin(kEpdCsSource, kEpdCs[i]);
+    pcfg.busy = make_pin(kEpdBusySource, kEpdBusy[i]);
+    pcfg.reset = make_pin(kEpdResetSource, kEpdResetMcp[i]);
+    ctx.panels[i] = epd::CreatePanel(pcfg);
   }
   for (auto& p : ctx.panels) ESP_ERROR_CHECK(p->Init());
 

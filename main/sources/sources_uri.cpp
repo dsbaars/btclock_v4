@@ -17,12 +17,13 @@ std::string BuildBtclockSourceUri(std::uint8_t data_source,
                                   bool disable_ssl) {
   // dataSource enum mirrors btclock_v3_fci/src/lib/system/defaults.hpp:
   //   0 = BTCLOCK_SOURCE (the public ws.btclock.dev v2 feed)
-  //   1 = mempool+kraken poller (bd-1xc, not implemented)
+  //   1 = mempool+kraken (separate source — see mempool_kraken_source.cpp;
+  //       WireDataSources doesn't consult this helper for ds=1)
   //   2 = CUSTOM endpoint (user-supplied via ceEndpoint)
-  //   3 = (legacy combo source, also not implemented)
-  // Anything other than 0 or 2 falls back to the public default; the
-  // caller logs a warning so this is visible on the serial console
-  // rather than silently masking a broken setting.
+  //   3 = (legacy combo source, not implemented)
+  // Anything other than 2 falls back to the public default; the caller
+  // logs a warning so this is visible on the serial console rather than
+  // silently masking a broken setting.
   if (data_source != 2) return kDefaultBtclockUri;
 
   // Defensive scheme-strip: users routinely paste a full URL into the

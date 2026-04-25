@@ -59,8 +59,8 @@ class NvsPrefs final : public PrefsReader, public PrefsWriter {
     prefs_.SetBool(key, value);
   }
   void Remove(const char* /*key*/) override {
-    // Prefs component doesn't expose nvs_erase_key yet; for the PoC we
-    // defer on this. The only caller is `txPower = 80` (reset to
+    // Prefs component doesn't expose nvs_erase_key yet; defer on this
+    // for now. The only caller is `txPower = 80` (reset to
     // default) and a follow-up can add Prefs::Remove when another
     // path also needs it.
   }

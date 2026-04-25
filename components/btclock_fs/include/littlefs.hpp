@@ -1,7 +1,7 @@
 #pragma once
 
 // Thin C++ wrapper around joltwallet/esp_littlefs. Keeps the API surface
-// small — three functions — so the rest of the PoC doesn't have to know
+// small — three functions — so the rest of the firmware doesn't have to know
 // which LittleFS binding we're using. Semantics:
 //
 //   * `MountLittleFs` is idempotent: calling twice with the same base

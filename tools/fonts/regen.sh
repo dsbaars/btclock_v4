@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Regenerate every bundled font from its upstream source. Pulls Antonio
-# and Oswald from Google Fonts main, DejaVu from the upstream 2.37
-# release tarball, and re-converts SatoshiSymbol.ttf from the preserved
-# `SatoshiSymbol_source.woff2`. Leaves all TTFs byte-identical if nothing
-# upstream changed; otherwise the diff is the upstream glyph change.
+# Regenerate every bundled font from its upstream source. Pulls Antonio,
+# Oswald, Inter, Source Serif 4, Merriweather, Bitter, and Atkinson
+# Hyperlegible from their upstream GitHub repos, and re-converts
+# SatoshiSymbol.ttf from the preserved `SatoshiSymbol_source.woff2`.
+# Leaves all TTFs byte-identical if nothing upstream changed; otherwise
+# the diff is the upstream glyph change.
 #
 # Run from anywhere — the script locates the assets dir via its own path.
-# Requires: curl, tar, pyftsubset (`pip install fonttools`).
+# Requires: curl, pyftsubset (`pip install fonttools`).
 #
 # After this, manually run `patch_satoshi_symbol.py` on the regenerated
 # SatoshiSymbol.ttf if you want the (inert) U+E007 patch applied.
@@ -23,11 +24,27 @@ if ! command -v pyftsubset >/dev/null; then
     exit 127
 fi
 
+# Common subset: printable ASCII + £ ¥ €. Every selectable family
+# carries this range so the price screen's currency symbols work
+# regardless of `fontName`.
+COMMON_UNICODES="U+0020-007E,U+00A3,U+00A5,U+20AC"
+
+subset_full() {
+    # $1=input ttf, $2=output ttf — use the canonical subset recipe
+    # (drop layout tables, drop hinting, keep ASCII + £/¥/€).
+    pyftsubset "$1" \
+        "--output-file=$2" \
+        "--unicodes=${COMMON_UNICODES}" \
+        "--drop-tables+=GPOS,GSUB,DSIG" \
+        "--layout-features=*" \
+        "--no-hinting"
+}
+
 echo "→ Antonio (Google Fonts main)"
 curl -sSL -o "${TMP}/Antonio.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
 pyftsubset "${TMP}/Antonio.ttf" \
-    "--unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    "--unicodes=${COMMON_UNICODES}" \
     "--drop-tables+=GPOS,GSUB,DSIG" \
     "--output-file=${ASSETS}/Antonio.ttf"
 
@@ -45,18 +62,42 @@ pyftsubset "${TMP}/Oswald.ttf" \
 # instancer if the bundled copy drifts.
 echo "→ OswaldBold: skipped (manual wght=700 instance — see README)"
 
-echo "→ DejaVu 2.37"
-curl -sSL -o "${TMP}/dejavu.tar.bz2" \
-    "https://downloads.sourceforge.net/project/dejavu/dejavu/2.37/dejavu-fonts-ttf-2.37.tar.bz2"
-tar -xjf "${TMP}/dejavu.tar.bz2" -C "${TMP}"
-pyftsubset "${TMP}/dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf" \
-    "--unicodes=U+0020-007E" \
-    "--drop-tables+=GPOS,GSUB,DSIG" \
-    "--output-file=${ASSETS}/DejaVu.ttf"
-pyftsubset "${TMP}/dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf" \
-    "--unicodes=U+0020-007E" \
-    "--drop-tables+=GPOS,GSUB,DSIG" \
-    "--output-file=${ASSETS}/DejaVuBold.ttf"
+echo "→ Source Serif 4 (adobe-fonts/source-serif release/TTF)"
+curl -sSL -o "${TMP}/SourceSerif4-Regular.ttf" \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Regular.ttf"
+curl -sSL -o "${TMP}/SourceSerif4-Bold.ttf" \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Bold.ttf"
+subset_full "${TMP}/SourceSerif4-Regular.ttf" "${ASSETS}/SourceSerif.ttf"
+subset_full "${TMP}/SourceSerif4-Bold.ttf"    "${ASSETS}/SourceSerifBold.ttf"
+
+echo "→ Merriweather (SorkinType static TTFs)"
+curl -sSL -o "${TMP}/Merriweather-Regular.ttf" \
+    "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Regular.ttf"
+curl -sSL -o "${TMP}/Merriweather-Bold.ttf" \
+    "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Bold.ttf"
+subset_full "${TMP}/Merriweather-Regular.ttf" "${ASSETS}/Merriweather.ttf"
+subset_full "${TMP}/Merriweather-Bold.ttf"    "${ASSETS}/MerriweatherBold.ttf"
+
+# BitterPro upstream only ships the variable font — instance to wght=400
+# and wght=700 before subsetting. Done this way to keep upstream
+# provenance verifiable; matches Google Fonts' downstream static workflow.
+echo "→ Bitter (BitterPro VF -> instance at wght=400/700 -> subset)"
+curl -sSL -o "${TMP}/Bitter-VF.ttf" \
+    "https://github.com/solmatas/BitterPro/raw/master/fonts/variable/Bitter%5Bwght%5D.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/Bitter-VF.ttf" wght=400 \
+    -o "${TMP}/Bitter-Regular.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/Bitter-VF.ttf" wght=700 \
+    -o "${TMP}/Bitter-Bold.ttf"
+subset_full "${TMP}/Bitter-Regular.ttf" "${ASSETS}/Bitter.ttf"
+subset_full "${TMP}/Bitter-Bold.ttf"    "${ASSETS}/BitterBold.ttf"
+
+echo "→ Atkinson Hyperlegible (googlefonts/atkinson-hyperlegible)"
+curl -sSL -o "${TMP}/AtkinsonHyperlegible-Regular.ttf" \
+    "https://github.com/googlefonts/atkinson-hyperlegible/raw/main/fonts/ttf/AtkinsonHyperlegible-Regular.ttf"
+curl -sSL -o "${TMP}/AtkinsonHyperlegible-Bold.ttf" \
+    "https://github.com/googlefonts/atkinson-hyperlegible/raw/main/fonts/ttf/AtkinsonHyperlegible-Bold.ttf"
+subset_full "${TMP}/AtkinsonHyperlegible-Regular.ttf" "${ASSETS}/Atkinson.ttf"
+subset_full "${TMP}/AtkinsonHyperlegible-Bold.ttf"    "${ASSETS}/AtkinsonBold.ttf"
 
 echo "→ SatoshiSymbol (from preserved woff2)"
 pyftsubset "${ASSETS}/SatoshiSymbol_source.woff2" \

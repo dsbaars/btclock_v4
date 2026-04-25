@@ -42,9 +42,14 @@ inline int LogicalHeight(const LandscapeFb& fb) {
 // Clear the buffer to 0x00 (all black) or 0xFF (all white).
 void ClearFb(LandscapeFb& fb, bool white);
 
-// Set one pixel in landscape coordinates. Rotation is fixed 90 degrees CW:
-//   landscape (lx, ly) -> native (nx, ny) = (kLogicalHeight-1 - ly, lx)
-// (kLogicalHeight here is native_stride*8.)
+// Set one pixel in landscape coordinates. Rotation is selected per
+// LandscapeFb (Rotation::k0/k90Cw/k180/k90Ccw) and dispatched in
+// SetPixelLandscape — see font.cpp lines 137-147 for the per-case
+// (lx, ly) -> (nx, ny) mapping. Each case clamps against
+// `native_width` / `native_height` (the *visible* extents from
+// EpdPanel::Width/Height — 122 x 250 for the 2.13"), NOT against the
+// 128-bit row stride. The 6 addressable-but-invisible source-driver
+// columns (122..127 on each row) are never written.
 // white=true sets the bit (white), white=false clears it (black).
 void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white);
 
@@ -200,10 +205,26 @@ extern const uint8_t kOswaldTtf[];
 extern const size_t kOswaldTtfSize;
 extern const uint8_t kOswaldBoldTtf[];
 extern const size_t kOswaldBoldTtfSize;
-extern const uint8_t kDejaVuTtf[];
-extern const size_t kDejaVuTtfSize;
-extern const uint8_t kDejaVuBoldTtf[];
-extern const size_t kDejaVuBoldTtfSize;
+extern const uint8_t kInterTtf[];
+extern const size_t kInterTtfSize;
+extern const uint8_t kInterBoldTtf[];
+extern const size_t kInterBoldTtfSize;
+extern const uint8_t kSourceSerifTtf[];
+extern const size_t kSourceSerifTtfSize;
+extern const uint8_t kSourceSerifBoldTtf[];
+extern const size_t kSourceSerifBoldTtfSize;
+extern const uint8_t kMerriweatherTtf[];
+extern const size_t kMerriweatherTtfSize;
+extern const uint8_t kMerriweatherBoldTtf[];
+extern const size_t kMerriweatherBoldTtfSize;
+extern const uint8_t kBitterTtf[];
+extern const size_t kBitterTtfSize;
+extern const uint8_t kBitterBoldTtf[];
+extern const size_t kBitterBoldTtfSize;
+extern const uint8_t kAtkinsonTtf[];
+extern const size_t kAtkinsonTtfSize;
+extern const uint8_t kAtkinsonBoldTtf[];
+extern const size_t kAtkinsonBoldTtfSize;
 extern const uint8_t kSatoshiSymbolTtf[];
 extern const size_t kSatoshiSymbolTtfSize;
 extern const uint8_t kMaterialDesignIconsTtf[];
@@ -215,10 +236,40 @@ extern const uint8_t kOswaldTtf[] asm("_binary_Oswald_ttf_start");
 extern const uint8_t kOswaldTtfEnd[] asm("_binary_Oswald_ttf_end");
 extern const uint8_t kOswaldBoldTtf[] asm("_binary_OswaldBold_ttf_start");
 extern const uint8_t kOswaldBoldTtfEnd[] asm("_binary_OswaldBold_ttf_end");
-extern const uint8_t kDejaVuTtf[] asm("_binary_DejaVu_ttf_start");
-extern const uint8_t kDejaVuTtfEnd[] asm("_binary_DejaVu_ttf_end");
-extern const uint8_t kDejaVuBoldTtf[] asm("_binary_DejaVuBold_ttf_start");
-extern const uint8_t kDejaVuBoldTtfEnd[] asm("_binary_DejaVuBold_ttf_end");
+extern const uint8_t kInterTtf[] asm("_binary_Inter_ttf_start");
+extern const uint8_t kInterTtfEnd[] asm("_binary_Inter_ttf_end");
+extern const uint8_t kInterBoldTtf[] asm(
+    "_binary_InterBold_ttf_start");
+extern const uint8_t kInterBoldTtfEnd[] asm(
+    "_binary_InterBold_ttf_end");
+extern const uint8_t kSourceSerifTtf[] asm(
+    "_binary_SourceSerif_ttf_start");
+extern const uint8_t kSourceSerifTtfEnd[] asm(
+    "_binary_SourceSerif_ttf_end");
+extern const uint8_t kSourceSerifBoldTtf[] asm(
+    "_binary_SourceSerifBold_ttf_start");
+extern const uint8_t kSourceSerifBoldTtfEnd[] asm(
+    "_binary_SourceSerifBold_ttf_end");
+extern const uint8_t kMerriweatherTtf[] asm(
+    "_binary_Merriweather_ttf_start");
+extern const uint8_t kMerriweatherTtfEnd[] asm(
+    "_binary_Merriweather_ttf_end");
+extern const uint8_t kMerriweatherBoldTtf[] asm(
+    "_binary_MerriweatherBold_ttf_start");
+extern const uint8_t kMerriweatherBoldTtfEnd[] asm(
+    "_binary_MerriweatherBold_ttf_end");
+extern const uint8_t kBitterTtf[] asm("_binary_Bitter_ttf_start");
+extern const uint8_t kBitterTtfEnd[] asm("_binary_Bitter_ttf_end");
+extern const uint8_t kBitterBoldTtf[] asm(
+    "_binary_BitterBold_ttf_start");
+extern const uint8_t kBitterBoldTtfEnd[] asm(
+    "_binary_BitterBold_ttf_end");
+extern const uint8_t kAtkinsonTtf[] asm("_binary_Atkinson_ttf_start");
+extern const uint8_t kAtkinsonTtfEnd[] asm("_binary_Atkinson_ttf_end");
+extern const uint8_t kAtkinsonBoldTtf[] asm(
+    "_binary_AtkinsonBold_ttf_start");
+extern const uint8_t kAtkinsonBoldTtfEnd[] asm(
+    "_binary_AtkinsonBold_ttf_end");
 // Satoshi Symbol — subsetted to the single 'S' glyph that renders as the
 // sats-prefix marker. Use this font only for literal "S" text.
 extern const uint8_t kSatoshiSymbolTtf[] asm(

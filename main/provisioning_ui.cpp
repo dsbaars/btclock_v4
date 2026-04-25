@@ -59,8 +59,8 @@ void RenderProvisioningScreen(
     const std::string& ap_ssid, const std::string& ap_pw) {
   static_assert(N >= 7, "provisioning layout needs at least 7 panels");
 
-  const Font& reg = fonts.dejavu();
-  const Font& bold = fonts.dejavu_bold();
+  const Font& reg = fonts.atkinson();
+  const Font& bold = fonts.atkinson_bold();
 
   constexpr float kInstrPx = 20.0f;
   constexpr float kInfoPx = 18.0f;
@@ -116,7 +116,7 @@ void RenderProvisioningScreen(
     ClearFb(lfb, true);
     char body[256];
     std::snprintf(body, sizeof(body),
-                  "*HW:*\n%s\n2.13\"\n\n*SW:*\nIDF PoC\n\n*Built:*\n%s",
+                  "*HW:*\n%s\n2.13\"\n\n*SW:*\nBTClock v4\n\n*Built:*\n%s",
                   kHwName, __DATE__);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kInfoPx, false);
@@ -146,7 +146,7 @@ void RenderProvisioningScreen(
   }
 }
 
-// Explicit instantiations — one per panel count the PoC supports.
+// Explicit instantiations — one per panel count we support.
 template void RenderProvisioningScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&);

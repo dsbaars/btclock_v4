@@ -542,6 +542,24 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
   constexpr int kLineThickness = 6;
   constexpr int kLineRadius = 3;
 
+  // Auto-fit: shrink `pixel_height` so the wider of the two strings
+  // doesn't overflow the panel. Antonio (condensed) at the caller's
+  // requested 54 px already fits comfortably, so this is a no-op there;
+  // Inter at the same 54 px would clip "BLOCK"/"HEIGHT" off the right
+  // edge — the loop walks down to ~46 px until the wider string fits.
+  // kSidePadding leaves a small visual gutter so glyphs don't kiss the
+  // panel edge after the fit.
+  constexpr int kSidePadding = 4;
+  constexpr float kMinPixelHeight = 16.0f;
+  const int target_w = panel_w - 2 * kSidePadding;
+  if (target_w > 0) {
+    const float top_fit =
+        FitTextPx(top_text, font, pixel_height, kMinPixelHeight, target_w);
+    const float bot_fit =
+        FitTextPx(bottom_text, font, pixel_height, kMinPixelHeight, target_w);
+    pixel_height = top_fit < bot_fit ? top_fit : bot_fit;
+  }
+
   const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
   const int centre_y = panel_h / 2;
 

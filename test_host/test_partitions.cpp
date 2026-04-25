@@ -17,8 +17,8 @@
 #include <string>
 #include <vector>
 
-#ifndef BTCLOCK_POC_ROOT
-#error "BTCLOCK_POC_ROOT must be defined (see test_host/CMakeLists.txt)"
+#ifndef BTCLOCK_PROJECT_ROOT
+#error "BTCLOCK_PROJECT_ROOT must be defined (see test_host/CMakeLists.txt)"
 #endif
 
 namespace {
@@ -124,13 +124,13 @@ void CheckCsv(const std::string& path, uint32_t flash_size) {
 }  // namespace
 
 TEST_CASE("partitions_4mb.csv: offsets, sizes, OTA symmetry") {
-  CheckCsv(BTCLOCK_POC_ROOT "/partitions_4mb.csv", 0x400000);
+  CheckCsv(BTCLOCK_PROJECT_ROOT "/partitions_4mb.csv", 0x400000);
 }
 
 TEST_CASE("partitions_8mb.csv: offsets, sizes, OTA symmetry") {
-  CheckCsv(BTCLOCK_POC_ROOT "/partitions_8mb.csv", 0x800000);
+  CheckCsv(BTCLOCK_PROJECT_ROOT "/partitions_8mb.csv", 0x800000);
 }
 
 TEST_CASE("partitions_16mb.csv: offsets, sizes, OTA symmetry") {
-  CheckCsv(BTCLOCK_POC_ROOT "/partitions_16mb.csv", 0x1000000);
+  CheckCsv(BTCLOCK_PROJECT_ROOT "/partitions_16mb.csv", 0x1000000);
 }

@@ -35,11 +35,17 @@ namespace catalogs {
 
 // Font ids the WebUI shows in its font picker. Plain string array —
 // WebUI expects `availableFonts: string[]` and does its own label
-// lookup via the `m['fonts.<id>']` translation table.
-inline constexpr std::array<std::string_view, 3> kAvailableFonts = {
+// lookup via the `m['fonts.<id>']` translation table. Order matches
+// FontFamily's numeric values so WASM/IDF dropdowns and the WebUI line
+// up by index without a separate mapping table.
+inline constexpr std::array<std::string_view, 7> kAvailableFonts = {
     "antonio",
     "oswald",
-    "dejavu",
+    "inter",
+    "sourceSerif",
+    "merriweather",
+    "bitter",
+    "atkinson",
 };
 
 // ISO 4217 codes the price / moscow-time / market-cap screens can

@@ -34,13 +34,36 @@ std::string BuildHostname() {
 
 // Which HW variant this firmware is built for. Surfaced as a TXT
 // record so an avahi-browse pass can tell Rev A from Rev B from V8.
+// Composed orthogonally: board token (REV_A/REV_B/V8) + optional panel
+// suffix when panel ≠ default(2.13"). Keeps the bare-board tags stable
+// for the common case while still letting the WebUI distinguish e.g.
+// Rev B 7.5" from Rev B 2.13" (same MAC strap, so the board alone
+// wouldn't disambiguate).
 const char* BoardTxtValue() {
-#if defined(POC_BOARD_REV_A)
+#if defined(BTCLOCK_BOARD_REV_A)
+#  if defined(BTCLOCK_PANEL_2_9)
+  return "REV_A_29";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  return "REV_A_75";
+#  else
   return "REV_A";
-#elif defined(POC_BOARD_REV_B)
+#  endif
+#elif defined(BTCLOCK_BOARD_REV_B)
+#  if defined(BTCLOCK_PANEL_2_9)
+  return "REV_B_29";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  return "REV_B_75";
+#  else
   return "REV_B";
-#elif defined(POC_BOARD_V8)
+#  endif
+#elif defined(BTCLOCK_BOARD_V8)
+#  if defined(BTCLOCK_PANEL_2_9)
+  return "V8_29";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  return "V8_75";
+#  else
   return "V8";
+#  endif
 #else
   return "unknown";
 #endif

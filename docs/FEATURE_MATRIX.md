@@ -1,8 +1,8 @@
-# BTClock IDF C++ PoC — Feature Parity Matrix
+# BTClock v4 — Feature Parity Matrix
 
-Tracks every user-visible feature of the production Arduino/PlatformIO firmware
-(`src/`) against the in-progress ESP-IDF C++ port (`idf_cpp_proto/`). Use this
-as the single checklist when deciding what to port next.
+Tracks every user-visible feature of the upstream Arduino/PlatformIO firmware
+(`src/`) against BTClock v4. Use this as the single checklist when deciding
+what to port next.
 
 _Last updated: **2026-04-23**. This doc is hand-maintained — keep in sync when
 features land._
@@ -13,15 +13,11 @@ features land._
 - Partial — functional but missing sub-behaviors; notes list the gap.
 - Stubbed — endpoint/surface exists but does nothing useful (returns 501 or a
   placeholder value).
-- Missing — no code exists in the IDF port yet.
+- Missing — no code exists yet.
 - N/A — intentionally dropped (note why).
 
-**Branch state (2026-04-23, post merge-train):**
+**State (2026-04-23):**
 
-`feature/idf-cpp-poc` is now the baseline with seven merged worktrees:
-WASM (a50ba51c), LittleFS (a1d216a4), Frontlight (a437993e), Control API
-(aa1d0cd8), Nostr + blockfee2 (a2074e28), TLS gate + 7 mining-pool
-DataSources (a7d7097f), Time/Halving/Supply/MarketCap screens (af32422c).
 Host tests: 96/96 passing (1488 assertions). REV_A/REV_B/V8 all build
 clean and both boards have been flashed + photographed.
 
@@ -45,7 +41,7 @@ Rough per-category parity (counts full + partial as "done"):
 | Build / board variants | 5 | 5 | 100% |
 | **Totals** | **100** | **55** | **~55%** |
 
-Post merge-train: 8 of 11 rotation screens render (block, clock, halving,
+8 of 11 rotation screens render (block, clock, halving,
 supply, moscow, price, mcap, fee-rate — missing: mining-pool screen,
 Bitaxe screen, runtime-pushed text/custom). Frontlight is fully live on
 Rev B with fade + block-flash + BH1750 auto-off. The control API has
@@ -62,10 +58,10 @@ flight.
 
 Enum values from [`src/lib/system/shared.hpp`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/shared.hpp)
 lines 45-67; rotation catalog in
-[`src/lib/system/config.cpp:45-68`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/config.cpp). IDF PoC
-renderers under [`main/screens/`](../main/screens).
+[`src/lib/system/config.cpp:45-68`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/config.cpp).
+Renderers under [`main/screens/`](../main/screens).
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | Block height (`SCREEN_BLOCK_HEIGHT`) | [screen_handler.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/ui/screen_handler.cpp) | [block_height.cpp](../main/screens/block_height.cpp) | Implemented | — |
 | Sats per currency (`SCREEN_SATS_PER_CURRENCY`, Moscow-time) | screen_handler.cpp | [moscow_time.cpp](../main/screens/moscow_time.cpp) | Implemented (USD + EUR/GBP/JPY) | — |
@@ -86,12 +82,12 @@ renderers under [`main/screens/`](../main/screens).
 ## Data sources
 
 Old-firmware data-source modules live under
-[`src/lib/data_sources/`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/data_sources). IDF PoC uses a
-`DataHub` + `DataSource` abstraction
+[`src/lib/data_sources/`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/data_sources).
+BTClock v4 uses a `DataHub` + `DataSource` abstraction
 ([`components/data_core`](../components/data_core)). Multiple concrete
 sources exist; not all are wired into `main.cpp` yet.
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | DataHub / registry abstraction | [live_service.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/data_sources/live_service.hpp) | [hub.hpp](../components/data_core/include/data_core/hub.hpp) | Implemented | — |
 | BTClock WS v2 (`BTCLOCK_SOURCE`) | [v2_notify.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/data_sources/v2_notify.cpp) | [btclock_data.cpp](../components/btclock_data/btclock_data.cpp) | Partial: block + price + blockfee + blockfee2 subs; mempool sub-channels still missing | `btclock_v3_fci-lcw` |
@@ -108,13 +104,13 @@ sources exist; not all are wired into `main.cpp` yet.
 ## HTTP / Control API
 
 Old firmware registers all routes via `server.on(...)` under
-[`src/lib/net/webserver/`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver). IDF PoC control
-routes live in
-[`components/webserver/control_server.cpp`](../components/webserver/control_server.cpp)
-on `feature/idf-cpp-poc`. Stub rows return HTTP 501 with a tracking
-token pointing at the follow-up issue.
+[`src/lib/net/webserver/`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver).
+BTClock v4 control routes live in
+[`components/webserver/control_server.cpp`](../components/webserver/control_server.cpp).
+Stub rows return HTTP 501 with a tracking token pointing at the
+follow-up issue.
 
-| Endpoint | Old firmware | IDF PoC | Status | Tracking |
+| Endpoint | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | `GET /api/status` | [status.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver/status.cpp) | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (`data[]` via [panel_texts.cpp](../main/screens/panel_texts.cpp), `leds[]` via `BuildLightsStatusArray`, real `dnd{}` via `DndIface`, real `timerRunning` via `TimerIface`) | — |
 | `GET /api/system_status` | status.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (real FS fields via `btclock::GetLittleFsUsage`) | — |
@@ -156,7 +152,7 @@ token pointing at the follow-up issue.
 
 ## Provisioning / WiFi
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | WiFiManager captive portal (first-boot AP) | WiFiManager library in main.cpp | [provisioning_server.cpp](../components/webserver/provisioning_server.cpp) + [boot_ui](../main/boot_ui.cpp) | Implemented | — |
 | WPA2 AP with random password | (N/A — open AP historically) | main.cpp `MakeOrLoadApPassword` | Implemented (superset) | — |
@@ -171,16 +167,16 @@ token pointing at the follow-up issue.
 
 Old firmware is in
 [`src/lib/drivers/leds/led_handler.cpp`](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/leds/led_handler.cpp)
-(3-in-1: NeoPixel state, DND, frontlight/PCA9685 fade). IDF PoC's
+(3-in-1: NeoPixel state, DND, frontlight/PCA9685 fade). BTClock v4's
 [`io/led_controller.cpp`](../main/io/led_controller.cpp) now carries the
 production-path subset of the effect catalog plus NVS-backed prefs for
 brightness / block-flash colour / disable / flash-on-update.
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | NeoPixel FreeRTOS task + queue | led_handler.cpp | led_controller.cpp | Implemented | — |
 | Boot / idle / block-flash effects | led_handler.cpp `LED_FLASH_*` | led_controller.cpp | Implemented | — |
-| Full effect catalog (production subset — identify, zap, heartbeat, data errors, WiFi states, flash-{success,error,update}, boot-failed, power-test) | led_handler.cpp `LED_*` constants | [led_controller.cpp](../main/io/led_controller.cpp) + [led_curves.cpp](../main/io/led_curves.cpp) | Implemented (progress-25/50/75/100 + start/pause-timer intentionally not ported — old firmware's setup-timer flow isn't in the PoC) | `btclock_v3_fci-fxh` |
+| Full effect catalog (production subset — identify, zap, heartbeat, data errors, WiFi states, flash-{success,error,update}, boot-failed, power-test) | led_handler.cpp `LED_*` constants | [led_controller.cpp](../main/io/led_controller.cpp) + [led_curves.cpp](../main/io/led_curves.cpp) | Implemented (progress-25/50/75/100 + start/pause-timer intentionally not ported — old firmware's setup-timer flow isn't carried over) | `btclock_v3_fci-fxh` |
 | LED brightness + color + flash-on-update prefs (`DEFAULT_LED_BRIGHTNESS`, `BlockFlashColor`) | led_handler.cpp + defaults.hpp | led_controller.cpp — NVS namespace `"led"` keys `brightness`/`blockFlashCol`/`disable`/`flashUpdate` | Implemented | — |
 | `DisableLeds` NVS toggle | defaults.hpp | led_controller.cpp — `"led"/"disable"` | Implemented | — |
 | Frontlight PCA9685 channels init | led_handler.cpp `#ifdef HAS_FRONTLIGHT` | [frontlight_controller.cpp](../main/io/frontlight_controller.cpp) drives fade on boot | Implemented | `btclock_v3_fci-7ma` |
@@ -190,7 +186,7 @@ brightness / block-flash colour / disable / flash-on-update.
 
 ## DND / scheduling
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | DND enabled flag (force-off LEDs) | led_handler.cpp `setDNDEnabled` | [components/dnd/](../components/dnd) + suppressor predicates on LED controller and frontlight controller | Implemented | — |
 | Time-based DND window (start/end HH:MM) | led_handler.cpp `setDNDTimeRange`, [lib/dnd_window.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/lib/dnd_window.cpp) | [dnd_window.cpp](../components/dnd/dnd_window.cpp) (half-open + overnight wrap, host-tested) | Implemented | — |
@@ -199,7 +195,7 @@ brightness / block-flash colour / disable / flash-on-update.
 
 ## OTA / updates
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | Web-UI firmware upload (`U_FLASH`) | ota_routes.cpp | Stubbed 501 | Stubbed | `btclock_v3_fci-5b2` |
 | Web-UI LittleFS upload (`U_SPIFFS`) | ota_routes.cpp | Stubbed 501 | Stubbed | `btclock_v3_fci-5b2` |
@@ -208,7 +204,7 @@ brightness / block-flash colour / disable / flash-on-update.
 
 ## Peripherals
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | MCP23017 expander(s), incl. V8 dual-chip | [shared.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/shared.hpp) `mcp1/mcp2`, epd.cpp | [mcp23017](../components/mcp23017), [board_v8](../main/board/board_v8.hpp) | Implemented | — |
 | Buttons (4 × tactile, click + long-press) | [button_handler.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/buttons/button_handler.cpp) | [buttons](../components/buttons) | Implemented | — |
@@ -219,7 +215,7 @@ brightness / block-flash colour / disable / flash-on-update.
 
 ## Persistence (NVS / settings)
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | NVS wrapper | Arduino `Preferences` | [prefs](../components/prefs) | Implemented | — |
 | `PrefKeys::*` catalog (~80 keys, see [pref_keys.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/pref_keys.hpp)) | pref_keys.hpp | [components/settings/include/settings/pref_keys.hpp](../components/settings/include/settings/pref_keys.hpp) — 76 keys under namespace `settings`, 15-char limit statically enforced | Implemented | — |
@@ -229,21 +225,22 @@ brightness / block-flash colour / disable / flash-on-update.
 
 ## Build / board variants
 
-| Feature | Old firmware | IDF PoC | Status | Tracking |
+| Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
-| Rev A (Lolin S3 mini) | [platformio.ini](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/platformio.ini) `env:lolin_s3_mini*` | [board_rev_a.hpp](../main/board/board_rev_a.hpp), `-DPOC_BOARD=REV_A` | Implemented | — |
+| Rev A (Lolin S3 mini) | [platformio.ini](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/platformio.ini) `env:lolin_s3_mini*` | [board_rev_a.hpp](../main/board/board_rev_a.hpp), `-DBTCLOCK_BOARD=REV_A` | Implemented | — |
 | Rev B | platformio.ini `env:btclock_rev_b*` | [board_rev_b.hpp](../main/board/board_rev_b.hpp) (default) | Implemented | — |
 | V8 (16 MB, dual MCP) | platformio.ini `env:btclock_v8*` | [board_v8.hpp](../main/board/board_v8.hpp) | Implemented | — |
-| 2.13" EPD | `-D VERSION_EPD_2_13` | `PanelKind::k2_13` in main.cpp | Implemented | — |
-| 2.9" EPD | `-D VERSION_EPD_2_9` | epd_ssd1680 supports it; wired for 2.13 in main.cpp | Partial: wiring hardcoded | `btclock_v3_fci-znm` |
-| CI matrix (4 env builds) | `.gitea/workflows` | [sdkconfig.defaults.*](../sdkconfig.defaults) + POC_BOARD | Partial: no GitHub Actions yet | `btclock_v3_fci-x4k` |
+| 2.13" EPD (GDEY0213B74) | `-D VERSION_EPD_2_13` | `-DBTCLOCK_PANEL=2_13` (default — not a constraint; any board × any panel configures) | Implemented | — |
+| 2.9" EPD (GDEY029T94) | `-D VERSION_EPD_2_9` | `-DBTCLOCK_PANEL=2_9` (validated on Rev A; other boards configure but un-flashed) | Implemented | — |
+| 7.5" EPD (GDEY075T7, UC8179) | n/a | `-DBTCLOCK_PANEL=7_5` (scaffold only — un-flashed; intended for Rev B) | Stubbed | — |
+| CI matrix (4 env builds) | `.gitea/workflows` | [sdkconfig.defaults.*](../sdkconfig.defaults) + BTCLOCK_BOARD | Partial: no GitHub Actions yet | `btclock_v3_fci-x4k` |
 
 ---
 
 ## How to use this doc
 
 Treat this as a ground-truth checklist, not a history log. When you land a
-feature in the IDF port, flip its row here (Missing/Stubbed → Partial →
+feature, flip its row here (Missing/Stubbed → Partial →
 Implemented) in the same PR, and drop the tracking link when the beads issue
 closes. Beads issues remain the source of truth for in-flight work — this
 matrix just collects them in one scannable place. If you discover a feature

@@ -403,6 +403,31 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         return result;
       }
     }
+    // nostrRelay: must be a WebSocket URL (wss:// or ws://). The
+    // esp_websocket_client URI parser silently rejects bare hostnames
+    // and https:// values with "Error parse uri", and the boot path
+    // then never connects. Catch the format here so the WebUI surfaces
+    // a structured error instead of NVS storing a value that fails on
+    // next boot. Empty string clears the field (matches nostrPubKey
+    // semantics — schema treats it as "leave blank to disable").
+    if (key == "nostrRelay") {
+      if (!cJSON_IsString(item) || !item->valuestring) {
+        result.status = PatchStatus::kBadField;
+        result.error = key + ":bad_type";
+        cJSON_Delete(root);
+        return result;
+      }
+      const std::string s = item->valuestring;
+      if (!s.empty()) {
+        const bool ok = s.rfind("wss://", 0) == 0 || s.rfind("ws://", 0) == 0;
+        if (!ok) {
+          result.status = PatchStatus::kBadField;
+          result.error = key + ":bad_scheme";
+          cJSON_Delete(root);
+          return result;
+        }
+      }
+    }
     // nostrPubKey: 64-char lowercase hex. The relay libraries reject a
     // malformed key anyway, but doing the check here keeps NVS clean.
     if (key == "nostrPubKey" || key == "nostrZapPubkey") {

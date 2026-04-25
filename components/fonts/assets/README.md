@@ -27,28 +27,174 @@ currencies are wired through to the price screen.
 Both licensed OFL (SIL Open Font License), compatible with the project's
 Apache-2.0 firmware licence.
 
-## DejaVu / DejaVuBold
+## Inter / InterBold
 
-Used for small label text and currency symbols where Antonio's
-condensed proportions read poorly at tiny point sizes. DejaVu Sans is
-a humanist sans with generous x-height and distinctive currency glyphs.
+Inter is a contemporary sans typeface (rsms / Rasmus Andersson). Used
+as a selectable family alongside Antonio / Oswald so users can pick a
+modern sans for the main panels. The text cut (vs. the Display cut) is
+wider and more open at the BTClock's rendered sizes, which legibility-
+tested better than Inter Display did on the e-paper panels.
 
-Sourced from the upstream DejaVu Fonts 2.37 release:
+Sourced from the upstream Inter 4.1 release (rsms/inter on GitHub),
+specifically the `extras/ttf/Inter-Regular.ttf` and `Inter-Bold.ttf`
+payloads.
 
 ```sh
-curl -L -O "https://downloads.sourceforge.net/project/dejavu/dejavu/2.37/dejavu-fonts-ttf-2.37.tar.bz2"
-tar -xf dejavu-fonts-ttf-2.37.tar.bz2
-pyftsubset dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf \
-    --unicodes=U+0020-007E --drop-tables+=GPOS,GSUB,DSIG --output-file=DejaVu.ttf
-pyftsubset dejavu-fonts-ttf-2.37/ttf/DejaVuSans-Bold.ttf \
-    --unicodes=U+0020-007E --drop-tables+=GPOS,GSUB,DSIG --output-file=DejaVuBold.ttf
+pyftsubset Inter-4.1/extras/ttf/Inter-Regular.ttf \
+    --output-file=Inter.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset Inter-4.1/extras/ttf/Inter-Bold.ttf \
+    --output-file=InterBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
 ```
 
-Subset range: printable ASCII (U+0020..U+007E), 95 glyphs kept — same
-scope as Antonio/Oswald.
+Subset range matches Antonio: printable ASCII (U+0020..U+007E) plus the
+three currency symbols the price screen renders — £ (U+00A3), ¥
+(U+00A5), € (U+20AC). `$` (U+0024) is already in ASCII.
 
-Licensed under the DejaVu Fonts License (MIT-style permissive;
-Bitstream Vera base + public-domain DejaVu modifications).
+Hinting is dropped (`--no-hinting`) because the renderer rasterises at
+fixed pixel sizes well above where TrueType hinting helps; this trims
+~30% off the resulting subset.
+
+Licensed under SIL Open Font License 1.1 — compatible with the project's
+Apache-2.0 firmware licence. See upstream `LICENSE.txt` in the Inter 4.1
+distribution.
+
+## SourceSerif / SourceSerifBold
+
+Source Serif 4 (Adobe). A modern transitional serif designed for
+on-screen reading at body sizes. Selectable family alongside the sans
+options.
+
+Sourced from the upstream `adobe-fonts/source-serif` release TTF payload:
+
+```sh
+curl -L -o /tmp/SourceSerif4-Regular.ttf \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Regular.ttf"
+curl -L -o /tmp/SourceSerif4-Bold.ttf \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Bold.ttf"
+
+pyftsubset /tmp/SourceSerif4-Regular.ttf \
+    --output-file=SourceSerif.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/SourceSerif4-Bold.ttf \
+    --output-file=SourceSerifBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1.
+
+## Merriweather / MerriweatherBold
+
+Merriweather (SorkinType, originally Eben Sorkin). A slab-leaning serif
+designed for high readability on screens — chunkier strokes than Source
+Serif, holds up well at small sizes on e-paper.
+
+Sourced from the upstream SorkinType repo's static TTF payload (the
+upstream variable-font workflow lands in `fonts/ttf/`):
+
+```sh
+curl -L -o /tmp/Merriweather-Regular.ttf \
+    "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Regular.ttf"
+curl -L -o /tmp/Merriweather-Bold.ttf \
+    "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Bold.ttf"
+
+pyftsubset /tmp/Merriweather-Regular.ttf \
+    --output-file=Merriweather.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/Merriweather-Bold.ttf \
+    --output-file=MerriweatherBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1.
+
+## Bitter / BitterBold
+
+Bitter (Huerta Tipográfica). A contemporary slab serif, contrast-rich
+and sharp. The user-facing name "Bitter HT" refers to the designer
+(HT = Huerta Tipográfica) — this is the canonical Bitter.
+
+The upstream `solmatas/BitterPro` repo only ships a variable font
+(`fonts/variable/Bitter[wght].ttf`), so we instance it at wght=400 and
+wght=700 with `fonttools varLib.instancer` before subsetting. This
+matches the static-font output Google Fonts publishes downstream while
+keeping the upstream provenance traceable.
+
+```sh
+curl -L -o /tmp/Bitter-VF.ttf \
+    "https://github.com/solmatas/BitterPro/raw/master/fonts/variable/Bitter%5Bwght%5D.ttf"
+
+python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=400 \
+    -o /tmp/Bitter-Regular.ttf
+python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=700 \
+    -o /tmp/Bitter-Bold.ttf
+
+pyftsubset /tmp/Bitter-Regular.ttf \
+    --output-file=Bitter.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/Bitter-Bold.ttf \
+    --output-file=BitterBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1.
+
+## Atkinson / AtkinsonBold
+
+Atkinson Hyperlegible (Braille Institute of America). Purpose-built for
+low-vision readability — distinctive letterforms, generous x-height,
+disambiguated glyph pairs (e.g. `1 / l / I`, `0 / O`). Used as the body-
+text face for `debug` and `provisioning_ui` screens (where DejaVu used
+to render preformatted lines), and selectable as a panel font.
+
+```sh
+curl -L -o /tmp/AtkinsonHyperlegible-Regular.ttf \
+    "https://github.com/googlefonts/atkinson-hyperlegible/raw/main/fonts/ttf/AtkinsonHyperlegible-Regular.ttf"
+curl -L -o /tmp/AtkinsonHyperlegible-Bold.ttf \
+    "https://github.com/googlefonts/atkinson-hyperlegible/raw/main/fonts/ttf/AtkinsonHyperlegible-Bold.ttf"
+
+pyftsubset /tmp/AtkinsonHyperlegible-Regular.ttf \
+    --output-file=Atkinson.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/AtkinsonHyperlegible-Bold.ttf \
+    --output-file=AtkinsonBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1, with the Atkinson Hyperlegible
+addendum reserving the family name (does not affect the subset's
+legality).
 
 ## SatoshiSymbol
 
@@ -130,15 +276,28 @@ compatible with this repo's Apache-2.0 licence.
 
 In-tree byte counts (`wc -c`), rounded:
 
-| Font                  | Size    | Glyphs kept |
-|-----------------------|--------:|------------:|
-| Antonio               |  22.3 KB |          98 |
-| Oswald                |   8.9 KB |          95 |
-| OswaldBold            |   8.9 KB |          95 |
-| DejaVu                |  21.2 KB |          95 |
-| DejaVuBold            |  19.2 KB |          95 |
-| SatoshiSymbol         |   3.5 KB |          16 |
-| MaterialDesignIcons   |   1.0 KB |           3 |
+| Font                  | Size    |
+|-----------------------|--------:|
+| Antonio               |  22.3 KB |
+| Oswald                |   8.9 KB |
+| OswaldBold            |   8.9 KB |
+| Inter                 |   9.6 KB |
+| InterBold             |   9.4 KB |
+| SourceSerif           |  11.5 KB |
+| SourceSerifBold       |  11.4 KB |
+| Merriweather          |  11.8 KB |
+| MerriweatherBold      |  11.6 KB |
+| Bitter                |  11.0 KB |
+| BitterBold            |  11.0 KB |
+| Atkinson              |   9.0 KB |
+| AtkinsonBold          |   8.8 KB |
+| SatoshiSymbol         |   3.5 KB |
+| MaterialDesignIcons   |   1.0 KB |
+
+Subset extents — every selectable family (Antonio, Oswald, Inter,
+SourceSerif, Merriweather, Bitter, Atkinson) carries printable ASCII
+(U+0020..U+007E) plus £/¥/€ (U+00A3, U+00A5, U+20AC) so the price
+screen's currency symbol set works regardless of the chosen `fontName`.
 
 The `SatoshiSymbol_source.woff2` archive (2.1 KB) is kept alongside
 the TTF for provenance and is not compiled into firmware.

@@ -57,12 +57,17 @@ TEST_CASE("ShouldSteal is a no-op when already on kBlockHeight") {
   CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kBlockHeight));
 }
 
-TEST_CASE("ShouldSteal respects transient overlays (debug/custom/zap)") {
-  // User explicitly pushed these on top of the rotation; a block event
-  // must not yank them off mid-viewing.
+TEST_CASE("ShouldSteal respects debug + zap overlays but not custom") {
+  // kDebug: user is mid-debug, yanking would lose state.
   CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kDebug));
-  CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kCustom));
+  // kNostrZap: transient overlay with its own timeout that auto-
+  // restores the prior screen — layering a steal underneath would
+  // skip the restore step.
   CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kNostrZap));
+  // kCustom: a /api/show/text override is sticky until next nav. With
+  // stealFocus=true the user explicitly opted into "yank me to the
+  // block-height screen on new blocks", so the custom text yields.
+  CHECK(BlockEventPolicy::ShouldSteal(true, ScreenType::kCustom));
 }
 
 // --- ZapOverlayPolicy::ComputeTimeoutMs ------------------------------

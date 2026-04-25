@@ -18,6 +18,7 @@ idf_component_register(
          "app/event_loop.cpp"
          "sources/sources.cpp"
          "sources/sources_uri.cpp"
+         "sources/mempool_kraken_source.cpp"
          "io/frontlight_fader.cpp" "io/frontlight_controller.cpp"
          "io/frontlight_ambient_policy.cpp" "io/frontlight_stagger.cpp"
          "io/led_controller.cpp" "io/led_curves.cpp" "io/led_prefs.cpp"
@@ -42,26 +43,29 @@ idf_component_register(
          "screens/debug.cpp"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer esp_psram esp_wifi i2c_bus mcp23017 pca9685
-             bh1750 epd_ssd1680 fonts wifi prefs btclock_fs webserver qrcode
+             bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
              data_core btclock_data buttons nostr timezone dnd settings ota
              mining_pool_common mining_pool_braiins mining_pool_ckpool
              mining_pool_gobrrr mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio
-             bitaxe mdns net_util
+             bitaxe mdns net_util esp_websocket_client esp-tls json
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
 
-# BTClock hardware variant. Set via `idf.py build -DPOC_BOARD=REV_A|REV_B|V8`
+# BTClock hardware variant. Set via
+#   `idf.py build -DBTCLOCK_BOARD=REV_A|REV_B|V8 [-DBTCLOCK_PANEL=2_13|2_9|7_5]`
 # (top-level CMakeLists also reads this to pick the right sdkconfig.defaults
-# and therefore the right partition table + flash size).
-set(POC_BOARD "REV_B" CACHE STRING "BTClock hardware variant: REV_A, REV_B or V8")
-if(POC_BOARD STREQUAL "REV_A")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE POC_BOARD_REV_A=1)
-elseif(POC_BOARD STREQUAL "REV_B")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE POC_BOARD_REV_B=1)
-elseif(POC_BOARD STREQUAL "V8")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE POC_BOARD_V8=1)
+# and therefore the right partition table + flash size). Panel selection
+# (BTCLOCK_PANEL_* compile def) is emitted from the top-level
+# CMakeLists.txt so every component sees the same flag.
+set(BTCLOCK_BOARD "REV_B" CACHE STRING "BTClock hardware variant: REV_A, REV_B or V8")
+if(BTCLOCK_BOARD STREQUAL "REV_A")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE BTCLOCK_BOARD_REV_A=1)
+elseif(BTCLOCK_BOARD STREQUAL "REV_B")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE BTCLOCK_BOARD_REV_B=1)
+elseif(BTCLOCK_BOARD STREQUAL "V8")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE BTCLOCK_BOARD_V8=1)
 else()
-    message(FATAL_ERROR "Unknown POC_BOARD='${POC_BOARD}'. Use REV_A, REV_B or V8.")
+    message(FATAL_ERROR "Unknown BTCLOCK_BOARD='${BTCLOCK_BOARD}'. Use REV_A, REV_B or V8.")
 endif()

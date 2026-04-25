@@ -2,13 +2,13 @@
 //
 // Verifies:
 //   - text-mode parse* functions still return the expected per-panel
-//     string arrays (regression coverage for Phase 1).
+//     string arrays (text-mode regression coverage).
 //   - pixel-mode render*FrameBuffer returns 7 Uint8Arrays of the right
 //     size, and the label panel (index 0) for block-height has a
 //     nonzero black-pixel count in its 4000 bytes — i.e. the renderer
 //     actually wrote the "BLOCK/HEIGHT" glyphs into the framebuffer.
 //
-// Run via:  node idf_cpp_proto/tools/wasm/smoke_test.mjs
+// Run via:  node tools/wasm/smoke_test.mjs
 import createBtclockModule from "./dist/btclock_datahandler.js";
 
 const mod = await createBtclockModule();

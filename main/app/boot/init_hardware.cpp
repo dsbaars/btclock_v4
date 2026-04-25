@@ -15,7 +15,7 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 }  // namespace
 
 void InitHardware(AppCtx& ctx) {

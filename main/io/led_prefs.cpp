@@ -7,7 +7,7 @@ namespace {
 
 // Legacy key strings that lived in the abandoned `led` NVS namespace.
 // Kept here (rather than in led_controller.cpp) so the migration path
-// is testable from the host suite. Strings match the original PoC port
+// is testable from the host suite. Strings match the earlier port
 // exactly; do not rename.
 constexpr const char* kLegacyKeyBrightness = "brightness";
 constexpr const char* kLegacyKeyBlockFlashCol = "blockFlashCol";

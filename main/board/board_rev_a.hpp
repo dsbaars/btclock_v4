@@ -68,7 +68,17 @@ constexpr PinSource kEpdCsSource = PinSource::kNative;
 constexpr PinSource kEpdBusySource = PinSource::kNative;
 constexpr PinSource kEpdResetSource = PinSource::kMcp1;
 
+// Human-readable name composes board + non-default panel. 2.13" is
+// the default for every board so we elide the suffix in that case;
+// the WebUI/mDNS TXT layer disambiguates same-board different-panel
+// units via this string.
+#if defined(BTCLOCK_PANEL_2_9)
+constexpr const char* kHardwareName = "Rev A 2.9\"";
+#elif defined(BTCLOCK_PANEL_7_5)
+constexpr const char* kHardwareName = "Rev A 7.5\"";
+#else
 constexpr const char* kHardwareName = "Rev A";
+#endif
 
 }  // namespace board
 }  // namespace btclock

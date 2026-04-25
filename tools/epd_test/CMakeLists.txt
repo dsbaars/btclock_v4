@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Minimal EPD-driver sanity test. Talks to the SSD1680 panels directly
-# via the production epd_ssd1680 component, with NO wifi / data / font /
+# via the production epd component, with NO wifi / data / font /
 # screen-manager code in the loop. Paints a seconds counter that
 # alternates normal- and inverted-polarity panels so any refresh issue
 # shows up unambiguously in a photograph.
@@ -27,7 +27,7 @@ set(COMPONENTS
     # IDF components the driver layer pulls in
     driver esp_timer esp_log freertos esp_common
     # Production BTClock driver components under test
-    i2c_bus mcp23017 pca9685 epd_ssd1680)
+    i2c_bus mcp23017 pca9685 epd)
 
 set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults")
 

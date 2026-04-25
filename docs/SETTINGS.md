@@ -49,7 +49,7 @@ derived keys the WebUI uses to render that section.
 
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
-| `fontName` | string (enum) | `"antonio"` | Font family used by label / digit / small-chars / unit screen roles. | Values come from `availableFonts` in GET (`antonio`, `oswald`, `dejavu`). Rebound live via the `on_font_changed` hook, which marks the screen dirty for a repaint. PATCH validates against the catalogue. |
+| `fontName` | string (enum) | `"antonio"` | Font family used by label / digit / small-chars / unit screen roles. | Values come from `availableFonts` in GET (`antonio`, `oswald`, `inter`, `sourceSerif`, `merriweather`, `bitter`, `atkinson`). Rebound live via the `on_font_changed` hook, which marks the screen dirty for a repaint. PATCH validates against the catalogue. Devices upgrading from a build that stored the retired `"dejavu"` value fall back to `"antonio"` at boot via the validation walk. |
 | `invertedColor` | bool | `true` | White-on-black when `true`, black-on-white when `false`. | PATCH side-writes `fgColor` / `bgColor` to keep EPD polarity consistent. Applied live: `EpdSetGlobalInverted` + `ScreenManager::MarkDirty`. |
 | `fgColor` | uint (hex RGB) | `0xFFFF` | EPD foreground colour. | Auto-updated when `invertedColor` is PATCHed; schema does not expose it as a PATCH key, but GET emits it. |
 | `bgColor` | uint (hex RGB) | `0x0000` | EPD background colour. | Same auto-update rule as `fgColor`. |
@@ -184,7 +184,7 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
-| `nostrRelay` | string | `"wss://relay.primal.net"` | Relay URL for the primary data feed when `dataSource=2`. | Reboot required. |
+| `nostrRelay` | string | `"wss://relay.primal.net"` | Relay URL for the primary data feed when `dataSource=2`. Also reused by the zap listener. | Reboot required. PATCH validates the scheme: only `wss://` or `ws://` are accepted (or an empty string to disable). Bare hostnames (`relay.example.com`) and `https://` URLs return `400 {"error":"nostrRelay:bad_scheme"}` — the underlying `esp_websocket_client` parser would otherwise silently reject them at boot with `Error parse uri`. |
 | `nostrPubKey` | string (64-hex) | `"642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288"` | Author pubkey the data-source listener follows. | Reboot required. Validated: empty or exactly 64 lowercase-hex chars. |
 | `nostrZapNotify` | bool | `false` | Listen for NIP-57 zap receipts and pop the zap screen. | Live (zap listener rechecks). |
 | `nostrZapPubkey` | string (64-hex) | `"b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"` | Pubkey whose zaps trigger the zap screen. | Live. Validated: empty or 64-hex. |

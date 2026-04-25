@@ -9,13 +9,13 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 }  // namespace
 
 void InitBootLeds() {
   using namespace btclock::board;
 
-  ESP_LOGI(kTag, "BTClock IDF C++ PoC — boot");
+  ESP_LOGI(kTag, "BTClock v4 — boot");
   // Label "heap" as the internal free bytes specifically — the default
   // allocator can pull from PSRAM on S3, which made the old print
   // report free > size when compared against the internal-only total

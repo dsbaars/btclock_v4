@@ -1,4 +1,4 @@
-// BTClock ESP-IDF C++ PoC — orchestrator.
+// BTClock v4 — orchestrator.
 //
 // app_main is wire-up only: a sequence of Init* calls that populate
 // AppCtx, then hand off to the long-running event loop. Each subsystem
@@ -15,7 +15,10 @@
 //   app/boot/init_mdns       — advertise device over mDNS (STA only)
 //   app/event_loop           — long-running render + event pump
 //
-// Board variant comes from -DPOC_BOARD=REV_A|REV_B|V8 at build time.
+// Board variant comes from -DBTCLOCK_BOARD=REV_A|REV_B|V8 at build
+// time. Panel geometry is orthogonal and unconstrained:
+// -DBTCLOCK_PANEL=2_13|2_9|7_5 picks the EPD driver independently of
+// the board pin map. 2.13" is the default for every board.
 
 #include "app/app_ctx.hpp"
 #include "app/boot/init_boot_leds.hpp"

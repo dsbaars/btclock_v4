@@ -6,6 +6,7 @@
 #include "mime.hpp"
 #include "show_text_parse.hpp"
 #include "sse_server.hpp"
+#include "url_decode.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -109,7 +110,15 @@ bool QueryParam(httpd_req_t* req, const char* key,
   if (httpd_req_get_url_query_str(req, qbuf, sizeof(qbuf)) != ESP_OK) {
     return false;
   }
-  return httpd_query_key_value(qbuf, key, out, out_size) == ESP_OK;
+  if (httpd_query_key_value(qbuf, key, out, out_size) != ESP_OK) {
+    return false;
+  }
+  // ESP-IDF returns the raw value verbatim — no percent-decode and no
+  // `+` handling. Decode in place so user-typed strings like
+  // `?t=%20CLOCK%20` reach the renderer as ` CLOCK ` instead of the
+  // literal `%20`s. Malformed escapes turn the whole call into a miss
+  // so the caller responds 400 the same way it would for a missing key.
+  return btclock::http::UrlDecodeInPlace(out);
 }
 
 // --- Misc -----------------------------------------------------------
@@ -650,13 +659,22 @@ std::string ControlServer::BuildStatusJson() const {
                         psram_total_bytes);
 
   cJSON* conn = cJSON_AddObjectToObject(root, "connectionStatus");
-  // The PoC currently only runs the btclock WS v2 source. "V2" tracks
-  // that; "price" and "blocks" are legacy BTCLOCK_SOURCE shims the
-  // WebUI still renders. Emit plausible defaults keyed to V2.
-  const bool v2_up = cfg_.hub != nullptr;
-  cJSON_AddBoolToObject(conn, "price", v2_up);
-  cJSON_AddBoolToObject(conn, "blocks", v2_up);
-  cJSON_AddBoolToObject(conn, "V2", v2_up);
+  // Each channel reports its real upstream state when a callback is
+  // wired (dataSource=1 plumbs price→Kraken, blocks→mempool, V2→false;
+  // dataSource=0 plumbs all three to the v2 WS state). Without a
+  // callback the field falls back to "hub is wired" — approximately
+  // right only on the v2 path; bd btclock_v4-1xc tracks fully phasing
+  // the heuristic out as remaining sources gain liveness probes.
+  const bool fallback_up = cfg_.hub != nullptr;
+  cJSON_AddBoolToObject(
+      conn, "price",
+      cfg_.price_connected ? cfg_.price_connected() : fallback_up);
+  cJSON_AddBoolToObject(
+      conn, "blocks",
+      cfg_.blocks_connected ? cfg_.blocks_connected() : fallback_up);
+  cJSON_AddBoolToObject(
+      conn, "V2",
+      cfg_.v2_connected ? cfg_.v2_connected() : fallback_up);
   // Nostr tracks the zap-relay WebSocket's live state when wired. An
   // unset provider means the listener isn't configured (nostrZapNotify
   // off or relay URL blank) — report false in that case so the WebUI
@@ -703,7 +721,7 @@ std::string ControlServer::BuildStatusJson() const {
 
   // Ambient-light sensor reading. Gated on "do we have a valid recent
   // reading" (adapter's IsAvailable()) rather than on a build-time
-  // POC_BOARD macro — boards that shipped with a BH1750 footprint but
+  // BTCLOCK_BOARD macro — boards that shipped with a BH1750 footprint but
   // no part soldered still report no lux, and that stays consistent
   // with /api/settings' `hasLightLevel` which feeds off the same hook.
   // Rev A / V8 wire light_sensor=nullptr so the field is suppressed.
@@ -1798,7 +1816,15 @@ btclock::settings::DeviceContext BuildDeviceContext(
     ctx.has_light_level = false;
   }
   ctx.hw_rev = cfg.hw_name;
+  // `git describe` of the WebUI submodule (`data/`), baked in by the
+  // webserver component's CMakeLists at configure time. Empty when the
+  // submodule wasn't a git tree at build (sparse checkout / CI tarball);
+  // settings_api.cpp suppresses the field on empty.
+#ifdef WEBUI_FS_REV
+  ctx.fs_rev = WEBUI_FS_REV;
+#else
   ctx.fs_rev = "";
+#endif
   const esp_app_desc_t* desc = esp_app_get_description();
   if (desc) {
     ctx.git_rev = desc->version;

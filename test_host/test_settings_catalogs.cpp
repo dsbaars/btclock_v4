@@ -92,7 +92,15 @@ TEST_CASE("availableFonts is a plain-string array with known ids") {
   // but the UI's font picker would suddenly hide options.
   CHECK(fonts.count("antonio") == 1);
   CHECK(fonts.count("oswald") == 1);
-  CHECK(fonts.count("dejavu") == 1);
+  CHECK(fonts.count("inter") == 1);
+  CHECK(fonts.count("sourceSerif") == 1);
+  CHECK(fonts.count("merriweather") == 1);
+  CHECK(fonts.count("bitter") == 1);
+  CHECK(fonts.count("atkinson") == 1);
+  // Retired family — must NOT reappear in the catalogue. A regression
+  // here would let the WebUI offer a font the firmware no longer ships
+  // and the validation walk silently snap to antonio.
+  CHECK(fonts.count("dejavu") == 0);
 
   cJSON_Delete(root);
 }

@@ -5,7 +5,7 @@ name: "Release pipeline"
 #   tag refs/tags/v* (or manual dispatch)
 #     └── host_tests          (gate: regression suite must pass)
 #           └── webui_and_lfs (one WebUI build, three sized storage.bin)
-#                 └── firmware (matrix: rev-a, rev-b, v8, [rev-a-29 slot])
+#                 └── firmware (matrix: rev-a, rev-a-29, rev-b, v8)
 #                       └── release (collects artifacts, publishes tag)
 #
 # On non-tag pushes this file does nothing — host_tests.yaml is the
@@ -13,11 +13,10 @@ name: "Release pipeline"
 # heavy (IDF toolchain + WebUI + matrix) and only runs when we're
 # actually shipping.
 #
-# Adding a new hardware variant (e.g. the upcoming 2.9" Rev A) is a
-# single entry in the `variants` matrix include-list below: pick a
-# label, wire it to a POC_BOARD value, give it its sdkconfig suffix,
-# and point it at one of the three storage sizes. No other job needs
-# to change.
+# Adding a new hardware variant is a single entry in the `variants`
+# matrix include-list below: pick a label, wire it to a BTCLOCK_BOARD
+# value, give it its sdkconfig suffix, and point it at one of the
+# three storage sizes. No other job needs to change.
 
 on:
   push:
@@ -72,8 +71,8 @@ jobs:
   # publishes them as artifacts for the firmware matrix to consume.
   #
   # The output artifact names are keyed on storage size (4mb / 8mb /
-  # 16mb), not on variant label — this is what lets a future
-  # `rev-a-29` entry share Rev A's 4 MB image for free.
+  # 16mb), not on variant label — this is what lets the `rev-a-29`
+  # entry share Rev A's 4 MB image for free.
   webui_and_lfs:
     runs-on: docker
     container:
@@ -153,12 +152,10 @@ jobs:
   # ---------------------------------------------------------------
   # 3. Firmware matrix
   # ---------------------------------------------------------------
-  # One row per hardware variant. Adding the planned 2.9" Rev A is a
-  # single additional include entry — uncomment the rev-a-29 row
-  # below (and adjust POC_BOARD once the board definition lands).
+  # One row per hardware variant.
   #
   # Every column here is driven off the matrix row: sdkconfig dir,
-  # POC_BOARD, storage size label, partition offset. No variant-
+  # BTCLOCK_BOARD, storage size label, partition offset. No variant-
   # specific shell branching in the steps.
   firmware:
     runs-on: docker
@@ -174,29 +171,33 @@ jobs:
       matrix:
         include:
           - variant_label: rev-a
-            poc_board: REV_A
+            btclock_board: REV_A
+            btclock_panel: "2_13"
             sdkconfig_dir: build-rev-a
             lfs_size_label: 4mb
             partition_offset: "0x370000"
+          # 2.9" EPD Rev A. Same MCU + 4 MB flash as Rev A, so it
+          # shares the 4mb storage image; only the EPD geometry
+          # differs (BTCLOCK_PANEL=2_9 keys the orthogonal panel
+          # selector that the EPD driver factory consumes).
+          - variant_label: rev-a-29
+            btclock_board: REV_A
+            btclock_panel: "2_9"
+            sdkconfig_dir: build-rev-a-29
+            lfs_size_label: 4mb
+            partition_offset: "0x370000"
           - variant_label: rev-b
-            poc_board: REV_B
+            btclock_board: REV_B
+            btclock_panel: "2_13"
             sdkconfig_dir: build-rev-b
             lfs_size_label: 8mb
             partition_offset: "0x6F0000"
           - variant_label: v8
-            poc_board: V8
+            btclock_board: V8
+            btclock_panel: "2_13"
             sdkconfig_dir: build-v8
             lfs_size_label: 16mb
             partition_offset: "0xDF0000"
-          # Placeholder for the upcoming 2.9" EPD Rev A. Same MCU and
-          # 4 MB flash as Rev A, so it shares the 4mb storage image.
-          # Uncomment and point poc_board at the real board define
-          # once the hardware variant is wired in.
-          # - variant_label: rev-a-29
-          #   poc_board: REV_A_29
-          #   sdkconfig_dir: build-rev-a-29
-          #   lfs_size_label: 4mb
-          #   partition_offset: "0x370000"
     steps:
       - name: Install Node.js (for JS-based Forgejo actions)
         shell: bash
@@ -222,7 +223,7 @@ jobs:
           path: |
             managed_components
             ${{ matrix.sdkconfig_dir }}
-          key: idf-v5.5.4-${{ matrix.variant_label }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.poc_board)) }}
+          key: idf-v5.5.4-${{ matrix.variant_label }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.btclock_board)) }}
           restore-keys: |
             idf-v5.5.4-${{ matrix.variant_label }}-
 
@@ -241,7 +242,8 @@ jobs:
           . /opt/esp/idf/export.sh
           idf.py \
             -B "${{ matrix.sdkconfig_dir }}" \
-            -D POC_BOARD=${{ matrix.poc_board }} \
+            -D BTCLOCK_BOARD=${{ matrix.btclock_board }} \
+            -D BTCLOCK_PANEL=${{ matrix.btclock_panel }} \
             -D SDKCONFIG="${{ matrix.sdkconfig_dir }}/sdkconfig" \
             build
 

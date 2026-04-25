@@ -10,8 +10,9 @@ namespace {
 constexpr const char* kRef =
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.:";
 
-// Reused from provisioning_ui.cpp's markdown defaults — the DejaVu
-// regular/bold pair renders cleanly down to ~16 px on the 2.13" panel.
+// Reused from provisioning_ui.cpp's markdown defaults — the Atkinson
+// Hyperlegible regular/bold pair (purpose-built for low-DPI legibility)
+// renders cleanly down to ~16 px on the 2.13" panel.
 constexpr float kBodyPx = 18.0f;
 
 // "12345678" → "12.3 MB" style. KB for < 1 MB, MB with one decimal
@@ -54,8 +55,8 @@ void RenderDebugScreen(
     const DebugScreenInfo& info) {
   static_assert(N >= 7, "debug layout needs at least 7 panels");
 
-  const Font& reg = fonts.dejavu();
-  const Font& bold = fonts.dejavu_bold();
+  const Font& reg = fonts.atkinson();
+  const Font& bold = fonts.atkinson_bold();
 
   char heap_str[32];
   char psram_str[32];

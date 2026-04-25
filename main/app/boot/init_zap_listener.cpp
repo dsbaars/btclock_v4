@@ -24,7 +24,7 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 
 // Bind the on-zap callback. Factored out so RefreshZapListenerSettings
 // can rebuild the ZapListener with a new pubkey and re-attach the same
@@ -101,12 +101,22 @@ void InitZapListener(AppCtx& ctx) {
   ctx.zap_notify_screen_enabled.store(zap_cfg.zap_screen_notify);
   ctx.zap_screen_auto_restore.store(zap_cfg.zap_screen_auto_restore);
 
+  // Reject bare-hostname / https:// `nostrRelay` values that survive
+  // from before the PATCH-side scheme guard (5d382c1). RelayClient
+  // would otherwise log "Invalid uri" on Start() and the listener
+  // would silently never connect — keep it inert so the boot path
+  // still log-explains why.
+  const bool relay_scheme_ok =
+      zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
+      zap_cfg.relay_url.rfind("ws://", 0) == 0;
   if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() &&
-        zap_cfg.zap_pubkey.size() == 64)) {
-    ESP_LOGI(kTag, "zap listener disabled (enable=%d relay=%s pub=%s)",
+        zap_cfg.zap_pubkey.size() == 64 && relay_scheme_ok)) {
+    ESP_LOGI(kTag,
+             "zap listener disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
              zap_cfg.enabled ? 1 : 0,
              zap_cfg.relay_url.empty() ? "<empty>" : "set",
-             zap_cfg.zap_pubkey.size() == 64 ? "set" : "<invalid>");
+             zap_cfg.zap_pubkey.size() == 64 ? "set" : "<invalid>",
+             relay_scheme_ok ? 1 : 0);
     return;
   }
 

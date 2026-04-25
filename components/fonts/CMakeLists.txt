@@ -5,7 +5,11 @@ idf_component_register(
     REQUIRES esp_psram
     EMBED_FILES "assets/Antonio.ttf" "assets/Oswald.ttf"
                 "assets/OswaldBold.ttf"
-                "assets/DejaVu.ttf" "assets/DejaVuBold.ttf"
+                "assets/Inter.ttf" "assets/InterBold.ttf"
+                "assets/SourceSerif.ttf" "assets/SourceSerifBold.ttf"
+                "assets/Merriweather.ttf" "assets/MerriweatherBold.ttf"
+                "assets/Bitter.ttf" "assets/BitterBold.ttf"
+                "assets/Atkinson.ttf" "assets/AtkinsonBold.ttf"
                 "assets/SatoshiSymbol.ttf"
                 "assets/MaterialDesignIcons.ttf"
 )

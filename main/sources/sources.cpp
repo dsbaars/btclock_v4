@@ -23,11 +23,12 @@
 #include "settings/nostr_config.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
+#include "sources/mempool_kraken_source.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 
 void MaybeAddNostrSource(AppCtx& ctx) {
   // Settings live in the canonical "settings" NVS namespace where
@@ -39,8 +40,18 @@ void MaybeAddNostrSource(AppCtx& ctx) {
   // change requires reboot — no live-reload hook here.
   settings::NvsPrefs settings_prefs(prefs::kSettingsNs);
   const auto cfg = settings::ReadNostrSourceConfig(settings_prefs);
+  // Reject bare hostnames / https:// values up front. The PATCH path
+  // gained scheme validation in 5d382c1 but devices flashed before that
+  // can carry a stale schemeless `nostrRelay` in NVS. Constructing
+  // NostrDataSource with such a URL would fail at Start() with
+  // "Invalid uri", and the StartAll() aggregate used to abort the boot
+  // (Rev B reboot loop). Keep the source out of the hub entirely so
+  // the rest of the data pipeline (block/price feeds) still comes up.
+  const bool relay_scheme_ok =
+      cfg.relay_url.rfind("wss://", 0) == 0 ||
+      cfg.relay_url.rfind("ws://", 0) == 0;
   if (cfg.enabled && !cfg.relay_url.empty() &&
-      !cfg.author_pubkey_hex.empty()) {
+      !cfg.author_pubkey_hex.empty() && relay_scheme_ok) {
     nostr::NostrDataSource::Config ncfg;
     ncfg.relay_url = cfg.relay_url;
     ncfg.author_pubkey_hex = cfg.author_pubkey_hex;
@@ -53,10 +64,12 @@ void MaybeAddNostrSource(AppCtx& ctx) {
              cfg.relay_url.c_str(),
              cfg.author_pubkey_hex.substr(0, 8).c_str());
   } else {
-    ESP_LOGI(kTag, "nostr disabled (enable=%d relay=%s pub=%s)",
+    ESP_LOGI(kTag,
+             "nostr disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
              cfg.enabled ? 1 : 0,
              cfg.relay_url.empty() ? "<empty>" : "set",
-             cfg.author_pubkey_hex.empty() ? "<empty>" : "set");
+             cfg.author_pubkey_hex.empty() ? "<empty>" : "set",
+             relay_scheme_ok ? 1 : 0);
   }
 }
 
@@ -84,24 +97,43 @@ void WireDataSources(AppCtx& ctx) {
     // and the schema's default_bool=true on prefs::kBlockFeeDec.
     block_fee_dec = settings.GetBool(prefs::kBlockFeeDec, true);
   }
-  if (data_source == 1 || data_source == 3) {
+  if (data_source == 3) {
     ESP_LOGW(kTag,
              "dataSource=%d not implemented, using btclock_v2 fallback",
              static_cast<int>(data_source));
   }
-  const std::string uri =
-      BuildBtclockSourceUri(data_source, ce_endpoint, ce_disable_ssl);
-  ESP_LOGI(kTag, "btclock_ws connecting to: %s (dataSource=%d)",
-           uri.c_str(), static_cast<int>(data_source));
 
-  // Keep a non-owning back-ref to the v2 WS source so the
-  // on_screens_changed hook in init_control_api can refresh its
-  // currency subscription list when the user PATCHes actCurrencies —
-  // without it the WS keeps streaming the old currencies until reboot.
-  auto btclock_ws = std::make_unique<BtclockDataSource>(
-      uri.c_str(), ctx.currencies, block_fee_dec);
-  ctx.btclock_ws = btclock_ws.get();
-  ctx.hub->AddSource(std::move(btclock_ws));
+  if (data_source == 1) {
+    // mempool.space + Kraken — two independent WSS connections, neither
+    // takes the other down. Skips the v2 source entirely; the
+    // ctx.btclock_ws back-ref stays null which the actCurrencies and
+    // blockFeeDec hooks check before calling SetCurrencies / SetBlockFeeDec
+    // on it. A future hook for the mempool+kraken source will need its
+    // own back-ref slot in AppCtx.
+    ESP_LOGI(kTag,
+             "dataSource=1 → mempool.space + Kraken (currencies=%u, "
+             "block_fee_dec=%d)",
+             static_cast<unsigned>(ctx.currencies.size()),
+             block_fee_dec ? 1 : 0);
+    auto mempool_kraken = std::make_unique<MempoolKrakenSource>(
+        ctx.currencies, block_fee_dec);
+    ctx.mempool_kraken = mempool_kraken.get();
+    ctx.hub->AddSource(std::move(mempool_kraken));
+  } else {
+    const std::string uri =
+        BuildBtclockSourceUri(data_source, ce_endpoint, ce_disable_ssl);
+    ESP_LOGI(kTag, "btclock_ws connecting to: %s (dataSource=%d)",
+             uri.c_str(), static_cast<int>(data_source));
+
+    // Keep a non-owning back-ref to the v2 WS source so the
+    // on_screens_changed hook in init_control_api can refresh its
+    // currency subscription list when the user PATCHes actCurrencies —
+    // without it the WS keeps streaming the old currencies until reboot.
+    auto btclock_ws = std::make_unique<BtclockDataSource>(
+        uri.c_str(), ctx.currencies, block_fee_dec);
+    ctx.btclock_ws = btclock_ws.get();
+    ctx.hub->AddSource(std::move(btclock_ws));
+  }
 
   MaybeAddNostrSource(ctx);
 
@@ -126,7 +158,18 @@ void WireDataSources(AppCtx& ctx) {
   ctx.hub->SetOnUpdate([task](const DataSnapshot&) {
     xTaskNotifyGive(task);
   });
-  ESP_ERROR_CHECK(ctx.hub->StartAll());
+  // Don't ESP_ERROR_CHECK here — a single bad source (e.g. a malformed
+  // nostrRelay URL persisted before scheme validation landed) returns
+  // -1 from its Start() and rolls up into a non-OK aggregate. Aborting
+  // the whole boot for that case bricks the device into a reboot loop
+  // (the Rev B regression following bd btclock_v4-1xc). Sources that
+  // fail to start log their own error; the hub keeps running with the
+  // ones that came up cleanly, and /api/status's connection probes
+  // surface the partial-failure state to the WebUI.
+  if (auto err = ctx.hub->StartAll(); err != ESP_OK) {
+    ESP_LOGW(kTag, "hub StartAll partial failure: %s — continuing",
+             esp_err_to_name(err));
+  }
 
   // Block until the first blockheight arrives (or 30 s passes and we
   // paint whatever — the event loop will catch up when data lands).

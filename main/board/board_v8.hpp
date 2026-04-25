@@ -82,7 +82,15 @@ constexpr PinSource kEpdCsSource = PinSource::kMcp2;
 constexpr PinSource kEpdBusySource = PinSource::kMcp1;
 constexpr PinSource kEpdResetSource = PinSource::kMcp2;
 
+// Composes board + non-default panel suffix; 2.13" is the default so
+// the bare-board string stays stable for the common case.
+#if defined(BTCLOCK_PANEL_2_9)
+constexpr const char* kHardwareName = "V8 2.9\"";
+#elif defined(BTCLOCK_PANEL_7_5)
+constexpr const char* kHardwareName = "V8 7.5\"";
+#else
 constexpr const char* kHardwareName = "V8";
+#endif
 
 }  // namespace board
 }  // namespace btclock

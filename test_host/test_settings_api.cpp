@@ -905,6 +905,41 @@ TEST_CASE("PATCH nostrPubKey empty string clears the field") {
   CHECK(prefs.str_["nostrPubKey"].empty());
 }
 
+TEST_CASE("PATCH nostrRelay rejects bare hostname") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelay\":\"relay.example.com\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "nostrRelay:bad_scheme");
+}
+
+TEST_CASE("PATCH nostrRelay rejects https:// scheme") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelay\":\"https://relay.example.com\"}", DefaultCtx(), prefs,
+      prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "nostrRelay:bad_scheme");
+}
+
+TEST_CASE("PATCH nostrRelay accepts ws:// scheme") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelay\":\"ws://relay.example.com\"}", DefaultCtx(), prefs,
+      prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrRelay"] == "ws://relay.example.com");
+}
+
+TEST_CASE("PATCH nostrRelay empty string clears the field") {
+  FakePrefs prefs;
+  prefs.str_["nostrRelay"] = "wss://stale.example.com";
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelay\":\"\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrRelay"].empty());
+}
+
 TEST_CASE("PATCH nostrRelay + nostrZapNotify + nostrZapPubkey") {
   FakePrefs prefs;
   const std::string pk = std::string(64, 'a');

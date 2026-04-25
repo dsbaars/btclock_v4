@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for the per-variant flash scripts in this directory.
-# Sourced, not executed. Each flash-<variant>.sh picks its POC_BOARD,
+# Sourced, not executed. Each flash-<variant>.sh picks its BTCLOCK_BOARD,
 # build dir, mDNS name, and calls build_and_flash.
 
 # shellcheck disable=SC2034
@@ -21,17 +21,25 @@ source_idf() {
   source "${IDF_EXPORT}" >/dev/null
 }
 
-# Build one variant. Args: POC_BOARD, build_dir.
+# Build one variant. Args: btclock_board, build_dir, [btclock_panel].
+# The panel arg is optional — omit it to use the CMake default (2_13).
+# When present, it lands as -DBTCLOCK_PANEL=<panel>, the orthogonal
+# panel selector that the EPD driver factory consumes.
 build_variant() {
-  local poc_board="$1"
+  local btclock_board="$1"
   local build_dir="$2"
+  local btclock_panel="${3:-}"
   (
     cd "${REPO_ROOT}"
-    idf.py \
-      -B "${build_dir}" \
-      -D "POC_BOARD=${poc_board}" \
-      -D "SDKCONFIG=${build_dir}/sdkconfig" \
-      build
+    local args=(
+      -B "${build_dir}"
+      -D "BTCLOCK_BOARD=${btclock_board}"
+      -D "SDKCONFIG=${build_dir}/sdkconfig"
+    )
+    if [[ -n "${btclock_panel}" ]]; then
+      args+=(-D "BTCLOCK_PANEL=${btclock_panel}")
+    fi
+    idf.py "${args[@]}" build
   )
 }
 
@@ -107,15 +115,18 @@ wait_for_reboot() {
 }
 
 # End-to-end: source IDF, build, resolve host, OTA, confirm.
-# Args: poc_board, build_dir, mdns_name, fallback_ip.
+# Args: btclock_board, build_dir, mdns_name, fallback_ip, [btclock_panel].
+# Panel arg is optional and only required for non-default geometries
+# (e.g. flash-rev-a-29 passes "2_9").
 build_and_flash() {
-  local poc_board="$1"
+  local btclock_board="$1"
   local build_dir="$2"
   local mdns_name="$3"
   local fallback_ip="$4"
+  local btclock_panel="${5:-}"
 
   source_idf
-  build_variant "${poc_board}" "${build_dir}"
+  build_variant "${btclock_board}" "${build_dir}" "${btclock_panel}"
 
   local host
   host="$(resolve_host "${mdns_name}" "${fallback_ip}")"

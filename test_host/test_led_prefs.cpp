@@ -3,7 +3,7 @@
 // Covers two responsibilities of ResolveLedPrefs:
 //   1. PATCH read-back — when the WebUI writes a key into the
 //      `settings` namespace, the LED controller should pick up the new
-//      value on its next boot. The previous PoC port read its own
+//      value on its next boot. The earlier port read its own
 //      `led` namespace and ignored the settings PATCHes entirely
 //      (bd btclock_v4-xfm).
 //   2. Migration — installs that pre-date the unified-namespace switch
@@ -109,7 +109,7 @@ TEST_CASE("ledFlashOnUpd PATCH (false) is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
   // Schema default for ledFlashOnUpd is false — explicitly write false
   // and confirm the loader doesn't fall through to the legacy "true"
-  // default the original PoC controller used.
+  // default the earlier controller used.
   settings_ns.SetBool(btclock::prefs::kLedFlashOnUpd, false);
 
   const auto s =
@@ -189,7 +189,7 @@ TEST_CASE("Legacy 'led/disable' (true) migrates into settings") {
 
 TEST_CASE("Legacy 'led/flashUpdate' migrates into settings") {
   FakePrefs settings_ns, legacy_ns;
-  // Original PoC default for flashUpdate was true — that's the case we
+  // Earlier default for flashUpdate was true — that's the case we
   // most care about preserving across the migration.
   legacy_ns.SetBool("flashUpdate", true);
 

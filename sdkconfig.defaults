@@ -47,14 +47,16 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 #  1. DYNAMIC_BUFFER frees the IN/OUT buffers between TLS records so an
 #     idle connection holds ~0 bytes of buffer instead of ~20 KiB.
 #  2. SSL_IN_CONTENT_LEN=4096 caps the worst-case transient allocation
-#     at 4 KiB — safe for all clients: noderunners pool (~3 KiB),
-#     price WSS (4 KiB msgpack frames max), and Nostr zap receipts
-#     (multi-KB description tags are broken up at the TLS record layer,
-#     not the WS frame layer).
+#     at 16 KiB — Cloudflare-fronted endpoints (mempool.space) send a
+#     ServerHello + Certificate chain that exceeds 4 KiB, which trips
+#     MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE during handshake when the
+#     buffer is too small. Bumping to the TLS record max (16 KiB) with
+#     DYNAMIC_BUFFER on means the cost is paid only while the
+#     handshake/large-frame is in flight; idle connections shrink back.
 #  3. SSL_OUT_CONTENT_LEN=2048 — we only send tiny subscribe frames +
 #     GET request lines, never >1 KiB.
 CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y
-CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=4096
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384
 CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 

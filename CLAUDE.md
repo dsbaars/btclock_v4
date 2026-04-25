@@ -69,7 +69,7 @@ command, e.g.:
 
 ```bash
 source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
-  idf.py -B build-rev-b -D POC_BOARD=REV_B -D SDKCONFIG=build-rev-b/sdkconfig build
+  idf.py -B build-rev-b -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-b/sdkconfig build
 ```
 
 ## Build & Test
@@ -78,11 +78,17 @@ source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
 # ALWAYS source first:
 source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh
 
-# Variants select via POC_BOARD; keep per-build SDKCONFIG so variants
-# don't poison each other
-idf.py -B build-rev-a -D POC_BOARD=REV_A -D SDKCONFIG=build-rev-a/sdkconfig build
-idf.py -B build-rev-b -D POC_BOARD=REV_B -D SDKCONFIG=build-rev-b/sdkconfig build
-idf.py -B build-v8    -D POC_BOARD=V8    -D SDKCONFIG=build-v8/sdkconfig    build
+# BTCLOCK_BOARD picks the pin map (REV_A / REV_B / V8). BTCLOCK_PANEL
+# picks the EPD geometry (2_13 / 2_9 / 7_5). The two are independent —
+# any board × any panel configures cleanly; bring-up status is
+# tracked separately. Keep per-build SDKCONFIG so variants don't
+# poison each other.
+idf.py -B build-rev-a    -D BTCLOCK_BOARD=REV_A -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-a/sdkconfig    build
+idf.py -B build-rev-a-29 -D BTCLOCK_BOARD=REV_A -D BTCLOCK_PANEL=2_9  -D SDKCONFIG=build-rev-a-29/sdkconfig build
+idf.py -B build-rev-b    -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-b/sdkconfig    build
+# Untested but configures: e.g. Rev B with 7.5" panel
+# idf.py -B build-rev-b-75 -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=7_5 -D SDKCONFIG=build-rev-b-75/sdkconfig build
+idf.py -B build-v8       -D BTCLOCK_BOARD=V8    -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-v8/sdkconfig       build
 
 # Host tests (no IDF dep, plain cmake — DO NOT source the IDF env for these)
 cmake -S test_host -B build-host && cmake --build build-host && ./build-host/btclock_host_tests
@@ -126,11 +132,18 @@ source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
 
 Board identification:
 
-| Variant | MAC                   | Flash | PSRAM | Notes |
-|---------|-----------------------|-------|-------|-------|
-| Rev A   | `dc:54:75:d6:00:fc`   | 4 MB  | 2 MB  | no BH1750, no frontlight |
-| Rev B   | `98:88:e0:9d:55:30`   | 8 MB  | 2 MB  | BH1750, frontlight |
-| V8      | `30:30:f9:3e:d3:9c`   | 16 MB | 8 MB  | 8 panels |
+| Variant   | MAC                   | Flash | PSRAM | Default panel | Notes |
+|-----------|-----------------------|-------|-------|---------------|-------|
+| Rev A     | `dc:54:75:d6:00:fc`   | 4 MB  | 2 MB  | 2.13"         | no BH1750, no frontlight (Lolin S3 Mini) |
+| Rev B     | `98:88:e0:9d:55:30`   | 8 MB  | 2 MB  | 2.13"         | BH1750, frontlight |
+| V8        | `30:30:f9:3e:d3:9c`   | 16 MB | 8 MB  | 2.13"         | 8 panels |
+
+Panel override: `BTCLOCK_PANEL=2_9` swaps to 2.9" (GDEY029T94,
+128x296), `BTCLOCK_PANEL=7_5` to 7.5" (GDEY075T7 / UC8179, 800x480 —
+scaffolded but un-flashed today). Any board can drive any panel; the
+EPD pin straps are panel-agnostic. The CI release matrix is
+deliberately conservative (rev-a, rev-a-29, rev-b, v8) until each new
+combo gets a bring-up pass.
 
 Flash firmware (uses the `flash_args` file the build produced):
 

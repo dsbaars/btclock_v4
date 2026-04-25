@@ -36,6 +36,7 @@
 #include "prefs.hpp"
 #include "screens/screens.hpp"
 #include "sdkconfig.h"
+#include "sources/mempool_kraken_source.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "sse_server.hpp"
@@ -44,27 +45,52 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 
 // OTA asset naming mirrors the Arduino release workflow:
-//   btclock_<variant>_ota.bin  / btclock_<variant>_webui.bin
-// The variant slug matches the old `BOARD` define — lowercased with
-// underscores. Rev A / Rev B / V8 are the only shipping variants
-// today. Guarded behind POC_BOARD_* macros because the human-readable
-// kHardwareName ("Rev B") contains a space.
+//   btclock_<board>[_<panel>]_ota.bin  / btclock_<board>[_<panel>]_webui.bin
+// Board and panel slugs compose independently. The panel suffix is
+// elided when the panel is the default (2.13") so the common case
+// stays plain `btclock_rev_a_ota.bin` / `btclock_rev_b_ota.bin` / etc.
+// — this matches the Arduino-era release artifact names. Untested
+// non-default panels (e.g. rev_b_75) get an explicit suffix.
 OtaManager::Config MakeOtaConfig() {
   settings::NvsPrefs ota_prefs(prefs::kSettingsNs);
   OtaManager::Config ocfg;
   ocfg.release_url = ota_prefs.GetString(prefs::kGitReleaseUrl, "");
-#if defined(POC_BOARD_REV_A)
+#if defined(BTCLOCK_BOARD_REV_A)
+#  if defined(BTCLOCK_PANEL_2_9)
+  ocfg.firmware_asset = "btclock_rev_a_29_ota.bin";
+  ocfg.webui_asset = "btclock_rev_a_29_webui.bin";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  ocfg.firmware_asset = "btclock_rev_a_75_ota.bin";
+  ocfg.webui_asset = "btclock_rev_a_75_webui.bin";
+#  else
   ocfg.firmware_asset = "btclock_rev_a_ota.bin";
   ocfg.webui_asset = "btclock_rev_a_webui.bin";
-#elif defined(POC_BOARD_REV_B)
+#  endif
+#elif defined(BTCLOCK_BOARD_REV_B)
+#  if defined(BTCLOCK_PANEL_2_9)
+  ocfg.firmware_asset = "btclock_rev_b_29_ota.bin";
+  ocfg.webui_asset = "btclock_rev_b_29_webui.bin";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  ocfg.firmware_asset = "btclock_rev_b_75_ota.bin";
+  ocfg.webui_asset = "btclock_rev_b_75_webui.bin";
+#  else
   ocfg.firmware_asset = "btclock_rev_b_ota.bin";
   ocfg.webui_asset = "btclock_rev_b_webui.bin";
-#elif defined(POC_BOARD_V8)
+#  endif
+#elif defined(BTCLOCK_BOARD_V8)
+#  if defined(BTCLOCK_PANEL_2_9)
+  ocfg.firmware_asset = "btclock_v8_29_ota.bin";
+  ocfg.webui_asset = "btclock_v8_29_webui.bin";
+#  elif defined(BTCLOCK_PANEL_7_5)
+  ocfg.firmware_asset = "btclock_v8_75_ota.bin";
+  ocfg.webui_asset = "btclock_v8_75_webui.bin";
+#  else
   ocfg.firmware_asset = "btclock_v8_ota.bin";
   ocfg.webui_asset = "btclock_v8_webui.bin";
+#  endif
 #else
   // TODO: fill in exact filename once a release ships for this variant.
   ocfg.firmware_asset = "btclock_unknown_ota.bin";
@@ -284,6 +310,16 @@ void InitControlApi(AppCtx& ctx) {
     // used before the ZapListener was wired.
     if (nostr::RelayClient* zap_ptr = ctx.zap_relay.get()) {
       ccfg.nostr_connected = [zap_ptr]() { return zap_ptr->connected(); };
+    }
+    // dataSource=1 plumbs price/blocks straight from the source's
+    // per-WS connection probes. dataSource=0 leaves all three callbacks
+    // unset → control_server falls back to the hub-presence heuristic
+    // (which is correct for v2 since the single socket carries both).
+    // bd btclock_v4-1xc.
+    if (MempoolKrakenSource* mk = ctx.mempool_kraken) {
+      ccfg.price_connected = [mk]() { return mk->IsKrakenConnected(); };
+      ccfg.blocks_connected = [mk]() { return mk->IsMempoolConnected(); };
+      ccfg.v2_connected = []() { return false; };
     }
     // Live PATCH refresh for the runtime-editable nostr keys
     // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,

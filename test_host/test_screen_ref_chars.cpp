@@ -32,7 +32,7 @@
 namespace {
 
 std::string ReadFile(const std::string& relpath) {
-  const std::string path = std::string(BTCLOCK_POC_ROOT) + "/" + relpath;
+  const std::string path = std::string(BTCLOCK_PROJECT_ROOT) + "/" + relpath;
   std::ifstream f(path);
   REQUIRE_MESSAGE(f.is_open(), "could not open " << path);
   std::stringstream ss;

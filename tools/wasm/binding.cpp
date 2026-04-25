@@ -22,10 +22,11 @@
 // Preview-only runtime knobs (no device-firmware counterpart): the JS
 // side calls setRenderOptions(panels, font_family) to switch between
 // the 7-panel (REV_A/REV_B) and 8-panel (V8) layouts and to override
-// the big-digit font (antonio/oswald/dejavu) for validation across the
-// firmware's shipped font set. The renderer templates are already
-// instantiated for N=7 and N=8 in main/screens/*.cpp; we dispatch at
-// runtime into the right instantiation.
+// the big-digit font (antonio/oswald/inter/sourceSerif/merriweather/
+// bitter/atkinson) for validation across the firmware's shipped font
+// set. The renderer templates are already instantiated for N=7 and N=8
+// in main/screens/*.cpp; we dispatch at runtime into the right
+// instantiation.
 
 #include <array>
 #include <cstdint>
@@ -84,7 +85,8 @@ struct RenderContext {
 
   // Runtime-selectable preview state. `panels_active` is 7 or 8;
   // `font_family` selects which face overrides the stock antonio slot
-  // on `fonts` before a render. 0=antonio (stock), 1=oswald, 2=dejavu.
+  // on `fonts` before a render. 0=antonio (stock), 1=oswald, 2=inter,
+  // 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson.
   // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
   // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
   // axis. Default false matches the device boot default.
@@ -149,7 +151,8 @@ void ReturnPanels(RenderContext& ctx,
 // at once, leaving `icon` and `sats_glyph` on their dedicated subset
 // fonts (which carry glyphs the family fonts don't have).
 //
-// 0 = antonio (stock), 1 = oswald, 2 = dejavu. Unknown families fall
+// 0 = antonio (stock), 1 = oswald, 2 = inter, 3 = sourceSerif,
+// 4 = merriweather, 5 = bitter, 6 = atkinson. Unknown families fall
 // back to antonio — same semantics as the old ApplyFontOverride.
 void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
   btclock::FontFamily f = btclock::FontFamily::kAntonio;
@@ -158,7 +161,19 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
       f = btclock::FontFamily::kOswald;
       break;
     case 2:
-      f = btclock::FontFamily::kDejaVu;
+      f = btclock::FontFamily::kInter;
+      break;
+    case 3:
+      f = btclock::FontFamily::kSourceSerif;
+      break;
+    case 4:
+      f = btclock::FontFamily::kMerriweather;
+      break;
+    case 5:
+      f = btclock::FontFamily::kBitter;
+      break;
+    case 6:
+      f = btclock::FontFamily::kAtkinson;
       break;
     default:
       f = btclock::FontFamily::kAntonio;
@@ -1095,12 +1110,13 @@ val renderNostrZapAlpha(double amount_sats) {
 
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
 // is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
-// 2=dejavu. Unknown font families fall back to stock. Call whenever
-// the user changes the UI selector; safe to call before every render.
+// 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson.
+// Unknown font families fall back to stock. Call whenever the user
+// changes the UI selector; safe to call before every render.
 void setRenderOptions(int panels, int font_family) {
   auto& ctx = Ctx();
   ctx.panels_active = (panels == 8) ? 8 : 7;
-  if (font_family < 0 || font_family > 2) font_family = 0;
+  if (font_family < 0 || font_family > 6) font_family = 0;
   ctx.font_family = font_family;
 }
 

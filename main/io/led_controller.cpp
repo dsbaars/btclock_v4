@@ -28,7 +28,7 @@ constexpr const char* kTag = "led";
 // LED prefs live in the shared `settings` NVS namespace alongside every
 // other PATCH-accepted field, keyed by the same strings the WebUI uses
 // (kLedBrightness, kBlockFlashColor, kDisableLeds, kLedFlashOnUpd). An
-// older PoC port stored them in a separate `led` namespace with hand-
+// earlier port stored them in a separate `led` namespace with hand-
 // abbreviated keys; ResolveLedPrefs() handles the one-shot migration so
 // installs that pre-date this change keep their saved values.
 constexpr const char* kLegacyNvsNamespace = "led";

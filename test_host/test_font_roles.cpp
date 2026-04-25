@@ -14,7 +14,8 @@
 //     "antonio" storage; icon/sats_glyph alias their dedicated fonts.
 //   - SetFamily(kOswald) rebinds the four swappable roles to oswald;
 //     icon/sats_glyph unchanged.
-//   - SetFamily(kDejaVu) likewise.
+//   - Same coverage for kInter, kSourceSerif, kMerriweather, kBitter,
+//     kAtkinson.
 //   - ParseFontFamily maps the NVS strings + falls back to kAntonio.
 //
 // When Agent B.2's sweep is stable we can revisit whether it's worth
@@ -37,7 +38,11 @@ namespace {
 struct RoleFixture {
   int antonio = 0;
   int oswald = 0;
-  int dejavu = 0;
+  int inter = 0;
+  int source_serif = 0;
+  int merriweather = 0;
+  int bitter = 0;
+  int atkinson = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -51,9 +56,13 @@ struct RoleFixture {
   void SetFamily(FontFamily f) {
     const int* regular = &antonio;
     switch (f) {
-      case FontFamily::kAntonio: regular = &antonio; break;
-      case FontFamily::kOswald:  regular = &oswald;  break;
-      case FontFamily::kDejaVu:  regular = &dejavu;  break;
+      case FontFamily::kAntonio:      regular = &antonio;       break;
+      case FontFamily::kOswald:       regular = &oswald;        break;
+      case FontFamily::kInter:        regular = &inter;         break;
+      case FontFamily::kSourceSerif:  regular = &source_serif;  break;
+      case FontFamily::kMerriweather: regular = &merriweather;  break;
+      case FontFamily::kBitter:       regular = &bitter;        break;
+      case FontFamily::kAtkinson:     regular = &atkinson;      break;
     }
     digit = regular;
     label = regular;
@@ -88,13 +97,57 @@ TEST_CASE("SetFamily(kOswald) rebinds swappable roles") {
   CHECK(f.sats_glyph == &f.sats);
 }
 
-TEST_CASE("SetFamily(kDejaVu) rebinds swappable roles") {
+TEST_CASE("SetFamily(kInter) rebinds swappable roles") {
   RoleFixture f;
-  f.SetFamily(FontFamily::kDejaVu);
-  CHECK(f.digit == &f.dejavu);
-  CHECK(f.label == &f.dejavu);
-  CHECK(f.small_chars == &f.dejavu);
-  CHECK(f.unit == &f.dejavu);
+  f.SetFamily(FontFamily::kInter);
+  CHECK(f.digit == &f.inter);
+  CHECK(f.label == &f.inter);
+  CHECK(f.small_chars == &f.inter);
+  CHECK(f.unit == &f.inter);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kSourceSerif) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kSourceSerif);
+  CHECK(f.digit == &f.source_serif);
+  CHECK(f.label == &f.source_serif);
+  CHECK(f.small_chars == &f.source_serif);
+  CHECK(f.unit == &f.source_serif);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kMerriweather) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kMerriweather);
+  CHECK(f.digit == &f.merriweather);
+  CHECK(f.label == &f.merriweather);
+  CHECK(f.small_chars == &f.merriweather);
+  CHECK(f.unit == &f.merriweather);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kBitter) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kBitter);
+  CHECK(f.digit == &f.bitter);
+  CHECK(f.label == &f.bitter);
+  CHECK(f.small_chars == &f.bitter);
+  CHECK(f.unit == &f.bitter);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kAtkinson) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kAtkinson);
+  CHECK(f.digit == &f.atkinson);
+  CHECK(f.label == &f.atkinson);
+  CHECK(f.small_chars == &f.atkinson);
+  CHECK(f.unit == &f.atkinson);
   CHECK(f.icon == &f.mdi);
   CHECK(f.sats_glyph == &f.sats);
 }
@@ -112,7 +165,11 @@ TEST_CASE("SetFamily(kAntonio) returns to day-1 default") {
 TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("antonio") == FontFamily::kAntonio);
   CHECK(ParseFontFamily("oswald")  == FontFamily::kOswald);
-  CHECK(ParseFontFamily("dejavu")  == FontFamily::kDejaVu);
+  CHECK(ParseFontFamily("inter")   == FontFamily::kInter);
+  CHECK(ParseFontFamily("sourceSerif")  == FontFamily::kSourceSerif);
+  CHECK(ParseFontFamily("merriweather") == FontFamily::kMerriweather);
+  CHECK(ParseFontFamily("bitter")  == FontFamily::kBitter);
+  CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
 }
 
 TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {
@@ -122,6 +179,10 @@ TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {
   CHECK(ParseFontFamily("") == FontFamily::kAntonio);
   CHECK(ParseFontFamily("Antonio") == FontFamily::kAntonio);  // case-sensitive
   CHECK(ParseFontFamily("comic-sans") == FontFamily::kAntonio);
+  // Devices upgrading from an older firmware that stored the retired
+  // "dejavu" family should land on the antonio default rather than
+  // refusing to boot or crashing on a missing enum case.
+  CHECK(ParseFontFamily("dejavu") == FontFamily::kAntonio);
 }
 
 }  // namespace btclock

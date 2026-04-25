@@ -10,7 +10,7 @@
 // buffer they write to. Instead we recompute the same shape synthetically
 // here from the snapshot data the renderer just consumed. The result
 // matches the old firmware's slot layout closely enough that the WebUI
-// renders it unchanged — see `idf_cpp_proto/test_host/test_panel_texts`
+// renders it unchanged — see `test_host/test_panel_texts`
 // for the parity cases that pin this.
 //
 // Pure-logic helper — no EPD, font, or FreeRTOS deps — so host tests can

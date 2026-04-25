@@ -67,6 +67,7 @@ add_executable(btclock_host_tests
     test_panel_texts.cpp
     test_price_layout.cpp
     test_show_text_parse.cpp
+    test_url_decode.cpp
     test_sse_frame.cpp
     test_heap_metrics.cpp
     test_sats_variant.cpp
@@ -94,6 +95,7 @@ add_executable(btclock_host_tests
     ../components/nostr/src/request_frame.cpp
     ../components/webserver/mime.cpp
     ../components/webserver/show_text_parse.cpp
+    ../components/webserver/url_decode.cpp
     ../components/webserver/sse_frame.cpp
     ../components/webserver/auth_gate_logic.cpp
     ../components/settings/settings_api.cpp
@@ -136,7 +138,7 @@ target_link_libraries(btclock_host_tests PRIVATE Threads::Threads)
 # Give tests a compile-time pointer to the partition CSVs so we can test
 # them without copying / duplicating paths.
 target_compile_definitions(btclock_host_tests PRIVATE
-    BTCLOCK_POC_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/.."
+    BTCLOCK_PROJECT_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
 
 enable_testing()

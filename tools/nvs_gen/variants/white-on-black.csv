@@ -1,0 +1,7 @@
+# BTClock v4 NVS pre-seed: no frontlight + white-on-black
+key,type,encoding,value
+settings,namespace,,
+flDisable,data,u32,1
+invertedColor,data,u32,1
+fgColor,data,u32,65535
+bgColor,data,u32,0

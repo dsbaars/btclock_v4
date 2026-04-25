@@ -14,7 +14,7 @@
 
 namespace btclock {
 namespace {
-constexpr const char* kTag = "poc";
+constexpr const char* kTag = "btclock";
 }  // namespace
 
 int64_t MsNow() { return esp_timer_get_time() / 1000; }

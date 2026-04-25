@@ -14,6 +14,7 @@
 #include <memory>
 
 #include "driver/gpio.h"
+#include "epd/factory.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -157,13 +158,12 @@ extern "C" void app_main() {
                       4 * 1000 * 1000, 16 * 296 + 64);
   std::array<std::unique_ptr<btclock::EpdPanel>, kNumPanels> panels;
   for (int i = 0; i < kNumPanels; ++i) {
-    btclock::EpdPanel::Config cfg = {};
+    btclock::epd::PanelConfig cfg = {};
     cfg.bus = &bus;
     cfg.cs = btclock::EpdIoPin::Native(kEpdCs[i]);
     cfg.busy = btclock::EpdIoPin::Native(kEpdBusy[i]);
     cfg.reset = btclock::EpdIoPin::Mcp(&mcp, kEpdResetMcp[i]);
-    cfg.kind = btclock::PanelKind::k2_13;
-    panels[i] = std::make_unique<btclock::EpdPanel>(cfg);
+    panels[i] = btclock::epd::CreatePanel(cfg);
     ESP_ERROR_CHECK(panels[i]->Init());
   }
 

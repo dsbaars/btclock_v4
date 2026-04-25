@@ -1,1 +1,11 @@
-dist/
+# dist/ holds emcc/em++ build droppings. The three artifacts below are
+# tracked so the WASM preview that ships in the repo always matches the
+# source state — there is no separate publish step for preview.html, so
+# committing the built outputs is the only way reviewers see the rendered
+# fonts without installing emsdk. `ttf_blobs_wasm.cpp` is the
+# auto-generated companion to gen_font_blobs.py; checked in alongside
+# the wasm so the dist/ directory is self-consistent.
+dist/*
+!dist/btclock_datahandler.js
+!dist/btclock_datahandler.wasm
+!dist/ttf_blobs_wasm.cpp

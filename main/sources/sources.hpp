@@ -44,9 +44,14 @@ void WireDataSources(AppCtx& ctx);
 //                                   (wss unless disable_ssl is true).
 //                                   Any leading ws:// or wss:// in
 //                                   `endpoint` is stripped first.
-//   * 1, 3 (mempool+kraken)      -> falls back to BTCLOCK_SOURCE; the
-//                                   mempool+kraken polling source
-//                                   isn't implemented yet (bd-1xc).
+//   * 1 (mempool+kraken)         -> falls back to BTCLOCK_SOURCE; the
+//                                   mempool+kraken source uses its own
+//                                   hard-coded URIs (not v2/ws shaped),
+//                                   so this helper is only consulted on
+//                                   the v2 path. WireDataSources skips
+//                                   it entirely for ds=1.
+//   * 3                          -> falls back to BTCLOCK_SOURCE (legacy
+//                                   combo source — not implemented).
 std::string BuildBtclockSourceUri(std::uint8_t data_source,
                                   const std::string& endpoint,
                                   bool disable_ssl);

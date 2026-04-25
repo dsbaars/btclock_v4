@@ -1,4 +1,4 @@
-menu "BTClock PoC LittleFS"
+menu "BTClock LittleFS"
 
 config BTCLOCK_LITTLEFS_SELFTEST
     bool "Run a boot-time LittleFS self-test"
@@ -6,7 +6,7 @@ config BTCLOCK_LITTLEFS_SELFTEST
     help
         When enabled, the boot path writes a small file to the LittleFS
         partition, reads it back, asserts the contents match, and
-        deletes it. Intended as a smoke test for the FS port — leave
+        deletes it. Intended as a smoke test for the filesystem — leave
         off in normal builds; flip on with `idf.py menuconfig` or set
         `CONFIG_BTCLOCK_LITTLEFS_SELFTEST=y` in
         `sdkconfig.defaults.<variant>` when bringing up a new board
