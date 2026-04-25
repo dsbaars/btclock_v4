@@ -5,6 +5,7 @@
 #include <string>
 
 #include "ArduinoJson.h"
+#include "btclock_subscribe.hpp"
 #include "data_core/hub.hpp"
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
@@ -16,8 +17,11 @@ constexpr const char* kTag = "btclock-data";
 }  // namespace
 
 BtclockDataSource::BtclockDataSource(const char* uri,
-                                     std::vector<std::string> currencies)
-    : uri_(uri), currencies_(std::move(currencies)) {}
+                                     std::vector<std::string> currencies,
+                                     bool block_fee_dec)
+    : uri_(uri),
+      currencies_(std::move(currencies)),
+      block_fee_dec_(block_fee_dec) {}
 
 BtclockDataSource::~BtclockDataSource() { Stop(); }
 
@@ -42,8 +46,38 @@ esp_err_t BtclockDataSource::Start(DataHub& hub) {
                                     &EventHandlerTrampoline, this) == ESP_OK,
       ESP_FAIL, kTag, "register_events");
 
-  ESP_LOGI(kTag, "starting ws: %s", uri_.c_str());
+  // Mirror the nostr-relay log shape ("connecting: %s") so a user
+  // grepping the serial console can spot both ws clients with the same
+  // pattern.
+  ESP_LOGI(kTag, "connecting: %s", uri_.c_str());
   return esp_websocket_client_start(client_);
+}
+
+void BtclockDataSource::SetCurrencies(std::vector<std::string> currencies) {
+  if (currencies.empty()) return;
+  currencies_ = std::move(currencies);
+  // Bounce the WS so the new subscription set lands on a clean session.
+  // Only do the restart when we were actually running — pre-Start calls
+  // (e.g. test harnesses) just update the field and the next Start picks
+  // it up.
+  if (client_ != nullptr && hub_ != nullptr) {
+    DataHub* h = hub_;
+    Stop();
+    Start(*h);
+  }
+}
+
+void BtclockDataSource::SetBlockFeeDec(bool block_fee_dec) {
+  if (block_fee_dec_ == block_fee_dec) return;
+  block_fee_dec_ = block_fee_dec;
+  // Same Stop+Start pattern as SetCurrencies: an additive `subscribe`
+  // alone wouldn't tell the relay to drop the previously-subscribed
+  // fee stream, so we'd still see double-dispatch until a reconnect.
+  if (client_ != nullptr && hub_ != nullptr) {
+    DataHub* h = hub_;
+    Stop();
+    Start(*h);
+  }
 }
 
 esp_err_t BtclockDataSource::Stop() {
@@ -110,23 +144,19 @@ void BtclockDataSource::SendSubscriptions() {
   };
 
   send_sub("blockheight", nullptr);
-  // Subscribe to both fee streams. `blockfee` is rounded to whole sat/vB
-  // and only fires when the rounded value changes; `blockfee2` is a
-  // 2-decimal value that fires on every upstream fee tick. Mirrors the
-  // subscription list in App.vue — the legacy fee-rate screen reads the
-  // integer field, a future decimal screen reads block_fee_precise.
-  send_sub("blockfee", nullptr);
-  send_sub("blockfee2", nullptr);
+  // Subscribe to exactly one fee stream — picked by the `blockFeeDec`
+  // pref. Both topics still exist on the relay; subscribing to both
+  // (the previous behaviour) caused HandleBinaryFrame to write the
+  // snapshot's fee field twice per tick from two different precisions,
+  // and any fee-screen renderer that read the wrong field would lag a
+  // wire-frame behind. `blockfee2` is the 2-decimal stream and fires
+  // every fee tick; `blockfee` is the integer-rounded stream.
+  send_sub(block_fee_dec_ ? "blockfee2" : "blockfee", nullptr);
   for (const auto& ccy : currencies_) {
     send_sub("price", ccy.c_str());
   }
-  std::string ccy_list;
-  for (size_t i = 0; i < currencies_.size(); ++i) {
-    if (i > 0) ccy_list += ",";
-    ccy_list += currencies_[i];
-  }
-  ESP_LOGI(kTag, "subscribe: blockheight + blockfee + blockfee2 + price/[%s]",
-           ccy_list.c_str());
+  ESP_LOGI(kTag, "%s",
+           subscribe::BuildSubscribeLogLine(currencies_, block_fee_dec_).c_str());
 }
 
 void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {
@@ -153,10 +183,16 @@ void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {
   if (doc["blockheight"].is<uint32_t>()) {
     partial.block_height = doc["blockheight"].as<uint32_t>();
   }
-  if (doc["blockfee"].is<int32_t>()) {
+  // Fee-stream gating: only honour the topic we actually subscribed
+  // to for the current `blockFeeDec` setting. This is defensive — a
+  // stale relay-side subscription, an in-flight reconnect, or a
+  // SetBlockFeeDec mid-stream can each leave the *other* topic
+  // arriving for a tick or two; dispatching it would overwrite the
+  // snapshot fee field with the wrong precision.
+  if (!block_fee_dec_ && doc["blockfee"].is<int32_t>()) {
     partial.block_fee = doc["blockfee"].as<int32_t>();
   }
-  if (doc["blockfee2"].is<double>()) {
+  if (block_fee_dec_ && doc["blockfee2"].is<double>()) {
     partial.block_fee_precise = doc["blockfee2"].as<double>();
   }
 

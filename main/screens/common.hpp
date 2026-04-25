@@ -208,6 +208,14 @@ struct PaintSlot {
     // Raw 1-bpp bitmap passthrough. `bitmap` + `bmp_w` + `bmp_h`.
     // `text` is ignored. Used by mining-pool logos / bitaxe icon.
     kIconBitmap,
+    // MDI glyph painted from the icon font role at the digit pixel
+    // height. `mdi_codepoint` carries the raw codepoint from
+    // `mdi_codepoints.hpp`; `text` is ignored. Goes through
+    // DrawCodepointCentered (font.hpp) so the bitmap bbox drives the
+    // baseline — kDigitRef would compute a zero ref box for codepoints
+    // in the Private Use Area. Default size matches kSatsGlyph (130 px)
+    // so MDI glyphs visually weight-match the sats glyph.
+    kMdiIcon,
   } kind = kBlank;
 
   // For split kinds (`kLabelSplit` / `kUnitSplit`), "TOP/BOTTOM"
@@ -238,6 +246,13 @@ struct PaintSlot {
   // panel edge at Antonio's metrics. Default 0 keeps every other call
   // site on the kind's shipped pixel height.
   float pixel_height_override = 0.0f;
+
+  // For `kMdiIcon` only — raw MDI codepoint (e.g.
+  // `mdi::kIconLightningBolt`). 0 is a no-op (panel stays cleared).
+  // Field order kept after `pixel_height_override` so the historical
+  // brace-init signature `PaintSlot{kind, text, bitmap, w, h, ref}`
+  // used across the data-screen renderers stays binary-compatible.
+  std::uint32_t mdi_codepoint = 0;
 };
 
 // Non-template paint-one-panel helper. Declared here so the template

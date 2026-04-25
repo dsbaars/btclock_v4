@@ -24,6 +24,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
+
 namespace btclock {
 
 struct AppCtx;
@@ -32,5 +35,20 @@ struct AppCtx;
 // already painted by main. STA mode: build hub, attach sources, wire
 // the notify, wait for first snapshot, paint, start buttons.
 void WireDataSources(AppCtx& ctx);
+
+// Pure helper exposed so host tests can pin the URI shape without
+// dragging in NVS. Maps the v3 dataSource enum onto an actual WSS
+// endpoint:
+//   * 0 (BTCLOCK_SOURCE)         -> wss://ws.btclock.dev/api/v2/ws
+//   * 2 (CUSTOM)                 -> ws[s]://<endpoint>/api/v2/ws
+//                                   (wss unless disable_ssl is true).
+//                                   Any leading ws:// or wss:// in
+//                                   `endpoint` is stripped first.
+//   * 1, 3 (mempool+kraken)      -> falls back to BTCLOCK_SOURCE; the
+//                                   mempool+kraken polling source
+//                                   isn't implemented yet (bd-1xc).
+std::string BuildBtclockSourceUri(std::uint8_t data_source,
+                                  const std::string& endpoint,
+                                  bool disable_ssl);
 
 }  // namespace btclock

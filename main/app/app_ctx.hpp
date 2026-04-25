@@ -39,6 +39,7 @@
 // Forward declarations — avoid dragging the full headers into every TU
 // that includes app_ctx.hpp.
 namespace btclock {
+class BtclockDataSource;
 class ControlServer;
 class SseServer;
 class DnsHijack;
@@ -103,6 +104,12 @@ struct AppCtx {
   // Data pipeline — the hub aggregates every DataSource; the screen
   // manager owns rotation + render bookkeeping.
   std::unique_ptr<DataHub> hub;
+  // Non-owning back-ref to the v2 WS source the hub holds in its
+  // sources_ vector. Set by sources.cpp at AddSource time so the
+  // on_screens_changed hook can refresh the per-currency subscription
+  // list without poking through DataHub internals. Cleared in
+  // sources.cpp::WireDataSources when AP-mode skips the source bring-up.
+  BtclockDataSource* btclock_ws = nullptr;
   std::unique_ptr<ScreenManager> sm;
   std::vector<std::string> currencies;
 
@@ -115,6 +122,11 @@ struct AppCtx {
   std::unique_ptr<nostr::RelayClient> zap_relay;
   std::unique_ptr<nostr::SubscriptionManager> zap_subs;
   std::unique_ptr<nostr::ZapListener> zap_listener;
+  // Last-known zap recipient pubkey. RefreshZapListenerSettings
+  // compares against this on every PATCH so we only Stop()+Start()
+  // the listener when the pubkey actually changed (LED/frontlight
+  // toggles touch only the atomics below).
+  std::string zap_pubkey_current;
   std::atomic<bool> flash_on_zap_enabled{true};
   std::atomic<bool> flash_frontlight_on_zap_enabled{false};
   std::atomic<bool> zap_notify_screen_enabled{true};

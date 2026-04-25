@@ -28,12 +28,12 @@
 //   kBootFailed         solid red (boot sanity failure)
 //   kPowerTest          rainbow scan then clear
 //
-// Global toggles (NVS namespace `"led"`, matches old firmware key
-// strings where practical; see app/led_controller.cpp for the mapping):
-//   brightness     uint8_t    0..255,  default 128
-//   blockFlashCol  uint32_t   0xRRGGBB, default 0xE04300 (orange)
-//   disable        bool       mute all effects, default false
-//   flashUpdate    bool       flash on data update, default true
+// Global toggles (NVS namespace `"settings"`, same keys the WebUI
+// PATCHes through /api/settings — see settings/pref_keys.hpp):
+//   ledBrightness    uint32_t   0..255,   default 128
+//   blockFlashColor  uint32_t   0xRRGGBB, default 0xE04300 (orange)
+//   disableLeds      bool       mute all effects, default false
+//   ledFlashOnUpd    bool       flash on data update, default false
 
 #pragma once
 
@@ -81,7 +81,9 @@ struct LedState {
 
 // Create the event queue and start the LED task. Call once at boot;
 // subsequent calls are undefined. No shutdown path — the task runs
-// until reboot. Loads prefs from NVS namespace `"led"` before starting.
+// until reboot. Loads prefs from NVS namespace `"settings"` before
+// starting (with one-shot migration from the legacy `"led"` namespace
+// for installs that pre-date the unified-namespace switch).
 void InitLeds(gpio_num_t pin, uint32_t count);
 
 // Post an effect to the LED task. Thread-safe. Non-blocking; drops if
@@ -104,20 +106,20 @@ inline void PostLedEvent(LedEffect ev) { PostLedEffect(ev); }
 // Read the full state snapshot (prefs + per-pixel mirror).
 LedState GetLedState();
 
-// Update the master brightness (NVS key "brightness"). Clamps to 0..255
-// and applies to subsequent pixel writes.
+// Update the master brightness (NVS key "ledBrightness"). Clamps to
+// 0..255 and applies to subsequent pixel writes.
 void SetLedBrightness(uint8_t brightness);
 
-// Update the block-flash color (NVS key "blockFlashCol"). Stored as a
-// packed 0x00RRGGBB uint32.
+// Update the block-flash color (NVS key "blockFlashColor"). Stored as
+// a packed 0x00RRGGBB uint32.
 void SetBlockFlashColor(uint32_t rgb);
 
 // Global mute — when true, PostLedEffect drops events and the strip is
-// forced off (NVS key "disable").
+// forced off (NVS key "disableLeds").
 void SetLedDisabled(bool disabled);
 
 // Enable / disable the flash-on-data-update effect (NVS key
-// "flashUpdate"). Callers that invoke kFlashUpdate should gate on this
+// "ledFlashOnUpd"). Callers that invoke kFlashUpdate should gate on this
 // first; the controller honours it defensively too.
 void SetLedFlashOnUpdate(bool enabled);
 

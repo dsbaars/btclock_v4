@@ -1,5 +1,6 @@
 #include "sources/sources.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -19,6 +20,9 @@
 #include "freertos/task.h"
 #include "nostr/nostr_data_source.hpp"
 #include "prefs.hpp"
+#include "settings/nostr_config.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -26,33 +30,33 @@ namespace {
 constexpr const char* kTag = "poc";
 
 void MaybeAddNostrSource(AppCtx& ctx) {
-  // Optional Nostr DataSource. Opt-in via NVS (namespace "nostr"):
-  //   key "enable" (bool, default false)  — master switch
-  //   key "relay"  (string)                — wss:// URL
-  //   key "pub"    (hex string, 64 chars)  — publisher pubkey
-  // Missing or empty strings → skip cleanly rather than failing boot.
-  // A future follow-up will expose these via the control-server /api
-  // and the provisioning portal; for now set them with `nvs_tool` or a
-  // one-shot boot-time Prefs::SetString().
-  Prefs nostr_prefs("nostr");
-  const bool enable = nostr_prefs.GetBool("enable", false);
-  const std::string relay = nostr_prefs.GetString("relay", "");
-  const std::string pub = nostr_prefs.GetString("pub", "");
-  if (enable && !relay.empty() && !pub.empty()) {
+  // Settings live in the canonical "settings" NVS namespace where
+  // /api/settings PATCH writes them — readers used to open a separate
+  // "nostr" namespace with shorthand keys ("enable" / "relay" / "pub")
+  // so the WebUI's PATCH was effectively a no-op (bd btclock_v4-aw5).
+  // Schema keys: kDataSource (==2 selects Nostr), kNostrRelay,
+  // kNostrPubKey. All three are flagged boot_only in the schema so a
+  // change requires reboot — no live-reload hook here.
+  settings::NvsPrefs settings_prefs(prefs::kSettingsNs);
+  const auto cfg = settings::ReadNostrSourceConfig(settings_prefs);
+  if (cfg.enabled && !cfg.relay_url.empty() &&
+      !cfg.author_pubkey_hex.empty()) {
     nostr::NostrDataSource::Config ncfg;
-    ncfg.relay_url = relay;
-    ncfg.author_pubkey_hex = pub;
+    ncfg.relay_url = cfg.relay_url;
+    ncfg.author_pubkey_hex = cfg.author_pubkey_hex;
     // Leave d_tags empty → subscribe to all slots the publisher
     // emits (price:*, blockheight, medianFee). Narrowing is a
     // future optimisation if the pubkey publishes more than we need.
     ctx.hub->AddSource(
         std::make_unique<nostr::NostrDataSource>(std::move(ncfg)));
-    ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…", relay.c_str(),
-             pub.substr(0, 8).c_str());
+    ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…",
+             cfg.relay_url.c_str(),
+             cfg.author_pubkey_hex.substr(0, 8).c_str());
   } else {
     ESP_LOGI(kTag, "nostr disabled (enable=%d relay=%s pub=%s)",
-             enable ? 1 : 0, relay.empty() ? "<empty>" : "set",
-             pub.empty() ? "<empty>" : "set");
+             cfg.enabled ? 1 : 0,
+             cfg.relay_url.empty() ? "<empty>" : "set",
+             cfg.author_pubkey_hex.empty() ? "<empty>" : "set");
   }
 }
 
@@ -62,8 +66,42 @@ void WireDataSources(AppCtx& ctx) {
   if (ctx.wifi->is_ap_mode()) return;
 
   ctx.hub = std::make_unique<DataHub>();
-  ctx.hub->AddSource(std::make_unique<BtclockDataSource>(
-      "wss://ws.btclock.dev/api/v2/ws", ctx.currencies));
+
+  // Resolve the WSS URI from settings before constructing the source.
+  // dataSource / ceEndpoint / ceDisableSSL are all boot_only — schema
+  // marks them as such — so a one-shot read at boot is correct.
+  std::uint8_t data_source = 0;
+  std::string ce_endpoint;
+  bool ce_disable_ssl = false;
+  bool block_fee_dec = true;
+  {
+    Prefs settings(prefs::kSettingsNs);
+    data_source = static_cast<std::uint8_t>(
+        settings.GetU32(prefs::kDataSource, 0));
+    ce_endpoint = settings.GetString(prefs::kCeEndpoint, "");
+    ce_disable_ssl = settings.GetBool(prefs::kCeDisableSSL, false);
+    // Default true matches DEFAULT_BLOCK_FEE_DECIMALS in the v3 firmware
+    // and the schema's default_bool=true on prefs::kBlockFeeDec.
+    block_fee_dec = settings.GetBool(prefs::kBlockFeeDec, true);
+  }
+  if (data_source == 1 || data_source == 3) {
+    ESP_LOGW(kTag,
+             "dataSource=%d not implemented, using btclock_v2 fallback",
+             static_cast<int>(data_source));
+  }
+  const std::string uri =
+      BuildBtclockSourceUri(data_source, ce_endpoint, ce_disable_ssl);
+  ESP_LOGI(kTag, "btclock_ws connecting to: %s (dataSource=%d)",
+           uri.c_str(), static_cast<int>(data_source));
+
+  // Keep a non-owning back-ref to the v2 WS source so the
+  // on_screens_changed hook in init_control_api can refresh its
+  // currency subscription list when the user PATCHes actCurrencies —
+  // without it the WS keeps streaming the old currencies until reboot.
+  auto btclock_ws = std::make_unique<BtclockDataSource>(
+      uri.c_str(), ctx.currencies, block_fee_dec);
+  ctx.btclock_ws = btclock_ws.get();
+  ctx.hub->AddSource(std::move(btclock_ws));
 
   MaybeAddNostrSource(ctx);
 

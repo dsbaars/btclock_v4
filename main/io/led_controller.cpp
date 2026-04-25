@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "io/led_curves.hpp"
+#include "io/led_prefs.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -16,29 +17,21 @@
 #include "freertos/task.h"
 #include "led_strip.h"
 #include "prefs.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
 
 constexpr const char* kTag = "led";
 
-// NVS namespace + keys. Namespace is new ("led") and separate from the
-// old firmware's single-namespace setup; the keys themselves match old
-// firmware intent. "blockFlashCol" is abbreviated (<=15 chars) vs. old
-// firmware's "blockFlashColor" because the NVS key cap on ESP-IDF
-// matches Arduino's 15-char limit and we have no legacy data on this
-// namespace to migrate.
-constexpr const char* kNvsNamespace = "led";
-constexpr const char* kKeyBrightness = "brightness";
-constexpr const char* kKeyBlockFlashCol = "blockFlashCol";
-constexpr const char* kKeyDisable = "disable";
-constexpr const char* kKeyFlashUpdate = "flashUpdate";
-
-// Defaults — match src/lib/system/defaults.hpp.
-constexpr uint8_t kDefaultBrightness = 128;
-constexpr uint32_t kDefaultBlockFlashColor = 0xE04300;  // DEFAULT_BLOCK_FLASH_COLOR
-constexpr bool kDefaultDisabled = false;
-constexpr bool kDefaultFlashOnUpdate = true;
+// LED prefs live in the shared `settings` NVS namespace alongside every
+// other PATCH-accepted field, keyed by the same strings the WebUI uses
+// (kLedBrightness, kBlockFlashColor, kDisableLeds, kLedFlashOnUpd). An
+// older PoC port stored them in a separate `led` namespace with hand-
+// abbreviated keys; ResolveLedPrefs() handles the one-shot migration so
+// installs that pre-date this change keep their saved values.
+constexpr const char* kLegacyNvsNamespace = "led";
 
 // Rainbow palette used by kSetBoot + kPowerTest.
 struct Rgb {
@@ -131,42 +124,55 @@ void PaintAllOff(led_strip_handle_t strip) {
   led_strip_refresh(strip);
 }
 
-// Prefs persistence. Open-per-call so writes from effect setters don't
-// fight the LED task (NVS handles are cheap to reopen; NVS itself has
-// an internal mutex).
+// Prefs persistence — shared `settings` namespace, same key strings the
+// WebUI PATCHes (and that GET /api/settings echoes back). Open-per-call
+// so writes from effect setters don't fight the LED task; NVS itself
+// has an internal mutex so concurrent opens are safe.
 void PersistBrightness(uint8_t v) {
-  Prefs p(kNvsNamespace);
-  p.SetU32(kKeyBrightness, v);
+  Prefs p(prefs::kSettingsNs);
+  p.SetU32(prefs::kLedBrightness, v);
   p.Commit();
 }
 
 void PersistBlockFlashColor(uint32_t rgb) {
-  Prefs p(kNvsNamespace);
-  p.SetU32(kKeyBlockFlashCol, rgb);
+  Prefs p(prefs::kSettingsNs);
+  p.SetU32(prefs::kBlockFlashColor, rgb);
   p.Commit();
 }
 
 void PersistDisabled(bool v) {
-  Prefs p(kNvsNamespace);
-  p.SetBool(kKeyDisable, v);
+  Prefs p(prefs::kSettingsNs);
+  p.SetBool(prefs::kDisableLeds, v);
   p.Commit();
 }
 
 void PersistFlashUpdate(bool v) {
-  Prefs p(kNvsNamespace);
-  p.SetBool(kKeyFlashUpdate, v);
+  Prefs p(prefs::kSettingsNs);
+  p.SetBool(prefs::kLedFlashOnUpd, v);
   p.Commit();
 }
 
 void LoadPrefs() {
-  Prefs p(kNvsNamespace);
+  // Pure-logic helper handles the legacy → settings migration so this
+  // path stays IDF-free apart from the NvsPrefs adapters.
+  settings::NvsPrefs settings_ns(prefs::kSettingsNs);
+  settings::NvsPrefs legacy_ns(kLegacyNvsNamespace);
+  const LedPrefsSnapshot s =
+      ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  if (s.migrated_from_legacy) {
+    settings_ns.Commit();
+    ESP_LOGI(kTag,
+             "migrated LED prefs from legacy 'led' namespace into 'settings'");
+    // Note: legacy `led/*` keys are intentionally left in place. The
+    // Prefs component does not expose nvs_erase_key today, and a stray
+    // legacy slot is harmless — ResolveLedPrefs always prefers settings
+    // on subsequent boots once the values have been mirrored.
+  }
   std::lock_guard<std::mutex> lk(g_state_mu);
-  g_state.brightness = static_cast<uint8_t>(
-      p.GetU32(kKeyBrightness, kDefaultBrightness) & 0xFFu);
-  g_state.block_flash_color =
-      p.GetU32(kKeyBlockFlashCol, kDefaultBlockFlashColor) & 0x00FFFFFFu;
-  g_state.disabled = p.GetBool(kKeyDisable, kDefaultDisabled);
-  g_state.flash_on_update = p.GetBool(kKeyFlashUpdate, kDefaultFlashOnUpdate);
+  g_state.brightness = s.brightness;
+  g_state.block_flash_color = s.block_flash_color;
+  g_state.disabled = s.disabled;
+  g_state.flash_on_update = s.flash_on_update;
 }
 
 // Effect implementations --------------------------------------------

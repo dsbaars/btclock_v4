@@ -204,6 +204,19 @@ class ScreenManager {
   // currently-displayed slot if it still appears in the new sequence.
   void SetRotationSequence(std::vector<std::size_t> sequence);
 
+  // Replace the active currency list at runtime. Used by the
+  // on_screens_changed hook when PATCH /api/settings updates
+  // `actCurrencies` so the per-currency slot expansion follows the new
+  // set without a reboot. Caller must call SetRotationSequence with a
+  // freshly built plan immediately afterwards — slot_count() depends on
+  // currencies_.size() and a stale rotation_sequence_ would point at
+  // out-of-range slots after a shrink. The currently-displayed slot is
+  // preserved when its kind+currency-index still maps inside the new
+  // layout; otherwise it clamps to slot 0 (block-height) so the next
+  // render lands on a valid slot. Empty input is rejected (matches the
+  // constructor invariant) — callers fall back to ["USD"] in that case.
+  void SetCurrencies(std::vector<std::string> currencies);
+
   // Decide whether the current slot should be re-rendered against
   // `snap`. True if dirty (navigation just happened) or if the snapshot
   // carries new data for the current slot. Idempotent.

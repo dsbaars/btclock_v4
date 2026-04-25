@@ -1311,12 +1311,12 @@ TEST_CASE("panel_texts — nostr zap small amount as integer (7 panels)") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21;
-  in.use_sats_symbol = false;  // no-glyph path — amount spans 6 tail cells
+  in.use_sats_symbol = false;  // no-glyph path — bolt at 1, amount tail.
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
+  // Layout: [ZAP][bolt-empty][_][_][_][2][1].
   CHECK(out[0] == "ZAP");
-  // "21" right-justified into 6 amount cells ⇒ 4 blanks + "2" + "1".
-  CHECK(out[1] == "");
+  CHECK(out[1] == "");  // mdi-lightning-bolt mirror cell
   CHECK(out[2] == "");
   CHECK(out[3] == "");
   CHECK(out[4] == "");
@@ -1331,9 +1331,10 @@ TEST_CASE("panel_texts — nostr zap scaled k-suffix") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
+  // Layout: [ZAP][bolt][_][_][2][1][k] — "21k" fills the rightmost three
+  // cells; bolt mirror cell + middle blanks left of it.
   CHECK(out[0] == "ZAP");
-  // "21k" right-justified into 6 amount cells ⇒ 3 blanks + "2" + "1" + "k".
-  CHECK(out[1] == "");
+  CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
   CHECK(out[3] == "");
   CHECK(out[4] == "2");
@@ -1348,9 +1349,9 @@ TEST_CASE("panel_texts — nostr zap million-suffix (1.2M)") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
+  // 4-char "1.2M" right-justified after [ZAP][bolt][_].
   CHECK(out[0] == "ZAP");
-  // 4-char "1.2M" placed into 6 amount cells ⇒ 2 blanks + "1" + "." + "2" + "M".
-  CHECK(out[1] == "");
+  CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
   CHECK(out[3] == "1");
   CHECK(out[4] == ".");
@@ -1393,9 +1394,14 @@ TEST_CASE("panel_texts — nostr zap 8-panel board") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
+  // V8 layout: ZAP + bolt left-anchored, extra cell widens the blank gap
+  // before the amount tail (no glyph here — pref off).
+  // [ZAP][bolt][_][_][_][5][0][0]
   CHECK(out[0] == "ZAP");
-  // "500" right-justified into 7 amount cells on 8-panel ⇒ 4 blanks
-  // + digits in trailing cells.
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "");
+  CHECK(out[3] == "");
+  CHECK(out[4] == "");
   CHECK(out[5] == "5");
   CHECK(out[6] == "0");
   CHECK(out[7] == "0");
@@ -1414,39 +1420,44 @@ TEST_CASE("panel_texts — nostr zap with sats glyph (7 panels, 21000)") {
   in.use_sats_symbol = true;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  // Target shape from the bug spec: ["ZAP","STS","","","2","1","k"]
+  // [ZAP][bolt][_][STS][2][1][k] — sats glyph sits one cell before the
+  // most-significant amount digit; the bolt cell + remaining middle
+  // blanks fill the gap between the label and the glyph.
   CHECK(out[0] == "ZAP");
-  CHECK(out[1] == "STS");
+  CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
-  CHECK(out[3] == "");
+  CHECK(out[3] == "STS");
   CHECK(out[4] == "2");
   CHECK(out[5] == "1");
   CHECK(out[6] == "k");
 }
 
 TEST_CASE("panel_texts — nostr zap with sats glyph (8 panels, 21000)") {
-  // V8 parity: extra leading blank before the 3-char "21k".
+  // V8 parity: ZAP/bolt left-anchored, extra blank widens the gap, then
+  // glyph + right-justified amount.
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21000;
   in.use_sats_symbol = true;
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
+  // [ZAP][bolt][_][_][STS][2][1][k]
   CHECK(out[0] == "ZAP");
-  CHECK(out[1] == "STS");
+  CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
   CHECK(out[3] == "");
-  CHECK(out[4] == "");
+  CHECK(out[4] == "STS");
   CHECK(out[5] == "2");
   CHECK(out[6] == "1");
   CHECK(out[7] == "k");
 }
 
 TEST_CASE(
-    "panel_texts — nostr zap glyph on/off parity: amount slides one slot") {
-  // Same input, only the pref flips. The amount cells collectively move
-  // right by one — exercises the expected "slot 1 reclaimed for glyph"
-  // invariant without re-testing every scaled-amount magnitude.
+    "panel_texts — nostr zap glyph on/off parity: amount tail unchanged") {
+  // Same input, only the pref flips. The amount cells stay anchored to
+  // the right edge regardless of glyph state — toggling the pref only
+  // swaps the cell just before the most-significant amount digit
+  // between blank and "STS". The bolt cell stays at slot 1 either way.
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21000;  // renders as "21k"
@@ -1455,7 +1466,8 @@ TEST_CASE(
   const auto off = BuildPanelTexts(in, 7);
   REQUIRE(off.size() == 7);
   CHECK(off[0] == "ZAP");
-  CHECK(off[1] == "");
+  CHECK(off[1] == "");  // bolt
+  CHECK(off[3] == "");  // no glyph
   CHECK(off[4] == "2");
   CHECK(off[5] == "1");
   CHECK(off[6] == "k");
@@ -1464,7 +1476,8 @@ TEST_CASE(
   const auto on = BuildPanelTexts(in, 7);
   REQUIRE(on.size() == 7);
   CHECK(on[0] == "ZAP");
-  CHECK(on[1] == "STS");
+  CHECK(on[1] == "");  // bolt
+  CHECK(on[3] == "STS");
   CHECK(on[4] == "2");
   CHECK(on[5] == "1");
   CHECK(on[6] == "k");
@@ -1473,8 +1486,8 @@ TEST_CASE(
 TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {
   // The zap listener drops amount<1 sat before this builder runs; when
   // the builder is invoked at the edge (exactly 1 sat) the normal
-  // "ZAP + <digit>" shape paints. This pins the boundary the listener
-  // enforces via parser::ShouldSurfaceZap.
+  // "ZAP + bolt + <digit>" shape paints. This pins the boundary the
+  // listener enforces via parser::ShouldSurfaceZap.
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 1;
@@ -1482,8 +1495,9 @@ TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "ZAP");
-  CHECK(out[6] == "1");
+  CHECK(out[1] == "");  // bolt
   CHECK(out[5] == "");
+  CHECK(out[6] == "1");
 }
 
 // Latest-wins merge semantics for DataSnapshot::LatestZap. The full

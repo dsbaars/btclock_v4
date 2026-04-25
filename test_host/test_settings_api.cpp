@@ -1264,3 +1264,276 @@ TEST_CASE("numScreens reflects the hardware panel count, not rotation slots") {
   // rotation length) instead; the fix substitutes cfg_.num_screens so
   // both surfaces agree for a given DeviceContext + config pair.
 }
+
+// -- Bug 1: GET /api/settings honors persisted screenOrder ------------
+//
+// Before the fix, `screens[].order` was always the catalog index, so a
+// PATCHed screenOrder would land in NVS but the WebUI kept seeing the
+// old order until a full reboot. The GET emitter now reads kScreenOrder
+// and reorders accordingly: persisted ids first (in CSV order), then
+// any catalog entries the CSV omitted, in catalog order.
+
+TEST_CASE("GET screens[] follows persisted screenOrder CSV") {
+  FakePrefs prefs;
+  // 8 screens in DefaultCtx(): 0,3,4,6,10,20,30,40 (catalog order).
+  // PATCH-equivalent: user dragged 40,20,10,0 to the top.
+  prefs.str_["screenOrder"] = "40,20,10,0";
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root);
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  REQUIRE(cJSON_IsArray(arr));
+  // Persisted-list-first then remaining catalog entries in catalog order.
+  // catalog: 0,3,4,6,10,20,30,40 → after CSV "40,20,10,0":
+  //   emitted: 40,20,10,0 then 3,4,6,30 (catalog order minus the four
+  //   already in the CSV).
+  const std::vector<int> expected = {40, 20, 10, 0, 3, 4, 6, 30};
+  REQUIRE(cJSON_GetArraySize(arr) == static_cast<int>(expected.size()));
+  for (size_t i = 0; i < expected.size(); ++i) {
+    cJSON* it = cJSON_GetArrayItem(arr, static_cast<int>(i));
+    cJSON* id = cJSON_GetObjectItemCaseSensitive(it, "id");
+    cJSON* ord = cJSON_GetObjectItemCaseSensitive(it, "order");
+    REQUIRE(cJSON_IsNumber(id));
+    REQUIRE(cJSON_IsNumber(ord));
+    CHECK(static_cast<int>(id->valuedouble) == expected[i]);
+    CHECK(static_cast<size_t>(ord->valuedouble) == i);
+  }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET screens[] empty screenOrder falls back to catalog order") {
+  // Cold-boot path / freshly-flashed device: NVS has no `screenOrder`.
+  // Backwards-compat invariant — must keep emitting catalog order so
+  // existing WebUI builds don't see a layout shift after the upgrade.
+  FakePrefs prefs;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root);
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  REQUIRE(cJSON_IsArray(arr));
+  const std::vector<int> expected = {0, 3, 4, 6, 10, 20, 30, 40};
+  REQUIRE(cJSON_GetArraySize(arr) == static_cast<int>(expected.size()));
+  for (size_t i = 0; i < expected.size(); ++i) {
+    cJSON* it = cJSON_GetArrayItem(arr, static_cast<int>(i));
+    CHECK(static_cast<int>(
+              cJSON_GetObjectItemCaseSensitive(it, "id")->valuedouble) ==
+          expected[i]);
+  }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET screens[] partial screenOrder appends missing in catalog order") {
+  // Edge case: a malformed/legacy CSV may list only a subset of the
+  // catalog. Missing screens MUST still appear (so the user can re-add
+  // them via the WebUI) — they trail the persisted list in catalog order.
+  FakePrefs prefs;
+  prefs.str_["screenOrder"] = "30,3";  // only 2 of 8 catalog ids
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  REQUIRE(root);
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  REQUIRE(cJSON_IsArray(arr));
+  const std::vector<int> expected = {30, 3, 0, 4, 6, 10, 20, 40};
+  REQUIRE(cJSON_GetArraySize(arr) == static_cast<int>(expected.size()));
+  for (size_t i = 0; i < expected.size(); ++i) {
+    cJSON* it = cJSON_GetArrayItem(arr, static_cast<int>(i));
+    CHECK(static_cast<int>(
+              cJSON_GetObjectItemCaseSensitive(it, "id")->valuedouble) ==
+          expected[i]);
+  }
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET screens[] persisted screenOrder skips hidden ids cleanly") {
+  // The CSV may reference an id the capability gate currently hides
+  // (e.g. earnings on a solo pool). The hidden id must NOT surface in
+  // screens[]; the rest of the persisted order is preserved.
+  FakePrefs prefs;
+  prefs.str_["screenOrder"] = "71,40,20";
+  btclock::settings::DeviceContext ctx = CtxWithEarnings();
+  ctx.hidden_screen_ids = {71};
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root);
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");
+  REQUIRE(cJSON_IsArray(arr));
+  // 71 is dropped; 40,20 lead, then catalog tail (minus already-emitted).
+  // CtxWithEarnings catalog: 0,3,4,6,10,20,30,40,70,71,80,81 → minus 71
+  // (hidden), minus already-emitted 40+20.
+  const std::vector<int> expected = {40, 20, 0, 3, 4, 6, 10, 30, 70, 80, 81};
+  REQUIRE(cJSON_GetArraySize(arr) == static_cast<int>(expected.size()));
+  for (size_t i = 0; i < expected.size(); ++i) {
+    cJSON* it = cJSON_GetArrayItem(arr, static_cast<int>(i));
+    CHECK(static_cast<int>(
+              cJSON_GetObjectItemCaseSensitive(it, "id")->valuedouble) ==
+          expected[i]);
+  }
+  cJSON_Delete(root);
+}
+
+// -- Bug 2 (and rotation hook regression): touched_keys feed the hook
+//
+// The `on_screens_changed` hook in HandleSettingsPatch fires whenever
+// touched_keys contains `screenOrder`, any `screen<id>Visible`, or
+// `actCurrencies`. These three tests pin that contract: ApplyPatch must
+// emit those exact key strings so the trigger predicate (mirrored
+// inline below) recognises them. Drift on either side regresses the
+// "PATCH applied without reboot" guarantee that bd btclock_v4 ships.
+//
+// The predicate matches HandleSettingsPatch's filter — kept inline so
+// these tests don't need a webserver-test target. Updates to either
+// must stay in lock-step (grep "is_currencies" to find both halves).
+
+namespace {
+
+bool ScreensChangedTriggers(const std::vector<std::string>& touched_keys) {
+  for (const auto& k : touched_keys) {
+    const bool is_order = (k == btclock::prefs::kScreenOrder);
+    const bool is_visible = (k.size() > 7 &&
+                             k.compare(0, 6, "screen") == 0 &&
+                             k.compare(k.size() - 7, 7, "Visible") == 0);
+    const bool is_currencies = (k == btclock::prefs::kActCurrencies);
+    if (is_order || is_visible || is_currencies) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST_CASE("PATCH screenOrder fires the rotation-rebuild hook trigger") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"screens\":["
+      "{\"id\":40,\"enabled\":true,\"order\":0},"
+      "{\"id\":30,\"enabled\":true,\"order\":1},"
+      "{\"id\":20,\"enabled\":true,\"order\":2},"
+      "{\"id\":10,\"enabled\":true,\"order\":3},"
+      "{\"id\":6,\"enabled\":true,\"order\":4},"
+      "{\"id\":4,\"enabled\":true,\"order\":5},"
+      "{\"id\":3,\"enabled\":true,\"order\":6},"
+      "{\"id\":0,\"enabled\":true,\"order\":7}"
+      "]}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  // touched_keys must carry kScreenOrder so the hook fires; CSV must
+  // land in NVS so the on-device closure can read it.
+  CHECK(prefs.str_["screenOrder"] == "40,30,20,10,6,4,3,0");
+  CHECK(ScreensChangedTriggers(res.touched_keys));
+}
+
+TEST_CASE("PATCH screen<N>Visible fires the rotation-rebuild hook trigger") {
+  // Pins the existing b38ddce behaviour so a future refactor can't drop
+  // the suffix-match "screen*Visible" branch.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"screens\":[{\"id\":10,\"enabled\":false}]}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.b_["screen10Visible"] == false);
+  CHECK(ScreensChangedTriggers(res.touched_keys));
+}
+
+TEST_CASE("PATCH actCurrencies fires the rotation-rebuild hook trigger") {
+  // Bug 2: previously actCurrencies wrote NVS but didn't fire the hook.
+  // Confirm the touched_keys list now carries the kActCurrencies key
+  // and the trigger predicate accepts it — the on-device closure
+  // re-reads NVS, calls ScreenManager::SetCurrencies +
+  // BuildRotationSequence, and refreshes the v2 WS subscription.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"actCurrencies\":[\"EUR\",\"USD\"]}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["actCurrencies"] == "EUR,USD");
+  CHECK(ScreensChangedTriggers(res.touched_keys));
+}
+
+TEST_CASE("PATCH unrelated key does NOT fire the rotation-rebuild hook trigger") {
+  // Sanity: the predicate must NOT fire for an unrelated PATCH (e.g.
+  // ledBrightness). A spurious rebuild would yank the user off their
+  // current slot. This test pins the negative case so a future predicate
+  // edit (e.g. broadening "screen*" to match more keys) is caught.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"ledBrightness\":64}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK_FALSE(ScreensChangedTriggers(res.touched_keys));
+}
+
+// -- blockFeeDec live-PATCH hook
+//
+// Mirrors the actCurrencies hook contract for the v2 WS fee-stream
+// switch: ApplyPatch must record kBlockFeeDec in touched_keys so
+// HandleSettingsPatch can fire on_block_fee_dec_changed(new_value),
+// which calls BtclockDataSource::SetBlockFeeDec(...) and bounces the
+// WS so the relay drops the previous topic.
+
+namespace {
+
+bool BlockFeeDecChangedTrigger(
+    const std::vector<std::string>& touched_keys) {
+  for (const auto& k : touched_keys) {
+    if (k == btclock::prefs::kBlockFeeDec) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST_CASE("PATCH blockFeeDec=false fires the fee-stream hook trigger") {
+  // Default is true (decimal stream), so flip to false to exercise the
+  // touched_keys path. Earlier firmware subscribed to BOTH fee topics
+  // unconditionally; this hook is what now keeps the relay state in
+  // lock-step with the pref.
+  FakePrefs prefs;
+  prefs.b_["blockFeeDec"] = true;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"blockFeeDec\":false}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.b_["blockFeeDec"] == false);
+  CHECK(BlockFeeDecChangedTrigger(res.touched_keys));
+  // blockFeeDec is live (boot_only=false in the schema), so the response
+  // must NOT include rebootRequired:true — the on-device hook handles
+  // the switch at runtime.
+  CHECK_FALSE(res.reboot_required);
+}
+
+TEST_CASE("PATCH blockFeeDec=true fires the fee-stream hook trigger") {
+  // Inverted case to confirm the trigger fires regardless of the new
+  // value. The hook passes the bool through; the on-device closure
+  // calls SetBlockFeeDec which bounces the WS.
+  FakePrefs prefs;
+  prefs.b_["blockFeeDec"] = false;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"blockFeeDec\":true}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.b_["blockFeeDec"] == true);
+  CHECK(BlockFeeDecChangedTrigger(res.touched_keys));
+  CHECK_FALSE(res.reboot_required);
+}
+
+TEST_CASE("PATCH unrelated key does NOT fire the fee-stream hook trigger") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"ledBrightness\":64}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK_FALSE(BlockFeeDecChangedTrigger(res.touched_keys));
+}
+
+// -- Bug 2 (slot expansion): rotation plan reflects new currency count
+//
+// When actCurrencies grows or shrinks, BuildRotationSequence must use
+// the new count to expand per-currency screens. The on-device hook
+// passes ScreenManager::currencies().size() through; this test uses
+// the same builder directly so any drift in expansion logic surfaces.
+
+#include "app/rotation_plan.hpp"
+
+TEST_CASE("BuildRotationSequence expands per-currency screens for new count") {
+  // Single BtcPrice (api_id 20) with 2 currencies → 2 slots.
+  const auto seq2 = btclock::rotation_plan::BuildRotationSequence(
+      "20", [](int) { return true; }, 2);
+  CHECK(seq2.size() == 2u);
+  // Same CSV with 3 currencies → 3 slots. Pins the "rebuild on
+  // actCurrencies PATCH" path: the hook passes the new count and the
+  // sequence grows by exactly one per added currency.
+  const auto seq3 = btclock::rotation_plan::BuildRotationSequence(
+      "20", [](int) { return true; }, 3);
+  CHECK(seq3.size() == 3u);
+}

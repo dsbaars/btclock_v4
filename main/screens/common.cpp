@@ -173,6 +173,15 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       if (!slot.bitmap || slot.bmp_w <= 0 || slot.bmp_h <= 0) return;
       PaintInvertedBitmap(lfb, slot.bitmap, slot.bmp_w, slot.bmp_h);
       return;
+    case PaintSlot::kMdiIcon:
+      // MDI codepoint via the icon font role. DrawCodepointCentered
+      // sizes off the glyph's own bbox — kDigitRef would compute a
+      // zero ref box for PUA codepoints. 130 px matches kSatsGlyph so
+      // an icon paired with the sats glyph visually weight-matches.
+      if (slot.mdi_codepoint == 0) return;
+      DrawCodepointCentered(lfb, w, h, slot.mdi_codepoint, fonts.icon(),
+                            px(kSatsGlyphPx), /*white_text=*/false);
+      return;
   }
 }
 

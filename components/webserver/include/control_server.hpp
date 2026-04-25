@@ -272,12 +272,43 @@ class ControlServer {
     // is updated but the LED controller's cached value stays stale.
     std::function<void(uint32_t)> on_block_flash_color_changed;
 
+    // Fires when PATCH /api/settings writes `ledBrightness` /
+    // `disableLeds` / `ledFlashOnUpd`. Callbacks push the new value
+    // into the LED controller's runtime state so the change applies
+    // without reboot — without these hooks, the NVS key is updated but
+    // the controller keeps serving the boot-time value until restart.
+    // Nullable: an unwired callback defers the change to reboot.
+    std::function<void(uint8_t)> on_led_brightness_changed;
+    std::function<void(bool)> on_disable_leds_changed;
+    std::function<void(bool)> on_led_flash_on_upd_changed;
+
     // Fires on every successful PATCH /api/settings (after NVS commit,
     // before the response is sent). The callback is expected to emit
     // a short visible confirmation (e.g. green LED pulse) so the user
     // knows the save landed. Nullable: a null callback leaves the save
     // silent beyond the 200 OK.
     std::function<void()> on_settings_patched;
+
+    // Fires when PATCH /api/settings touches `screenOrder`, any
+    // `screen<id>Visible` key, or `actCurrencies`. The callback is
+    // expected to rebuild the ScreenManager's rotation sequence (and
+    // refresh per-currency slot expansion) from the freshly-persisted
+    // NVS values so the new order / visibility / currency set takes
+    // effect on the next auto-rotate or /api/screen/next without a
+    // reboot. Without this hook the sequence is only built at boot
+    // (init_screen_manager.cpp) and a runtime PATCH writes NVS but
+    // leaves the runtime traversal stale. Nullable: a null callback
+    // defers the change to reboot.
+    std::function<void()> on_screens_changed;
+
+    // Fires when PATCH /api/settings touches `blockFeeDec`. Receives
+    // the new bool. The callback is expected to switch the v2 WS
+    // client's fee-stream subscription between "blockfee" (integer)
+    // and "blockfee2" (2-decimal) without a reboot. Without this hook
+    // the WS keeps streaming the previously-selected stream until the
+    // next reconnect and HandleBinaryFrame would either drop or
+    // double-up fee ticks. Nullable: a null callback defers to reboot.
+    std::function<void(bool)> on_block_fee_dec_changed;
 
     // Live Nostr zap-relay connection state. Non-null only when the
     // zap listener is wired (nostrZapNotify=true + valid relay URL +
@@ -286,6 +317,19 @@ class ControlServer {
     // mirrors reality — a stale "true" here would mask relay failures
     // from the WebUI's health indicator.
     std::function<bool()> nostr_connected;
+
+    // Fires when PATCH /api/settings touches a runtime-editable nostr
+    // key (`nostrZapPubkey`, `nostrZapNotify`, `ledFlashOnZap`,
+    // `flFlashOnZap`, `scrnRestoreZap`). The callback is expected to
+    // re-read the canonical "settings" namespace and rebuild the zap
+    // listener (Stop() + Start() its RelayClient + ZapListener) so the
+    // new pubkey / gates take effect without a reboot. `nostrRelay` and
+    // `nostrPubKey` are flagged boot_only in the schema and trigger the
+    // generic rebootRequired response — they intentionally do NOT fire
+    // this hook because tearing down the v2 WS data source mid-flight
+    // is more disruptive than asking the user to reboot. Nullable: a
+    // null callback defers all nostr changes to reboot.
+    std::function<void()> on_nostr_changed;
 
     // Probes a catalogue `screens[].id` for runtime suppression. Returns
     // true when the currently-configured environment makes the screen
@@ -369,6 +413,15 @@ class ControlServer {
   // connected client. Cheap no-op if no SSE server is attached or no
   // clients are connected. Safe to call from any task.
   void BroadcastStatus();
+
+  // Replace the cached active-currency list at runtime. Used by the
+  // on_screens_changed hook when PATCH /api/settings updates
+  // `actCurrencies` so /api/show/currency stops 404'ing freshly-added
+  // codes (the list had been a one-shot snapshot from the Config and
+  // never refreshed). The status slot_count baseline also grows in
+  // step so a status broadcast right after the PATCH carries the new
+  // shape rather than the old.
+  void SetCurrencies(std::vector<std::string> currencies);
 
  private:
   static esp_err_t TrampolineStatus(httpd_req_t* req);

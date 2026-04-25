@@ -1,7 +1,16 @@
 // Nostr zap notification overlay. Transient — a zap receipt paints this
 // for a few seconds, then the screen manager restores the slot that
-// was on-screen before. Layout: "ZAP" text label on panel 0, scaled
-// amount (e.g. "21k") right-justified across the tail panels.
+// was on-screen before. Layout (7- and 8-panel):
+//   [ZAP] [bolt] [ ] ... [ ] [sats glyph] [amount digits...]
+// ZAP and the bolt are anchored to the leftmost two cells on every
+// variant — V8's extra panel widens the blank gap between the bolt
+// and the sats glyph rather than shifting the label run rightward.
+// The bolt is the mdi::kIconLightningBolt glyph from the MDI icon
+// font; the sats glyph and the amount digits sit at the right edge,
+// with the sats glyph one slot before the most-significant amount
+// digit. The amount is right-justified — short amounts ("1") leave
+// the middle blank; longer ones ("1.2M") spill leftward through the
+// blanks.
 
 #include "screens/screens.hpp"
 
@@ -11,35 +20,10 @@
 #include <cstring>
 #include <string>
 
+#include "mdi_codepoints.hpp"
 #include "screens/common.hpp"
 
 namespace btclock {
-namespace {
-
-// "0123456789kMBA" keeps scaled amounts ("21k", "1.2M") vertically
-// aligned with the label's typographic baseline. Expanding the ref
-// past what any of the cells use would push the baseline down and
-// leave the glyph floating.
-constexpr const char* kZapRef = "0123456789kMBA";
-
-// Reference charset for the "ZAP" label panel. Shares the uppercase +
-// digit span used by moscow_time / bitcoin_supply / bitaxe so the
-// label row baseline matches every other text-label screen.
-constexpr const char* kLabelRef =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-// Amount starts immediately after the "ZAP" label on slot 0. When the
-// `useSatsSymbol` pref is on, panel 1 is reclaimed for the Satoshi
-// glyph (matching Moscow-time) and the amount slides right by one.
-constexpr std::size_t kLabelSlot = 0;
-constexpr std::size_t kSatsGlyphSlot = 1;
-
-// Pixel height for the sats-glyph cell — mirrors the kSatsGlyphPx
-// used by PaintSlot::kSatsGlyph in common.cpp so the zap screen's
-// glyph visually matches Moscow-time's.
-constexpr float kSatsGlyphPx = 130.0f;
-
-}  // namespace
 
 std::string FormatZapAmount(const std::optional<int64_t>& amount_sats) {
   if (!amount_sats || *amount_sats < 0) return "?";
@@ -73,32 +57,53 @@ std::string FormatZapAmount(const std::optional<int64_t>& amount_sats) {
 
 namespace {
 
-template <size_t N>
-void PaintBlank(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                uint8_t (&fb_storage)[N][16 * 296], std::size_t i) {
-  auto lfb = PrepFb(panels, fb_storage, i);
-  ClearFb(lfb, /*white=*/true);
-}
+// Ref chars for the "ZAP" label panel. Matches the uppercase + digit
+// span every other text-label screen renders against, so the ZAP label
+// row baseline visually aligns with MSCW / BTC/SUPPLY / BITAXE.
+constexpr const char* kLabelRef =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-// `rotate_label=true` flips the slot 90° CCW relative to k180 so "ZAP"
-// reads along the panel's long axis — matches the verticalDesc port in
-// common.cpp::PaintSlotIntoFb.
-template <size_t N>
-void PaintCentered(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                   uint8_t (&fb_storage)[N][16 * 296],
-                   std::size_t i, const char* text,
-                   const Font& font, float max_px, float min_px,
-                   const char* ref_chars,
-                   bool rotate_label = false) {
-  auto lfb = PrepFb(panels, fb_storage, i);
-  ClearFb(lfb, /*white=*/true);
-  if (text == nullptr || text[0] == '\0') return;
-  if (rotate_label) lfb.rotation = Rotation::k90Cw;
-  const int w = LogicalWidth(lfb);
-  const int h = LogicalHeight(lfb);
-  const float px = FitTextPx(text, font, max_px, min_px, w - 6);
-  DrawTextCentered(lfb, w, h, text, ref_chars, font, px,
-                   /*white_text=*/false);
+// Ref chars for the amount digits — includes the suffix letters so a
+// "21k" / "1.2M" tail shares a baseline with a plain "100".
+constexpr const char* kAmountRef = "0123456789kMB.";
+
+// ZAP@0, bolt@1, [blanks 2..N-3], sats glyph just before the amount,
+// amount right-justified ending at N-1. Same anchor positions on 7-
+// and 8-panel boards — V8's extra cell becomes another blank between
+// the bolt and the glyph, keeping the left-edge ZAP/bolt pair stable
+// across variants. Zero-amount-cells output means the layout degraded
+// to "no room for digits" — caller paints the amount at the rightmost
+// panel and skips the glyph.
+struct ZapLayout {
+  std::size_t zap_slot;       // ZAP label.
+  std::size_t bolt_slot;      // MDI lightning-bolt icon.
+  std::size_t glyph_slot;     // Sats glyph (one before first amount).
+  std::size_t first_amount;   // Leftmost amount-digit slot.
+  std::size_t amount_cells;   // Count of amount cells (= N - first_amount).
+};
+
+template <std::size_t N>
+ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
+  ZapLayout L{};
+  L.zap_slot = 0;
+  L.bolt_slot = L.zap_slot + 1;
+  // Reserve one slot for the sats glyph (when on); the amount fills the
+  // tail starting at first_amount and ending at N-1. Clamp amount_chars
+  // so first_amount can't slide past the bolt slot.
+  const std::size_t glyph_reserve = use_sats_symbol ? 1 : 0;
+  const std::size_t available_tail = N - (L.bolt_slot + 1);
+  std::size_t amount = amount_chars;
+  if (amount + glyph_reserve > available_tail) {
+    amount = available_tail > glyph_reserve ? available_tail - glyph_reserve
+                                            : available_tail;
+  }
+  if (amount < 1) amount = 1;
+  L.first_amount = N - amount;
+  L.amount_cells = amount;
+  L.glyph_slot = (use_sats_symbol && L.first_amount > L.bolt_slot + 1)
+                     ? L.first_amount - 1
+                     : N;  // sentinel "no glyph slot"
+  return L;
 }
 
 }  // namespace
@@ -113,83 +118,79 @@ void RenderNostrZapScreen(
     uint8_t sats_variant,
     bool full_refresh_mode,
     bool vertical_desc) {
-  // "ZAP" label on panel 0 — same typography as MSCW / BTC/SUPPLY so
-  // the notification reads as part of the same visual family, not as a
-  // one-off overlay. FitTextPx shrinks only if the word wouldn't fit;
-  // at 140 px cap "ZAP" sits comfortably within panel width.
-  PaintCentered(panels, fb_storage, kLabelSlot, "ZAP",
-                fonts.label(), /*max_px=*/140.0f, /*min_px=*/40.0f,
-                /*ref_chars=*/kLabelRef,
-                /*rotate_label=*/vertical_desc);
+  static_assert(N >= 7, "Zap layout needs at least 7 panels");
 
-  // Panel 1 is the optional sats-glyph cell. When the user keeps
-  // `useSatsSymbol=true` we paint it at the same 130 px pixel height
-  // Moscow-time uses (kSatsGlyphPx in common.cpp) so the glyph's
-  // visual weight matches across screens. When the flag is off we
-  // leave the panel blank and include it in the amount run.
-  const std::size_t amount_start =
-      use_sats_symbol ? kSatsGlyphSlot + 1 : kSatsGlyphSlot;
-  if (use_sats_symbol && N > kSatsGlyphSlot) {
-    const auto glyph = SatsGlyphUtf8(sats_variant);
-    auto lfb = PrepFb(panels, fb_storage, kSatsGlyphSlot);
-    ClearFb(lfb, /*white=*/true);
-    // DrawTextCentered passes through the UTF-8 glyph unchanged; the
-    // sats_glyph font role covers U+E000..U+E00F.
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                     glyph.c_str(), /*ref_chars=*/glyph.c_str(),
-                     fonts.sats_glyph(), /*text_px=*/kSatsGlyphPx,
-                     /*white_text=*/false);
-  }
-
-  // Amount spreads across every remaining tail cell. With no sats
-  // glyph that's N-1 cells (starting at panel 1); with the glyph on
-  // it's N-2 cells (starting at panel 2). On N=7 + useSatsSymbol=true
-  // that's 5 cells for a max-4-char scaled string, leaving ≥ 1
-  // leading blank — matches the Moscow-time 6-cell + glyph layout
-  // visually.
   const std::string amount = FormatZapAmount(zap.amount_sats);
-  const std::size_t amount_cells = (N > amount_start) ? N - amount_start : 0;
+  const ZapLayout L = ComputeZapLayout<N>(amount.size(), use_sats_symbol);
 
-  // Paint amount right-justified. If the scaled string is shorter than
-  // the slot count, pad with leading blanks; if longer (shouldn't happen
-  // since FormatZapAmount clamps to 4 chars), truncate leading chars.
-  for (std::size_t i = 0; i < amount_cells; ++i) {
-    const std::size_t slot = amount_start + i;
-    char glyph = '\0';
-    if (amount.size() >= amount_cells) {
-      glyph = amount[amount.size() - amount_cells + i];
-    } else {
-      const std::size_t pad = amount_cells - amount.size();
-      if (i >= pad) glyph = amount[i - pad];
-    }
-    if (glyph == '\0' || glyph == ' ') {
-      PaintBlank(panels, fb_storage, slot);
-    } else {
-      const char one[2] = {glyph, '\0'};
-      PaintCentered(panels, fb_storage, slot, one, fonts.digit(),
-                    /*max_px=*/110.0f, /*min_px=*/24.0f,
-                    /*ref_chars=*/kZapRef);
-    }
-  }
+  std::array<PaintSlot, N> slots{};
+  std::array<bool, N> update{};
 
-  // When useSatsSymbol is off the panel-1 glyph slot is repurposed
-  // by the amount loop above — no extra blanking needed here. When
-  // it's on but the amount run didn't cover panel 1, the glyph block
-  // above already painted it.
-
-  // EPD refresh kind is caller-driven (`full_refresh_mode`). A zap is a
-  // short-lived overlay — typically the caller picks full refresh so the
-  // overlay lands cleanly, but partial is fine when the policy says so
-  // and no ghosting of the overlay is visible (single paint before the
-  // auto-restore tick redraws the prior slot).
-  const RefreshKind kind =
-      full_refresh_mode ? RefreshKind::kFull : RefreshKind::kPartial;
+  // Default every panel to blank. The zap overlay is always painted as
+  // a single full frame (the screen manager restores the prior screen
+  // a few seconds later), so every cell is flagged for repaint.
   for (std::size_t i = 0; i < N; ++i) {
-    panels[i]->DrawFramebufferStart(fb_storage[i], kind);
+    slots[i].kind = PaintSlot::kBlank;
+    update[i] = true;
   }
-  for (std::size_t i = 0; i < N; ++i) {
-    panels[i]->WaitForRefresh();
+
+  // ZAP label cell.
+  PaintSlot zap_slot{};
+  zap_slot.kind = PaintSlot::kLabel;
+  zap_slot.text = "ZAP";
+  zap_slot.ref_override = kLabelRef;
+  slots[L.zap_slot] = zap_slot;
+
+  // Lightning-bolt MDI glyph.
+  PaintSlot bolt_slot{};
+  bolt_slot.kind = PaintSlot::kMdiIcon;
+  bolt_slot.mdi_codepoint = mdi::kIconLightningBolt;
+  slots[L.bolt_slot] = bolt_slot;
+
+  // Sats glyph cell (when enabled and there's room for it). The renderer
+  // paints the same kSatsGlyph slot the Moscow-time screen uses so the
+  // glyph weight matches across screens.
+  if (L.glyph_slot < N) {
+    const auto glyph = SatsGlyphUtf8(sats_variant);
+    PaintSlot g{};
+    g.kind = PaintSlot::kSatsGlyph;
+    g.text = glyph.c_str();
+    slots[L.glyph_slot] = g;
   }
+
+  // Amount cells, right-justified. amount.size() <= L.amount_cells by
+  // construction (ComputeZapLayout grows the run to fit); leading cells
+  // get blanks when the amount is shorter than the run.
+  const std::size_t pad =
+      (L.amount_cells > amount.size()) ? L.amount_cells - amount.size() : 0;
+  for (std::size_t i = 0; i < L.amount_cells; ++i) {
+    const std::size_t panel_idx = L.first_amount + i;
+    if (i < pad) {
+      slots[panel_idx].kind = PaintSlot::kBlank;
+      continue;
+    }
+    const char ch = amount[i - pad];
+    if (ch == ' ') {
+      slots[panel_idx].kind = PaintSlot::kBlank;
+      continue;
+    }
+    PaintSlot s{};
+    s.kind = PaintSlot::kDigit;
+    s.text.assign(1, ch);
+    s.ref_override = kAmountRef;
+    slots[panel_idx] = s;
+  }
+
+  // Always full-refresh. The middle panels (between the bolt slot and
+  // the sats-glyph slot) are kBlank, and PaintDataScreen treats
+  // kBlank+update=true as a partial-refresh no-op (skip clear, skip
+  // refresh). On screen entry that means the previous screen's digits
+  // bleed through the empty middle cells — symptom: "two amounts, one
+  // before the sats glyph and one after". Full refresh wipes those
+  // cells to white as part of the kBlank-on-full-refresh path.
+  (void)full_refresh_mode;
+  PaintDataScreen(panels, fb_storage, fonts, slots, update,
+                  /*full_refresh=*/true, vertical_desc);
 }
 
 template void RenderNostrZapScreen<7>(

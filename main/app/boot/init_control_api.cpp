@@ -1,19 +1,25 @@
 #include "app/boot/init_control_api.hpp"
 
+#include <cstdio>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include "app/app_ctx.hpp"
 #include "app/boot/adapters.hpp"
 #include "app/boot/factory_reset.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
 #include "io/led_controller.hpp"
 #include "io/light_sensor.hpp"
 #include "io/mining_pool_selector.hpp"
+#include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "app/screen_slot_map.hpp"
 #include "board/board.hpp"
+#include "btclock_data.hpp"
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
 #include "dnd/dnd.hpp"
@@ -150,14 +156,30 @@ void InitControlApi(AppCtx& ctx) {
       if (ctx_ptr->sm) ctx_ptr->sm->MarkDirty();
       if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
-    // blockFlashColor PATCH hook — mirror the settings namespace write
-    // into the LED controller's own namespace so the next block flash
-    // uses the new colour without reboot. SetBlockFlashColor persists
-    // to the led/blockFlashCol key and updates the cached runtime
-    // value the strip task reads on each kBlockFlash event.
+    // blockFlashColor PATCH hook — push the new colour into the LED
+    // controller's runtime cache so the next block flash uses the
+    // user-chosen colour without reboot. SetBlockFlashColor also
+    // re-persists to NVS, which is redundant after ApplyPatch but is a
+    // no-op cost (matches the /api/lights direct-write paths).
     ccfg.on_block_flash_color_changed = [](uint32_t rgb) {
       SetBlockFlashColor(rgb);
     };
+    // blockFeeDec PATCH hook — switches the v2 WS client's fee-stream
+    // subscription between "blockfee" (integer) and "blockfee2"
+    // (2-decimal) live. Stop+Start on the underlying WS so the relay
+    // drops the previous topic; without that the client double-receives
+    // and HandleBinaryFrame would pick whichever frame raced last.
+    BtclockDataSource* ws_for_fee_dec = ctx_ptr->btclock_ws;
+    ccfg.on_block_fee_dec_changed = [ws_for_fee_dec](bool v) {
+      if (ws_for_fee_dec) ws_for_fee_dec->SetBlockFeeDec(v);
+    };
+    // ledBrightness / disableLeds / ledFlashOnUpd PATCH hooks — same
+    // shape as blockFlashColor. Without these, PATCH would update the
+    // settings NVS slot but the LED task's in-memory state (sampled
+    // every frame) would keep the pre-PATCH value until reboot.
+    ccfg.on_led_brightness_changed = [](uint8_t v) { SetLedBrightness(v); };
+    ccfg.on_disable_leds_changed = [](bool v) { SetLedDisabled(v); };
+    ccfg.on_led_flash_on_upd_changed = [](bool v) { SetLedFlashOnUpdate(v); };
     // Every successful /api/settings PATCH pulses the LEDs green so
     // the user sees an immediate confirmation the save landed. Piggy-
     // backs on the existing kFlashSuccess effect (3x green, 150ms) —
@@ -169,6 +191,57 @@ void InitControlApi(AppCtx& ctx) {
     ccfg.on_settings_patched = [sm_ptr, main_task_for_hooks] {
       PostLedEffect(LedEffect::kFlashSuccess);
       if (sm_ptr) sm_ptr->MarkDirty();
+      if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
+    };
+    // Rotation rebuild on screenOrder / screen<id>Visible / actCurrencies
+    // PATCH. The sequence is otherwise built once at boot
+    // (init_screen_manager.cpp) and runtime PATCHes wrote NVS but left the
+    // live traversal stale, so the user had to reboot to see a reorder or
+    // a currency-list change take effect. Mirrors the boot-time builder:
+    // same `screenOrder` CSV + `screen<id>Visible` closure +
+    // `actCurrencies` CSV. SetCurrencies first (slot_count depends on
+    // currency count, so the new sequence must reflect the new count),
+    // then SetRotationSequence to install the rebuilt plan. The data
+    // source's currency subscription is refreshed in lock-step so price
+    // ticks for newly-added codes start flowing without a reboot.
+    BtclockDataSource* data_src = ctx_ptr->btclock_ws;
+    ccfg.on_screens_changed = [ctx_ptr, sm_ptr, main_task_for_hooks,
+                               data_src] {
+      if (!sm_ptr) return;
+      Prefs settings(prefs::kSettingsNs);
+      const std::string order_csv =
+          settings.GetString(prefs::kScreenOrder, "");
+      const std::string ccy_csv =
+          settings.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+      std::vector<std::string> new_currencies;
+      {
+        std::stringstream ss(ccy_csv);
+        std::string item;
+        while (std::getline(ss, item, ',')) {
+          if (!item.empty()) new_currencies.push_back(item);
+        }
+        if (new_currencies.empty()) new_currencies.push_back("USD");
+      }
+      sm_ptr->SetCurrencies(new_currencies);
+      ctx_ptr->currencies = new_currencies;
+      // The control server snapshot also needs the fresh list so
+      // /api/show/currency stops 404'ing newly-added codes — the cfg
+      // copy is otherwise a one-shot from boot.
+      if (ctx_ptr->ctrl) ctx_ptr->ctrl->SetCurrencies(new_currencies);
+      auto is_enabled = [](int api_id) -> bool {
+        Prefs p(prefs::kSettingsNs);
+        char vkey[24];
+        std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
+        return p.GetBool(vkey, true);
+      };
+      sm_ptr->SetRotationSequence(rotation_plan::BuildRotationSequence(
+          order_csv, is_enabled, sm_ptr->currencies().size()));
+      // Refresh the v2 WS subscriptions so price frames start flowing
+      // for codes the user just added. Stop+Start forces a fresh
+      // subscribe set (additive `subscribe` frames alone wouldn't drop
+      // a removed code's stream). The reconnect is ~5 s; mostly harmless
+      // because the cached snapshot keeps the screens populated.
+      if (data_src) data_src->SetCurrencies(new_currencies);
       if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };
     // Mirror freshly-PATCHed DND fields into the singleton so the LED
@@ -212,6 +285,15 @@ void InitControlApi(AppCtx& ctx) {
     if (nostr::RelayClient* zap_ptr = ctx.zap_relay.get()) {
       ccfg.nostr_connected = [zap_ptr]() { return zap_ptr->connected(); };
     }
+    // Live PATCH refresh for the runtime-editable nostr keys
+    // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,
+    // scrnRestoreZap). The hook re-reads the canonical "settings"
+    // namespace and rebuilds the listener subscription if the pubkey
+    // changed; LED/frontlight/notify gates land via atomic refresh
+    // alone. nostrRelay/nostrPubKey are boot_only and intentionally
+    // skipped — the schema returns rebootRequired for those.
+    // bd btclock_v4-aw5 / btclock_v4-q1l.
+    ccfg.on_nostr_changed = [ctx_ptr] { RefreshZapListenerSettings(*ctx_ptr); };
     // Capability gate — lets /api/settings and /api/show/screen know that
     // the mining-pool earnings slot is useless on a solo pool (no per-user
     // payout to render; the screen would forever show "0 SATS"). Evaluated

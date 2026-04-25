@@ -308,15 +308,19 @@ void RenderBitaxeBestDiffScreen(
     bool vertical_desc = false);
 
 // --- Nostr zap notification ---
-// Transient overlay painted when a NIP-57 zap receipt arrives. Panel 0
-// carries the "ZAP" label. Trailing panels show the amount in sats,
-// scaled via FormatZapAmount ("21k", "1.2M", "100"). When
-// `use_sats_symbol=true`, panel 1 is reserved for the Satoshi-symbol
-// glyph (same kSatsGlyph slot kind + sats_glyph font role the
-// Moscow-time screen uses) and the amount is right-justified across
-// panels 2..N-1 instead of 1..N-1 — visually tags the number as sats.
-// `sats_variant` selects one of the 16 glyphs in the Satoshi Symbol
-// font (0..15; default 7). Always full-refresh — the screen is only
+// Transient overlay painted when a NIP-57 zap receipt arrives. Layout:
+// [ZAP][bolt][...blanks...][sats glyph][amount...] on every variant —
+// ZAP and the bolt anchor at the leftmost two cells; V8's extra panel
+// widens the blank gap between bolt and sats glyph. The bolt cell paints the
+// mdi-lightning-bolt MDI glyph (icon font role, 130 px). The amount
+// is scaled via FormatZapAmount ("21k", "1.2M", "100") and
+// right-justified, anchored to panel N-1; longer amounts spill
+// leftward through the blank middle cells. When `use_sats_symbol=true`
+// (default) the sats glyph cell sits one slot before the
+// most-significant amount digit (kSatsGlyph + sats_glyph font role);
+// when off the cell stays blank and the amount may use one extra
+// tail cell. `sats_variant` selects one of the 16 Satoshi-symbol
+// glyphs (0..15; default 7). Always full-refresh — the screen is only
 // up for a few seconds before ScreenManager restores the prior slot,
 // so diff bookkeeping would add no value.
 template <size_t N>

@@ -604,38 +604,54 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats) {
 std::vector<std::string> BuildNostrZap(
     const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
     std::size_t n_panels) {
-  // Slot 0 = "ZAP" literal, matching what the panel renders. Slot 1 is
-  // the optional sats-symbol marker cell — emitted as the same "STS"
-  // token parseSatsPerCurrency uses on Moscow-time so the WebUI's
-  // split-text renderer lines up byte-for-byte with what the EPD paints
-  // via PaintSlot::kSatsGlyph. When `use_sats_symbol=false` the marker
-  // panel stays blank and the amount uses every tail cell. The zapper's
-  // message string is intentionally not mirrored; the snapshot field is
-  // kept so a future screen can surface it without re-plumbing the
-  // relay listener.
+  // Layout mirrors RenderNostrZapScreen in main/screens/nostr_zap.cpp:
+  //   [ZAP][bolt][...blanks...][sats glyph][amount...]
+  // Same on 7- and 8-panel boards — V8's extra cell widens the blank
+  // gap rather than shifting ZAP/bolt rightward.
+  // The bolt cell carries the mdi-lightning-bolt MDI glyph on the EPD;
+  // the panel-text mirror represents it as an empty cell (same convention
+  // bitaxe / mining-pool logo cells use — non-textual content). When
+  // `use_sats_symbol=false` the glyph cell stays blank and the amount
+  // uses one extra tail cell. Zapper message is intentionally not
+  // mirrored; the snapshot field is kept so a future screen can surface
+  // it without re-plumbing the relay listener.
   std::vector<std::string> out(n_panels);
   if (n_panels == 0) return out;
-  out[0] = "ZAP";
-  if (n_panels <= 1) return out;
-
-  const std::size_t amount_start = use_sats_symbol ? 2 : 1;
-  if (use_sats_symbol && n_panels >= 2) out[1] = "STS";
-  if (n_panels <= amount_start) return out;
+  const std::size_t zap_slot = 0;
+  const std::size_t bolt_slot = zap_slot + 1;
+  out[zap_slot] = "ZAP";
+  if (n_panels <= bolt_slot + 1) return out;
 
   const std::string amount = FormatZapAmountLocal(amount_sats);
-  const std::size_t amount_cells = n_panels - amount_start;
+  // Reserve a glyph cell when the pref is on AND there's at least one
+  // blank slot between the bolt and the amount. The renderer follows
+  // the same rule (ComputeZapLayout's glyph_slot sentinel).
+  const std::size_t available_tail = n_panels - (bolt_slot + 1);
+  const std::size_t glyph_reserve = use_sats_symbol ? 1 : 0;
+  std::size_t amount_cells = amount.size();
+  if (amount_cells + glyph_reserve > available_tail) {
+    amount_cells = (available_tail > glyph_reserve)
+                       ? available_tail - glyph_reserve
+                       : available_tail;
+  }
+  if (amount_cells < 1) amount_cells = 1;
+  const std::size_t first_amount = n_panels - amount_cells;
+  const bool has_glyph =
+      use_sats_symbol && first_amount > bolt_slot + 1;
+  if (has_glyph) out[first_amount - 1] = "STS";
 
-  // Right-justify the scaled amount into the tail cells, one char each.
+  // Right-justify the scaled amount into the tail cells. Truncate
+  // leading chars only when the formatter overshoots (defensive — the
+  // suffix path clamps to <= 4 chars).
   if (amount.size() >= amount_cells) {
     const std::size_t start = amount.size() - amount_cells;
     for (std::size_t i = 0; i < amount_cells; ++i) {
-      out[amount_start + i].assign(1, amount[start + i]);
+      out[first_amount + i].assign(1, amount[start + i]);
     }
   } else {
     const std::size_t pad = amount_cells - amount.size();
-    for (std::size_t i = 0; i < pad; ++i) out[amount_start + i].clear();
     for (std::size_t i = pad; i < amount_cells; ++i) {
-      out[amount_start + i].assign(1, amount[i - pad]);
+      out[first_amount + i].assign(1, amount[i - pad]);
     }
   }
   return out;

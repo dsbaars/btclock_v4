@@ -581,6 +581,17 @@ void ControlServer::BroadcastStatus() {
   sse_->Broadcast("status", body);
 }
 
+void ControlServer::SetCurrencies(std::vector<std::string> currencies) {
+  cfg_.currencies = std::move(currencies);
+  // Mirror the slot_count baseline computed in the constructor so
+  // /api/status and /api/show/currency see the new shape immediately.
+  std::lock_guard<std::mutex> lk(status_mu_);
+  status_.slot_count =
+      cfg_.currencies.empty()
+          ? 1
+          : static_cast<int32_t>(1 + 2 * cfg_.currencies.size());
+}
+
 std::string ControlServer::BuildStatusJson() const {
   cJSON* root = cJSON_CreateObject();
   if (!root) return {};
@@ -1953,14 +1964,104 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
 
   // blockFlashColor: mirror the new value into the LED controller so
   // the next block flash uses the user-chosen colour without a reboot.
-  // The `settings` and `led` NVS namespaces are intentionally distinct
-  // (the LED controller's key is abbreviated for the 15-char NVS cap)
-  // so this hook is the only thing keeping them in sync at runtime.
+  // Both the LED controller and the settings layer now read the same
+  // `settings` namespace, so this hook is purely a runtime cache poke
+  // (the persisted value is already correct).
   if (cfg_.on_block_flash_color_changed) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kBlockFlashColor) {
         cfg_.on_block_flash_color_changed(
             prefs.GetU32(btclock::prefs::kBlockFlashColor, 0xE04300));
+        break;
+      }
+    }
+  }
+
+  // blockFeeDec PATCH hook — re-read the freshly-persisted NVS bool
+  // and hand it to the v2 WS client so the fee-stream subscription
+  // switches without reboot. Mirrors the on_block_flash_color hook
+  // shape (single-key trigger, NVS read for the canonical value).
+  if (cfg_.on_block_fee_dec_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kBlockFeeDec) {
+        cfg_.on_block_fee_dec_changed(
+            prefs.GetBool(btclock::prefs::kBlockFeeDec, true));
+        break;
+      }
+    }
+  }
+
+  // ledBrightness / disableLeds / ledFlashOnUpd: same shape as
+  // blockFlashColor — refresh the LED controller's in-memory state so
+  // the change applies on the next effect without a reboot. Without
+  // these hooks the NVS key is updated but the runtime cache the LED
+  // task reads on each frame keeps the pre-PATCH value.
+  if (cfg_.on_led_brightness_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kLedBrightness) {
+        cfg_.on_led_brightness_changed(static_cast<uint8_t>(
+            prefs.GetU32(btclock::prefs::kLedBrightness, 128) & 0xFFu));
+        break;
+      }
+    }
+  }
+  if (cfg_.on_disable_leds_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kDisableLeds) {
+        cfg_.on_disable_leds_changed(
+            prefs.GetBool(btclock::prefs::kDisableLeds, false));
+        break;
+      }
+    }
+  }
+  if (cfg_.on_led_flash_on_upd_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kLedFlashOnUpd) {
+        cfg_.on_led_flash_on_upd_changed(
+            prefs.GetBool(btclock::prefs::kLedFlashOnUpd, false));
+        break;
+      }
+    }
+  }
+
+  // screenOrder / screen<id>Visible / actCurrencies: rebuild the
+  // ScreenManager's rotation traversal so the new order / visibility /
+  // currency-set takes effect on the next auto-rotate or
+  // /api/screen/next without a reboot. Without this the sequence is
+  // only built once at boot and a runtime PATCH writes NVS but leaves
+  // the runtime walk stale. The screen<id>Visible keys end with
+  // "Visible" (e.g. screen0Visible, screen10Visible) — suffix-match
+  // keeps this independent of the catalogue id list. actCurrencies
+  // also resizes per-currency screen slots so the same hook handles it.
+  if (cfg_.on_screens_changed) {
+    for (const auto& k : result.touched_keys) {
+      const bool is_order = (k == btclock::prefs::kScreenOrder);
+      const bool is_visible = (k.size() > 7 &&
+                               k.compare(0, 6, "screen") == 0 &&
+                               k.compare(k.size() - 7, 7, "Visible") == 0);
+      const bool is_currencies = (k == btclock::prefs::kActCurrencies);
+      if (is_order || is_visible || is_currencies) {
+        cfg_.on_screens_changed();
+        break;
+      }
+    }
+  }
+
+  // Runtime-editable nostr keys: rebuild the zap listener so the new
+  // pubkey / gate values take effect without a reboot. nostrRelay and
+  // nostrPubKey are boot_only in the schema and trigger the generic
+  // rebootRequired response — they don't fire this hook (a live
+  // RelayClient swap on the audited zap path isn't worth the
+  // additional complexity given the existing reboot prompt). bd
+  // btclock_v4-aw5 / btclock_v4-q1l.
+  if (cfg_.on_nostr_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kNostrZapPubkey ||
+          k == btclock::prefs::kNostrZapNotify ||
+          k == btclock::prefs::kLedFlashOnZap ||
+          k == btclock::prefs::kFlFlashOnZap ||
+          k == btclock::prefs::kScrnRestoreZap) {
+        cfg_.on_nostr_changed();
         break;
       }
     }

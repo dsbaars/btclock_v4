@@ -186,6 +186,50 @@ void ScreenManager::SetRotationSequence(std::vector<std::size_t> sequence) {
   }
 }
 
+void ScreenManager::SetCurrencies(std::vector<std::string> currencies) {
+  if (currencies.empty()) return;  // ctor invariant: at least one ccy
+  // Remember the (kind, currency-code) the user is currently viewing
+  // so the resize doesn't drop them onto a different screen unless the
+  // code disappears from the new list. Per-currency slot indices change
+  // when the count changes; we map kind+code → new slot below.
+  const ScreenType kind_before = KindForSlot(slot_);
+  std::string ccy_before;
+  if (slot_ >= kAgnosticSlots && !is_fee_rate_slot()) {
+    const std::size_t idx = (slot_ - kAgnosticSlots) / kPerCurrencySlots;
+    if (idx < currencies_.size()) ccy_before = currencies_[idx];
+  }
+  currencies_ = std::move(currencies);
+  // Re-anchor slot_ on the new layout. Currency-agnostic kinds keep the
+  // same slot index. Per-currency kinds resolve via the kind+code pair —
+  // if the previously-displayed code is no longer in the active set we
+  // fall back to slot 0 (block height) rather than picking an arbitrary
+  // currency, matching the boot path's "default to first slot" stance.
+  // The fee-rate slot lives at slot_count() - 1, which moves on a resize.
+  const std::size_t n = slot_count();
+  if (kind_before == ScreenType::kBlockFeeRate) {
+    slot_ = n - 1;
+  } else if (slot_ >= n) {
+    slot_ = 0;
+  } else if (!ccy_before.empty()) {
+    bool found = false;
+    for (std::size_t i = 0; i < currencies_.size(); ++i) {
+      if (currencies_[i] == ccy_before) {
+        std::size_t off = 0;
+        switch (kind_before) {
+          case ScreenType::kMoscowTime: off = 0; break;
+          case ScreenType::kBtcPrice:   off = 1; break;
+          case ScreenType::kMarketCap:  off = 2; break;
+          default: break;
+        }
+        slot_ = kAgnosticSlots + kPerCurrencySlots * i + off;
+        found = true;
+        break;
+      }
+    }
+    if (!found) slot_ = 0;
+  }
+}
+
 ScreenType ScreenManager::current_kind() const {
   // OTA push-upload overlay outranks every other kind — the user has
   // committed to replacing the running firmware and the EPD must read

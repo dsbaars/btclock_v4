@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "cJSON.h"
 #include "settings/pref_keys.hpp"
@@ -161,9 +163,12 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   }
 
   // Screens array. `enabled` is a per-screen bool at key
-  // screen<ID>Visible (default true). `order` is the index in
-  // DeviceContext::screens — the catalogue is fed in already sorted
-  // by the current rotation order.
+  // screen<ID>Visible (default true). `order` reflects the user's
+  // persisted `screenOrder` CSV (PATCH-able via the WebUI's drag-reorder)
+  // — without this the GET response always echoed catalog order, so a
+  // user PATCHing screenOrder would keep seeing the old order in the UI
+  // (bd: matches the rotation rebuild in init_control_api's
+  // on_screens_changed hook).
   //
   // Capability-hidden ids (e.g. mining-pool earnings on a solo pool)
   // are dropped from the emitted list but stay in `ctx.screens` so
@@ -186,11 +191,55 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     hidden.insert(80);  // Bitaxe Hashrate
     hidden.insert(81);  // Bitaxe Best Difficulty
   }
+  // Build emission order: persisted screenOrder ids first (filtered to
+  // ids the catalog still recognises and not hidden), then any catalog
+  // entries the CSV omitted, in catalog order. A partial CSV is allowed
+  // — missing screens still surface so the WebUI's picker can re-add
+  // them. Empty CSV (cold-boot default) preserves catalog order, the
+  // pre-fix backwards-compatible shape.
   cJSON* screens_arr = cJSON_AddArrayToObject(root, "screens");
-  size_t emit_order = 0;
-  for (size_t i = 0; i < ctx.screens.size(); ++i) {
-    const auto& s = ctx.screens[i];
+  const std::string order_csv =
+      prefs.GetString(prefs::kScreenOrder, "");
+  std::set<int> catalog_ids;
+  for (const auto& s : ctx.screens) catalog_ids.insert(s.id);
+  std::vector<int> emitted_ids;
+  std::set<int> already_emitted;
+  if (!order_csv.empty()) {
+    std::stringstream ss(order_csv);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+      if (item.empty()) continue;
+      // hand-rolled atoi (firmware builds with -fno-exceptions); silently
+      // skip non-numeric / unknown / hidden / duplicate tokens.
+      int v = 0;
+      bool any = false;
+      bool bad = false;
+      for (char c : item) {
+        if (c < '0' || c > '9') { bad = true; break; }
+        v = v * 10 + (c - '0');
+        any = true;
+      }
+      if (!any || bad) continue;
+      if (catalog_ids.count(v) == 0) continue;
+      if (hidden.count(v) > 0) continue;
+      if (!already_emitted.insert(v).second) continue;
+      emitted_ids.push_back(v);
+    }
+  }
+  for (const auto& s : ctx.screens) {
     if (hidden.count(s.id) > 0) continue;
+    if (already_emitted.count(s.id) > 0) continue;
+    emitted_ids.push_back(s.id);
+  }
+  // ctx.screens is the lookup table for {id -> name}; the loop above
+  // resolved positions, here we just emit in that order.
+  std::map<int, const DeviceContext::Screen*> by_id;
+  for (const auto& s : ctx.screens) by_id[s.id] = &s;
+  size_t emit_order = 0;
+  for (int id : emitted_ids) {
+    auto it = by_id.find(id);
+    if (it == by_id.end()) continue;
+    const auto& s = *it->second;
     cJSON* obj = cJSON_CreateObject();
     cJSON_AddNumberToObject(obj, "id", static_cast<double>(s.id));
     cJSON_AddStringToObject(obj, "name", s.name.c_str());

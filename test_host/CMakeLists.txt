@@ -35,6 +35,7 @@ add_executable(btclock_host_tests
     test_screen_ref_chars.cpp
     test_fee_rate.cpp
     test_btclock_data_parse.cpp
+    test_btclock_subscribe.cpp
     test_nostr_parse.cpp
     test_tls_gate.cpp
     test_mining_pool_braiins.cpp
@@ -53,9 +54,12 @@ add_executable(btclock_host_tests
     test_timezone.cpp
     test_led_curves.cpp
     test_led_color_parse.cpp
+    test_led_prefs.cpp
+    ../main/io/led_prefs.cpp
     test_datahandler_parity.cpp
     test_settings_api.cpp
     test_settings_catalogs.cpp
+    test_nostr_config.cpp
     test_dnd.cpp
     test_screen_rotation.cpp
     test_screen_slot_map.cpp
@@ -75,6 +79,8 @@ add_executable(btclock_host_tests
     test_build_time.cpp
     test_block_event_policy.cpp
     test_vertical_desc.cpp
+    test_sources_uri.cpp
+    ../main/sources/sources_uri.cpp
     ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
     ../main/io/frontlight_ambient_policy.cpp
@@ -92,6 +98,7 @@ add_executable(btclock_host_tests
     ../components/webserver/auth_gate_logic.cpp
     ../components/settings/settings_api.cpp
     ../components/settings/build_time.cpp
+    ../components/settings/nostr_config.cpp
     ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
 )
