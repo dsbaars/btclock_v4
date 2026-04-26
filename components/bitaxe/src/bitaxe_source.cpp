@@ -1,11 +1,12 @@
 #include "bitaxe/bitaxe_source.hpp"
 
+#include <cstring>
 #include <utility>
-#include <vector>
 
 #include "bitaxe/bitaxe_parser.hpp"
 #include "data_core/hub.hpp"
 #include "data_core/snapshot.hpp"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "prefs.hpp"
@@ -23,9 +24,19 @@ constexpr const char* kTag = "bitaxe";
 // 2× headroom with no risk of a runaway server eating DRAM.
 constexpr std::size_t kMaxResponseBytes = 4 * 1024;
 
+// Mirrors the PSRAM-first body accumulator in pool_base.cpp: lazy alloc
+// on first byte, prefer SPIRAM with internal fallback, RAII cleanup.
+// AxeOS responses are tiny (~1.5 KiB) so this is steady-state pressure
+// relief rather than a hot-path concern.
 struct FetchContext {
-  std::vector<char> body;
+  char* body = nullptr;
+  std::size_t size = 0;
   bool truncated = false;
+  bool alloc_failed = false;
+
+  ~FetchContext() {
+    if (body) heap_caps_free(body);
+  }
 };
 
 esp_err_t http_event_handler(esp_http_client_event_t* evt) {
@@ -35,21 +46,38 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
     return ESP_OK;
   }
   const std::size_t incoming = static_cast<std::size_t>(evt->data_len);
-  if (ctx->body.size() + incoming > kMaxResponseBytes) {
+  if (ctx->size + incoming > kMaxResponseBytes) {
     ctx->truncated = true;
     return ESP_OK;
   }
-  ctx->body.insert(ctx->body.end(),
-                   static_cast<const char*>(evt->data),
-                   static_cast<const char*>(evt->data) + incoming);
+  if (ctx->body == nullptr) {
+    // +1 so the parser's trailing NUL always fits without a realloc.
+    ctx->body = static_cast<char*>(heap_caps_malloc_prefer(
+        kMaxResponseBytes + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+        MALLOC_CAP_8BIT));
+    if (ctx->body == nullptr) {
+      ctx->alloc_failed = true;
+      return ESP_OK;
+    }
+  }
+  std::memcpy(ctx->body + ctx->size, evt->data, incoming);
+  ctx->size += incoming;
   return ESP_OK;
 }
 }  // namespace
 
-BitaxeSource::BitaxeSource(std::string hostname,
-                            uint32_t poll_interval_ms)
-    : hostname_(std::move(hostname)),
-      poll_interval_ms_(poll_interval_ms) {}
+BitaxeSource::BitaxeSource(std::string hostname)
+    : hostname_(std::move(hostname)) {}
+
+uint32_t BitaxeSource::poll_interval_ms() const {
+  // Mirrors the schema bounds for kBitaxePollSec (5..300 s, default 10).
+  // Read every tick so a live PATCH applies on the next poll.
+  btclock::Prefs settings(btclock::prefs::kSettingsNs);
+  uint32_t s = settings.GetU32(btclock::prefs::kBitaxePollSec, 10);
+  if (s < 5) s = 5;
+  if (s > 300) s = 300;
+  return s * 1000;
+}
 
 BitaxeSource::~BitaxeSource() { Stop(); }
 
@@ -86,7 +114,9 @@ void BitaxeSource::Run() {
   vTaskDelay(pdMS_TO_TICKS(3000));
   while (!stop_.load(std::memory_order_acquire)) {
     PollOnce();
-    const uint32_t interval = poll_interval_ms_;
+    // Re-read each tick so a live PATCH to `settings/bitaxePollSec`
+    // applies on the next sleep without reboot.
+    const uint32_t interval = poll_interval_ms();
     // Sleep in 1 s chunks so Stop() is responsive.
     for (uint32_t elapsed = 0;
          elapsed < interval && !stop_.load(std::memory_order_acquire);
@@ -132,6 +162,12 @@ void BitaxeSource::PollOnce() {
     esp_http_client_cleanup(client);
     return;
   }
+  if (ctx.alloc_failed) {
+    ESP_LOGW(kTag, "body alloc failed (cap=%u)",
+             static_cast<unsigned>(kMaxResponseBytes));
+    esp_http_client_cleanup(client);
+    return;
+  }
   if (ctx.truncated) {
     ESP_LOGW(kTag, "response exceeded %u bytes",
              static_cast<unsigned>(kMaxResponseBytes));
@@ -140,12 +176,16 @@ void BitaxeSource::PollOnce() {
   }
   esp_http_client_cleanup(client);
 
-  ctx.body.push_back('\0');
+  if (ctx.body == nullptr || ctx.size == 0) {
+    ESP_LOGW(kTag, "empty body");
+    return;
+  }
+  ctx.body[ctx.size] = '\0';
 
   ParsedStats parsed;
-  if (!Parse(ctx.body.data(), parsed)) {
+  if (!Parse(ctx.body, parsed)) {
     ESP_LOGW(kTag, "parse failed (%u bytes)",
-             static_cast<unsigned>(ctx.body.size() - 1));
+             static_cast<unsigned>(ctx.size));
     return;
   }
 

@@ -1134,6 +1134,29 @@ void setVerticalDesc(bool on) {
 // the REV_B solder orientation; native is 122x250 for 2.13" panels.
 // `panels` reflects the current setRenderOptions selection so the UI
 // can size its row correctly.
+// Debug-only — returns bbox metrics for a single codepoint at the given
+// pixel height, querying any of the AppFonts roles. Used by the bolt-
+// centering analysis script to compare what DrawCodepointCentered
+// "thinks" the glyph extents are vs. what gets rasterized.
+val getCodepointMetrics(std::string role, int codepoint, double pixel_height) {
+  const auto& f = Ctx().fonts;
+  const btclock::Font* font = nullptr;
+  if (role == "icon") font = &f.icon();
+  else if (role == "digit") font = &f.digit();
+  else if (role == "label") font = &f.label();
+  else if (role == "sats_glyph") font = &f.sats_glyph();
+  else if (role == "atkinson") font = &f.atkinson();
+  else font = &f.icon();
+  const auto m = font->GetMetrics(codepoint, static_cast<float>(pixel_height));
+  val o = val::object();
+  o.set("xoff", m.xoff);
+  o.set("yoff", m.yoff);
+  o.set("w", m.w);
+  o.set("h", m.h);
+  o.set("advance", m.advance);
+  return o;
+}
+
 val getPanelDimensions() {
   auto& ctx = Ctx();
   val o = val::object();
@@ -1203,6 +1226,7 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderBitaxeBestDiffAlphaBuffer",
                        &renderBitaxeBestDiffAlpha);
   emscripten::function("renderNostrZapAlphaBuffer", &renderNostrZapAlpha);
+  emscripten::function("getCodepointMetrics", &getCodepointMetrics);
 
   emscripten::function("getPanelDimensions", &getPanelDimensions);
   emscripten::function("setRenderOptions", &setRenderOptions);

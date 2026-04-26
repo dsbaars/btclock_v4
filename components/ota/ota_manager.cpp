@@ -1,11 +1,12 @@
 #include "ota_manager.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
 
 #include "cJSON.h"
 #include "esp_crt_bundle.h"
@@ -188,20 +189,35 @@ bool HashOtaPartition(const esp_partition_t* part, size_t image_bytes,
   }
   mbedtls_md_starts(&md);
 
+  // 4 KiB scratch for partition_read + sha256 update. PSRAM-first with
+  // internal fallback — only alive for ~200 ms during OTA verify, but
+  // every byte we keep off DRAM is one less to fight handshake-storm
+  // pressure if reconnects fire mid-update. unique_ptr with a custom
+  // deleter so early returns can't leak.
   constexpr size_t kChunk = 4096;
-  std::vector<uint8_t> buf(kChunk);
+  auto buf_deleter = [](uint8_t* p) { if (p) heap_caps_free(p); };
+  std::unique_ptr<uint8_t, decltype(buf_deleter)> buf(
+      static_cast<uint8_t*>(heap_caps_malloc_prefer(
+          kChunk, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+          MALLOC_CAP_8BIT)),
+      buf_deleter);
+  if (!buf) {
+    ESP_LOGE(kTag, "hash buffer alloc failed");
+    mbedtls_md_free(&md);
+    return false;
+  }
   size_t offset = 0;
   while (offset < image_bytes) {
     const size_t want = std::min(kChunk, image_bytes - offset);
     const esp_err_t rc =
-        esp_partition_read(part, offset, buf.data(), want);
+        esp_partition_read(part, offset, buf.get(), want);
     if (rc != ESP_OK) {
       ESP_LOGE(kTag, "partition_read@%u: %s",
                static_cast<unsigned>(offset), esp_err_to_name(rc));
       mbedtls_md_free(&md);
       return false;
     }
-    mbedtls_md_update(&md, buf.data(), want);
+    mbedtls_md_update(&md, buf.get(), want);
     offset += want;
   }
 

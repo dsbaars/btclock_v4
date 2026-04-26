@@ -7,6 +7,6 @@ idf_component_register(
         "src/zap_listener.cpp"
         "src/nostr_data_source.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES esp_websocket_client esp-tls data_core
+    REQUIRES esp_websocket_client esp-tls data_core cjson
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

@@ -29,6 +29,9 @@ class NoderunnersPool : public PoolDataSource {
   const char* pool_name() const override { return "noderunners"; }
   // Solo pool — raw hashrate only, no payout stream to report.
   bool SupportsDailyEarnings() const override { return false; }
+  const char* logo_filename() const override { return "noderunners.bin"; }
+  int logo_width() const override { return 122; }
+  int logo_height() const override { return 122; }
 };
 
 }  // namespace mining_pools

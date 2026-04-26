@@ -11,8 +11,8 @@ idf_component_register(
          "auth_gate.cpp" "auth_gate_logic.cpp" "url_decode.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_server wifi prefs esp_wifi lwip esp_app_format
-             data_core esp_psram json btclock_fs vfs settings ota
-             app_update net_util epd
+             data_core esp_psram cjson btclock_fs vfs settings ota
+             app_update net_util epd pool_logo_fetcher
     EMBED_FILES "${_PORTAL_GZ}"
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

@@ -305,6 +305,13 @@ class ScreenManager {
   uint32_t last_seen_height_ = 0;     // snapshot-side tracking (LED flash)
   uint32_t last_rendered_height_ = 0; // screen-side tracking (digit diff)
   std::string last_rendered_price_;   // shared Moscow-time + price diff
+  // minSecPriceUpd (seconds): monotonic-ms timestamp of the last price-
+  // bearing screen paint (kMoscowTime / kBtcPrice / kMarketCap). Read
+  // by ShouldRender to throttle EPD writes when the WS pushes prices
+  // faster than `minSecPriceUpd` — protects the e-paper from rapid
+  // burn-in. Mutable so the const-qualified ShouldRender can stamp it,
+  // but the actual stamp lives in Render() after the paint completes.
+  mutable int64_t last_price_apply_ms_ = 0;
   double last_rendered_fee_ = -1.0;   // fee-rate screen diff (<0 = unknown)
   // Market-cap diff: price *and* height both feed into the output,
   // so we remember the last height that drove a cap render (distinct

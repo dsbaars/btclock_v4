@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "i2c_bus.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES driver
+    REQUIRES esp_driver_i2c
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

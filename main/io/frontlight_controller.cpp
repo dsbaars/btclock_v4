@@ -55,6 +55,34 @@ void FrontlightController::Start() {
 
 void FrontlightController::Post(FrontlightCommand cmd) {
   if (queue_ == nullptr) return;
+  // flDisable wins over everything: it's the user's hard mute. We
+  // must come before flAlwaysOn (which would otherwise prevent the
+  // forced fade-out) and before the DND gate (DND-or-disabled is
+  // still off). kOff is forwarded verbatim so the user-off latch
+  // still tracks intent; anything else becomes kAmbientOff so when
+  // disable lifts the ambient loop can resume on the next sample.
+  if (disabled_) {
+    if (cmd.event == FrontlightEvent::kOff) {
+      xQueueSend(queue_, &cmd, 0);
+    } else {
+      const FrontlightCommand off{FrontlightEvent::kAmbientOff, 0};
+      xQueueSend(queue_, &off, 0);
+    }
+    return;
+  }
+  // flAlwaysOn — drop ambient-off events so the dim/sleep ambient
+  // loop and the off-when-dark branch can't fade the panel out.
+  // User-initiated kOff still goes through (the user-off latch
+  // remains authoritative).
+  if (always_on_ && cmd.event == FrontlightEvent::kAmbientOff) {
+    return;
+  }
+  // flFlashOnUpd — gate the block-flash pulse. Off means "user does
+  // not want the backlight to react to data updates". Zap flash is
+  // a separate pref (flFlashOnZap) and stays unaffected.
+  if (cmd.event == FrontlightEvent::kBlockFlash && !flash_on_update_) {
+    return;
+  }
   // DND gate — matches the LedHandler::frontlight* short-circuits in
   // the old firmware. Anything that would light the backlight is
   // dropped, and any in-flight On/SetBrightness is cancelled by a

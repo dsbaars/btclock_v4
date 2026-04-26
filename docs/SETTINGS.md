@@ -8,7 +8,7 @@ value immediately; the response is `{"rebootRequired": true}` so the
 WebUI can prompt the user.
 
 Source of truth for the list is
-`components/settings/include/settings/schema.hpp` (63 scalar fields),
+`components/settings/include/settings/schema.hpp` (67 scalar fields),
 plus a handful of special-case keys (`dnd`, `screens`, `actCurrencies`,
 `timePerScreen`, `invertedColor`, `txPower`) handled directly in
 `components/settings/settings_api.cpp::ApplyPatch()`.
@@ -53,8 +53,8 @@ derived keys the WebUI uses to render that section.
 | `invertedColor` | bool | `true` | White-on-black when `true`, black-on-white when `false`. | PATCH side-writes `fgColor` / `bgColor` to keep EPD polarity consistent. Applied live: `EpdSetGlobalInverted` + `ScreenManager::MarkDirty`. |
 | `fgColor` | uint (hex RGB) | `0xFFFF` | EPD foreground colour. | Auto-updated when `invertedColor` is PATCHed; schema does not expose it as a PATCH key, but GET emits it. |
 | `bgColor` | uint (hex RGB) | `0x0000` | EPD background colour. | Same auto-update rule as `fgColor`. |
-| `fullRefreshMin` | uint | `60` | Minutes between mandatory full-refresh cycles on the EPDs. | Range 0..1440. Not yet honored in v4 — no read site found. |
-| `refrScrnChange` | bool | `false` | Force a full EPD refresh on every screen change. | Not yet honored in v4 — no read site found. |
+| `fullRefreshMin` | uint | `60` | Minutes between mandatory full-refresh cycles on the EPDs. | Range 0..1440. Honored by `ScreenManager::LoadScreenRenderPrefs`. |
+| `refrScrnChange` | bool | `false` | Force a full EPD refresh on every screen change. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `verticalDesc` | bool | `true` | Rotate label panels 90° CCW so text reads along the panel's long axis. | Honored by `PaintSlotIntoFb` for `kLabel` / `kLabelSplit` slots (ports v3 `splitText`'s verticalDesc branch). Applied live via `ScreenManager::LoadScreenRenderPrefs`. |
 | `mcapBigChar` | bool | `true` | Use big-character layout for market-cap and supply screens. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `supplyPercent` | bool | `false` | Render bitcoin supply as a percentage of 21M rather than absolute BTC. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
@@ -62,9 +62,9 @@ derived keys the WebUI uses to render that section.
 | `useMscwTime` | bool | `true` | Show the sats-per-dollar ("Moscow Time") flip layout. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `useSatsSymbol` | bool | `false` | Use the sats-glyph font for price suffixes. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `blockFeeDec` | bool | `true` | Show decimal sats/vB on the fee-rate screen when the data source reports a precise value. | Honored in `ScreenManager` rendering path. |
-| `suffixPrice` | bool | `false` | Use k/M suffixes on the price screen. | Not yet honored in v4 — no read site found. |
-| `suffixShareDot` | bool | `false` | Reserve one extra panel for a decimal-point slot when a suffix is active. | Not yet honored in v4 — no read site found. |
-| `mowMode` | bool | `false` | Million-Of-Watoshis style price formatting. | Not yet honored in v4 — no read site found. |
+| `suffixPrice` | bool | `false` | Use k/M suffixes on the price screen. | Honored by `ScreenManager::ReadRenderPrefs` and threaded through `RenderBtcPriceScreen` / `BuildBtcPrice`. |
+| `suffixShareDot` | bool | `false` | When `true`, the decimal-point dot shares the digit panel before it instead of taking its own panel — frees one panel for an extra digit before or after the separator. When `false` (default), the dot occupies its own panel. | Honored by `LayoutBtcPriceSuffixStrings` via `ScreenManager::ReadRenderPrefs`. Folds the dot into the preceding digit cell so K/M-suffix layouts get one more digit of width. |
+| `mowMode` | bool | `false` | Million-Of-Watoshis style price formatting. | Honored by `ScreenManager::ReadRenderPrefs` and `LayoutBtcPriceSuffixStrings`. |
 | `hideLeadZero` | bool | `false` | Clock screen: drop the leading zero on single-digit hours ("07:00" → "7:00"). Minute leading zero is always preserved. | Honored by `ComputeClockLayout` via `ScreenManager::ReadRenderPrefs`. Applied live: `on_settings_patched` calls `ScreenManager::MarkDirty`. NVS key truncated to `hideLeadZero` (15-char cap; JSON key matches). |
 
 Display-related special keys:
@@ -86,8 +86,8 @@ Display-related special keys:
 | `hostnamePrefix` | string | `"btclock"` | Hostname prefix used for mDNS + DHCP. The MAC suffix is appended. | Reboot required. |
 | `mdnsEnabled` | bool | `true` | Advertise `_http._tcp` and `_btclock._tcp` over mDNS. | Reboot required. Honored in `main/app/mdns_service.cpp`. |
 | `wifiRebootMin` | uint | `10` | Minutes of continuous STA disconnect before a soft reboot. `0` disables. | Range 0..120. Live — the wifi_guard tick re-reads on every fire. |
-| `wpTimeout` | uint | `900` (15 min) | WiFiManager captive-portal timeout (seconds). | Range 0..3600. Reboot required. Not yet honored in v4 — no read site found. |
-| `txPower` | int | device default | WiFi TX power in quarter-dBm. `-1..78` valid; `80` is a sentinel that clears the override. | Live. Applied via `esp_wifi_set_max_tx_power`. Queried back on `/api/status` via `esp_wifi_get_max_tx_power`. |
+| `wpTimeout` | uint | `900` (15 min) | WiFiManager captive-portal timeout (seconds). | Range 0..3600. Reboot required. After this many seconds in AP-provisioning mode the device reboots so the next boot retries STA — gated on `wifiConfigured` being true (set once the user submits creds), so a never-provisioned device sits in the portal indefinitely. |
+| `txPower` | int | device default | WiFi TX power in quarter-dBm. `-1..78` valid; `80` is a sentinel that clears the override. | Live. Applied via `esp_wifi_set_max_tx_power`. Re-applied at boot in `init_network.cpp` between `esp_wifi_start` and `Connect`, mirroring the same `IsValidWifiTxPower` range gate. Queried back on `/api/status` via `esp_wifi_get_max_tx_power`. |
 | `wifiConfigured` | bool | `false` | Set by the provisioning flow once STA credentials are captured. | Not PATCH-settable in practice — internal flag. |
 
 ---
@@ -101,7 +101,7 @@ Display-related special keys:
 | `mempoolSecure` | bool | `true` | Use HTTPS/WSS when talking to `mempoolInstance`. | Reboot required. |
 | `ceEndpoint` | string | `"ws-staging.btclock.dev"` | Custom-endpoint host when `dataSource=1`. | Reboot required. |
 | `ceDisableSSL` | bool | `false` | Disable TLS for the custom endpoint. | Reboot required. |
-| `minSecPriceUpd` | uint | `30` | Minimum seconds between price updates. | Range 1..3600. No read site found outside the settings API. |
+| `minSecPriceUpd` | uint | `30` | Minimum seconds between price updates applied to the EPD. | Range 1..3600. Live. Throttles the EPD price-write path (kBtcPrice / kMoscowTime / kMarketCap) inside `ScreenManager::ShouldRender` so a chatty WS price stream can't burn the e-paper. Nav events and force-fulls always paint. `0` disables. |
 | `actCurrencies` | CSV string | `"USD,EUR,JPY"` | Comma-joined ISO-4217 codes that appear in the ticker / moscow-time rotation. | GET emits a filtered array; PATCH accepts an array. Codes outside `availableCurrencies` are silently dropped. |
 
 ---
@@ -115,16 +115,16 @@ Display-related special keys:
 | `disableLeds` | bool | `false` | Master mute flag for the NeoPixel strip. | Honored by `led_controller.cpp`. |
 | `ledFlashOnUpd` | bool | `false` | Flash LEDs on new-block / price-update events. | Honored by `led_controller.cpp`. |
 | `ledFlashOnZap` | bool | `true` | Flash LEDs on incoming Nostr zap receipt. | Live — zap listener rechecks per receipt. |
-| `ledTestOnPower` | bool | `true` | Run the rainbow LED self-test at boot. | No read site outside the settings API. |
-| `flAlwaysOn` | bool | `true` | Frontlight always on, overriding ambient-off. | Rev B only. Not yet honored in v4 — no read site found. |
-| `flDisable` | bool | `false` | Master mute for the frontlight. | Rev B only. Not yet honored in v4 — no read site found. |
-| `flEffectDelay` | uint | `15` | Fade-effect step delay (ms). | Range 0..1000. Rev B only. Not yet honored in v4 — no read site found. |
-| `flFlashOnUpd` | bool | `true` | Flash frontlight on update events. | Rev B only. Not yet honored in v4. |
-| `flFlashOnZap` | bool | `true` | Flash frontlight on Nostr zap receipt. | Honored by the zap listener when wired up. |
-| `flMaxBrightness` | uint | `2048` (`kDefaultMaxDuty`) | Frontlight PWM duty at 100 percent. | Range 0..65535. Rev B only. Internal default; no read site from settings NVS yet. |
-| `flOffWhenDark` | bool | `true` | Turn frontlight off when ambient lux is very low. | Rev B only. Hysteresis: enters dark at 1.0 lux, exits at 2.0 lux. Not yet honored in v4 — ambient-policy defaults consumed from `FrontlightAmbientConfig`, not NVS. |
-| `luxLightToggle` | uint | `128` (`kDefaultLuxThreshold`) | Ambient-lux threshold that flips the frontlight between "room bright" and "room dim". | Range 0..65535. Rev B only. Consumed by `FrontlightAmbientPolicy`; no NVS wiring yet. |
-| `inverseButtons` | bool | `false` | Swap the button-1/button-4 polarity. | Not yet honored in v4 — no read site found. |
+| `ledTestOnPower` | bool | `true` | Run the rainbow LED self-test at boot. | Honored by `InitBootLeds`: when false, posts `kSetIdle` instead of the rainbow `kSetBoot`. Reboot required. |
+| `flAlwaysOn` | bool | `true` | Frontlight always on, overriding ambient-off. | Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `flDisable` | bool | `false` | Master mute for the frontlight. | Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `flEffectDelay` | uint | `15` | Fade-effect step delay (ms). | Range 0..1000. Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `flFlashOnUpd` | bool | `true` | Flash frontlight on update events. | Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `flFlashOnZap` | bool | `true` | Flash frontlight on Nostr zap receipt. | Live — zap listener rechecks per receipt. |
+| `flMaxBrightness` | uint | `2048` (`kDefaultMaxDuty`) | Frontlight PWM duty at 100 percent. | Range 0..65535. Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `flOffWhenDark` | bool | `true` | Turn frontlight off when ambient lux is very low. | Rev B only. Hysteresis: enters dark at 1.0 lux, exits at 2.0 lux. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. |
+| `luxLightToggle` | uint | `128` (`kDefaultLuxThreshold`) | Ambient-lux threshold that flips the frontlight between "room bright" and "room dim". | Range 0..65535. Rev B only. Read at boot in `init_hardware.cpp`; live PATCH applied via `on_frontlight_changed`. `0` disables the auto-off feature (matches v3). |
+| `inverseButtons` | bool | `false` | Swap the button-1/button-4 polarity. | Honored by `ButtonReader::SetInverted` — physical pin `i` is delivered as logical `ButtonId(N-1-i)`. Read once at boot from `sources.cpp`; reboot required. |
 
 ---
 
@@ -163,11 +163,13 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
 | `miningPoolStats` | bool | `false` | Master toggle — when `false` no pool data source runs. | Live at data-source restart. |
-| `miningPoolName` | string (enum) | `"ocean"` | Pool backend to use. | Values come from `availablePools` in GET: `ocean`, `noderunners`, `satoshi_radio`, `braiins`, `public_pool`, `local_public_pool`, `gobrrr_pool`, `ckpool`, `eu_ckpool`. PATCH validates against the catalogue. |
-| `miningPoolUser` | string | `"38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy"` | Per-pool user / worker / address. Semantics depend on pool. | Ocean: payout address (v3's ported default is a random Ocean hasher). Braiins: username. CKPool: worker. Read from `settings` namespace and mirrored into the per-pool namespace at boot. |
-| `poolGlobalStats` | bool | `false` | Noderunners / Satoshi Radio: show the pool-wide aggregate rather than the user-specific view. | Honored by `mining_pool_selector.cpp`. |
+| `miningPoolName` | string (enum) | `"noderunners"` | Pool backend to use. | Values come from `availablePools` in GET: `ocean`, `noderunners`, `satoshi_radio`, `braiins`, `public_pool`, `local_public_pool`, `gobrrr_pool`, `ckpool`, `eu_ckpool`, `nerdminers_org`, `nerdminer_io`, `foundry_usa`, `viabtc`. PATCH validates against the catalogue. v4 default flipped from v3's `"ocean"` so a fresh device works without per-user credentials (paired with `poolGlobalStats=true`). |
+| `miningPoolUser` | string | `"38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy"` | Primary identifier for the active pool. Semantics are per-pool. **Public-info pools** (Ocean payout address, Braiins username, CKPool worker, NerdMiner BTC address): emitted plaintext in GET. **Secret-key pools** (`viabtc`, `foundry_usa`): the value is an API key — GET suppresses the raw string and emits `miningPoolUserSet` (bool) instead, same protocol as `httpAuthPass`. See `docs/WEBUI_MINING_POOL_FIELDS.md` for the per-pool labels the WebUI should render. |
+| `poolWorker` | string | `""` | Optional secondary identifier scoped under `miningPoolUser`. Used by `foundry_usa` for the subaccount path segment; reserved for `braiins` / `ckpool` worker name (currently unused by their parsers). Always plaintext in GET. |
+| `poolGlobalStats` | bool | `true` | Noderunners / Satoshi Radio: show the pool-wide aggregate rather than the user-specific view. | Honored by `mining_pool_selector.cpp`. v4 default flipped from v3's `false` so the new default `noderunners` pool renders without per-user credentials. |
 | `localPoolHost` | string | `"umbrel.local:2019"` | Host:port for `local_public_pool`. | Reboot required. |
-| `poolLogosUrl` | string | `"https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main"` | URL template for fetching pool logos. | No read site found outside the settings API. |
+| `poolPollSec` | uint | `60` | HTTPS poll cadence for the pool data source (seconds). | Range 10..3600. Live — `PoolDataSource::poll_interval_ms()` re-reads NVS each tick so a PATCH lands on the next poll without reboot. Bounds leave room to throttle past the legacy 60 s default for pools that publish per-minute stats already, without overwhelming free public endpoints. |
+| `poolLogosUrl` | string | `"https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main"` | Base URL for fetching mining-pool logos. | Consumed by `pool_logo_fetcher.cpp::LogosBaseUrl()` — the on-demand fetcher pulls per-pool PNGs and caches them on LittleFS, so the firmware no longer ships every logo bitmap in flash. Trailing slashes are trimmed so concatenation can't yield a `//`. |
 
 ---
 
@@ -177,6 +179,7 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 |---|---|---|---|---|
 | `bitaxeEnabled` | bool | `false` | Poll a Bitaxe miner for hashrate / best difficulty. | Live at data-source restart. |
 | `bitaxeHostname` | string | `"bitaxe1"` | LAN hostname or IP of the Bitaxe. | Consumed by `components/bitaxe/src/bitaxe_source.cpp`. |
+| `bitaxePollSec` | uint | `10` | LAN poll cadence (seconds). | Range 5..300. Live — `BitaxeSource::Run()` re-reads NVS each tick so a PATCH lands on the next poll without reboot. Lower bound keeps the AxeOS HTTP server from being hammered while still allowing fast updates during bring-up. |
 
 ---
 
@@ -189,7 +192,7 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 | `nostrZapNotify` | bool | `false` | Listen for NIP-57 zap receipts and pop the zap screen. | Live (zap listener rechecks). |
 | `nostrZapPubkey` | string (64-hex) | `"b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"` | Pubkey whose zaps trigger the zap screen. | Live. Validated: empty or 64-hex. |
 | `scrnRestoreZap` | bool | `true` | After a zap-screen pop, restore the screen that was active before. | Live. |
-| `stealFocus` | bool | `false` | Zap screen steals focus even when the user is actively navigating. | No read site found outside the settings API. |
+| `stealFocus` | bool | `false` | When a new block arrives, jump the display to the block-height screen so the fresh height appears without waiting for rotation. | Live — `event_loop.cpp` reads NVS per new-block event so a PATCH lands without reboot. Overlay-aware: debug / custom / zap overlays block the steal via `BlockEventPolicy::ShouldSteal`. |
 
 ---
 
@@ -210,7 +213,7 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
-| `enableDebugLog` | bool | `false` | Enable verbose debug logging. | Reboot required. |
+| `enableDebugLog` | bool | `false` | Enable verbose debug logging. | Reboot required. Honored in `InitStorage` immediately after NVS comes up: when true, `esp_log_level_set("*", ESP_LOG_DEBUG)` raises every subsystem's log level for the rest of the boot. The pre-NVS banner lines stay at INFO. |
 | `timerActive` | bool | `true` | Rotation timer running. | Not typically PATCHed (use `/api/action/pause`); the pref exists for boot restore. |
 | `blockHeight` | int | `0` | Cached latest block height. | Internal; persisted so the block screen can paint before WS reconnect. |
 
@@ -258,6 +261,7 @@ context.
 | `lightLevel` | number (lux) | BH1750 | Current lux reading. Only emitted when `hasLightLevel` is true. |
 | `httpAuthPassSet` | bool | NVS presence | `true` iff `httpAuthPass` is non-empty. |
 | `otaPassSet` | bool | NVS presence | `true` iff `otaPass` is non-empty. |
+| `miningPoolUserSet` | bool | NVS presence | Emitted **only** when the active `miningPoolName` is a secret-key pool (`viabtc`, `foundry_usa`); `true` iff `miningPoolUser` is non-empty. For public-info pools the raw `miningPoolUser` rides plaintext and this companion is omitted. |
 | `timerRunning` | bool | runtime | Rotation-timer live state. |
 | `invertedColor` | bool | NVS | Device-dependent default of `true` when the key is absent. |
 
@@ -277,25 +281,19 @@ The following keys are accepted by PATCH and persisted to NVS but are
 **not yet honored** by the v4 firmware as of the commit pinned at the
 top of this file. Other agents are fixing these in parallel.
 
-- `suffixPrice`
-- `suffixShareDot`
-- `mowMode`
-- `mdnsEnabled` (honored, but confirm case on your build)
-- `flOffWhenDark`
-- `flAlwaysOn`
-- `flDisable`
-- `flEffectDelay`
-- `flFlashOnUpd`
-- `flMaxBrightness`
-- `luxLightToggle`
-- `inverseButtons`
-- `refrScrnChange`
-- `fullRefreshMin`
-- `ledTestOnPower`
-- `stealFocus`
-- `poolLogosUrl`
-- `minSecPriceUpd`
-- `wpTimeout`
+(empty as of 2026-04-26 — `poolLogosUrl` was wired up by the runtime
+logo fetcher delivered in `f9048e9`, which closed out bd
+`btclock_v4-5yi`. Every schema key now has a read site outside
+`components/settings/`.)
+
+bd `btclock_v4-7da` cleared the last seven honestly-dead keys on
+2026-04-26: `wpTimeout`, `ledTestOnPower`, `inverseButtons`,
+`enableDebugLog`, `minSecPriceUpd`, `suffixShareDot`, plus a `txPower`
+boot re-read. The keys previously listed here as bug-flagged but
+actually wired — `mdnsEnabled`, all `fl*`, `luxLightToggle`,
+`suffixPrice`, `mowMode`, `refrScrnChange`, `fullRefreshMin`,
+`stealFocus` — were removed at the same time after a triage pass
+found their read sites.
 
 "Not yet honored" here means `grep` across `components/` and `main/`
 surfaces no read site outside `components/settings/` itself. The PATCH
@@ -339,7 +337,8 @@ where v4 already matched v3 are omitted.
 | `mempoolInstance` | `"mempool.space"` | `""` | `"mempool.space"` |
 | `mempoolSecure` | `true` | `false` | `true` |
 | `minSecPriceUpd` | `30` | `0` | `30` |
-| `miningPoolName` | `"ocean"` | `""` | `"ocean"` |
+| `miningPoolName` | `"ocean"` | `""` | `"noderunners"` (v4 deliberately diverges from v3 — paired with `poolGlobalStats=true` for credentialless first-boot UX) |
+| `poolGlobalStats` | `false` | `false` | `true` (v4 deliberately diverges from v3 — paired with `miningPoolName="noderunners"`) |
 | `miningPoolUser` | `"38Qkkei3…TFy"` | `""` | `"38Qkkei3…TFy"` |
 | `nostrPubKey` | `"6423171…6288"` | `""` | `"6423171…6288"` |
 | `nostrRelay` | `"wss://relay.primal.net"` | `""` | `"wss://relay.primal.net"` |

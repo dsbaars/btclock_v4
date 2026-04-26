@@ -48,6 +48,13 @@ class ButtonReader {
   // Spawns the background polling task. Safe to call once.
   esp_err_t Start();
 
+  // Reverse the logical button index posted to the queue, so a press on
+  // physical pin `i` is delivered as `ButtonId(kNumButtons - 1 - i)`.
+  // Honours the `inverseButtons` user pref. Read once at boot — caller
+  // sets this before Start(); a live PATCH requires a reboot to take
+  // effect, matching the SETTINGS.md row.
+  void SetInverted(bool inverted) { inverted_ = inverted; }
+
   // Install a one-shot callback fired when all four MCP1 buttons
   // (pins 0..3) are simultaneously held for 5 s. Used as the
   // factory-reset hardware trigger so a user can wipe NVS without a
@@ -96,6 +103,8 @@ class ButtonReader {
   uint32_t all_pressed_ticks_ = 0;
   bool all_long_fired_ = false;
   std::function<void()> all_long_press_cb_;
+  // Set by SetInverted(); see comment there.
+  bool inverted_ = false;
 };
 
 }  // namespace btclock

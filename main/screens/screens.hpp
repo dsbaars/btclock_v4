@@ -108,6 +108,7 @@ void RenderBtcPriceScreen(
     const char* symbol_utf8 = "",
     bool suffix_price = false,
     bool mow_mode = false,
+    bool share_dot = false,
     bool full_refresh_mode = true,
     bool vertical_desc = false);
 
@@ -334,14 +335,17 @@ void RenderNostrZapScreen(
     bool full_refresh_mode = true,
     bool vertical_desc = false);
 
-// Format a zap amount (sats) into the scaled string painted on the
-// trailing panels. Pure-logic helper so host tests can pin the rules
-// without pulling the EPD driver. Rules mirror the FormatNumberWithSuffix
-// big-chars style but clamp to single-letter suffixes the MDI subset
-// covers: < 1000 → integer ("100"), 1000..999_999 → "Nk" / "N.Nk",
-// >= 1_000_000 → "NM" / "N.NM", >= 1_000_000_000 → "NB". Negative /
-// missing → "?".
-std::string FormatZapAmount(const std::optional<int64_t>& amount_sats);
+// Format a zap amount (sats) into the string painted on the trailing
+// panels. `max_int_cells` is the panel-tail budget for an integer
+// rendering — when the raw integer fits, it's preferred over the
+// suffix form so a 1000-sat zap on a 7-panel board reads "1000" not
+// "1.0k". When it doesn't fit, falls back to k / M / B suffix:
+// 1000..999_999 → "Nk" / "N.Nk", >= 1_000_000 → "NM" / "N.NM",
+// >= 1_000_000_000 → "NB". Negative / missing → "?". Pure-logic
+// helper so host tests can pin the rules without pulling the EPD
+// driver.
+std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
+                            std::size_t max_int_cells);
 
 // --- Firmware OTA overlay ---
 // Painted once by the /upload/firmware handler before esp_ota_begin

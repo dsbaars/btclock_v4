@@ -161,6 +161,27 @@ class FrontlightController {
   }
   uint32_t effect_delay_ms() const { return effect_delay_ms_; }
 
+  // `flDisable` — hard mute. When true, Post() drops anything that
+  // would light the panel and queues a kOff so an already-on backlight
+  // fades to black. Wins over flAlwaysOn (matches the v3 semantics
+  // documented in btclock_v4-63p: disable forces off).
+  void SetDisabled(bool disabled) { disabled_ = disabled; }
+  bool disabled() const { return disabled_; }
+
+  // `flAlwaysOn` — pin the backlight on regardless of ambient/dim
+  // logic. When true, kAmbientOff is dropped in Post() so the BH1750
+  // loop and the off-when-dark branch can't fade the panel out. Has no
+  // effect when disabled() is also true (disable wins).
+  void SetAlwaysOn(bool always_on) { always_on_ = always_on; }
+  bool always_on() const { return always_on_; }
+
+  // `flFlashOnUpd` — gate the Flash() (kBlockFlash) path. When false,
+  // Post() silently drops kBlockFlash so block/data updates don't
+  // pulse the backlight. kZapFlash is not gated here — that goes
+  // through flFlashOnZap, evaluated at the zap-listener call site.
+  void SetFlashOnUpdate(bool enabled) { flash_on_update_ = enabled; }
+  bool flash_on_update() const { return flash_on_update_; }
+
   // Install a predicate the controller consults before acting on Post.
   // When true, kOn / kSetBrightness / kBlockFlash / kZapFlash are
   // silently dropped and an immediate kOff is enqueued so the backlight
@@ -215,6 +236,17 @@ class FrontlightController {
   // Outer cadence (ms) for staggered flash animation; stagger delay
   // per LED = effect_delay_ms_ / channel_count_.
   volatile uint32_t effect_delay_ms_ = frontlight::kDefaultEffectDelayMs;
+
+  // Live runtime gates fed by NVS prefs at boot + by the
+  // on_frontlight_changed PATCH hook. Defaults track the v3 firmware
+  // (DEFAULT_FL_ALWAYS_ON=true, DEFAULT_DISABLE_FL=false,
+  // DEFAULT_FL_FLASH_ON_UPDATE=true) so a fresh install behaves like
+  // the Arduino-era device. volatile so the Post() reader sees the
+  // latest store from the PATCH thread without a fence (single-bool
+  // racing values converge to one of {true,false}).
+  volatile bool disabled_ = false;
+  volatile bool always_on_ = true;
+  volatile bool flash_on_update_ = true;
 
   // Ambient-light state. `policy_` owns the hysteresis latch + the
   // dark-mode detection; `OnAmbientLux()` is the single point that

@@ -24,6 +24,9 @@ static inline void* heap_caps_malloc(size_t n, int /*caps*/) {
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #endif
+#include "fit_text_px.hpp"
+#include "landscape_rotation.hpp"
+#include "markdown_parse.hpp"
 #include "stb_truetype.h"
 
 // WASM-only alpha sidechannel. Under BTCLOCK_WASM_BUILD the binding
@@ -134,17 +137,9 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
                         /*white_text=*/false);
   }
 
-  int nx = 0, ny = 0;
-  switch (fb.rotation) {
-    case Rotation::k0:
-      nx = lx;           ny = ly;               break;
-    case Rotation::k90Cw:
-      nx = nw - 1 - ly;  ny = lx;               break;
-    case Rotation::k180:
-      nx = nw - 1 - lx;  ny = nh - 1 - ly;      break;
-    case Rotation::k90Ccw:
-      nx = ly;           ny = nh - 1 - lx;      break;
-  }
+  const NativeXY n = RotateLogicalToNative(lx, ly, nw, nh, fb.rotation);
+  const int nx = n.x;
+  const int ny = n.y;
   const int byte_idx = ny * fb.native_stride + (nx >> 3);
   const uint8_t bit = static_cast<uint8_t>(1U << (7 - (nx & 7)));
   if (white) {
@@ -301,10 +296,9 @@ int MeasureTextWidth(const char* text, const Font& font,
 // margins; centering with ink centers the visible strokes.
 float FitTextPx(const char* text, const Font& font, float max_px,
                 float min_px, int target_w) {
-  for (float px = max_px; px >= min_px; px -= 0.5f) {
-    if (MeasureInkWidth(text, font, px, nullptr) <= target_w) return px;
-  }
-  return min_px;
+  return FitTextPxBy(
+      [&](float px) { return MeasureInkWidth(text, font, px, nullptr); },
+      max_px, min_px, target_w);
 }
 
 int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
@@ -427,18 +421,54 @@ void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
   }
   buf[n] = '\0';
 
-  // Centre on the glyph's own bbox. Using kDigitRef here would return a
-  // zero-height box (MDI codepoints aren't in the ref string) and land
-  // the baseline off-panel.
   const auto m = font.GetMetrics(static_cast<int>(codepoint), pixel_height);
-  int left_bearing = 0;
-  const int ink_w = MeasureInkWidth(buf, font, pixel_height, &left_bearing);
-  const int x_origin = (panel_w - ink_w) / 2 - left_bearing;
-  // MDI glyphs have yoff ≤ 0 (bitmap top is above the baseline). Pick a
-  // baseline so the bitmap sits vertically centred on the panel.
-  const int glyph_h = m.h > 0 ? m.h : static_cast<int>(pixel_height + 0.5f);
-  const int top_y = (panel_h - glyph_h) / 2;
-  const int y_baseline = top_y - m.yoff;
+  if (m.w <= 0 || m.h <= 0) return;
+
+  // Centre on the *rasterized* ink, not stbtt's bbox. The bbox returned
+  // by GetCodepointBitmapBox tightly hugs ink for type-design fonts but
+  // some MDI glyphs (notably mdi-lightning-bolt) carry whitespace on
+  // one side of the bbox — bbox-centering then shifts the visible ink
+  // by half the asymmetry. Rasterize once into a stack-bounded scratch
+  // buffer, find the leftmost/topmost/rightmost/bottommost cells whose
+  // alpha clears the same >=128 threshold SetPixelLandscape uses, and
+  // centre on that.
+  const std::size_t need = static_cast<std::size_t>(m.w) * m.h;
+  if (need > kMaxGlyphBytes) {
+    // Fall back to bbox centering — the scratch buffer is shared with
+    // DrawTextLandscape and we don't double-allocate for one frame's
+    // edge case.
+    const int x_origin = (panel_w - m.w) / 2 - m.xoff;
+    const int top_y = (panel_h - m.h) / 2;
+    const int y_baseline = top_y - m.yoff;
+    DrawTextLandscape(fb, x_origin, y_baseline, buf, font, pixel_height,
+                      white_text);
+    return;
+  }
+  uint8_t* scratch = glyph_buf();
+  if (scratch == nullptr) return;
+  font.RenderGlyph(static_cast<int>(codepoint), pixel_height, scratch,
+                   m.w, m.h);
+  int ix_min = m.w, ix_max = -1, iy_min = m.h, iy_max = -1;
+  for (int y = 0; y < m.h; ++y) {
+    const uint8_t* row = scratch + y * m.w;
+    for (int x = 0; x < m.w; ++x) {
+      if (row[x] < 128) continue;
+      if (x < ix_min) ix_min = x;
+      if (x > ix_max) ix_max = x;
+      if (y < iy_min) iy_min = y;
+      if (y > iy_max) iy_max = y;
+    }
+  }
+  if (ix_max < 0) return;  // entirely sub-threshold
+
+  const int ink_w = ix_max - ix_min + 1;
+  const int ink_h = iy_max - iy_min + 1;
+  // x_origin is the pen-x DrawTextLandscape interprets; it draws ink at
+  // pen_x + m.xoff + ix_min for the leftmost visible column. Solve for
+  // x_origin so that lands at (panel_w - ink_w)/2.
+  const int x_origin = (panel_w - ink_w) / 2 - (m.xoff + ix_min);
+  const int top_y = (panel_h - ink_h) / 2;
+  const int y_baseline = top_y - (m.yoff + iy_min);
   DrawTextLandscape(fb, x_origin, y_baseline, buf, font, pixel_height,
                     white_text);
 }
@@ -473,39 +503,7 @@ void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
                   const char* text,
                   const Font& regular, const Font& bold,
                   float pixel_height, bool white_text) {
-  // Split into lines, stripping '\r' and collapsing '*' markers per
-  // line (whole-line bold, matching the existing firmware's parser).
-  struct Line {
-    std::string text;
-    bool is_bold;
-  };
-  std::vector<Line> lines;
-  std::string cur;
-  auto flush = [&](bool last) {
-    Line l;
-    l.text = cur;
-    l.is_bold = false;
-    if (!l.text.empty() && l.text[0] == '*') {
-      l.is_bold = true;
-      std::string filtered;
-      filtered.reserve(l.text.size());
-      for (char c : l.text) if (c != '*') filtered.push_back(c);
-      // Trim trailing spaces (the "*Hostname*:" case leaves no trailing
-      // space, but "*SSID: *" would leave one).
-      while (!filtered.empty() && (filtered.back() == ' ' || filtered.back() == '\t'))
-        filtered.pop_back();
-      l.text = std::move(filtered);
-    }
-    lines.push_back(std::move(l));
-    cur.clear();
-    (void)last;
-  };
-  for (const char* p = text; *p; ++p) {
-    if (*p == '\r') continue;
-    if (*p == '\n') { flush(false); continue; }
-    cur.push_back(*p);
-  }
-  flush(true);
+  const auto lines = ParseMarkdownLines(text);
 
   // Vertical layout: each line occupies `line_h` px; total height is
   // lines.size() * line_h. Centre the block on the panel.

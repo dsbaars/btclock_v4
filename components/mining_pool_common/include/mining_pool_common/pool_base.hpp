@@ -61,22 +61,39 @@ class PoolDataSource : public DataSource {
   // it alone; they only fill hashrate / daily_sats / workers.
   virtual bool parse_response(const char* body, ParsedStats& out) const = 0;
 
-  // HTTP header to send as "Pool-Auth-Token" (Braiins only). Empty
-  // string = no header.
+  // HTTP header to send as auth_header_name() (Braiins only by default).
+  // Empty string = no header.
   virtual std::string auth_token() const { return ""; }
+
+  // Header name carrying the auth_token() value. Defaults to Braiins's
+  // "Pool-Auth-Token"; the keyed_get mix-in (ViaBTC, Foundry) overrides
+  // to "X-API-KEY". Kept as a virtual so the header-name choice lives
+  // next to the token-source choice in one subclass — avoids a parallel
+  // table of {pool -> header} in the base.
+  virtual const char* auth_header_name() const { return "Pool-Auth-Token"; }
 
   // Stable identifier for DataSnapshot.pool.name and log tags.
   // e.g. "braiins", "ocean".
   virtual const char* pool_name() const = 0;
 
-  // Poll cadence. Default 60 s matches the old firmware's minute timer.
-  virtual uint32_t poll_interval_ms() const { return 60 * 1000; }
+  // Poll cadence. Default reads `settings/poolPollSec` (5..3600 s, default
+  // 60 s — matches the old firmware's minute timer) on every Run() tick so
+  // a live PATCH lands on the next poll without reboot.
+  virtual uint32_t poll_interval_ms() const;
 
   // Cap on response body size. Pools with large payloads (public_pool's
   // worker list) raise this. Default 32 KB.
   virtual size_t max_response_bytes() const { return 32 * 1024; }
 
  public:
+  // True when miningPoolUser holds a secret API key rather than a public
+  // identifier (address, username). The /api/settings GET emitter
+  // suppresses the raw value and emits a miningPoolUserSet bool instead,
+  // mirroring the httpAuthPass pattern. Default false matches every
+  // existing pool whose user slot is a public payout address / username
+  // / worker name.
+  virtual bool user_is_secret() const { return false; }
+
   // Whether this pool reports a usable per-user daily sats value. Solo
   // pools (CKPool, Noderunners, Satoshi Radio, Public Pool) only publish
   // raw hashrate — there's no payout stream to aggregate — so the
@@ -88,6 +105,24 @@ class PoolDataSource : public DataSource {
   // Default `true` keeps parity with the old firmware for every pool
   // that actually exposes daily_sats (Ocean, Braiins, GoBrrr Pool).
   virtual bool SupportsDailyEarnings() const { return true; }
+
+  // Mining-pool logo metadata. Mirrors v3's
+  // `MiningPoolInterface::hasLogo()` / `getLogoFilename()` /
+  // `getLogoWidth()` / `getLogoHeight()` quartet so the runtime fetcher
+  // (bd btclock_v4-5yi) can ask each pool whether to attempt a download
+  // and how to interpret the resulting raw 1-bpp byte stream — the
+  // upstream `mining-pool-logos` repo ships header-less files (just
+  // `width*height/8` bytes), so the renderer needs the dimensions from
+  // a side channel. Default empty filename = "no logo, paint the
+  // text-split fallback"; pools that ship a vendored bitmap also
+  // declare the same dimensions in main/screens/assets/pool_logos.cpp.
+  virtual const char* logo_filename() const { return ""; }
+  virtual int logo_width() const { return 0; }
+  virtual int logo_height() const { return 0; }
+  bool has_logo() const {
+    const char* f = logo_filename();
+    return f != nullptr && f[0] != '\0';
+  }
 
  private:
   static void TaskTrampoline(void* arg);

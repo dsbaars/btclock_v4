@@ -71,6 +71,28 @@ struct FontBundle {
   const Font* bold;
 };
 
+// Identifies one of the backing Font fields on AppFonts. Lives here
+// (not in font_bundle_map.hpp) so AppFonts::SlotToFont can take it as
+// a parameter without a forward-declaration dance. The integer values
+// are stable but only meaningful relative to the AppFonts storage
+// layout — tests in test_font_bundle_map.cpp exercise the mapping
+// dispatch in isolation.
+enum class FontSlot : uint8_t {
+  kAntonio = 0,
+  kOswaldRegular = 1,
+  kOswaldBold = 2,
+  kInterRegular = 3,
+  kInterBold = 4,
+  kSourceSerifRegular = 5,
+  kSourceSerifBold = 6,
+  kMerriweatherRegular = 7,
+  kMerriweatherBold = 8,
+  kBitterRegular = 9,
+  kBitterBold = 10,
+  kAtkinsonRegular = 11,
+  kAtkinsonBold = 12,
+};
+
 class AppFonts {
  public:
   AppFonts();
@@ -118,6 +140,12 @@ class AppFonts {
   FontBundle Bundle(FontFamily f) const;
 
  private:
+  // Storage-slot lookup used by Bundle(). Driven by ResolveBundleSlots
+  // (font_bundle_map.hpp) so the FontFamily → slot mapping is
+  // host-testable without constructing real Font instances.
+  const Font* SlotToFont(FontSlot s) const;
+
+ private:
   Font antonio_;
   Font oswald_;
   Font oswald_bold_;
@@ -125,8 +153,10 @@ class AppFonts {
   Font inter_bold_;
   Font source_serif_;
   Font source_serif_bold_;
+#ifndef BTCLOCK_BOARD_REV_A
   Font merriweather_;
   Font merriweather_bold_;
+#endif
   Font bitter_;
   Font bitter_bold_;
   Font atkinson_;

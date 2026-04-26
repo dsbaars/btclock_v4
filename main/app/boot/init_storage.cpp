@@ -20,6 +20,18 @@ void InitStorage(AppCtx& /*ctx*/) {
   // --- WiFi + NVS + optional provisioning portal ---
   ESP_ERROR_CHECK(Prefs::InitOnce());
 
+  // enableDebugLog: bump the global log level the moment NVS is up so
+  // every subsystem started after this point (network, screen manager,
+  // data sources) emits at DEBUG. The earlier banner / hardware lines
+  // already ran at the default INFO and stay that way for this boot.
+  // Reboot is required to re-tighten — matches the SETTINGS.md row.
+  {
+    Prefs settings(prefs::kSettingsNs);
+    if (settings.GetBool(prefs::kEnableDebugLog, false)) {
+      esp_log_level_set("*", ESP_LOG_DEBUG);
+    }
+  }
+
   // Install the EPD polarity flag from NVS before the first data-driven
   // render. Boot splash above already painted (non-inverted) — that's
   // intentional: a corrupted NVS shouldn't leave a user staring at a

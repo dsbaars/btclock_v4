@@ -282,6 +282,19 @@ class ControlServer {
     std::function<void(bool)> on_disable_leds_changed;
     std::function<void(bool)> on_led_flash_on_upd_changed;
 
+    // Fires when PATCH /api/settings touches any runtime-editable
+    // frontlight pref (luxLightToggle, flOffWhenDark, flMaxBrightness,
+    // flEffectDelay, flAlwaysOn, flDisable, flFlashOnUpd). The callback
+    // is expected to re-read the canonical "settings" namespace and
+    // push the fresh values into FrontlightController so brightness
+    // and policy changes apply without a reboot — without this hook,
+    // init_hardware.cpp's boot-time NVS read is the only sync point
+    // and a PATCH writes NVS but leaves the controller stale. Nullable:
+    // a null callback defers all frontlight changes to reboot. Rev A /
+    // V8 wire this as null because they have no PCA9685 backlight.
+    // bd btclock_v4-7xv / btclock_v4-63p.
+    std::function<void()> on_frontlight_changed;
+
     // Fires on every successful PATCH /api/settings (after NVS commit,
     // before the response is sent). The callback is expected to emit
     // a short visible confirmation (e.g. green LED pulse) so the user
@@ -348,6 +361,15 @@ class ControlServer {
     // is more disruptive than asking the user to reboot. Nullable: a
     // null callback defers all nostr changes to reboot.
     std::function<void()> on_nostr_changed;
+
+    // Debug helper that drives the zap overlay without a real Lightning
+    // payment. POST /api/action/simulate_zap calls into this hook, which
+    // patches DataSnapshot::latest_zap, raises the pending flag, and
+    // notifies the main task — same code path the real zap listener
+    // uses, minus the LED / frontlight / nostrZapNotify gates so QA can
+    // exercise the screen even with those toggled off. Nullable: a null
+    // hook responds 503.
+    std::function<void(int64_t amount_sats, std::string message)> simulate_zap;
 
     // Probes a catalogue `screens[].id` for runtime suppression. Returns
     // true when the currently-configured environment makes the screen
@@ -473,6 +495,8 @@ class ControlServer {
   static esp_err_t TrampolineDndDisable(httpd_req_t* req);
   static esp_err_t TrampolineActionPause(httpd_req_t* req);
   static esp_err_t TrampolineActionTimerRestart(httpd_req_t* req);
+  static esp_err_t TrampolineActionSimulateZap(httpd_req_t* req);
+  static esp_err_t TrampolineActionClearPoolLogos(httpd_req_t* req);
   static esp_err_t TrampolineFirmwareAutoUpdate(httpd_req_t* req);
   static esp_err_t TrampolineUploadFirmware(httpd_req_t* req);
   static esp_err_t TrampolineFactoryReset(httpd_req_t* req);
@@ -511,6 +535,8 @@ class ControlServer {
   esp_err_t HandleDndDisable(httpd_req_t* req);
   esp_err_t HandleActionPause(httpd_req_t* req);
   esp_err_t HandleActionTimerRestart(httpd_req_t* req);
+  esp_err_t HandleActionSimulateZap(httpd_req_t* req);
+  esp_err_t HandleActionClearPoolLogos(httpd_req_t* req);
   esp_err_t HandleFirmwareAutoUpdate(httpd_req_t* req);
   esp_err_t HandleUploadFirmware(httpd_req_t* req);
   esp_err_t HandleFactoryReset(httpd_req_t* req);

@@ -25,6 +25,9 @@ class GoBrrrPool : public PublicPoolBase {
  protected:
   std::string api_url() const override;
   const char* pool_name() const override { return "gobrrr_pool"; }
+  const char* logo_filename() const override { return "gobrrr.bin"; }
+  int logo_width() const override { return 122; }
+  int logo_height() const override { return 122; }
 };
 
 }  // namespace mining_pools

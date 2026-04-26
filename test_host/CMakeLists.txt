@@ -76,6 +76,10 @@ add_executable(btclock_host_tests
     test_bh1750_math.cpp
     test_light_metrics.cpp
     test_font_roles.cpp
+    test_font_bundle_map.cpp
+    test_markdown_parse.cpp
+    test_fit_text_px.cpp
+    test_landscape_rotation.cpp
     test_refresh_policy.cpp
     test_build_time.cpp
     test_block_event_policy.cpp
@@ -90,6 +94,7 @@ add_executable(btclock_host_tests
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
     ../main/screens/assets/pool_logos.cpp
+    ../main/screens/assets/pool_logo_cache_host.cpp
     ../components/bitaxe/src/bitaxe_parser.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp

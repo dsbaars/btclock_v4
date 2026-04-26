@@ -117,7 +117,8 @@ void ButtonReader::Run() {
           // Emit kClick only if we didn't already fire a long-press for
           // this hold. Release-after-long-press is swallowed.
           if (!s.long_fired) {
-            const ButtonInput ev{static_cast<ButtonId>(i),
+            const uint8_t logical = inverted_ ? (kNumButtons - 1 - i) : i;
+            const ButtonInput ev{static_cast<ButtonId>(logical),
                                  ButtonEvent::kClick};
             // Non-blocking: we'd rather drop an event than stall the
             // poll loop and push all other buttons off-schedule.
@@ -135,7 +136,8 @@ void ButtonReader::Run() {
         if (s.press_ticks < UINT16_MAX) ++s.press_ticks;
         if (!s.long_fired && s.press_ticks >= kLongPressTicks) {
           s.long_fired = true;
-          const ButtonInput ev{static_cast<ButtonId>(i),
+          const uint8_t logical = inverted_ ? (kNumButtons - 1 - i) : i;
+          const ButtonInput ev{static_cast<ButtonId>(logical),
                                ButtonEvent::kLongPress};
           (void)xQueueSend(queue_, &ev, 0);
         }

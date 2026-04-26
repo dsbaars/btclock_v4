@@ -7,22 +7,27 @@ metrics) on e-paper panels with NeoPixel and frontlight feedback.
 
 Three hardware variants share one codebase:
 
-| Variant | Flash | PSRAM | Notes                               |
-|---------|-------|-------|-------------------------------------|
-| Rev A   | 4 MB  | 2 MB  | no BH1750, no frontlight            |
-| Rev B   | 8 MB  | 2 MB  | BH1750 ambient sensor, frontlight   |
-| V8      | 16 MB | 8 MB  | 8 panels                            |
+| Variant | Flash | PSRAM | Default panel | Notes                               |
+|---------|-------|-------|---------------|-------------------------------------|
+| Rev A   | 4 MB  | 2 MB  | 2.13"         | no BH1750, no frontlight            |
+| Rev B   | 8 MB  | 2 MB  | 2.13"         | BH1750 ambient sensor, frontlight   |
+| V8      | 16 MB | 8 MB  | 2.13"         | 8 panels                            |
+
+Extracted from `btclock_v3_fci/idf_cpp_proto/`; Arduino-era history
+lives in the [old repo](https://git.btclock.dev/btclock/btclock_v3).
 
 ## Build
 
 Source the IDF environment, then build per variant. `BTCLOCK_BOARD`
 picks the pin map; `BTCLOCK_PANEL` picks the EPD geometry — the two
 are independent, so any board × any panel combo configures (default
-panel is `2_13` for every board). Each variant keeps its own
+panel is `2_13` for every board). `BTCLOCK_PANEL=2_9` swaps to the
+2.9" GDEY029T94; `BTCLOCK_PANEL=7_5` (GDEY075T7, 800×480) is
+scaffolded but un-flashed today. Each variant keeps its own
 `sdkconfig` so they don't poison each other:
 
 ```bash
-source ~/esp/v5.5.4/esp-idf/export.sh
+source ~/esp/v6.0/esp-idf/export.sh
 
 idf.py -B build-rev-a    -D BTCLOCK_BOARD=REV_A -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-a/sdkconfig    build
 idf.py -B build-rev-a-29 -D BTCLOCK_BOARD=REV_A -D BTCLOCK_PANEL=2_9  -D SDKCONFIG=build-rev-a-29/sdkconfig build
@@ -30,18 +35,13 @@ idf.py -B build-rev-b    -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONF
 idf.py -B build-v8       -D BTCLOCK_BOARD=V8    -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-v8/sdkconfig       build
 ```
 
-Required toolchain: ESP-IDF v5.5.4 (or compatible 5.5.x).
+Required toolchain: ESP-IDF v6.0 (v5.5.4 still works as a fallback).
 
 ## Flash
 
-Re-enumerate ports each session — they are not stable:
-
-```bash
-for p in /dev/cu.usbmodem*; do
-  esptool.py --port "$p" flash_id 2>&1 | grep -E 'MAC|flash_size|Chip is' | \
-    sed "s|^|$p: |"
-done
-```
+Identify your device's serial port (typically `/dev/ttyUSB*` or
+`/dev/ttyACM*` on Linux, `/dev/cu.usbmodem*` on macOS, `COM*` on
+Windows) — ports are not stable across sessions, so re-check each time.
 
 Then flash with the build's `flash_args` file:
 
@@ -107,6 +107,24 @@ toolchain.
 - `main/`               — application entry, screen renderers, board headers
 - `components/`         — reusable subsystems (data sources, EPD driver, LEDs, settings, web server, Nostr, etc.)
 - `data/`               — WebUI submodule (Svelte; built into `data/build_gz/`)
-- `tools/`              — flash helpers, WASM preview, font/timezone generators, `mklittlefs` wrapper
+- `tools/`              — flash helpers, WASM preview, font/timezone/NVS generators, pool-logo converter, EPD bring-up sketch, Nostr zap watcher, `mklittlefs` wrapper
 - `test_host/`          — host-side regression suite
 - `partitions_*mb.csv`  — partition tables per flash size
+
+## CI
+
+[Forgejo Actions](.forgejo/workflows/) drive two pipelines:
+
+- `host_tests.yaml` — runs the host regression suite on every push and PR.
+- `release.yaml` — tag-triggered (`v*`); gates on host tests, builds the
+  WebUI once, packs per-size LittleFS images, then matrix-builds firmware
+  for `rev-a`, `rev-a-29`, `rev-b`, `v8` and attaches per-variant zips
+  to the Forgejo release. CI currently pins `espressif/idf:v6.0`.
+
+## Documentation
+
+- [docs/SETTINGS.md](docs/SETTINGS.md) — settings reference
+- [docs/WEBUI_MINING_POOL_FIELDS.md](docs/WEBUI_MINING_POOL_FIELDS.md) — mining-pool credential field guide for WebUI authors
+- [docs/HARDCODED_AUDIT.md](docs/HARDCODED_AUDIT.md) — inventory of hardcoded values
+- [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) — parity matrix vs. the Arduino btclock_v3 firmware
+- [CLAUDE.md](CLAUDE.md) — agent-facing build/flash/conventions

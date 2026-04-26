@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "data_core/snapshot.hpp"
+#include "screens/assets/pool_logos.hpp"
 #include "screens/panel_texts.hpp"
 
 namespace {
@@ -111,7 +112,7 @@ TEST_CASE("panel_texts — supply percentage mode") {
   CHECK(out[3] == ".");
   CHECK(out[4] == "4");
   CHECK(out[5] == "8");
-  CHECK(out[6] == " % ");
+  CHECK(out[6] == "%");
 }
 
 TEST_CASE("panel_texts — supply small-chars three-digit groups") {
@@ -1095,8 +1096,12 @@ TEST_CASE("panel_texts — clock hide_lead_zero leaves two-digit hours alone") {
 TEST_CASE("panel_texts — mining pool hashrate PH/S with decimal (logo path)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
-  // "ocean" is in the vendored logo registry → slot 0 blank.
-  in.pool.name = "ocean";
+  // bd btclock_v4-5yi dropped every vendored bitmap; the host stub
+  // exposes RegisterTestLogo so the logo-vs-text branch in
+  // BuildPanelTexts stays covered without needing a real cached file.
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";
   // 1_300_000_000_000_000 H/s → 1.3 PH/S (length 16 > 15 triggers PH).
   in.pool.hashrate = "1300000000000000";
   const auto out = BuildPanelTexts(in, 7);
@@ -1114,8 +1119,13 @@ TEST_CASE("panel_texts — mining pool hashrate PH/S with decimal (logo path)") 
 TEST_CASE("panel_texts — mining pool hashrate EH/S large magnitude (logo path)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
-  // "Braiins" folds to "braiins" in the logo registry.
-  in.pool.name = "Braiins";
+  // bd btclock_v4-5yi: no pools ship vendored bitmaps any more, all
+  // logos resolve through the LittleFS cache. Host tests have no
+  // LittleFS so we register a synthetic name into the stub registry
+  // to drive the logo branch.
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";
   // 1.234e18 H/s → EH/S scale. Max-chars is 5 digit slots on a 7-panel
   // board (slots 1..5), so the formatter returns "1.234" exactly.
   in.pool.hashrate = "1234000000000000000";
@@ -1133,7 +1143,12 @@ TEST_CASE("panel_texts — mining pool hashrate EH/S large magnitude (logo path)
 TEST_CASE("panel_texts — mining pool hashrate empty data shows H/S placeholder") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
-  in.pool.name = "OCEAN";  // registry lookup is case-insensitive
+  // Synthetic logo registered lower-case; query upper-case proves the
+  // registry lookup is case-insensitive (same fold as the target
+  // pool_logos::IEquals helper).
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "SYNTHLOGO";
   // No hashrate sample yet — renderer mirrors the "no data" state.
   in.pool.hashrate = "";
   const auto out = BuildPanelTexts(in, 7);
@@ -1160,6 +1175,25 @@ TEST_CASE("panel_texts — mining pool hashrate text fallback (single word)") {
   CHECK(out[3] == "1");
   CHECK(out[4] == ".");
   CHECK(out[5] == "3");
+}
+
+TEST_CASE("panel_texts — pre-fetch logo'd pool falls back to text (host stub)") {
+  // bd btclock_v4-5yi: pools that ship an upstream `.bin` but have no
+  // cached file on disk (e.g. first-boot before the fetcher runs)
+  // resolve through the LittleFS cache on the device. Host tests have
+  // no LittleFS — `HasResolvedLogo` short-circuits to the synthetic
+  // registry which is empty here — so the label cell paints the pool
+  // name. Mirrors what a first-boot device shows before WiFi comes up
+  // and the fetcher catches it.
+  btclock::pool_logos::ClearTestLogos();
+  PanelTextInputs in;
+  in.kind = ScreenType::kMiningPoolHashrate;
+  in.pool.name = "Braiins";
+  in.pool.hashrate = "1300000000000000";
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "Braiins");
+  CHECK(out[6] == "PH/S");
 }
 
 TEST_CASE("panel_texts — mining pool hashrate text fallback (space split line)") {
@@ -1193,7 +1227,9 @@ TEST_CASE("panel_texts — mining pool hashrate text fallback (underscore split 
 TEST_CASE("panel_texts — mining pool earnings sats verbatim (logo path)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolEarnings;
-  in.pool.name = "ocean";
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";
   in.pool.daily_sats = 8421;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
@@ -1210,7 +1246,9 @@ TEST_CASE("panel_texts — mining pool earnings sats verbatim (logo path)") {
 TEST_CASE("panel_texts — mining pool earnings 10K..99K keeps leading digit (7-panel)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolEarnings;
-  in.pool.name = "Braiins";  // logo path
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";  // logo path (synthetic post-5yi audit)
   // 50000 sats → "50.0K" (5 chars). With the single-panel label area,
   // the 7-panel board has 5 digit slots so the full string fits
   // verbatim — the pre-fix layout truncated to "0.0K".
@@ -1229,7 +1267,9 @@ TEST_CASE("panel_texts — mining pool earnings 10K..99K keeps leading digit (7-
 TEST_CASE("panel_texts — mining pool earnings 12.3K on 8-panel board") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolEarnings;
-  in.pool.name = "Braiins";  // logo path
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";  // logo path (synthetic post-5yi audit)
   in.pool.daily_sats = 12300;  // "12.3K"
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
@@ -1274,7 +1314,9 @@ TEST_CASE("panel_texts — mining pool earnings without data keeps SATS label") 
 TEST_CASE("panel_texts — mining pool hashrate V8 8-panel layout") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
-  in.pool.name = "ocean";
+  btclock::pool_logos::ClearTestLogos();
+  btclock::pool_logos::RegisterTestLogo("synthlogo");
+  in.pool.name = "synthlogo";
   in.pool.hashrate = "645000000000";  // 645 GH/S (length 12).
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
@@ -1324,21 +1366,37 @@ TEST_CASE("panel_texts — nostr zap small amount as integer (7 panels)") {
   CHECK(out[6] == "1");
 }
 
-TEST_CASE("panel_texts — nostr zap scaled k-suffix") {
+TEST_CASE("panel_texts — nostr zap integer fills tail (21000 on 7 panels)") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21000;
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  // Layout: [ZAP][bolt][_][_][2][1][k] — "21k" fills the rightmost three
-  // cells; bolt mirror cell + middle blanks left of it.
+  // 5-digit integer fills the 5-cell tail — no need for "21k".
+  CHECK(out[0] == "ZAP");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "2");
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nostr zap k-suffix when integer overflows tail") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 210000;  // 6 digits — won't fit in 5-cell tail.
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  // Falls back to "210k" right-justified.
   CHECK(out[0] == "ZAP");
   CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
-  CHECK(out[3] == "");
-  CHECK(out[4] == "2");
-  CHECK(out[5] == "1");
+  CHECK(out[3] == "2");
+  CHECK(out[4] == "1");
+  CHECK(out[5] == "0");
   CHECK(out[6] == "k");
 }
 
@@ -1413,63 +1471,81 @@ TEST_CASE("panel_texts — nostr zap 8-panel board") {
 // the amount slides right by one cell. Mirrors the EPD renderer's
 // kSatsGlyphSlot layout in main/screens/nostr_zap.cpp.
 
-TEST_CASE("panel_texts — nostr zap with sats glyph (7 panels, 21000)") {
+TEST_CASE("panel_texts — nostr zap glyph drops when integer fills tail") {
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
-  in.zap_amount_sats = 21000;
+  in.zap_amount_sats = 21000;  // 5-char integer fills the 5-cell tail.
   in.use_sats_symbol = true;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  // [ZAP][bolt][_][STS][2][1][k] — sats glyph sits one cell before the
-  // most-significant amount digit; the bolt cell + remaining middle
-  // blanks fill the gap between the label and the glyph.
+  // No "STS" cell — the integer is preferred over the suffix-form so
+  // the glyph slot is surrendered to the digits.
   CHECK(out[0] == "ZAP");
   CHECK(out[1] == "");  // bolt
-  CHECK(out[2] == "");
-  CHECK(out[3] == "STS");
-  CHECK(out[4] == "2");
-  CHECK(out[5] == "1");
-  CHECK(out[6] == "k");
+  CHECK(out[2] == "2");
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nostr zap glyph stays when amount has slack") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kNostrZap;
+  in.zap_amount_sats = 1000;  // 4-char integer leaves room for the glyph.
+  in.use_sats_symbol = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  // [ZAP][bolt][STS][1][0][0][0]
+  CHECK(out[0] == "ZAP");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "STS");
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
 }
 
 TEST_CASE("panel_texts — nostr zap with sats glyph (8 panels, 21000)") {
-  // V8 parity: ZAP/bolt left-anchored, extra blank widens the gap, then
-  // glyph + right-justified amount.
+  // V8 parity: 6-cell tail with glyph reserve = 5 cells for digits.
+  // "21000" (5 chars) fits as integer with the glyph still in place.
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
   in.zap_amount_sats = 21000;
   in.use_sats_symbol = true;
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
-  // [ZAP][bolt][_][_][STS][2][1][k]
+  // [ZAP][bolt][_][STS][2][1][0][0][0]? — n=8, amount=5, first_amount=3,
+  //   glyph_slot=2.
   CHECK(out[0] == "ZAP");
   CHECK(out[1] == "");  // bolt
-  CHECK(out[2] == "");
-  CHECK(out[3] == "");
-  CHECK(out[4] == "STS");
-  CHECK(out[5] == "2");
-  CHECK(out[6] == "1");
-  CHECK(out[7] == "k");
+  CHECK(out[2] == "STS");
+  CHECK(out[3] == "2");
+  CHECK(out[4] == "1");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "0");
 }
 
 TEST_CASE(
-    "panel_texts — nostr zap glyph on/off parity: amount tail unchanged") {
-  // Same input, only the pref flips. The amount cells stay anchored to
-  // the right edge regardless of glyph state — toggling the pref only
-  // swaps the cell just before the most-significant amount digit
-  // between blank and "STS". The bolt cell stays at slot 1 either way.
+    "panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
+  // Same input, only the pref flips. With an amount that triggers the
+  // suffix path ("210k", 4 chars on a 5-cell tail), toggling the glyph
+  // pref only swaps the cell just before the most-significant amount
+  // digit between blank and "STS". The bolt cell stays at slot 1.
   PanelTextInputs in;
   in.kind = ScreenType::kNostrZap;
-  in.zap_amount_sats = 21000;  // renders as "21k"
+  in.zap_amount_sats = 210000;  // renders as "210k" — 4-char tail with slack.
 
   in.use_sats_symbol = false;
   const auto off = BuildPanelTexts(in, 7);
   REQUIRE(off.size() == 7);
   CHECK(off[0] == "ZAP");
   CHECK(off[1] == "");  // bolt
-  CHECK(off[3] == "");  // no glyph
-  CHECK(off[4] == "2");
-  CHECK(off[5] == "1");
+  CHECK(off[2] == "");  // no glyph
+  CHECK(off[3] == "2");
+  CHECK(off[4] == "1");
+  CHECK(off[5] == "0");
   CHECK(off[6] == "k");
 
   in.use_sats_symbol = true;
@@ -1477,9 +1553,10 @@ TEST_CASE(
   REQUIRE(on.size() == 7);
   CHECK(on[0] == "ZAP");
   CHECK(on[1] == "");  // bolt
-  CHECK(on[3] == "STS");
-  CHECK(on[4] == "2");
-  CHECK(on[5] == "1");
+  CHECK(on[2] == "STS");
+  CHECK(on[3] == "2");
+  CHECK(on[4] == "1");
+  CHECK(on[5] == "0");
   CHECK(on[6] == "k");
 }
 

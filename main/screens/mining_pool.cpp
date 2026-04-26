@@ -68,7 +68,12 @@ PoolLabelSplit SplitPoolName(const std::string& name) {
 // Build the panel-0 PaintSlot for a pool. Vendored logo → kIconBitmap;
 // split-text name fallback → kLabelSplit; single-word name → kLabel.
 PaintSlot BuildPoolLabelSlot(const std::string& name) {
-  if (const pool_logos::PoolLogo* logo = pool_logos::Lookup(name)) {
+  // LookupResolved (target-only) prefers the LittleFS cache copy
+  // produced by `pool_logo_fetcher` over the small vendored set in
+  // pool_logos.cpp; falls back to vendored, then nullptr. Cache hits
+  // are O(1) after the first fread because the resolver keeps the
+  // bytes pinned in PSRAM (one-slot LRU keyed by pool name).
+  if (const pool_logos::PoolLogo* logo = pool_logos::LookupResolved(name)) {
     PaintSlot slot{};
     slot.kind = PaintSlot::kIconBitmap;
     slot.bitmap = logo->bitmap;

@@ -76,7 +76,7 @@ jobs:
   webui_and_lfs:
     runs-on: docker
     container:
-      image: espressif/idf:v5.5.4
+      image: espressif/idf:v6.0
     needs: host_tests
     steps:
       - name: Install Node.js (for JS-based Forgejo actions)
@@ -160,7 +160,7 @@ jobs:
   firmware:
     runs-on: docker
     container:
-      image: espressif/idf:v5.5.4
+      image: espressif/idf:v6.0
     needs: webui_and_lfs
     permissions:
       contents: write
@@ -223,9 +223,9 @@ jobs:
           path: |
             managed_components
             ${{ matrix.sdkconfig_dir }}
-          key: idf-v5.5.4-${{ matrix.variant_label }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.btclock_board)) }}
+          key: idf-v6.0-${{ matrix.variant_label }}-${{ hashFiles('dependencies.lock', 'sdkconfig.defaults', format('sdkconfig.defaults.{0}', matrix.btclock_board)) }}
           restore-keys: |
-            idf-v5.5.4-${{ matrix.variant_label }}-
+            idf-v6.0-${{ matrix.variant_label }}-
 
       - name: Download prebuilt LFS images
         uses: https://code.forgejo.org/forgejo/download-artifact@v7

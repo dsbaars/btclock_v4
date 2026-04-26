@@ -271,8 +271,8 @@ std::vector<std::string> BuildBitcoinSupply(uint32_t h, bool big_chars,
                                             std::size_t n_panels) {
   const uint64_t supply = SupplyAtBlock(h);
   if (show_percent) {
-    // "NN.NN" spread over the inner panels + " % " trailer. Mirrors
-    // RenderBitcoinSupplyPercentage (test_datahandler_parity.cpp).
+    // "NN.NN" spread over the inner panels + "%" trailer. The renderer
+    // (RenderBitcoinSupplyScreen) paints that as a full-size '%' digit.
     std::vector<std::string> out;
     out.reserve(n_panels);
     out.emplace_back("BTC/SUPPLY");
@@ -286,7 +286,7 @@ std::vector<std::string> BuildBitcoinSupply(uint32_t h, bool big_chars,
     for (std::size_t i = 1; i < n_panels; ++i) {
       out.push_back(CharSlot(s[i]));
     }
-    if (!out.empty()) out.back() = " % ";
+    if (!out.empty()) out.back() = "%";
     return out;
   }
   if (big_chars) {
@@ -385,7 +385,8 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
 std::vector<std::string> BuildBtcPrice(const std::string& currency,
                                        const std::string& price,
                                        std::size_t n_panels,
-                                       bool suffix_price, bool mow_mode) {
+                                       bool suffix_price, bool mow_mode,
+                                       bool share_dot) {
   // Panel 0 = "BTC/<CCY>" (or "MOW/UNITS" on the suffix+mow path when
   // the price still fits with a label). Digits 1..N-1 come from the
   // layout helpers in price_layout.hpp / btc_price_suffix_layout.hpp —
@@ -422,7 +423,8 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     if (n_panels == 7) {
       constexpr std::size_t kPanels = 7;
       auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode, label);
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode,
+          share_dot, label);
       if (label.empty()) {
         // Overflow: glyph is already in cells[0].
         for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
@@ -434,7 +436,8 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     } else if (n_panels == 8) {
       constexpr std::size_t kPanels = 8;
       auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode, label);
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode,
+          share_dot, label);
       if (label.empty()) {
         for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
       } else {
@@ -514,7 +517,12 @@ std::string PoolLabelCellFor(const std::string& name) {
   // renderer uses. When a vendored logo exists, the label cell is an
   // empty string — round-trips cleanly through the WebUI's `data[]`
   // renderer.
-  if (pool_logos::Lookup(name) != nullptr) return {};
+  // HasResolvedLogo asks the renderer's full chain (cache → vendored)
+  // so the label cell stays blank as soon as a fetched bitmap lands —
+  // matches what the EPD will actually paint. Host tests get a stub
+  // that just delegates to the vendored Lookup() because they have no
+  // LittleFS.
+  if (pool_logos::HasResolvedLogo(name)) return {};
   if (name.empty()) return {};
 
   const auto sep = name.find_first_of(" \t_");
@@ -579,14 +587,13 @@ std::vector<std::string> BuildMiningPoolHashrate(const MiningPoolMirror& pool,
 // renderer-side FormatZapAmount in nostr_zap.cpp so the /api/status
 // mirror agrees with what the panels paint. test_panel_texts pins the
 // key cases.
-std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats) {
+std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
+                                  std::size_t max_int_cells) {
   if (!amount_sats || *amount_sats < 0) return "?";
   const int64_t v = *amount_sats;
-  if (v < 1000) {
-    char buf[8];
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(v));
-    return buf;
-  }
+  char int_buf[24];
+  std::snprintf(int_buf, sizeof(int_buf), "%lld", static_cast<long long>(v));
+  if (std::strlen(int_buf) <= max_int_cells) return int_buf;
   double x = static_cast<double>(v);
   const char* suffix;
   if (v >= 1'000'000'000LL) { x /= 1e9; suffix = "B"; }
@@ -622,18 +629,14 @@ std::vector<std::string> BuildNostrZap(
   out[zap_slot] = "ZAP";
   if (n_panels <= bolt_slot + 1) return out;
 
-  const std::string amount = FormatZapAmountLocal(amount_sats);
-  // Reserve a glyph cell when the pref is on AND there's at least one
-  // blank slot between the bolt and the amount. The renderer follows
-  // the same rule (ComputeZapLayout's glyph_slot sentinel).
+  // Budget the integer formatter against the full tail (no glyph
+  // reserve). When the integer overflows the tail, FormatZapAmountLocal
+  // falls back to suffix; when it fits, the layout step below drops the
+  // glyph so the digits aren't truncated.
   const std::size_t available_tail = n_panels - (bolt_slot + 1);
-  const std::size_t glyph_reserve = use_sats_symbol ? 1 : 0;
+  const std::string amount = FormatZapAmountLocal(amount_sats, available_tail);
   std::size_t amount_cells = amount.size();
-  if (amount_cells + glyph_reserve > available_tail) {
-    amount_cells = (available_tail > glyph_reserve)
-                       ? available_tail - glyph_reserve
-                       : available_tail;
-  }
+  if (amount_cells > available_tail) amount_cells = available_tail;
   if (amount_cells < 1) amount_cells = 1;
   const std::size_t first_amount = n_panels - amount_cells;
   const bool has_glyph =
@@ -811,7 +814,7 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
                              in.use_sats_symbol, in.use_mscw_time);
     case ScreenType::kBtcPrice:
       return BuildBtcPrice(in.currency, in.price, n_panels,
-                           in.suffix_price, in.mow_mode);
+                           in.suffix_price, in.mow_mode, in.share_dot);
     case ScreenType::kBlockFeeRate:
       return BuildFeeRate(in.block_fee_sats_vb, n_panels);
     case ScreenType::kClock:

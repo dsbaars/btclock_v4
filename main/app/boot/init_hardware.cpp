@@ -93,6 +93,11 @@ void InitHardware(AppCtx& ctx) {
     // before Start() because they don't go through the command queue.
     // Matches the v3 handleFrontlight() contract (src/main.cpp:31-47)
     // plus the flOffWhenDark branch on line 38.
+    //
+    // The boot-time read must stay in sync with the live PATCH path in
+    // init_control_api.cpp's on_frontlight_changed hook — both read
+    // the same NVS keys with the same defaults so a fresh install and
+    // a runtime PATCH converge on identical controller state.
     {
       Prefs settings(prefs::kSettingsNs);
       const uint32_t lux_threshold = settings.GetU32(
@@ -103,6 +108,16 @@ void InitHardware(AppCtx& ctx) {
       ctx.frontlight->SetOffWhenDark(off_when_dark);
       // `luxLightToggle == 0` disables the whole feature in v3.
       ctx.frontlight->SetAmbientAutoOff(lux_threshold != 0);
+      // flAlwaysOn / flDisable / flFlashOnUpd — schema defaults match
+      // v3 (true / false / true). Without these the controller would
+      // sit at its constructor defaults and three user-visible Rev B
+      // toggles would be inert (btclock_v4-63p).
+      ctx.frontlight->SetAlwaysOn(
+          settings.GetBool(prefs::kFlAlwaysOn, true));
+      ctx.frontlight->SetDisabled(
+          settings.GetBool(prefs::kFlDisable, false));
+      ctx.frontlight->SetFlashOnUpdate(
+          settings.GetBool(prefs::kFlFlashOnUpd, true));
     }
 
     // Install DND gate before Start() so the boot fade-in is

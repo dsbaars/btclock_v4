@@ -6,6 +6,8 @@
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "io/led_controller.hpp"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -32,7 +34,15 @@ void InitBootLeds() {
   // DND predicate goes in before the first effect post so the boot
   // rainbow is gated too if the user has DND currently armed.
   SetLedActiveSuppressor([] { return dnd::Instance().IsActive(); });
-  PostLedEvent(LedEvent::kSetBoot);
+  // ledTestOnPower: skip the rainbow self-test entirely when the user
+  // disabled it. Default true matches v3 DEFAULT_LED_TEST_ON_POWER and
+  // the schema default.
+  Prefs settings(prefs::kSettingsNs);
+  if (settings.GetBool(prefs::kLedTestOnPower, true)) {
+    PostLedEvent(LedEvent::kSetBoot);
+  } else {
+    PostLedEvent(LedEvent::kSetIdle);
+  }
 }
 
 }  // namespace btclock

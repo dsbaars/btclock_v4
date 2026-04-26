@@ -158,10 +158,11 @@ const char* CurrencySymbolUtf8(const std::string& ccy);
 // `PaintSlot` per panel describing WHAT that panel should show; the
 // parallel `std::array<bool, N> update` mask says WHICH panels need
 // paint this frame. Panels where `update[i] == false` are skipped
-// (no clear, no refresh). Panels where `update[i] == true` and the
-// slot is `kBlank` still get cleared to white on full refresh so
-// stale content gets wiped; on partial refresh `kBlank + update=true`
-// is a no-op (nothing to paint, nothing to clear).
+// (no clear, no refresh). Panels where `update[i] == true` are
+// cleared to white and refreshed regardless of slot kind, so a cell
+// transitioning from a digit to `kBlank` gets visibly blanked on
+// partial refresh too. The diff layer is the single source of truth
+// for "this panel needs work this frame"; `update[i]` is authoritative.
 //
 // The full-vs-partial decision lives in the caller — `PaintDataScreen`
 // takes `full_refresh` as input and applies it uniformly to every
@@ -175,9 +176,9 @@ const char* CurrencySymbolUtf8(const std::string& ccy);
 
 struct PaintSlot {
   enum Kind {
-    // Panel left blank. On full refresh we still clear to white so
-    // a prior full-refresh frame's ink gets wiped; on partial refresh
-    // this is a total no-op (PaintDataScreen skips the panel entirely).
+    // Panel left blank. PaintDataScreen clears the framebuffer to
+    // white before painting, so a kBlank slot results in a blank panel
+    // on both full and partial refresh whenever `update[i]==true`.
     kBlank,
     // "TOP/BOTTOM" split-text label (two lines centred top-half /
     // bottom-half). `text` holds "TOP/BOTTOM"; the first '/' separates
@@ -280,13 +281,14 @@ void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
 
   // Paint phase — fill the shadow framebuffers for every updated panel.
-  // On partial refresh a `kBlank` slot has nothing to paint; skip the
-  // clear so we don't send pointless write-VRAM traffic (and so the
-  // device's driver doesn't emit an activation for a panel the user
-  // didn't ask to change).
+  // kBlank slots are cleared-to-white and refreshed too: that's how a
+  // cell transitioning from a digit to blank actually disappears under
+  // partial refresh. The earlier kBlank skip was a wrong optimization —
+  // it conflated "permanent blank" with "transition to blank", causing
+  // ghost ink whenever a variable-width run shrank (price digits,
+  // market-cap padding, zap-overlay middle cells).
   for (std::size_t i = 0; i < N; ++i) {
     if (!update[i]) continue;
-    if (!full_refresh && slots[i].kind == PaintSlot::kBlank) continue;
     auto lfb = PrepFb(panels, fb_storage, i);
     ClearFb(lfb, /*white=*/true);
     PaintSlotIntoFb(lfb, fonts, slots[i], vertical_desc);
@@ -294,16 +296,13 @@ void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 
   // Refresh phase — fan the activation out across all updated panels
   // first (Start is non-blocking; the per-panel refresh runs in
-  // parallel), then wait on them. Skipping `kBlank` on partial refresh
-  // mirrors the paint phase so the two loops match.
+  // parallel), then wait on them.
   for (std::size_t i = 0; i < N; ++i) {
     if (!update[i]) continue;
-    if (!full_refresh && slots[i].kind == PaintSlot::kBlank) continue;
     panels[i]->DrawFramebufferStart(fb_storage[i], kind);
   }
   for (std::size_t i = 0; i < N; ++i) {
     if (!update[i]) continue;
-    if (!full_refresh && slots[i].kind == PaintSlot::kBlank) continue;
     panels[i]->WaitForRefresh();
   }
 }

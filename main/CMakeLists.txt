@@ -36,19 +36,24 @@ idf_component_register(
          "screens/bitcoin_supply.cpp" "screens/market_cap.cpp"
          "screens/mining_pool.cpp" "screens/bitaxe.cpp"
          "screens/assets/pool_logos.cpp"
+         "screens/assets/pool_logo_cache.cpp"
          "screens/assets/bitaxe_logo.cpp"
          "screens/show_custom.cpp"
          "screens/nostr_zap.cpp"
          "screens/ota_update.cpp"
          "screens/debug.cpp"
     INCLUDE_DIRS "."
-    REQUIRES driver esp_timer esp_psram esp_wifi i2c_bus mcp23017 pca9685
+    REQUIRES esp_driver_gpio esp_driver_ledc esp_timer esp_psram esp_wifi
+             i2c_bus mcp23017 pca9685
              bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
              data_core btclock_data buttons nostr timezone dnd settings ota
              mining_pool_common mining_pool_braiins mining_pool_ckpool
-             mining_pool_gobrrr mining_pool_noderunners mining_pool_ocean
+             mining_pool_foundry mining_pool_gobrrr mining_pool_nerdminer
+             mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio
-             bitaxe mdns net_util esp_websocket_client esp-tls json
+             mining_pool_viabtc
+             pool_logo_fetcher
+             bitaxe mdns net_util esp_websocket_client esp-tls cjson
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

@@ -40,8 +40,15 @@ namespace btclock {
 template <std::size_t Panels>
 inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
     std::uint64_t price_int, const std::string& currency,
-    const char* symbol_utf8, bool mow_mode, std::string& out_label) {
-  const int num_chars = mow_mode
+    const char* symbol_utf8, bool mow_mode, bool share_dot,
+    std::string& out_label) {
+  // share_dot only affects the !mow_mode label path: we let the digit
+  // formatter use one more character (Panels-1 instead of Panels-2) and
+  // then fold the resulting "." byte into the cell immediately before
+  // it. mow_mode already runs at Panels-1 because its M-suffix layout
+  // needs the extra width regardless; v3 parsePriceData treats them as
+  // an "either/or" budget bump, never additive.
+  const int num_chars = (mow_mode || share_dot)
                             ? static_cast<int>(Panels) - 1
                             : static_cast<int>(Panels) - 2;
   const std::string num_str =
@@ -61,14 +68,30 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
     out_label = mow_mode ? std::string("MOW/UNITS")
                          : (std::string("BTC/") + currency);
     const std::size_t digit_cells = Panels - 1;
-    const std::size_t pad = digit_cells - cells_len;
+    // share_dot folds the '.' byte into its preceding digit ("X."),
+    // shaving one cell from the rendered length so the K/M suffix and
+    // the bumped num_chars budget both fit. Compute the effective
+    // length first, then pad against `digit_cells`.
+    const std::size_t dot_pos = (share_dot && !mow_mode)
+                                    ? num_str.find('.')
+                                    : std::string::npos;
+    const std::size_t fold_savings =
+        (dot_pos != std::string::npos && dot_pos > 0) ? 1u : 0u;
+    const std::size_t effective_len = cells_len - fold_savings;
+    const std::size_t pad =
+        effective_len < digit_cells ? digit_cells - effective_len : 0u;
     std::size_t idx = 1 + pad;  // +1 skips panel 0 (label slot)
     if (has_symbol) {
       out[idx++] = symbol_utf8;
     }
-    for (std::size_t i = 0; i < num_str.size() && idx < Panels;
-         ++i, ++idx) {
-      out[idx].assign(1, num_str[i]);
+    for (std::size_t i = 0; i < num_str.size() && idx < Panels; ++i) {
+      if (fold_savings && i + 1 == dot_pos) {
+        // Pack "X." into one cell, skip the raw dot byte.
+        out[idx++] = std::string(1, num_str[i]) + ".";
+        ++i;
+      } else {
+        out[idx++].assign(1, num_str[i]);
+      }
     }
     return out;
   }
@@ -77,7 +100,8 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
   // v3 drops the label and emits one char per panel from the head of
   // priceString. If priceString exceeds Panels the tail is silently
   // truncated, matching v3's `ret[i] = priceString[i]` loop that only
-  // writes NUM_SCREENS cells.
+  // writes NUM_SCREENS cells. share_dot does not apply here — the
+  // overflow path is char-per-cell by definition.
   out_label.clear();
   std::size_t idx = 0;
   if (has_symbol && idx < Panels) {

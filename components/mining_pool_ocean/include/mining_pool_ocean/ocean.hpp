@@ -23,6 +23,9 @@ class OceanPool : public PoolDataSource {
   std::string api_url() const override;
   bool parse_response(const char* body, ParsedStats& out) const override;
   const char* pool_name() const override { return "ocean"; }
+  const char* logo_filename() const override { return "ocean.bin"; }
+  int logo_width() const override { return 122; }
+  int logo_height() const override { return 122; }
 };
 
 }  // namespace mining_pools

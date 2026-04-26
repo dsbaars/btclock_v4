@@ -33,6 +33,7 @@ inline constexpr const char* kActCurrencies    = "actCurrencies";
 inline constexpr const char* kBgColor          = "bgColor";
 inline constexpr const char* kBitaxeEnabled    = "bitaxeEnabled";
 inline constexpr const char* kBitaxeHostname   = "bitaxeHostname";
+inline constexpr const char* kBitaxePollSec    = "bitaxePollSec";
 inline constexpr const char* kBlockFeeDec      = "blockFeeDec";
 inline constexpr const char* kBlockFlashColor  = "blockFlashColor";
 inline constexpr const char* kBlockHeight      = "blockHeight";
@@ -57,6 +58,10 @@ inline constexpr const char* kFlFlashOnZap     = "flFlashOnZap";
 inline constexpr const char* kFlMaxBrightness  = "flMaxBrightness";
 inline constexpr const char* kFlOffWhenDark    = "flOffWhenDark";
 inline constexpr const char* kFontName         = "fontName";
+// Foundry USA Pool: per-account API key (suppressed in GET like
+// httpAuthPass) + plain subaccount path segment. NVS 15-char cap forces
+// the short forms — `foundryApiKey` is exactly 13 chars; `foundrySubacct`
+// is 14. Stable on-flash names; do not rename.
 inline constexpr const char* kFullRefreshMin   = "fullRefreshMin";
 inline constexpr const char* kGitReleaseUrl    = "gitReleaseUrl";
 inline constexpr const char* kGmtOffset        = "gmtOffset";
@@ -85,6 +90,7 @@ inline constexpr const char* kMinSecPriceUpd   = "minSecPriceUpd";
 inline constexpr const char* kMiningPoolName   = "miningPoolName";
 inline constexpr const char* kMiningPoolStats  = "miningPoolStats";
 inline constexpr const char* kMiningPoolUser   = "miningPoolUser";
+inline constexpr const char* kPoolWorker       = "poolWorker";
 inline constexpr const char* kMowMode          = "mowMode";
 inline constexpr const char* kNostrPubKey      = "nostrPubKey";
 inline constexpr const char* kNostrRelay       = "nostrRelay";
@@ -94,6 +100,7 @@ inline constexpr const char* kOtaEnabled       = "otaEnabled";
 inline constexpr const char* kOtaPass          = "otaPass";
 inline constexpr const char* kPoolGlobalStats  = "poolGlobalStats";
 inline constexpr const char* kPoolLogosUrl     = "poolLogosUrl";
+inline constexpr const char* kPoolPollSec      = "poolPollSec";
 inline constexpr const char* kRefrScrnChange   = "refrScrnChange";
 inline constexpr const char* kScreenOrder      = "screenOrder";
 inline constexpr const char* kScrnRestoreZap   = "scrnRestoreZap";
@@ -109,6 +116,8 @@ inline constexpr const char* kUseBlkCountdown  = "useBlkCountdown";
 inline constexpr const char* kUseMscwTime      = "useMscwTime";
 inline constexpr const char* kUseSatsSymbol    = "useSatsSymbol";
 inline constexpr const char* kVerticalDesc     = "verticalDesc";
+// ViaBTC: per-account API key (suppressed in GET like httpAuthPass).
+// 13 chars — fits the NVS 15-char cap. Stable on-flash name; do not rename.
 inline constexpr const char* kWifiConfigured   = "wifiConfigured";
 // Minutes of continuous STA disconnect before a soft reboot. Ported
 // from the Arduino main.cpp::checkWiFiConnection() 10-min brute-force
@@ -137,6 +146,7 @@ BTCLOCK_PREF_KEY_ASSERT(kActCurrencies);
 BTCLOCK_PREF_KEY_ASSERT(kBgColor);
 BTCLOCK_PREF_KEY_ASSERT(kBitaxeEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kBitaxeHostname);
+BTCLOCK_PREF_KEY_ASSERT(kBitaxePollSec);
 BTCLOCK_PREF_KEY_ASSERT(kBlockFeeDec);
 BTCLOCK_PREF_KEY_ASSERT(kBlockFlashColor);
 BTCLOCK_PREF_KEY_ASSERT(kBlockHeight);
@@ -185,6 +195,7 @@ BTCLOCK_PREF_KEY_ASSERT(kMinSecPriceUpd);
 BTCLOCK_PREF_KEY_ASSERT(kMiningPoolName);
 BTCLOCK_PREF_KEY_ASSERT(kMiningPoolStats);
 BTCLOCK_PREF_KEY_ASSERT(kMiningPoolUser);
+BTCLOCK_PREF_KEY_ASSERT(kPoolWorker);
 BTCLOCK_PREF_KEY_ASSERT(kMowMode);
 BTCLOCK_PREF_KEY_ASSERT(kNostrPubKey);
 BTCLOCK_PREF_KEY_ASSERT(kNostrRelay);
@@ -194,6 +205,7 @@ BTCLOCK_PREF_KEY_ASSERT(kOtaEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kOtaPass);
 BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);
 BTCLOCK_PREF_KEY_ASSERT(kPoolLogosUrl);
+BTCLOCK_PREF_KEY_ASSERT(kPoolPollSec);
 BTCLOCK_PREF_KEY_ASSERT(kRefrScrnChange);
 BTCLOCK_PREF_KEY_ASSERT(kScreenOrder);
 BTCLOCK_PREF_KEY_ASSERT(kScrnRestoreZap);

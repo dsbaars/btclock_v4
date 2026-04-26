@@ -25,29 +25,28 @@
 
 namespace btclock {
 
-std::string FormatZapAmount(const std::optional<int64_t>& amount_sats) {
+std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
+                            std::size_t max_int_cells) {
   if (!amount_sats || *amount_sats < 0) return "?";
   const int64_t v = *amount_sats;
-  // Small values render as plain integers so "21 sats" shows "21",
-  // not "0.0k" — matches old-firmware parseZapNotify's raw-digit path
-  // for amounts under 1000.
-  if (v < 1000) {
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(v));
-    return buf;
-  }
-  // Pick the largest suffix (k / M / B) whose integer part has at most
-  // 3 digits. Fractional digit drops once the integer hits 3 digits so
-  // we don't overflow the 4-char cell budget ("1.2k" / "12k" / "123k").
+  // Prefer the raw integer when it fits the panel-tail budget — readers
+  // see "1000" / "10000" instead of "1.0k" / "10k". The budget is the
+  // tail width without the sats glyph reserved; ComputeZapLayout will
+  // drop the glyph automatically when the integer fills the tail.
+  char int_buf[24];
+  std::snprintf(int_buf, sizeof(int_buf), "%lld", static_cast<long long>(v));
+  if (std::strlen(int_buf) <= max_int_cells) return int_buf;
+  // Fall back to k / M / B suffix for values that don't fit.
+  // Three-digit integer part: "12k", "123k". Two-digit: "12k". One-
+  // digit: "1.2k" — the fractional digit gives a finer read at the
+  // small end of each magnitude band.
   double x = static_cast<double>(v);
   const char* suffix;
   if (v >= 1'000'000'000LL) { x /= 1e9; suffix = "B"; }
   else if (v >= 1'000'000LL) { x /= 1e6; suffix = "M"; }
   else { x /= 1e3; suffix = "k"; }
   char buf[16];
-  if (x >= 100.0) {
-    std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
-  } else if (x >= 10.0) {
+  if (x >= 10.0) {
     std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
   } else {
     std::snprintf(buf, sizeof(buf), "%.1f%s", x, suffix);
@@ -87,16 +86,14 @@ ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
   ZapLayout L{};
   L.zap_slot = 0;
   L.bolt_slot = L.zap_slot + 1;
-  // Reserve one slot for the sats glyph (when on); the amount fills the
-  // tail starting at first_amount and ending at N-1. Clamp amount_chars
-  // so first_amount can't slide past the bolt slot.
-  const std::size_t glyph_reserve = use_sats_symbol ? 1 : 0;
+  // Available tail = panels after [ZAP][bolt]. Amount is right-justified
+  // into it; the sats glyph wants a slot just before the most-significant
+  // digit. When the amount run consumes the entire tail the glyph drops
+  // (the integer-rendering path can fill the tail; surrendering a digit
+  // for the glyph would defeat the "show full amount when it fits" rule).
   const std::size_t available_tail = N - (L.bolt_slot + 1);
   std::size_t amount = amount_chars;
-  if (amount + glyph_reserve > available_tail) {
-    amount = available_tail > glyph_reserve ? available_tail - glyph_reserve
-                                            : available_tail;
-  }
+  if (amount > available_tail) amount = available_tail;
   if (amount < 1) amount = 1;
   L.first_amount = N - amount;
   L.amount_cells = amount;
@@ -120,7 +117,11 @@ void RenderNostrZapScreen(
     bool vertical_desc) {
   static_assert(N >= 7, "Zap layout needs at least 7 panels");
 
-  const std::string amount = FormatZapAmount(zap.amount_sats);
+  // Budget = tail cells excluding ZAP + bolt. The glyph isn't reserved
+  // here on purpose: when the integer fills the tail the layout step
+  // drops the glyph rather than truncating the amount.
+  constexpr std::size_t kAmountBudget = N - 2;
+  const std::string amount = FormatZapAmount(zap.amount_sats, kAmountBudget);
   const ZapLayout L = ComputeZapLayout<N>(amount.size(), use_sats_symbol);
 
   std::array<PaintSlot, N> slots{};
@@ -181,16 +182,8 @@ void RenderNostrZapScreen(
     slots[panel_idx] = s;
   }
 
-  // Always full-refresh. The middle panels (between the bolt slot and
-  // the sats-glyph slot) are kBlank, and PaintDataScreen treats
-  // kBlank+update=true as a partial-refresh no-op (skip clear, skip
-  // refresh). On screen entry that means the previous screen's digits
-  // bleed through the empty middle cells — symptom: "two amounts, one
-  // before the sats glyph and one after". Full refresh wipes those
-  // cells to white as part of the kBlank-on-full-refresh path.
-  (void)full_refresh_mode;
   PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  /*full_refresh=*/true, vertical_desc);
+                  /*full_refresh=*/full_refresh_mode, vertical_desc);
 }
 
 template void RenderNostrZapScreen<7>(

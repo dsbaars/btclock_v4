@@ -6,11 +6,15 @@
 #include "mining_pool_braiins/braiins.hpp"
 #include "mining_pool_ckpool/ckpool.hpp"
 #include "mining_pool_common/pool_base.hpp"
+#include "mining_pool_foundry/foundry.hpp"
 #include "mining_pool_gobrrr/gobrrr.hpp"
+#include "mining_pool_nerdminer/nerdminer.hpp"
 #include "mining_pool_noderunners/noderunners.hpp"
 #include "mining_pool_ocean/ocean.hpp"
 #include "mining_pool_public_pool/public_pool.hpp"
 #include "mining_pool_satoshi_radio/satoshi_radio.hpp"
+#include "mining_pool_viabtc/viabtc.hpp"
+#include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
 
@@ -60,13 +64,17 @@ void MirrorSettingsIntoPoolNs() {
 std::unique_ptr<DataSource> BuildByName(const std::string& name) {
   if (name == "ocean") return std::make_unique<OceanPool>();
   if (name == "noderunners") return std::make_unique<NoderunnersPool>();
-  if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "satoshi_radio") return std::make_unique<SatoshiRadioPool>();
+  if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
   if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
+  if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
+  if (name == "nerdminer_io") return std::make_unique<NerdMinerIoPool>();
+  if (name == "foundry_usa") return std::make_unique<FoundryPool>();
+  if (name == "viabtc") return std::make_unique<ViaBtcPool>();
   return nullptr;
 }
 
@@ -78,13 +86,17 @@ std::unique_ptr<DataSource> BuildByName(const std::string& name) {
 std::unique_ptr<PoolDataSource> BuildPoolByName(const std::string& name) {
   if (name == "ocean") return std::make_unique<OceanPool>();
   if (name == "noderunners") return std::make_unique<NoderunnersPool>();
-  if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "satoshi_radio") return std::make_unique<SatoshiRadioPool>();
+  if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
   if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
+  if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
+  if (name == "nerdminer_io") return std::make_unique<NerdMinerIoPool>();
+  if (name == "foundry_usa") return std::make_unique<FoundryPool>();
+  if (name == "viabtc") return std::make_unique<ViaBtcPool>();
   return nullptr;
 }
 
@@ -92,10 +104,13 @@ std::unique_ptr<PoolDataSource> BuildPoolByName(const std::string& name) {
 
 std::vector<std::string> AvailablePoolNames() {
   // Order mirrors PoolFactory::getAvailablePools() in the old firmware
-  // so the WebUI dropdown renders identically on upgrade.
-  return {"ocean",       "noderunners", "satoshi_radio", "braiins",
-          "public_pool", "local_public_pool", "gobrrr_pool",
-          "ckpool",      "eu_ckpool"};
+  // so the WebUI dropdown renders identically on upgrade. New ckpool-
+  // family forks (NerdMiner) are appended after the original ckpool
+  // entries to keep the existing pool order stable.
+  return {"ocean",         "noderunners",     "satoshi_radio", "braiins",
+          "public_pool",   "local_public_pool", "gobrrr_pool",
+          "ckpool",        "eu_ckpool",       "nerdminers_org",
+          "nerdminer_io",  "foundry_usa",     "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {
@@ -125,6 +140,17 @@ std::unique_ptr<DataSource> MakeActivePoolSource() {
     return nullptr;
   }
   ESP_LOGI(kTag, "active pool: %s", pool_name.c_str());
+  // Kick off a one-shot logo fetch in the background. No-op if the
+  // cache is already populated. The renderer keeps painting the
+  // text-split fallback until the bytes land — see bd btclock_v4-5yi.
+  // Fire AFTER the source is built so a later failure-to-spawn doesn't
+  // leave the in-flight set populated with no task to drain it.
+  const esp_err_t enq =
+      btclock::pool_logos::EnqueueFetch(pool_name);
+  if (enq != ESP_OK && enq != ESP_ERR_INVALID_STATE) {
+    ESP_LOGD(kTag, "logo fetch enqueue for '%s': %s", pool_name.c_str(),
+             esp_err_to_name(enq));
+  }
   return src;
 }
 

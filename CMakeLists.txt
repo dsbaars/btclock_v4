@@ -33,6 +33,12 @@ endif()
 # the driver factory keys the unique_ptr<IEpdPanel> dispatch off this.
 add_compile_definitions(BTCLOCK_PANEL_${BTCLOCK_PANEL}=1)
 
+# Same idea for the board — components outside main need to gate optional
+# assets (e.g. fonts dropping Merriweather on the 4MB Rev A) by board.
+# main/CMakeLists.txt sets the same flag on its own target as well; this
+# is the project-wide emit.
+add_compile_definitions(BTCLOCK_BOARD_${BTCLOCK_BOARD}=1)
+
 # Base defaults first, per-variant overrides on top (later files win).
 set(SDKCONFIG_DEFAULTS
     "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults"

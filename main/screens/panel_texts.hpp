@@ -100,6 +100,10 @@ struct PanelTextInputs {
   // only when the integer itself is wide enough (>= N digits).
   bool suffix_price       = false;
   bool mow_mode           = false;
+  // suffixShareDot: see RenderPrefs::suffix_share_dot — pack the
+  // decimal point into its preceding digit cell so the K/M label form
+  // gets one more digit panel of width.
+  bool share_dot          = false;
   // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
   MiningPoolMirror pool{};
   // Bitaxe screens. Empty hostname means "no sample yet" — mirror

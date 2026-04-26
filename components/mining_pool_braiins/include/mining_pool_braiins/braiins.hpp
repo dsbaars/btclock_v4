@@ -28,6 +28,9 @@ class BraiinsPool : public PoolDataSource {
   bool parse_response(const char* body, ParsedStats& out) const override;
   std::string auth_token() const override;
   const char* pool_name() const override { return "braiins"; }
+  const char* logo_filename() const override { return "braiins.bin"; }
+  int logo_width() const override { return 37; }
+  int logo_height() const override { return 230; }
 };
 
 }  // namespace mining_pools

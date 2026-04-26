@@ -12,6 +12,7 @@
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
+#include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
 #include "io/light_sensor.hpp"
 #include "io/mining_pool_selector.hpp"
@@ -206,6 +207,36 @@ void InitControlApi(AppCtx& ctx) {
     ccfg.on_led_brightness_changed = [](uint8_t v) { SetLedBrightness(v); };
     ccfg.on_disable_leds_changed = [](bool v) { SetLedDisabled(v); };
     ccfg.on_led_flash_on_upd_changed = [](bool v) { SetLedFlashOnUpdate(v); };
+    // Frontlight PATCH forwarder — re-reads every runtime-editable
+    // frontlight pref and pushes the values into FrontlightController.
+    // Mirrors the boot-time read in init_hardware.cpp so the two paths
+    // can never drift. Only wired on boards with a PCA9685 backlight;
+    // Rev A / V8 leave the hook null and the dispatcher in
+    // control_server skips it. Brightness goes through SetBrightness
+    // (queue-backed fade); the policy / gate setters are plain stores
+    // and safe to call from the httpd worker. bd btclock_v4-7xv /
+    // btclock_v4-63p.
+    if (FrontlightController* fl = ctx.frontlight.get()) {
+      ccfg.on_frontlight_changed = [fl] {
+        Prefs settings(prefs::kSettingsNs);
+        const uint32_t lux_threshold = settings.GetU32(
+            prefs::kLuxLightToggle, frontlight::kDefaultLuxThreshold);
+        fl->SetLuxThreshold(lux_threshold);
+        fl->SetAmbientAutoOff(lux_threshold != 0);
+        fl->SetOffWhenDark(settings.GetBool(prefs::kFlOffWhenDark, true));
+        const uint32_t max_brightness = settings.GetU32(
+            prefs::kFlMaxBrightness,
+            static_cast<uint32_t>(frontlight::kDefaultMaxDuty));
+        if (max_brightness > 0 && max_brightness <= 0xFFFFu) {
+          fl->SetConfiguredBrightness(static_cast<uint16_t>(max_brightness));
+        }
+        fl->SetEffectDelay(settings.GetU32(prefs::kFlEffectDelay,
+                                            frontlight::kDefaultEffectDelayMs));
+        fl->SetAlwaysOn(settings.GetBool(prefs::kFlAlwaysOn, true));
+        fl->SetDisabled(settings.GetBool(prefs::kFlDisable, false));
+        fl->SetFlashOnUpdate(settings.GetBool(prefs::kFlFlashOnUpd, true));
+      };
+    }
     // Every successful /api/settings PATCH pulses the LEDs green so
     // the user sees an immediate confirmation the save landed. Piggy-
     // backs on the existing kFlashSuccess effect (3x green, 150ms) —
@@ -330,6 +361,20 @@ void InitControlApi(AppCtx& ctx) {
     // skipped — the schema returns rebootRequired for those.
     // bd btclock_v4-aw5 / btclock_v4-q1l.
     ccfg.on_nostr_changed = [ctx_ptr] { RefreshZapListenerSettings(*ctx_ptr); };
+    // POST /api/action/simulate_zap — drives the same code path the
+    // real zap listener uses (DataSnapshot patch + pending flag +
+    // task notify) but skips the LED / frontlight / nostrZapNotify
+    // gates so the overlay fires unconditionally for QA.
+    ccfg.simulate_zap = [ctx_ptr](int64_t amount_sats, std::string message) {
+      if (!ctx_ptr->hub) return;
+      DataSnapshot patch;
+      patch.latest_zap.amount_sats = amount_sats;
+      patch.latest_zap.message = std::move(message);
+      patch.latest_zap.received_ms = MsNow();
+      ctx_ptr->hub->Report(patch);
+      ctx_ptr->zap_notify_pending.store(true);
+      if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
+    };
     // Capability gate — lets /api/settings and /api/show/screen know that
     // the mining-pool earnings slot is useless on a solo pool (no per-user
     // payout to render; the screen would forever show "0 SATS"). Evaluated

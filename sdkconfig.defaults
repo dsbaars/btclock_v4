@@ -16,7 +16,55 @@ CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# Drop runtime logs to WARN — strips ESP_LOGI format-string rodata
+# from the linked image. Serial console still prints WARN/ERROR.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+# Cap *compile-time* log level at WARN so ESP_LOGI/ESP_LOGD/ESP_LOGV
+# bodies are eliminated entirely (default would otherwise track
+# DEFAULT_LEVEL but still leave INFO compiled in).
+CONFIG_LOG_MAXIMUM_LEVEL_WARN=y
+
+# Size-trim mbedTLS: device only verifies server certs and signs
+# Nostr events; it never writes PEM/X.509 CSRs, never runs the
+# crypto self-test suite, and never parses PKCS#7 bundles (Secure
+# Boot V2 isn't enabled). Error-string tables drop tens of KiB of
+# diagnostic strings.
+CONFIG_MBEDTLS_ERROR_STRINGS=n
+CONFIG_MBEDTLS_SELF_TEST=n
+CONFIG_MBEDTLS_PEM_WRITE_C=n
+# NOTE: PK_WRITE_C must stay on — wpa_supplicant pulls in
+# mbedtls_pk_write_{pubkey,key}_der via crypto_mbedtls-{rsa,ec}.c.
+CONFIG_MBEDTLS_X509_CSR_PARSE_C=n
+CONFIG_MBEDTLS_PKCS7_C=n
+# Brainpool curves are not used by any public CA we connect to
+# (LE / Cloudflare / GTS chains use SECP256R1/384R1). secp521r1 is
+# similarly unused. Curve25519 is kept for completeness — disabling
+# it currently saves <1 KiB and risks future TLS 1.3 hosts.
+CONFIG_MBEDTLS_ECP_DP_BP256R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
+CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
+
+# GDB stub costs ~6 KiB of flash and we have no in-field debugger.
+# Panic handler still reboots; coredump-to-flash is already off.
+CONFIG_ESP_GDBSTUB_ENABLED=n
+
+# IPv6 unused: btclock only talks to IPv4 endpoints (ws.btclock.dev,
+# relay.primal.net, mempool.space, pool APIs) and mDNS works over
+# IPv4 link-local. Disabling drops ~8-12 KiB of lwIP code/data and a
+# chunk of the IPv6 ND6 neighbor tables out of bss.
+CONFIG_LWIP_IPV6=n
+
+# Trim assertions to "silent": full assertion strings include
+# __FILE__ + __LINE__ rodata for every assert() in the IDF tree;
+# dropping to silent keeps the abort-on-fail behaviour but strips
+# the diagnostic strings. Trades crash-localisation for ~10-20 KiB.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+CONFIG_HAL_ASSERTION_SILENT=y
+
+# Interrupt-context backtrace adds rodata + IRAM helpers to the
+# panic path; we read panics off serial / coredump suffices.
+CONFIG_FREERTOS_INTERRUPT_BACKTRACE=n
 
 CONFIG_FREERTOS_HZ=1000
 
@@ -34,6 +82,16 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # upstream cert is rotated under an existing trusted CA.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# IDF v6 split cross-signed chain handling behind a new Kconfig
+# (mbedTLS 4.x no longer auto-walks alternate trust paths). Both
+# ws.btclock.dev and relay.primal.net present chains that terminate
+# at GTS Root R4 *cross-signed by GlobalSign Root CA* — without this
+# knob, the bundle search keys on the topmost cert's issuer
+# (GlobalSign Root CA) and fails to recognise GTS Root R4 already in
+# the bundle as a trusted self-signed root, which surfaces as
+# "No matching trusted root certificate found" + handshake failure.
+# Costs ~700 B of heap at handshake; required for v6 parity with v5.x.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_CROSS_SIGNED_VERIFY=y
 
 # TLS buffer tuning — Rev B has three concurrent TLS clients (price WSS
 # to ws.btclock.dev, Nostr WSS to relay.primal.net, mining-pool HTTPS
@@ -59,6 +117,27 @@ CONFIG_MBEDTLS_ASYMMETRIC_CONTENT_LEN=y
 CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=16384
 CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=2048
 CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+
+# Free private key + DHM data after the handshake completes. We have no
+# client cert (every TLS client uses esp_crt_bundle for server-cert
+# verification only — see crt_bundle_attach call sites in pool_base.cpp,
+# relay_client.cpp, ota_manager.cpp, mempool_kraken_source.cpp), and
+# every connection builds a fresh esp_tls context (esp_tls_init() at
+# tcp_transport/transport_ssl.c:72,112) so the freed config is never
+# needed for a second handshake on the same SSL object. The companion
+# CONFIG_MBEDTLS_DYNAMIC_FREE_CA_CERT=y is already implied by the
+# default since we depend on FREE_CONFIG_DATA — the cert bundle is
+# re-attached on each new connection via cfg->crt_bundle_attach.
+CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
+
+# Route mbedtls dynamic allocations through the default IDF malloc
+# (PSRAM-with-internal-fallback). Combined with
+# SPIRAM_MALLOC_ALWAYSINTERNAL=16384 above, every allocation < 16 KiB
+# (including handshake scratch + RNG state where latency matters)
+# stays in DRAM, while the larger session/cert structures spill to
+# PSRAM. Trades a small handshake-latency hit on the spilled-to-PSRAM
+# allocations for ~10s of KiB of internal heap returned to the system.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 
 CONFIG_PARTITION_TABLE_CUSTOM=y
 # Flash size + partition CSV live in the per-variant sdkconfig.defaults.<rev>.

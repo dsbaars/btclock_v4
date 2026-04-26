@@ -11,6 +11,8 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 #include "tls_gate/tls_gate.hpp"
 
 namespace btclock {
@@ -70,6 +72,16 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
 
 PoolDataSource::PoolDataSource() = default;
 PoolDataSource::~PoolDataSource() { Stop(); }
+
+uint32_t PoolDataSource::poll_interval_ms() const {
+  // Mirrors the schema bounds for kPoolPollSec (10..3600 s, default 60).
+  // Read every tick so a live PATCH applies on the next poll.
+  btclock::Prefs settings(btclock::prefs::kSettingsNs);
+  uint32_t s = settings.GetU32(btclock::prefs::kPoolPollSec, 60);
+  if (s < 10) s = 10;
+  if (s > 3600) s = 3600;
+  return s * 1000;
+}
 
 esp_err_t PoolDataSource::Start(DataHub& hub) {
   hub_ = &hub;
@@ -143,7 +155,7 @@ void PoolDataSource::PollOnce() {
 
   const std::string token = auth_token();
   if (!token.empty()) {
-    esp_http_client_set_header(client, "Pool-Auth-Token", token.c_str());
+    esp_http_client_set_header(client, auth_header_name(), token.c_str());
   }
   esp_http_client_set_header(client, "Accept", "application/json");
 

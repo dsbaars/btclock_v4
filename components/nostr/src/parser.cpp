@@ -3,7 +3,7 @@
 // Intentionally hand-rolled rather than cJSON-backed so the same file
 // compiles cleanly in the host-test build (no ESP-IDF headers, no
 // managed_components fetch). cJSON remains available for components
-// that want it via `REQUIRES json` in CMake.
+// that want it via `REQUIRES cjson` in CMake.
 //
 // Scope limits (documented in parser.hpp): no \u escape decoding, no
 // deep recursion (we only walk one level of tag arrays), no signature

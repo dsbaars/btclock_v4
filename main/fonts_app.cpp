@@ -2,6 +2,8 @@
 
 #include <cstddef>
 
+#include "font_bundle_map.hpp"
+
 namespace btclock {
 
 #ifdef BTCLOCK_WASM_BUILD
@@ -15,8 +17,10 @@ AppFonts::AppFonts()
       inter_bold_(kInterBoldTtf, kInterBoldTtfSize),
       source_serif_(kSourceSerifTtf, kSourceSerifTtfSize),
       source_serif_bold_(kSourceSerifBoldTtf, kSourceSerifBoldTtfSize),
+#ifndef BTCLOCK_BOARD_REV_A
       merriweather_(kMerriweatherTtf, kMerriweatherTtfSize),
       merriweather_bold_(kMerriweatherBoldTtf, kMerriweatherBoldTtfSize),
+#endif
       bitter_(kBitterTtf, kBitterTtfSize),
       bitter_bold_(kBitterBoldTtf, kBitterBoldTtfSize),
       atkinson_(kAtkinsonTtf, kAtkinsonTtfSize),
@@ -45,11 +49,13 @@ AppFonts::AppFonts()
       source_serif_bold_(
           kSourceSerifBoldTtf,
           SizeBetween(kSourceSerifBoldTtf, kSourceSerifBoldTtfEnd)),
+#ifndef BTCLOCK_BOARD_REV_A
       merriweather_(kMerriweatherTtf,
                     SizeBetween(kMerriweatherTtf, kMerriweatherTtfEnd)),
       merriweather_bold_(
           kMerriweatherBoldTtf,
           SizeBetween(kMerriweatherBoldTtf, kMerriweatherBoldTtfEnd)),
+#endif
       bitter_(kBitterTtf, SizeBetween(kBitterTtf, kBitterTtfEnd)),
       bitter_bold_(kBitterBoldTtf,
                    SizeBetween(kBitterBoldTtf, kBitterBoldTtfEnd)),
@@ -63,28 +69,46 @@ AppFonts::AppFonts()
 #endif
 
 FontBundle AppFonts::Bundle(FontFamily f) const {
-  switch (f) {
-    case FontFamily::kAntonio:
-      // Antonio has no separate bold in the current asset set. Use
-      // Antonio for both slots — the markdown '*bold*' marker still
-      // parses but renders in the same weight.
-      return {&antonio_, &antonio_};
-    case FontFamily::kOswald:
-      return {&oswald_, &oswald_bold_};
-    case FontFamily::kInter:
-      return {&inter_, &inter_bold_};
-    case FontFamily::kSourceSerif:
-      return {&source_serif_, &source_serif_bold_};
-    case FontFamily::kMerriweather:
-      return {&merriweather_, &merriweather_bold_};
-    case FontFamily::kBitter:
-      return {&bitter_, &bitter_bold_};
-    case FontFamily::kAtkinson:
-      return {&atkinson_, &atkinson_bold_};
+  // Rev A drops the Merriweather pair from EMBED_FILES (4 MB flash
+  // budget) — see ResolveBundleSlots's substitution branch.
+#ifdef BTCLOCK_BOARD_REV_A
+  constexpr bool kHasMerriweather = false;
+#else
+  constexpr bool kHasMerriweather = true;
+#endif
+  const auto slots = ResolveBundleSlots(f, kHasMerriweather);
+  return {SlotToFont(slots.regular), SlotToFont(slots.bold)};
+}
+
+const Font* AppFonts::SlotToFont(FontSlot s) const {
+  switch (s) {
+    case FontSlot::kAntonio:             return &antonio_;
+    case FontSlot::kOswaldRegular:       return &oswald_;
+    case FontSlot::kOswaldBold:          return &oswald_bold_;
+    case FontSlot::kInterRegular:        return &inter_;
+    case FontSlot::kInterBold:           return &inter_bold_;
+    case FontSlot::kSourceSerifRegular:  return &source_serif_;
+    case FontSlot::kSourceSerifBold:     return &source_serif_bold_;
+    case FontSlot::kMerriweatherRegular:
+#ifdef BTCLOCK_BOARD_REV_A
+      // Slot is unreachable on Rev A — ResolveBundleSlots redirects
+      // kMerriweather to the source-serif slots before we get here.
+      return &source_serif_;
+#else
+      return &merriweather_;
+#endif
+    case FontSlot::kMerriweatherBold:
+#ifdef BTCLOCK_BOARD_REV_A
+      return &source_serif_bold_;
+#else
+      return &merriweather_bold_;
+#endif
+    case FontSlot::kBitterRegular:       return &bitter_;
+    case FontSlot::kBitterBold:          return &bitter_bold_;
+    case FontSlot::kAtkinsonRegular:     return &atkinson_;
+    case FontSlot::kAtkinsonBold:        return &atkinson_bold_;
   }
-  // Atkinson is the body-text fallback (legibility-first replacement
-  // for the retired DejaVu pair).
-  return {&atkinson_, &atkinson_bold_};
+  return &atkinson_;
 }
 
 void AppFonts::SetFamily(FontFamily f) {
@@ -103,7 +127,11 @@ void AppFonts::SetFamily(FontFamily f) {
       regular = &source_serif_;
       break;
     case FontFamily::kMerriweather:
+#ifdef BTCLOCK_BOARD_REV_A
+      regular = &source_serif_;
+#else
       regular = &merriweather_;
+#endif
       break;
     case FontFamily::kBitter:
       regular = &bitter_;

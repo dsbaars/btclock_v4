@@ -51,7 +51,7 @@ void RenderBitcoinSupplyScreen(
   //   - a single char (digit or ' ') from the percentage / big-chars
   //     layouts
   //   - a 3-char group "NNN" / "  1" from the small-chars layout
-  //   - the special " % " marker that paints as a "%" digit on the
+  //   - the special "%" marker that paints as a "%" digit on the
   //     trailing panel of the percent mode.
   struct Cell {
     std::string s;      // "" → don't paint; single char or 3-char group

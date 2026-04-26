@@ -65,7 +65,7 @@ void RenderBtcPriceScreen(
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& currency, const std::string& price,
     const std::string& prev_price, const char* symbol_utf8,
-    bool suffix_price, bool mow_mode,
+    bool suffix_price, bool mow_mode, bool share_dot,
     bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Price layout needs at least 7 panels");
   // `cell_diff_reset` forces every cell to repaint (sentinel prev_price);
@@ -99,7 +99,7 @@ void RenderBtcPriceScreen(
                          std::string& label_out) {
     std::string lbl;
     auto cells = LayoutBtcPriceSuffixStrings<N>(pi, currency, symbol_utf8,
-                                                mow_mode, lbl);
+                                                mow_mode, share_dot, lbl);
     label_out = lbl;
     for (size_t i = 0; i < N; ++i) {
       cells_out[i] = cells[i];
@@ -201,10 +201,10 @@ void RenderBtcPriceScreen(
 template void RenderBtcPriceScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    const std::string&, const char*, bool, bool, bool, bool);
+    const std::string&, const char*, bool, bool, bool, bool, bool);
 template void RenderBtcPriceScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&,
-    const std::string&, const char*, bool, bool, bool, bool);
+    const std::string&, const char*, bool, bool, bool, bool, bool);
 
 }  // namespace btclock

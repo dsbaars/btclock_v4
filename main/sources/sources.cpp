@@ -186,6 +186,15 @@ void WireDataSources(AppCtx& ctx) {
   // Buttons come up after first paint so early clicks don't race a
   // blank display.
   ctx.buttons = std::make_unique<ButtonReader>(*ctx.mcp, ctx.button_q);
+  // inverseButtons swaps button-1↔button-N at post time so users with
+  // an upside-down enclosure get nav/pause aligned with the physical
+  // layout. Boot-only read; live PATCH requires a reboot per
+  // SETTINGS.md.
+  {
+    Prefs settings_for_btn(prefs::kSettingsNs);
+    ctx.buttons->SetInverted(
+        settings_for_btn.GetBool(prefs::kInverseButtons, false));
+  }
   ESP_ERROR_CHECK(ctx.buttons->Start());
 
   PostLedEvent(LedEvent::kSetIdle);

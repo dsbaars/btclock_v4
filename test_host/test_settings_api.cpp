@@ -759,7 +759,18 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // boot-only count 19 -> 18.
   // 2026-04-24: hideLeadZero added for the time-screen leading-zero
   // toggle; field count 63 -> 64, boot-only count unchanged (runtime).
-  CHECK(btclock::settings::kFields.size() == 64);
+  // 2026-04-26 bd btclock_v4-6hq / btclock_v4-gku: bitaxePollSec and
+  // poolPollSec exposed as user-configurable poll cadences (both runtime
+  // — no reboot needed); field count 64 -> 66, boot-only count unchanged.
+  // 2026-04-26 bd btclock_v4-8i2 / btclock_v4-htp: viabtcApiKey,
+  // foundryApiKey, foundrySubacct added for ViaBTC + Foundry USA Pool
+  // support (all runtime — pool source re-reads on each poll, no reboot
+  // needed); field count 66 -> 69, boot-only count unchanged.
+  // 2026-04-26 follow-up: dropped viabtcApiKey / foundryApiKey /
+  // foundrySubacct in favour of overloading the shared miningPoolUser
+  // slot (with per-pool secret-suppression) plus the new generic
+  // miningPoolWorker secondary slot. Field count 69 -> 67.
+  CHECK(btclock::settings::kFields.size() == 67);
   // Boot-only count: hostnamePrefix, mdnsEnabled, otaEnabled,
   // httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, fontName,
   // mempoolInstance, mempoolSecure, dataSource, ceEndpoint,
@@ -1172,7 +1183,7 @@ TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
       {"mowMode", false},
       {"nostrZapNotify", false},
       {"otaEnabled", true},
-      {"poolGlobalStats", false},
+      {"poolGlobalStats", true},
       {"refrScrnChange", false},
       {"scrnRestoreZap", true},
       {"stealFocus", false},
@@ -1221,7 +1232,7 @@ TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
       {"httpAuthUser", "btclock"},
       {"localPoolHost", "umbrel.local:2019"},
       {"mempoolInstance", "mempool.space"},
-      {"miningPoolName", "ocean"},
+      {"miningPoolName", "noderunners"},
       {"miningPoolUser", "38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy"},
       {"nostrPubKey",
        "642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288"},

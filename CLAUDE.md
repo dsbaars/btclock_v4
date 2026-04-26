@@ -1,9 +1,11 @@
 # Project Instructions for AI Agents
 
-This is **btclock_v4** — an ESP-IDF v5.5 C++ firmware for BTClock. The
+This is **btclock_v4** — an ESP-IDF v6.0 C++ firmware for BTClock. The
 project was extracted from `btclock_v3_fci/idf_cpp_proto/` on YYYY-MM-DD;
 see the old repo at https://git.btclock.dev/btclock/btclock_v3 for
-Arduino-era history and the original port's day-1 commits.
+Arduino-era history and the original port's day-1 commits. The codebase
+was ported from v5.5 to v6.0 in commits `aba83af` + `520a371`; build
+under v5.5.4 still works as a fallback but v6.0 is the supported toolchain.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
@@ -60,7 +62,7 @@ missing, and `esptool` runs from a stale PATH. Agents keep missing
 this — don't.
 
 ```bash
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh
 ```
 
 The `Bash` tool in Claude Code does NOT persist shell state between
@@ -68,7 +70,7 @@ calls, so source it inline (prefix with `&&`) on every build / flash
 command, e.g.:
 
 ```bash
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
   idf.py -B build-rev-b -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-b/sdkconfig build
 ```
 
@@ -76,7 +78,7 @@ source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
 
 ```bash
 # ALWAYS source first:
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh
 
 # BTCLOCK_BOARD picks the pin map (REV_A / REV_B / V8). BTCLOCK_PANEL
 # picks the EPD geometry (2_13 / 2_9 / 7_5). The two are independent —
@@ -116,14 +118,14 @@ add the header.
 from a wrong Python and port-enumeration silently fails:
 
 ```bash
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh
 ```
 
 Port is NOT stable across sessions — re-enumerate every time. The
 board's MAC is the only reliable identifier:
 
 ```bash
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
   for p in /dev/cu.usbmodem*; do
     esptool.py --port "$p" flash_id 2>&1 | grep -E 'MAC|flash_size|Chip is' | \
       sed "s|^|$p: |"
@@ -148,7 +150,7 @@ combo gets a bring-up pass.
 Flash firmware (uses the `flash_args` file the build produced):
 
 ```bash
-source /Users/padjuri/esp/v5.5.4/esp-idf/export.sh && \
+source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
   cd build-rev-a && \
   esptool.py --chip esp32s3 --port <PORT> -b 460800 \
     --before default_reset --after hard_reset write_flash "@flash_args"

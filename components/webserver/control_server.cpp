@@ -4,6 +4,7 @@
 #include "heap_metrics.hpp"
 #include "light_metrics.hpp"
 #include "mime.hpp"
+#include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 #include "show_text_parse.hpp"
 #include "sse_server.hpp"
 #include "url_decode.hpp"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -252,8 +254,15 @@ cJSON* BuildLightsStatusArray(const LedsIface::Status& st) {
   return arr;
 }
 
-// Read the full request body into a malloc'd, NUL-terminated buffer.
-// Caller owns + frees. Returns nullptr on error.
+// Read the full request body into a NUL-terminated buffer. Caller owns
+// + must release with heap_caps_free (works for both PSRAM- and
+// internal-heap allocations). Returns nullptr on error.
+//
+// PSRAM-first with internal-heap fallback: /api/show/* bodies can run
+// to a few KiB and only live for the duration of the handler, so
+// parking them in PSRAM avoids crowding the same DRAM that mbedtls
+// fights over during a concurrent handshake. Latency is irrelevant —
+// cJSON walks the buffer linearly once.
 //
 // Hoisted to the top-of-file anonymous namespace so every HandleXxx
 // method below can use it — historically only the /api/lights/set
@@ -262,7 +271,9 @@ cJSON* BuildLightsStatusArray(const LedsIface::Status& st) {
 // pattern and live earlier in the file.
 char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
   if (req->content_len == 0 || req->content_len > max_bytes) return nullptr;
-  char* buf = static_cast<char*>(malloc(req->content_len + 1));
+  char* buf = static_cast<char*>(heap_caps_malloc_prefer(
+      req->content_len + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
+      MALLOC_CAP_8BIT));
   if (!buf) return nullptr;
   int total = 0;
   while (total < static_cast<int>(req->content_len)) {
@@ -271,7 +282,7 @@ char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
                        static_cast<size_t>(
                            static_cast<int>(req->content_len) - total));
     if (r <= 0) {
-      free(buf);
+      heap_caps_free(buf);
       return nullptr;
     }
     total += r;
@@ -398,6 +409,9 @@ esp_err_t ControlServer::Start() {
   reg("/api/dnd/disable", HTTP_POST, TrampolineDndDisable);
   reg("/api/action/pause", HTTP_POST, TrampolineActionPause);
   reg("/api/action/timer_restart", HTTP_POST, TrampolineActionTimerRestart);
+  reg("/api/action/simulate_zap", HTTP_POST, TrampolineActionSimulateZap);
+  reg("/api/action/clear_pool_logos", HTTP_POST,
+      TrampolineActionClearPoolLogos);
   reg("/api/firmware/auto_update", HTTP_POST, TrampolineFirmwareAutoUpdate);
   reg("/upload/firmware", HTTP_POST, TrampolineUploadFirmware);
   reg("/api/factory_reset", HTTP_POST, TrampolineFactoryReset);
@@ -543,6 +557,14 @@ esp_err_t ControlServer::TrampolineActionPause(httpd_req_t* req) {
 esp_err_t ControlServer::TrampolineActionTimerRestart(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)
       ->HandleActionTimerRestart(req);
+}
+esp_err_t ControlServer::TrampolineActionSimulateZap(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)
+      ->HandleActionSimulateZap(req);
+}
+esp_err_t ControlServer::TrampolineActionClearPoolLogos(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)
+      ->HandleActionClearPoolLogos(req);
 }
 esp_err_t ControlServer::TrampolineFirmwareAutoUpdate(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)
@@ -827,7 +849,7 @@ esp_err_t ControlServer::HandleFactoryReset(httpd_req_t* req) {
   constexpr std::size_t kMaxBody = 256;
   char* body = ReadFullBody(req, kMaxBody);
   std::string body_str = body ? std::string(body) : std::string();
-  free(body);
+  heap_caps_free(body);
 
   cJSON* root = cJSON_Parse(body_str.c_str());
   const cJSON* confirm =
@@ -981,7 +1003,7 @@ esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
     constexpr std::size_t kMaxBody = 1024;
     char* body = ReadFullBody(req, kMaxBody);
     std::string body_str = body ? std::string(body) : std::string();
-    free(body);
+    heap_caps_free(body);
     parsed = ParseShowTextBody(body_str, n_panels);
   }
   if (!parsed.ok) {
@@ -1013,7 +1035,7 @@ esp_err_t ControlServer::HandleShowCustom(httpd_req_t* req) {
     return ESP_FAIL;
   }
   std::string body_str(body);
-  free(body);
+  heap_caps_free(body);
 
   const std::size_t n_panels = cfg_.num_screens ? cfg_.num_screens : 7;
   ShowTextParseResult parsed = ParseShowCustomBody(body_str, n_panels);
@@ -1286,7 +1308,7 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cJSON* root = cJSON_Parse(body);
-  free(body);
+  heap_caps_free(body);
   if (!root || !cJSON_IsArray(root)) {
     if (root) cJSON_Delete(root);
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json");
@@ -2073,6 +2095,29 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     }
   }
 
+  // Runtime-editable frontlight keys: re-read the canonical settings
+  // namespace and push the new values into FrontlightController so a
+  // PATCH lands without a reboot. Without this, init_hardware.cpp's
+  // boot-time NVS read is the only sync point and luxLightToggle /
+  // flOffWhenDark / flMaxBrightness / flEffectDelay / flAlwaysOn /
+  // flDisable / flFlashOnUpd would each persist to NVS but never
+  // reach the controller until restart. bd btclock_v4-7xv /
+  // btclock_v4-63p.
+  if (cfg_.on_frontlight_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kLuxLightToggle ||
+          k == btclock::prefs::kFlOffWhenDark ||
+          k == btclock::prefs::kFlMaxBrightness ||
+          k == btclock::prefs::kFlEffectDelay ||
+          k == btclock::prefs::kFlAlwaysOn ||
+          k == btclock::prefs::kFlDisable ||
+          k == btclock::prefs::kFlFlashOnUpd) {
+        cfg_.on_frontlight_changed();
+        break;
+      }
+    }
+  }
+
   // Runtime-editable nostr keys: rebuild the zap listener so the new
   // pubkey / gate values take effect without a reboot. nostrRelay and
   // nostrPubKey are boot_only in the schema and trigger the generic
@@ -2186,6 +2231,60 @@ esp_err_t ControlServer::HandleActionTimerRestart(httpd_req_t* req) {
   cfg_.timer->Restart();
   BroadcastStatus();
   return SendEmptyOk(req);
+}
+
+esp_err_t ControlServer::HandleActionSimulateZap(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!cfg_.simulate_zap) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "simulate_zap not wired");
+    return ESP_FAIL;
+  }
+  // Defaults match the spec — small enough to land in a single-cell
+  // amount but large enough to look credible during QA.
+  int64_t amount_sats = 21000;
+  std::string message = "test zap";
+
+  // Body is optional. Empty / oversized / malformed bodies fall back
+  // to defaults silently — the simulator is a dev/QA tool, not an
+  // input-validation surface, so a bad body shouldn't 400.
+  constexpr std::size_t kMaxBody = 1024;
+  if (req->content_len > 0 && req->content_len <= kMaxBody) {
+    if (char* body = ReadFullBody(req, kMaxBody)) {
+      if (cJSON* root = cJSON_Parse(body)) {
+        const cJSON* amt = cJSON_GetObjectItemCaseSensitive(root, "amount_sats");
+        if (cJSON_IsNumber(amt)) {
+          const double v = amt->valuedouble;
+          if (v < 0.0) amount_sats = 0;
+          else if (v > static_cast<double>(INT64_MAX)) amount_sats = INT64_MAX;
+          else amount_sats = static_cast<int64_t>(v);
+        }
+        const cJSON* msg = cJSON_GetObjectItemCaseSensitive(root, "message");
+        if (cJSON_IsString(msg) && msg->valuestring) {
+          message.assign(msg->valuestring);
+          if (message.size() > 256) message.resize(256);
+        }
+        cJSON_Delete(root);
+      }
+      heap_caps_free(body);
+    }
+  }
+
+  cfg_.simulate_zap(amount_sats, std::move(message));
+  return SendEmptyOk(req);
+}
+
+esp_err_t ControlServer::HandleActionClearPoolLogos(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Best-effort: clear what's there, log a count, never error out so
+  // the WebUI button is harmless on a fresh device. The next pool
+  // selection (or refetch trigger from the user picking the pool
+  // again) re-downloads.
+  const int n = btclock::pool_logos::ClearAllCached();
+  char body[64];
+  std::snprintf(body, sizeof(body), "{\"removed\":%d}", n < 0 ? 0 : n);
+  httpd_resp_set_type(req, "application/json");
+  return httpd_resp_sendstr(req, body);
 }
 
 }  // namespace btclock

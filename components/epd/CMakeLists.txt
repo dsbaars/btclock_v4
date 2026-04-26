@@ -17,7 +17,7 @@ idf_component_register(
          "src/drivers/uc8179_base.cpp"
          "src/drivers/gdey075t7.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES driver mcp23017
+    REQUIRES esp_driver_gpio esp_driver_spi mcp23017
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

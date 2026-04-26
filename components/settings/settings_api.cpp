@@ -276,6 +276,24 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   AddBool(root, "httpAuthPassSet",
           !prefs.GetString(prefs::kHttpAuthPass, "").empty());
   AddBool(root, "otaPassSet", !prefs.GetString(prefs::kOtaPass, "").empty());
+
+  // miningPoolUser is normally a public identifier (payout address,
+  // username, worker name) and rides plaintext in the EmitField loop
+  // above. For pools whose user slot holds a secret API key (ViaBTC,
+  // Foundry), redact the raw field after the loop and surface a
+  // miningPoolUserSet companion bool — same protocol as httpAuthPass.
+  // The list of secret-user pools is intentionally short and lives here
+  // so settings doesn't depend on each pool component; new keyed pools
+  // must be added here AND in main/io/mining_pool_selector.cpp.
+  static const std::set<std::string> kSecretUserPools = {"viabtc",
+                                                         "foundry_usa"};
+  const std::string active_pool =
+      prefs.GetString(prefs::kMiningPoolName, "noderunners");
+  if (kSecretUserPools.count(active_pool) != 0) {
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "miningPoolUser");
+    AddBool(root, "miningPoolUserSet",
+            !prefs.GetString(prefs::kMiningPoolUser, "").empty());
+  }
   return root;
 }
 

@@ -39,6 +39,11 @@ struct RenderPrefs {
   bool block_fee_dec;
   bool suffix_price;
   bool mow_mode;
+  // suffixShareDot: when the suffix layout fits the K/M/B label form,
+  // pack the decimal point into the slot before it so the digits get
+  // one more slot of width (v3 parsePriceData shareDot branch). No
+  // effect on the overflow path or the plain integer path.
+  bool suffix_share_dot;
   // Clock screen: drop the leading zero on single-digit hours.
   bool hide_lead_zero;
   // verticalDesc: rotate label panels 90° CCW so "BLOCK/HEIGHT" etc.
@@ -64,6 +69,7 @@ RenderPrefs ReadRenderPrefs() {
   out.block_fee_dec    = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
   out.suffix_price     = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
   out.mow_mode         = prefs.GetBool(btclock::prefs::kMowMode, false);
+  out.suffix_share_dot = prefs.GetBool(btclock::prefs::kSuffixShareDot, false);
   out.hide_lead_zero   = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
   out.vertical_desc    = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
   out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
@@ -455,6 +461,21 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
   // the paint itself is full or partial, but ShouldRender is just
   // "something changed, re-draw".
   if (dirty_ || screen_change_pending_) return true;
+  // minSecPriceUpd: gate price-bearing screens on a min-elapsed window
+  // since the last EPD price write. Burn-protection — the WS price
+  // stream can fire several times a second on volatile candles; without
+  // this the EPD would repaint that often. Pref read per-call so a live
+  // PATCH applies on the next data push without a reboot. The `dirty_`
+  // / `screen_change_pending_` early-out above means nav and force-full
+  // bypass the throttle so user input always paints.
+  auto price_throttle_blocks = [&]() {
+    Prefs throttle_prefs(btclock::prefs::kSettingsNs);
+    const uint32_t min_s = throttle_prefs.GetU32(
+        btclock::prefs::kMinSecPriceUpd, 30);
+    if (min_s == 0) return false;
+    const int64_t elapsed_ms = MsNow() - last_price_apply_ms_;
+    return elapsed_ms < static_cast<int64_t>(min_s) * 1000;
+  };
   switch (current_kind()) {
     case ScreenType::kBlockHeight:
       return snap.block_height &&
@@ -462,7 +483,8 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
     case ScreenType::kMoscowTime:
     case ScreenType::kBtcPrice: {
       const auto* p = snap.PriceOf(current_currency());
-      return p != nullptr && *p != last_rendered_price_;
+      if (p == nullptr || *p == last_rendered_price_) return false;
+      return !price_throttle_blocks();
     }
     case ScreenType::kBlockFeeRate: {
       // Prefer the precise double when available; fall back to the
@@ -496,8 +518,16 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
     case ScreenType::kMarketCap: {
       const auto* p = snap.PriceOf(current_currency());
       if (!p || !snap.block_height) return false;
-      return *p != last_rendered_cap_price_ ||
-             *snap.block_height != last_rendered_cap_height_;
+      const bool height_changed =
+          *snap.block_height != last_rendered_cap_height_;
+      const bool price_changed = *p != last_rendered_cap_price_;
+      if (!height_changed && !price_changed) return false;
+      // Block-height changes always paint (block source is rare and
+      // visually informative); only the price-only delta is throttled.
+      if (!height_changed && price_changed && price_throttle_blocks()) {
+        return false;
+      }
+      return true;
     }
     case ScreenType::kMiningPoolHashrate:
       return snap.pool.hashrate != last_rendered_pool_hashrate_.hashrate ||
@@ -619,6 +649,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                                rp.use_mscw_time, force_full,
                                rp.vertical_desc);
         last_rendered_price_ = *p;
+        last_price_apply_ms_ = now_ms_policy;
       }
       break;
     case ScreenType::kBtcPrice:
@@ -626,9 +657,11 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         RenderBtcPriceScreen(panels, fb, fonts, ccy, *p,
                              force_repaint ? "" : last_rendered_price_,
                              CurrencySymbolUtf8(ccy),
-                             rp.suffix_price, rp.mow_mode, force_full,
+                             rp.suffix_price, rp.mow_mode,
+                             rp.suffix_share_dot, force_full,
                              rp.vertical_desc);
         last_rendered_price_ = *p;
+        last_price_apply_ms_ = now_ms_policy;
       }
       break;
     case ScreenType::kBlockFeeRate: {
@@ -714,6 +747,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
             rp.mcap_big_char, force_full, rp.vertical_desc);
         last_rendered_cap_price_ = *p;
         last_rendered_cap_height_ = *snap.block_height;
+        last_price_apply_ms_ = now_ms_policy;
       }
       break;
     case ScreenType::kMiningPoolHashrate: {
@@ -835,6 +869,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   pti.use_mscw_time     = rp.use_mscw_time;
   pti.suffix_price      = rp.suffix_price;
   pti.mow_mode          = rp.mow_mode;
+  pti.share_dot         = rp.suffix_share_dot;
   pti.hide_lead_zero    = rp.hide_lead_zero;
   // Bitaxe mirror fields. pti copies the raw snapshot values so the
   // panel_texts builder formats identically to what the EPD renderer

@@ -84,10 +84,15 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 64> kFields = {{
+inline constexpr std::array<FieldSpec, 67> kFields = {{
     // bitaxe — v3 DEFAULT_BITAXE_ENABLED=false, DEFAULT_BITAXE_HOSTNAME="bitaxe1".
+    // bitaxePollSec: LAN poll cadence (seconds). Runtime — BitaxeSource::Run()
+    // re-reads NVS each tick so a PATCH lands on the next poll without reboot
+    // (bd btclock_v4-6hq). Bounds 5..300 keep the AxeOS HTTP server from being
+    // hammered while still allowing fast updates during bring-up.
     {prefs::kBitaxeEnabled,    FieldKind::kBool,   false, 0, 0,          false, 0, {}},
     {prefs::kBitaxeHostname,   FieldKind::kString, false, 0, 0,          false, 0, "bitaxe1"},
+    {prefs::kBitaxePollSec,    FieldKind::kUint,   false, 5, 300,        false, 10, {}},
     // v3 DEFAULT_BLOCK_FEE_DECIMALS=true, DEFAULT_BLOCK_FLASH_COLOR=0xE04300.
     {prefs::kBlockFeeDec,      FieldKind::kBool,   false, 0, 0,          true,  0, {}},
     {prefs::kBlockFlashColor,  FieldKind::kUint,   false, 0, 0xFFFFFFu,  false, 0xE04300, {}},
@@ -175,10 +180,24 @@ inline constexpr std::array<FieldSpec, 64> kFields = {{
     // mining pool — v3 DEFAULT_MINING_POOL_NAME="ocean",
     // DEFAULT_MINING_POOL_STATS_ENABLED=false,
     // DEFAULT_MINING_POOL_USER="38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy".
-    {prefs::kMiningPoolName,   FieldKind::kString, false, 0, 0,          false, 0, "ocean"},
+    // v4 default flipped to "noderunners" alongside `poolGlobalStats=true`
+    // so a fresh device has a working data source on first connect (the
+    // ocean address is per-user and can't be a sensible global default
+    // once the runtime logo fetcher of bd btclock_v4-5yi means we don't
+    // ship a vendored ocean bitmap any more).
+    {prefs::kMiningPoolName,   FieldKind::kString, false, 0, 0,          false, 0, "noderunners"},
     {prefs::kMiningPoolStats,  FieldKind::kBool,   false, 0, 0,          false, 0, {}},
     {prefs::kMiningPoolUser,   FieldKind::kString, false, 0, 0,          false, 0,
      "38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy"},
+    // poolWorker: optional secondary identifier scoped under
+    // miningPoolUser. NVS-key short form (15-char cap) of what the
+    // settings reference docs call the "worker / subaccount slot".
+    // Pool semantics — Foundry: subaccount path segment; Braiins/CKPool:
+    // worker name (currently unused by their parsers, but surfaced so
+    // the WebUI can prompt for it once they consume it). Always plain
+    // in GET — the secret bit lives on miningPoolUser via the active
+    // pool's user_is_secret() override.
+    {prefs::kPoolWorker,       FieldKind::kString, false, 0, 0,          false, 0, {}},
     // v3 DEFAULT_MOW_MODE=false.
     {prefs::kMowMode,          FieldKind::kBool,   false, 0, 0,          false, 0, {}},
     // nostr — v3 DEFAULT_NOSTR_NPUB=..., DEFAULT_NOSTR_RELAY=relay.primal.net,
@@ -193,11 +212,20 @@ inline constexpr std::array<FieldSpec, 64> kFields = {{
     // GET emitter (v3's settings.cpp echoes only `otaPassSet`).
     {prefs::kOtaEnabled,       FieldKind::kBool,   true,  0, 0,          true,  0, {}},
     {prefs::kOtaPass,          FieldKind::kString, true,  0, 0,          false, 0, {}},
-    // v3 DEFAULT_POOL_GLOBAL_STATS=false, DEFAULT_MINING_POOL_LOGOS_URL=
-    // the shared mining-pool-logos repo on git.btclock.dev.
-    {prefs::kPoolGlobalStats,  FieldKind::kBool,   false, 0, 0,          false, 0, {}},
+    // v3 DEFAULT_POOL_GLOBAL_STATS=false; v4 flips to true so the new
+    // default `noderunners` pool shows the pool-wide aggregate out of
+    // the box (no per-user creds required). poolLogosUrl feeds the
+    // runtime logo fetcher introduced in bd btclock_v4-5yi.
+    {prefs::kPoolGlobalStats,  FieldKind::kBool,   false, 0, 0,          true,  0, {}},
     {prefs::kPoolLogosUrl,     FieldKind::kString, false, 0, 0,          false, 0,
      "https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main"},
+    // poolPollSec: mining-pool HTTPS poll cadence (seconds). Runtime —
+    // PoolDataSource::poll_interval_ms() re-reads NVS each tick so a PATCH
+    // lands on the next poll without reboot (bd btclock_v4-gku). Bounds
+    // 10..3600 leave room to throttle past the legacy 60 s default for pools
+    // that publish per-minute stats already, without overwhelming free
+    // public endpoints.
+    {prefs::kPoolPollSec,      FieldKind::kUint,   false, 10, 3600,      false, 60, {}},
     // v3 DEFAULT_REFRESH_ON_SCREEN_CHANGE=false,
     // DEFAULT_SCREEN_RESTORE_AFTER_ZAP=true, DEFAULT_STEAL_FOCUS=false,
     // DEFAULT_SUFFIX_PRICE=false, DEFAULT_SUFFIX_SHARE_DOT=false,
