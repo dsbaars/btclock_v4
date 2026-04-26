@@ -5,14 +5,14 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
-#include "io/frontlight_controller.hpp"
-#include "io/led_controller.hpp"
 #include "data_core/hub.hpp"
 #include "data_core/snapshot.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/frontlight_controller.hpp"
+#include "io/led_controller.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
@@ -41,8 +41,7 @@ void BindOnZap(AppCtx& ctx) {
 
   ctx.zap_listener->SetOnZap(
       [fl_ptr, hub_ptr, main_task, flash_on_zap_ptr, flash_fl_on_zap_ptr,
-       zap_notify_ptr, zap_pending_ptr](
-          const nostr::ZapListener::ZapInfo& z) {
+       zap_notify_ptr, zap_pending_ptr](const nostr::ZapListener::ZapInfo& z) {
         const uint64_t sats = z.amount_msat / 1000ULL;
         const std::string eid =
             z.raw ? z.raw->id.substr(0, 8) : std::string("?");
@@ -106,30 +105,28 @@ void InitZapListener(AppCtx& ctx) {
   // would otherwise log "Invalid uri" on Start() and the listener
   // would silently never connect — keep it inert so the boot path
   // still log-explains why.
-  const bool relay_scheme_ok =
-      zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
-      zap_cfg.relay_url.rfind("ws://", 0) == 0;
+  const bool relay_scheme_ok = zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
+                               zap_cfg.relay_url.rfind("ws://", 0) == 0;
   if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() &&
         zap_cfg.zap_pubkey.size() == 64 && relay_scheme_ok)) {
-    ESP_LOGI(kTag,
-             "zap listener disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
-             zap_cfg.enabled ? 1 : 0,
-             zap_cfg.relay_url.empty() ? "<empty>" : "set",
-             zap_cfg.zap_pubkey.size() == 64 ? "set" : "<invalid>",
-             relay_scheme_ok ? 1 : 0);
+    ESP_LOGI(
+        kTag, "zap listener disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
+        zap_cfg.enabled ? 1 : 0, zap_cfg.relay_url.empty() ? "<empty>" : "set",
+        zap_cfg.zap_pubkey.size() == 64 ? "set" : "<invalid>",
+        relay_scheme_ok ? 1 : 0);
     return;
   }
 
   ctx.zap_relay = std::make_unique<nostr::RelayClient>(zap_cfg.relay_url);
-  ctx.zap_subs =
-      std::make_unique<nostr::SubscriptionManager>(*ctx.zap_relay);
+  ctx.zap_subs = std::make_unique<nostr::SubscriptionManager>(*ctx.zap_relay);
   ctx.zap_listener = std::make_unique<nostr::ZapListener>(
       *ctx.zap_subs, std::string("zap"), zap_cfg.zap_pubkey);
   ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
 
   BindOnZap(ctx);
   if (auto err = ctx.zap_relay->Start(); err != ESP_OK) {
-    ESP_LOGE(kTag, "zap relay Start() failed: %s (relay=%s) — disabling listener",
+    ESP_LOGE(kTag,
+             "zap relay Start() failed: %s (relay=%s) — disabling listener",
              esp_err_to_name(err), zap_cfg.relay_url.c_str());
     ctx.zap_listener.reset();
     ctx.zap_subs.reset();
@@ -139,8 +136,7 @@ void InitZapListener(AppCtx& ctx) {
   ctx.zap_listener->Start();
   ESP_LOGI(kTag,
            "zap listener enabled: relay=%s pub=%s… flashLed=%d flashFl=%d",
-           zap_cfg.relay_url.c_str(),
-           zap_cfg.zap_pubkey.substr(0, 8).c_str(),
+           zap_cfg.relay_url.c_str(), zap_cfg.zap_pubkey.substr(0, 8).c_str(),
            ctx.flash_on_zap_enabled.load() ? 1 : 0,
            ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
 }
@@ -175,8 +171,7 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
   // Pubkey unchanged → toggling LED/frontlight/screen-notify only
   // updates the atomics already done above. Stop/Start would tear
   // down the relay subscription unnecessarily.
-  const bool pubkey_changed =
-      (zap_cfg.zap_pubkey != ctx.zap_pubkey_current);
+  const bool pubkey_changed = (zap_cfg.zap_pubkey != ctx.zap_pubkey_current);
   if (!pubkey_changed) {
     ESP_LOGI(kTag,
              "RefreshZapListenerSettings: atomics refreshed "
@@ -207,8 +202,7 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
   ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
   BindOnZap(ctx);
   ctx.zap_listener->Start();
-  ESP_LOGI(kTag,
-           "RefreshZapListenerSettings: pubkey rotated to %s…",
+  ESP_LOGI(kTag, "RefreshZapListenerSettings: pubkey rotated to %s…",
            zap_cfg.zap_pubkey.substr(0, 8).c_str());
 }
 

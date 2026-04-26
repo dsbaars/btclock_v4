@@ -1,5 +1,4 @@
 #include "doctest.h"
-
 #include "ota_upload_bounds.hpp"
 
 namespace {
@@ -28,7 +27,8 @@ TEST_CASE("IsValidFirmwareUploadSize rejects missing partition") {
 
 TEST_CASE("IsValidFirmwareUploadSize accepts in-bounds payloads") {
   CHECK(btclock::IsValidFirmwareUploadSize(1, kRevAOtaSlot));
-  CHECK(btclock::IsValidFirmwareUploadSize(1500u * 1024, kRevAOtaSlot));
+  CHECK(btclock::IsValidFirmwareUploadSize(std::size_t{1500} * 1024,
+                                           kRevAOtaSlot));
   // Equality must be accepted — esp_ota_write fills the whole slot.
   CHECK(btclock::IsValidFirmwareUploadSize(kRevAOtaSlot, kRevAOtaSlot));
   CHECK(btclock::IsValidFirmwareUploadSize(kRevBOtaSlot, kRevBOtaSlot));
@@ -40,8 +40,7 @@ TEST_CASE("IsValidFirmwareUploadSize rejects oversize payloads") {
       btclock::IsValidFirmwareUploadSize(kRevAOtaSlot + 1, kRevAOtaSlot));
   CHECK_FALSE(
       btclock::IsValidFirmwareUploadSize(kRevBOtaSlot + 1, kRevBOtaSlot));
-  CHECK_FALSE(
-      btclock::IsValidFirmwareUploadSize(kV8OtaSlot + 1, kV8OtaSlot));
+  CHECK_FALSE(btclock::IsValidFirmwareUploadSize(kV8OtaSlot + 1, kV8OtaSlot));
   // A firmware built for V8 flashed to a Rev A slot: the 413 gate
   // catches this before esp_ota_begin erases half the partition.
   CHECK_FALSE(btclock::IsValidFirmwareUploadSize(kV8OtaSlot, kRevAOtaSlot));

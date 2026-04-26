@@ -1,18 +1,17 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstring>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
 template <size_t N>
-void RenderBlockHeightScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    uint32_t block_height, uint32_t prev_height,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderBlockHeightScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                             uint8_t (&fb_storage)[N][16 * 296],
+                             const AppFonts& fonts, uint32_t block_height,
+                             uint32_t prev_height, bool full_refresh_mode,
+                             bool vertical_desc) {
   static_assert(N >= 7, "block-height layout needs at least 7 panels");
 
   // `cell_diff_reset` forces every cell to repaint this frame (no per-
@@ -60,14 +59,13 @@ void RenderBlockHeightScreen(
   for (size_t i = 0; i < digit_panels; ++i) {
     const size_t panel_idx = digit_base + i;
     slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                 std::string(1, new_digits[i]),
-                                 nullptr, 0, 0};
-    update[panel_idx] = cell_force || full_refresh_mode ||
-                        new_digits[i] != old_digits[i];
+                                 std::string(1, new_digits[i]), nullptr, 0, 0};
+    update[panel_idx] =
+        cell_force || full_refresh_mode || new_digits[i] != old_digits[i];
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderBlockHeightScreen<7>(

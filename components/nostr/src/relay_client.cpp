@@ -14,7 +14,9 @@ constexpr const char* kTag = "nostr-relay";
 
 RelayClient::RelayClient(std::string url) : url_(std::move(url)) {}
 
-RelayClient::~RelayClient() { Stop(); }
+RelayClient::~RelayClient() {
+  Stop();
+}
 
 esp_err_t RelayClient::Start() {
   if (client_ != nullptr) return ESP_OK;
@@ -25,7 +27,7 @@ esp_err_t RelayClient::Start() {
   cfg.network_timeout_ms = 10000;
   cfg.ping_interval_sec = 30;  // relays often pong every ~30 s
   cfg.pingpong_timeout_sec = 20;
-  cfg.buffer_size = 8192;      // zap receipts can carry large description tags
+  cfg.buffer_size = 8192;  // zap receipts can carry large description tags
   cfg.task_stack = 6144;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
 
@@ -52,14 +54,13 @@ esp_err_t RelayClient::Stop() {
 
 bool RelayClient::SendText(const char* data, size_t len) {
   if (client_ == nullptr || !connected_) return false;
-  const int n = esp_websocket_client_send_text(client_, data,
-                                               static_cast<int>(len),
-                                               pdMS_TO_TICKS(2000));
+  const int n = esp_websocket_client_send_text(
+      client_, data, static_cast<int>(len), pdMS_TO_TICKS(2000));
   return n >= 0;
 }
 
 void RelayClient::EventTrampoline(void* arg, esp_event_base_t, int32_t id,
-                                   void* data) {
+                                  void* data) {
   static_cast<RelayClient*>(arg)->HandleEvent(id, data);
 }
 

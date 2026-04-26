@@ -19,8 +19,8 @@ namespace btclock {
 struct DataSnapshot {
   // --- Blocks ---
   std::optional<uint32_t> block_height;
-  std::optional<int32_t>  block_fee;          // rounded sats/vB
-  std::optional<double>   block_fee_precise;  // sats/vB with decimals
+  std::optional<int32_t> block_fee;         // rounded sats/vB
+  std::optional<double> block_fee_precise;  // sats/vB with decimals
 
   // --- Prices ---
   // Currency code ("USD","EUR","GBP","JPY","AUD","CAD",…) → formatted
@@ -85,9 +85,9 @@ struct DataSnapshot {
   // the entry with the larger `received_ms` wins, so a partial snapshot
   // with a stale zap can't overwrite a fresher one.
   struct LatestZap {
-    std::optional<int64_t> amount_sats;   // msat / 1000, rounded
-    std::string message;                  // zapper's content, trimmed
-    int64_t received_ms = 0;              // monotonic ms for timeout
+    std::optional<int64_t> amount_sats;  // msat / 1000, rounded
+    std::string message;                 // zapper's content, trimmed
+    int64_t received_ms = 0;             // monotonic ms for timeout
   };
   LatestZap latest_zap{};
 

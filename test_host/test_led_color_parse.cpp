@@ -4,12 +4,11 @@
 // NVS persistence stores them as packed uint32 (0x00RRGGBB) so the
 // round-trip parse → format → parse must be stable.
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <cstring>
 #include <string_view>
 
+#include "doctest.h"
 #include "io/led_curves.hpp"
 
 using btclock::led_curves::FormatHexColor;
@@ -43,9 +42,9 @@ TEST_CASE("ParseHexColor returns fallback on malformed input") {
   // a zero colour.
   CHECK(ParseHexColor("", 0x123456u) == 0x123456u);
   CHECK(ParseHexColor("zzzzzz", 0x123456u) == 0x123456u);
-  CHECK(ParseHexColor("#12345", 0x123456u) == 0x123456u);  // too short
+  CHECK(ParseHexColor("#12345", 0x123456u) == 0x123456u);    // too short
   CHECK(ParseHexColor("#1234567", 0x123456u) == 0x123456u);  // too long
-  CHECK(ParseHexColor("#12345g", 0x123456u) == 0x123456u);  // non-hex
+  CHECK(ParseHexColor("#12345g", 0x123456u) == 0x123456u);   // non-hex
 }
 
 TEST_CASE("FormatHexColor writes uppercase 7-char string plus NUL") {
@@ -54,7 +53,6 @@ TEST_CASE("FormatHexColor writes uppercase 7-char string plus NUL") {
   CHECK(n == 7);
   CHECK(std::string_view(buf) == "#E04300");
 
-  n == 7 ? (void)0 : (void)0;
   FormatHexColor(0x000000u, buf);
   CHECK(std::string_view(buf) == "#000000");
   FormatHexColor(0xFFFFFFu, buf);

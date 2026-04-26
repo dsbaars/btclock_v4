@@ -179,9 +179,9 @@ std::vector<std::string> BuildHalving(uint32_t h, std::size_t n_panels,
   std::array<std::string, 7> s;
   s[0] = "BIT/COIN";
   s[1] = "HAL/VING";
-  s[7 - 5] = std::to_string(tb.years)   + "/YRS";
-  s[7 - 4] = std::to_string(tb.days)    + "/DAYS";
-  s[7 - 3] = std::to_string(tb.hours)   + "/HRS";
+  s[7 - 5] = std::to_string(tb.years) + "/YRS";
+  s[7 - 4] = std::to_string(tb.days) + "/DAYS";
+  s[7 - 3] = std::to_string(tb.hours) + "/HRS";
   s[7 - 2] = std::to_string(tb.minutes) + "/MINS";
   s[7 - 1] = "TO/GO";
   if (n_panels < 7) {
@@ -207,9 +207,12 @@ std::vector<std::string> SplitUtf8Codepoints(const std::string& s) {
   while (i < s.size()) {
     const unsigned char lead = static_cast<unsigned char>(s[i]);
     std::size_t len = 1;
-    if ((lead & 0xE0) == 0xC0) len = 2;
-    else if ((lead & 0xF0) == 0xE0) len = 3;
-    else if ((lead & 0xF8) == 0xF0) len = 4;
+    if ((lead & 0xE0) == 0xC0)
+      len = 2;
+    else if ((lead & 0xF0) == 0xE0)
+      len = 3;
+    else if ((lead & 0xF8) == 0xF0)
+      len = 4;
     if (i + len > s.size()) len = s.size() - i;
     out.emplace_back(s.substr(i, len));
     i += len;
@@ -249,8 +252,7 @@ std::vector<std::string> EmitBigCharsFrame(std::string label, std::string s,
 // caller-supplied label. When a non-empty `ccy_cell` is given it's
 // placed in the slot just ahead of the first digit group (used by
 // market-cap to render the " <CCY> " separator).
-std::vector<std::string> EmitSmallCharsGroups(std::string label,
-                                              uint64_t value,
+std::vector<std::string> EmitSmallCharsGroups(std::string label, uint64_t value,
                                               const std::string& ccy_cell,
                                               std::size_t n_panels) {
   // Shared implementation lives in screen_math so the device renderers
@@ -277,8 +279,8 @@ std::vector<std::string> BuildBitcoinSupply(uint32_t h, bool big_chars,
     out.reserve(n_panels);
     out.emplace_back("BTC/SUPPLY");
     const double frac =
-        std::round((static_cast<double>(supply) / 20999999.9769) *
-                   10000.0) / 100.0;
+        std::round((static_cast<double>(supply) / 20999999.9769) * 10000.0) /
+        100.0;
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%.2f%%", frac);
     std::string s = buf;
@@ -290,8 +292,11 @@ std::vector<std::string> BuildBitcoinSupply(uint32_t h, bool big_chars,
     return out;
   }
   if (big_chars) {
-    std::string s = FormatNumberWithSuffix(
-        supply, static_cast<int>(n_panels) - 2);
+    // Budget = n_panels-1 so the magnitude fills every tail cell — at
+    // 7 panels that gives "20.02M" instead of "20.0M" with a leading
+    // blank cell. The label stays in slot 0.
+    std::string s =
+        FormatNumberWithSuffix(supply, static_cast<int>(n_panels) - 1);
     return EmitBigCharsFrame("BTC/SUPPLY", std::move(s), n_panels);
   }
   // Small-chars three-digit groups. Parity: RenderBitcoinSupplySmallChars.
@@ -300,17 +305,52 @@ std::vector<std::string> BuildBitcoinSupply(uint32_t h, bool big_chars,
 
 std::vector<std::string> BuildMarketCap(uint32_t h, const std::string& price,
                                         const std::string& currency,
-                                        bool big_chars,
+                                        bool big_chars, bool share_dot,
                                         std::size_t n_panels) {
   const int32_t pi = PriceIntLocal(price);
   const uint64_t cap = (pi < 0) ? 0 : MarketCap(static_cast<uint32_t>(pi), h);
   if (big_chars) {
-    // Label + "<sym><N.NN>T" big-chars suffix form.
+    // Label + "<sym><N.NN>T" big-chars suffix form. share_dot bumps the
+    // formatter budget by one and folds "." into its preceding cell so
+    // a magnitude like "$1.02T" becomes ["$","1.","0","2","T"] instead
+    // of ["$","1",".","0","T"] — same trick as the BTC-price suffix
+    // layout, applied to the EmitBigCharsFrame tail.
     const char* sym = CurrencySymbolLocal(currency);
     std::string glyph = (sym && *sym) ? std::string(sym) : currency;
-    std::string s = glyph + FormatNumberWithSuffix(
-                                cap, static_cast<int>(n_panels) - 2);
-    return EmitBigCharsFrame(currency + "/MCAP", std::move(s), n_panels);
+    const int budget = static_cast<int>(n_panels) - (share_dot ? 1 : 2);
+    std::string s = glyph + FormatNumberWithSuffix(cap, budget);
+    if (!share_dot) {
+      return EmitBigCharsFrame(currency + "/MCAP", std::move(s), n_panels);
+    }
+    // Build the cell vector with the fold applied, then mirror
+    // EmitBigCharsFrame's tail layout (right-align, blanks become "").
+    std::vector<std::string> cells = SplitUtf8Codepoints(s);
+    const std::size_t dot_pos = [&]() {
+      for (std::size_t i = 0; i < cells.size(); ++i) {
+        if (cells[i] == ".") return i;
+      }
+      return std::string::npos;
+    }();
+    if (dot_pos != std::string::npos && dot_pos > 0) {
+      cells[dot_pos - 1] = cells[dot_pos - 1] + ".";
+      cells.erase(cells.begin() + static_cast<std::ptrdiff_t>(dot_pos));
+    }
+    std::vector<std::string> out;
+    out.reserve(n_panels);
+    out.emplace_back(currency + "/MCAP");
+    if (n_panels <= 1) return out;
+    const std::size_t tail_slots = n_panels - 1;
+    if (cells.size() < tail_slots) {
+      cells.insert(cells.begin(), tail_slots - cells.size(), std::string(" "));
+    } else if (cells.size() > tail_slots) {
+      cells.erase(cells.begin(),
+                  cells.begin() +
+                      static_cast<std::ptrdiff_t>(cells.size() - tail_slots));
+    }
+    for (const auto& c : cells) {
+      out.push_back(c == " " ? std::string() : c);
+    }
+    return out;
   }
   // Small-chars: three-digit groups across the trailing slots, with a
   // " <CCY> " separator cell just before the first group. Matches
@@ -342,8 +382,7 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   const int32_t sats = SatsPerUnitLocal(price);
   const bool moscow =
       use_mscw_time && currency == "USD" && sats > 0 && sats < 100000;
-  out.emplace_back(moscow ? std::string("MSCW/TIME")
-                          : ("SATS/" + currency));
+  out.emplace_back(moscow ? std::string("MSCW/TIME") : ("SATS/" + currency));
 
   const std::size_t digit_slots = (n_panels >= 1) ? n_panels - 1 : 0;
   std::vector<char> digits(digit_slots, ' ');
@@ -384,9 +423,8 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
 
 std::vector<std::string> BuildBtcPrice(const std::string& currency,
                                        const std::string& price,
-                                       std::size_t n_panels,
-                                       bool suffix_price, bool mow_mode,
-                                       bool share_dot) {
+                                       std::size_t n_panels, bool suffix_price,
+                                       bool mow_mode, bool share_dot) {
   // Panel 0 = "BTC/<CCY>" (or "MOW/UNITS" on the suffix+mow path when
   // the price still fits with a label). Digits 1..N-1 come from the
   // layout helpers in price_layout.hpp / btc_price_suffix_layout.hpp —
@@ -423,8 +461,8 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     if (n_panels == 7) {
       constexpr std::size_t kPanels = 7;
       auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode,
-          share_dot, label);
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode, share_dot,
+          label);
       if (label.empty()) {
         // Overflow: glyph is already in cells[0].
         for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
@@ -436,8 +474,8 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     } else if (n_panels == 8) {
       constexpr std::size_t kPanels = 8;
       auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode,
-          share_dot, label);
+          static_cast<uint64_t>(price_int), currency, sym, mow_mode, share_dot,
+          label);
       if (label.empty()) {
         for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
       } else {
@@ -470,8 +508,8 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
   return out;
 }
 
-std::vector<std::string> BuildFeeRate(
-    const std::optional<double>& fee_opt, std::size_t n_panels) {
+std::vector<std::string> BuildFeeRate(const std::optional<double>& fee_opt,
+                                      std::size_t n_panels) {
   // Panel 0 = "FEE/RATE" (split), panels 1..N-2 = digits, panel N-1 =
   // "sat/vB" (split). Both label slots use the same slash-delimited
   // encoding the WebUI already renders as a paired top/bottom stack
@@ -559,8 +597,7 @@ std::vector<std::string> BuildMiningPoolHashrate(const MiningPoolMirror& pool,
   // Pass `digit_slots` as the max_chars so the hashrate value never
   // needs more digit cells than the board has.
   const MiningPoolHashrateLayout layout = LayoutMiningPoolHashrate(
-      pool.hashrate,
-      static_cast<unsigned int>(digit_slots ? digit_slots : 1));
+      pool.hashrate, static_cast<unsigned int>(digit_slots ? digit_slots : 1));
   out[n_panels - 1] = layout.unit;
 
   const std::string& v = layout.value;
@@ -588,7 +625,7 @@ std::vector<std::string> BuildMiningPoolHashrate(const MiningPoolMirror& pool,
 // mirror agrees with what the panels paint. test_panel_texts pins the
 // key cases.
 std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
-                                  std::size_t max_int_cells) {
+                                 std::size_t max_int_cells) {
   if (!amount_sats || *amount_sats < 0) return "?";
   const int64_t v = *amount_sats;
   char int_buf[24];
@@ -596,9 +633,16 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
   if (std::strlen(int_buf) <= max_int_cells) return int_buf;
   double x = static_cast<double>(v);
   const char* suffix;
-  if (v >= 1'000'000'000LL) { x /= 1e9; suffix = "B"; }
-  else if (v >= 1'000'000LL) { x /= 1e6; suffix = "M"; }
-  else { x /= 1e3; suffix = "k"; }
+  if (v >= 1'000'000'000LL) {
+    x /= 1e9;
+    suffix = "B";
+  } else if (v >= 1'000'000LL) {
+    x /= 1e6;
+    suffix = "M";
+  } else {
+    x /= 1e3;
+    suffix = "k";
+  }
   char buf[16];
   if (x >= 10.0) {
     std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
@@ -639,8 +683,7 @@ std::vector<std::string> BuildNostrZap(
   if (amount_cells > available_tail) amount_cells = available_tail;
   if (amount_cells < 1) amount_cells = 1;
   const std::size_t first_amount = n_panels - amount_cells;
-  const bool has_glyph =
-      use_sats_symbol && first_amount > bolt_slot + 1;
+  const bool has_glyph = use_sats_symbol && first_amount > bolt_slot + 1;
   if (has_glyph) out[first_amount - 1] = "STS";
 
   // Right-justify the scaled amount into the tail cells. Truncate
@@ -709,9 +752,8 @@ std::vector<std::string> EmitBitaxeFrame(const std::string& value,
   if (cells.size() < tail) {
     cells.insert(cells.begin(), tail - cells.size(), std::string(" "));
   } else if (cells.size() > tail) {
-    cells.erase(cells.begin(),
-                cells.begin() +
-                    static_cast<std::ptrdiff_t>(cells.size() - tail));
+    cells.erase(cells.begin(), cells.begin() + static_cast<std::ptrdiff_t>(
+                                                   cells.size() - tail));
   }
   for (std::size_t i = 0; i < tail; ++i) {
     out[1 + i] = (cells[i] == " ") ? std::string() : cells[i];
@@ -719,8 +761,8 @@ std::vector<std::string> EmitBitaxeFrame(const std::string& value,
   return out;
 }
 
-std::vector<std::string> BuildBitaxeHashrate(
-    const PanelTextInputs& in, std::size_t n_panels) {
+std::vector<std::string> BuildBitaxeHashrate(const PanelTextInputs& in,
+                                             std::size_t n_panels) {
   // Empty hostname === no sample yet. Mirror the renderer's OFFLINE
   // placeholder so the /api/status data[] stays truthy. OFFLINE still
   // spans the whole tail (including the would-be unit slot) — no
@@ -748,9 +790,8 @@ std::vector<std::string> BuildBitaxeHashrate(
   if (cells.size() < digit_slots) {
     cells.insert(cells.begin(), digit_slots - cells.size(), std::string(" "));
   } else if (cells.size() > digit_slots) {
-    cells.erase(cells.begin(),
-                cells.begin() + static_cast<std::ptrdiff_t>(
-                                    cells.size() - digit_slots));
+    cells.erase(cells.begin(), cells.begin() + static_cast<std::ptrdiff_t>(
+                                                   cells.size() - digit_slots));
   }
   for (std::size_t i = 0; i < digit_slots; ++i) {
     out[1 + i] = (cells[i] == " ") ? std::string() : cells[i];
@@ -758,8 +799,8 @@ std::vector<std::string> BuildBitaxeHashrate(
   return out;
 }
 
-std::vector<std::string> BuildBitaxeBestDiff(
-    const PanelTextInputs& in, std::size_t n_panels) {
+std::vector<std::string> BuildBitaxeBestDiff(const PanelTextInputs& in,
+                                             std::size_t n_panels) {
   if (in.bitaxe_hostname.empty() || !in.bitaxe_best_diff ||
       in.bitaxe_best_diff->empty()) {
     return EmitBitaxeFrame("OFFLINE", n_panels);
@@ -767,9 +808,8 @@ std::vector<std::string> BuildBitaxeBestDiff(
   return EmitBitaxeFrame(*in.bitaxe_best_diff, n_panels);
 }
 
-std::vector<std::string> BuildClock(bool valid, int hour, int minute,
-                                    int mday, int month,
-                                    std::size_t n_panels,
+std::vector<std::string> BuildClock(bool valid, int hour, int minute, int mday,
+                                    int month, std::size_t n_panels,
                                     bool hide_lead_zero) {
   // Panel 0 = "dd/mm" date split-text (rendered via DrawSplitText in the
   // renderer; we mirror that with a "<dd>/<mm>" string). When SNTP
@@ -807,19 +847,19 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
                                 in.supply_big_chars, in.supply_percent,
                                 n_panels);
     case ScreenType::kMarketCap:
-      return BuildMarketCap(in.block_height.value_or(0), in.price,
-                            in.currency, in.mcap_big_chars, n_panels);
+      return BuildMarketCap(in.block_height.value_or(0), in.price, in.currency,
+                            in.mcap_big_chars, in.share_dot, n_panels);
     case ScreenType::kMoscowTime:
       return BuildMoscowTime(in.currency, in.price, n_panels,
                              in.use_sats_symbol, in.use_mscw_time);
     case ScreenType::kBtcPrice:
-      return BuildBtcPrice(in.currency, in.price, n_panels,
-                           in.suffix_price, in.mow_mode, in.share_dot);
+      return BuildBtcPrice(in.currency, in.price, n_panels, in.suffix_price,
+                           in.mow_mode, in.share_dot);
     case ScreenType::kBlockFeeRate:
       return BuildFeeRate(in.block_fee_sats_vb, n_panels);
     case ScreenType::kClock:
-      return BuildClock(in.clock_valid, in.hour, in.minute, in.mday,
-                        in.month, n_panels, in.hide_lead_zero);
+      return BuildClock(in.clock_valid, in.hour, in.minute, in.mday, in.month,
+                        n_panels, in.hide_lead_zero);
     case ScreenType::kMiningPoolHashrate:
       return BuildMiningPoolHashrate(in.pool, n_panels);
     case ScreenType::kMiningPoolEarnings:

@@ -34,8 +34,7 @@ std::string LocalPublicPool::api_url() const {
   btclock::Prefs prefs(kPrefsNs);
   const std::string user = prefs.GetString(kUserKey, "");
   if (user.empty()) return "";
-  const std::string host =
-      prefs.GetString(kLocalHostKey, kLocalHostDefault);
+  const std::string host = prefs.GetString(kLocalHostKey, kLocalHostDefault);
   // Plain HTTP — local deployments rarely have TLS.
   return "http://" + host + "/api/client/" + user;
 }

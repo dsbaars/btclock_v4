@@ -23,7 +23,7 @@ std::unique_ptr<IEpdPanel> CreatePanel(const PanelConfig& cfg) {
   // No-default branch — CMake should have failed configure before
   // reaching this. Keep the TU well-formed so the file compiles
   // even if a future build path forgets to plumb the macro.
-# error "No BTCLOCK_PANEL_<X> macro defined; check top-level CMakeLists.txt"
+#error "No BTCLOCK_PANEL_<X> macro defined; check top-level CMakeLists.txt"
 #endif
 }
 

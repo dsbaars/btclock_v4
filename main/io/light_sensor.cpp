@@ -27,9 +27,8 @@ LightSensor::~LightSensor() {
 
 void LightSensor::Start() {
   if (!available_ || task_ != nullptr) return;
-  xTaskCreate(&LightSensor::TaskTrampoline, "bh1750_poll",
-              cfg_.task_stack, this,
-              static_cast<UBaseType_t>(cfg_.task_priority), &task_);
+  xTaskCreate(&LightSensor::TaskTrampoline, "bh1750_poll", cfg_.task_stack,
+              this, static_cast<UBaseType_t>(cfg_.task_priority), &task_);
 }
 
 void LightSensor::TaskTrampoline(void* arg) {

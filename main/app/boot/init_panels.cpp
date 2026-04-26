@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 namespace {
@@ -27,8 +28,7 @@ void InitPanelsAndSplash(AppCtx& ctx) {
       case Src::kNative:
         return EpdIoPin::Native(static_cast<gpio_num_t>(pin_or_index));
       case Src::kMcp1:
-        return EpdIoPin::Mcp(&*ctx.mcp,
-                             static_cast<uint8_t>(pin_or_index));
+        return EpdIoPin::Mcp(&*ctx.mcp, static_cast<uint8_t>(pin_or_index));
       case Src::kMcp2:
         return EpdIoPin::Mcp(ctx.mcp2 ? &*ctx.mcp2 : nullptr,
                              static_cast<uint8_t>(pin_or_index));
@@ -61,14 +61,13 @@ void InitPanelsAndSplash(AppCtx& ctx) {
   // where TZ / LittleFS come online), but splash runs before storage
   // init so the persisted invertedColor value would otherwise miss the
   // first paint. Prefs::InitOnce is idempotent, and a corrupted NVS
-  // (the reason splash historically ran before storage init) falls back
-  // to the default `true` — same polarity the first data render would
-  // pick, so the "brick the screen on NVS corruption" concern that
-  // motivated the original ordering doesn't regress.
+  // falls back to the schema default — same polarity the first data
+  // render would pick, so the "brick the screen on NVS corruption"
+  // concern that motivated the original ordering doesn't regress.
   (void)Prefs::InitOnce();
   {
     Prefs p(prefs::kSettingsNs);
-    EpdSetGlobalInverted(p.GetBool(prefs::kInvertedColor, true));
+    EpdSetGlobalInverted(btclock::settings::ReadBool(p, prefs::kInvertedColor));
   }
 
   // --- Boot splash — letter-per-panel BTCLOCK[!]. ---

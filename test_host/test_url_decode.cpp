@@ -3,11 +3,10 @@
 // was `?t=%20CLOCK%20` rendering literally as `%20CLOCK%20`; the first
 // test below pins that exact case so it can never regress silently.
 
-#include "doctest.h"
-
 #include <cstring>
 #include <string>
 
+#include "doctest.h"
 #include "url_decode.hpp"
 
 using btclock::http::UrlDecodeInPlace;

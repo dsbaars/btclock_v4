@@ -23,10 +23,9 @@
 // linking font.cpp + stb_truetype + the TTF blobs, or stubbing out
 // Font::Font so it succeeds on an empty buffer).
 
-#include "doctest.h"
-
 #include <string>
 
+#include "doctest.h"
 #include "fonts_app.hpp"
 
 namespace btclock {
@@ -56,13 +55,27 @@ struct RoleFixture {
   void SetFamily(FontFamily f) {
     const int* regular = &antonio;
     switch (f) {
-      case FontFamily::kAntonio:      regular = &antonio;       break;
-      case FontFamily::kOswald:       regular = &oswald;        break;
-      case FontFamily::kInter:        regular = &inter;         break;
-      case FontFamily::kSourceSerif:  regular = &source_serif;  break;
-      case FontFamily::kMerriweather: regular = &merriweather;  break;
-      case FontFamily::kBitter:       regular = &bitter;        break;
-      case FontFamily::kAtkinson:     regular = &atkinson;      break;
+      case FontFamily::kAntonio:
+        regular = &antonio;
+        break;
+      case FontFamily::kOswald:
+        regular = &oswald;
+        break;
+      case FontFamily::kInter:
+        regular = &inter;
+        break;
+      case FontFamily::kSourceSerif:
+        regular = &source_serif;
+        break;
+      case FontFamily::kMerriweather:
+        regular = &merriweather;
+        break;
+      case FontFamily::kBitter:
+        regular = &bitter;
+        break;
+      case FontFamily::kAtkinson:
+        regular = &atkinson;
+        break;
     }
     digit = regular;
     label = regular;
@@ -164,11 +177,11 @@ TEST_CASE("SetFamily(kAntonio) returns to day-1 default") {
 
 TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("antonio") == FontFamily::kAntonio);
-  CHECK(ParseFontFamily("oswald")  == FontFamily::kOswald);
-  CHECK(ParseFontFamily("inter")   == FontFamily::kInter);
-  CHECK(ParseFontFamily("sourceSerif")  == FontFamily::kSourceSerif);
+  CHECK(ParseFontFamily("oswald") == FontFamily::kOswald);
+  CHECK(ParseFontFamily("inter") == FontFamily::kInter);
+  CHECK(ParseFontFamily("sourceSerif") == FontFamily::kSourceSerif);
   CHECK(ParseFontFamily("merriweather") == FontFamily::kMerriweather);
-  CHECK(ParseFontFamily("bitter")  == FontFamily::kBitter);
+  CHECK(ParseFontFamily("bitter") == FontFamily::kBitter);
   CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
 }
 

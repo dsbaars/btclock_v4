@@ -17,6 +17,28 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion)
+
+# Optional sanitizer build. Default OFF so the standard
+# `cmake -S test_host -B build-host` path is unchanged.
+option(BTCLOCK_HOST_TESTS_SANITIZE "Build host tests with ASan + UBSan" OFF)
+if(BTCLOCK_HOST_TESTS_SANITIZE)
+    # -O1 is the standard sanitizer compromise: -O0 is glacial and misses
+    # some optimization-dependent bugs; -O2+ folds away frame info ASan
+    # needs for symbolicated stack traces.
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer
+                        -O1 -g)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
+# Optional gcov coverage build. Default OFF; CI runs this as an
+# informational job and uploads the HTML report as an artifact.
+option(BTCLOCK_HOST_TESTS_COVERAGE
+       "Build host tests with gcov instrumentation" OFF)
+if(BTCLOCK_HOST_TESTS_COVERAGE)
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 # cJSON is vendored unchanged from the ESP-IDF tree; its own warnings
 # (string-conversion, sign-compare) are not actionable here.
 set_source_files_properties(vendor/cJSON.c PROPERTIES

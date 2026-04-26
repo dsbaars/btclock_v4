@@ -1,5 +1,3 @@
-#include "settings/api.hpp"
-
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -10,6 +8,7 @@
 #include <vector>
 
 #include "cJSON.h"
+#include "settings/api.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
 
@@ -50,7 +49,8 @@ void AddI64(cJSON* obj, const char* key, int64_t val) {
 // entry (ported from btclock_v3_fci defaults.hpp) so a fresh install
 // returns the old firmware's values rather than zero/empty.
 void EmitField(cJSON* root, const FieldSpec& f, const PrefsReader& prefs) {
-  const char* k = f.key.data();  // string_view is NUL-terminated (points at constexpr literal)
+  const char* k = f.key.data();  // string_view is NUL-terminated (points at
+                                 // constexpr literal)
   switch (f.kind) {
     case FieldKind::kString: {
       // `data()` on a constexpr string_view literal is NUL-terminated.
@@ -113,12 +113,11 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // because it drives EPD fg/bg colour in lock-step with the bool.
   for (const auto& f : kFields) EmitField(root, f, prefs);
 
-  // invertedColor, shipped with a device-dependent default. The old
-  // firmware derived the default from the current EPD foreground
-  // colour; without live EPD state we fall back to true (white-on-
-  // black), the default background used by every shipping board.
-  // Override via PATCH if a user prefers the inverse.
-  AddBool(root, "invertedColor", prefs.GetBool(prefs::kInvertedColor, true));
+  // EmitField above already emitted invertedColor from the schema; this
+  // hand-emit is the historical hook for special-casing the value (the
+  // PATCH side-writes fgColor/bgColor). It now produces the same value
+  // EmitField did, so the duplicate JSON entry is benign — kept for the
+  // case where a future special-case wants to override after the loop.
 
   // timerSeconds isn't PATCHed directly — the WebUI sends
   // `timePerScreen` (minutes) and the server multiplies by 60.
@@ -151,8 +150,10 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     // Filter to the current catalogue so the WebUI's "active" picker
     // doesn't display options that the upstream price feed can't serve
     // and that PATCH would later reject.
-    const std::string csv =
-        prefs.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+    const std::string csv = ReadString(prefs, prefs::kActCurrencies);
+    // EmitField above already emitted the raw CSV string; replace it
+    // with the filtered array shape the WebUI consumes.
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "actCurrencies");
     std::set<std::string> valid;
     for (const auto& c : ctx.available_currencies) valid.insert(c);
     cJSON* arr = cJSON_AddArrayToObject(root, "actCurrencies");
@@ -198,8 +199,7 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // them. Empty CSV (cold-boot default) preserves catalog order, the
   // pre-fix backwards-compatible shape.
   cJSON* screens_arr = cJSON_AddArrayToObject(root, "screens");
-  const std::string order_csv =
-      prefs.GetString(prefs::kScreenOrder, "");
+  const std::string order_csv = prefs.GetString(prefs::kScreenOrder, "");
   std::set<int> catalog_ids;
   for (const auto& s : ctx.screens) catalog_ids.insert(s.id);
   std::vector<int> emitted_ids;
@@ -215,7 +215,10 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
       bool any = false;
       bool bad = false;
       for (char c : item) {
-        if (c < '0' || c > '9') { bad = true; break; }
+        if (c < '0' || c > '9') {
+          bad = true;
+          break;
+        }
         v = v * 10 + (c - '0');
         any = true;
       }
@@ -255,10 +258,10 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   cJSON* dnd = cJSON_AddObjectToObject(root, "dnd");
   AddBool(dnd, "enabled", prefs.GetBool(prefs::kDndEnabled, false));
   AddBool(dnd, "dndTimeEnabled", prefs.GetBool(prefs::kDndTimeEnabled, false));
-  AddU32(dnd, "startHour", prefs.GetU32(prefs::kDndStartHour, 22));
-  AddU32(dnd, "startMinute", prefs.GetU32(prefs::kDndStartMin, 0));
-  AddU32(dnd, "endHour", prefs.GetU32(prefs::kDndEndHour, 7));
-  AddU32(dnd, "endMinute", prefs.GetU32(prefs::kDndEndMin, 0));
+  AddU32(dnd, "startHour", ReadU32(prefs, prefs::kDndStartHour));
+  AddU32(dnd, "startMinute", ReadU32(prefs, prefs::kDndStartMin));
+  AddU32(dnd, "endHour", ReadU32(prefs, prefs::kDndEndHour));
+  AddU32(dnd, "endMinute", ReadU32(prefs, prefs::kDndEndMin));
 
   // Frontlight availability flags drive the WebUI's "Frontlight" panel
   // visibility. Boards without a PCA9685 skip the entire section.
@@ -313,8 +316,10 @@ bool ApplyScalar(const FieldSpec& f, const cJSON* v, PrefsWriter& writer) {
     case FieldKind::kUint: {
       if (!cJSON_IsNumber(v) || v->valuedouble < 0) return false;
       const double d = v->valuedouble;
-      if (f.max_value != 0 && d > static_cast<double>(f.max_value)) return false;
-      if (f.min_value != 0 && d < static_cast<double>(f.min_value)) return false;
+      if (f.max_value != 0 && d > static_cast<double>(f.max_value))
+        return false;
+      if (f.min_value != 0 && d < static_cast<double>(f.min_value))
+        return false;
       writer.SetU32(f.key.data(), static_cast<uint32_t>(d));
       return true;
     }
@@ -326,7 +331,8 @@ bool ApplyScalar(const FieldSpec& f, const cJSON* v, PrefsWriter& writer) {
     case FieldKind::kUChar: {
       if (!cJSON_IsNumber(v) || v->valuedouble < 0) return false;
       const double d = v->valuedouble;
-      if (f.max_value != 0 && d > static_cast<double>(f.max_value)) return false;
+      if (f.max_value != 0 && d > static_cast<double>(f.max_value))
+        return false;
       writer.SetU8(f.key.data(), static_cast<uint8_t>(d));
       return true;
     }
@@ -379,7 +385,8 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     if (key == "tzOffset" || key == "gmtOffset") continue;
 
     const FieldSpec* spec = FindField(key);
-    if (!spec) continue;  // unknown field — silent skip (old-firmware behaviour)
+    if (!spec)
+      continue;  // unknown field — silent skip (old-firmware behaviour)
 
     // Catalog-based validation. `fontName` must be one of the renderer's
     // bundled fonts; `miningPoolName` must be one of the registered pool
@@ -394,7 +401,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       }
       bool ok = false;
       for (const auto& f : ctx.available_fonts) {
-        if (f == item->valuestring) { ok = true; break; }
+        if (f == item->valuestring) {
+          ok = true;
+          break;
+        }
       }
       if (!ok) {
         result.status = PatchStatus::kBadField;
@@ -412,7 +422,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       }
       bool ok = false;
       for (const auto& p : ctx.available_pools) {
-        if (p == item->valuestring) { ok = true; break; }
+        if (p == item->valuestring) {
+          ok = true;
+          break;
+        }
       }
       if (!ok) {
         result.status = PatchStatus::kBadField;
@@ -605,8 +618,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       int len = 0;
       for (cJSON* s = screens->child; s; s = s->next, ++len) {
         cJSON* order = cJSON_GetObjectItemCaseSensitive(s, "order");
-        if (cJSON_IsNumber(order)) any_order = true;
-        else all_order = false;
+        if (cJSON_IsNumber(order))
+          any_order = true;
+        else
+          all_order = false;
       }
       if (any_order && !all_order) {
         result.status = PatchStatus::kBadRequest;
@@ -682,8 +697,7 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         // "every catalog slot including hidden ones" — the latter is the
         // pre-gate legacy shape that an older WebUI still sends. Both
         // mean "full reorder, not a partial one".
-        if (!catalog.empty() &&
-            seen_ids.size() != effective_catalog.size() &&
+        if (!catalog.empty() && seen_ids.size() != effective_catalog.size() &&
             seen_ids.size() != catalog.size()) {
           result.status = PatchStatus::kBadRequest;
           result.error = "screens:incomplete";
@@ -728,22 +742,26 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       cJSON* sm = cJSON_GetObjectItemCaseSensitive(dnd, "startMinute");
       cJSON* eh = cJSON_GetObjectItemCaseSensitive(dnd, "endHour");
       cJSON* em = cJSON_GetObjectItemCaseSensitive(dnd, "endMinute");
-      if (cJSON_IsNumber(sh) && cJSON_IsNumber(sm) &&
-          cJSON_IsNumber(eh) && cJSON_IsNumber(em)) {
+      if (cJSON_IsNumber(sh) && cJSON_IsNumber(sm) && cJSON_IsNumber(eh) &&
+          cJSON_IsNumber(em)) {
         const auto inRange = [](const cJSON* v, int lo, int hi) {
           return v->valuedouble >= lo && v->valuedouble <= hi;
         };
-        if (!inRange(sh, 0, 23) || !inRange(eh, 0, 23) ||
-            !inRange(sm, 0, 59) || !inRange(em, 0, 59)) {
+        if (!inRange(sh, 0, 23) || !inRange(eh, 0, 23) || !inRange(sm, 0, 59) ||
+            !inRange(em, 0, 59)) {
           result.status = PatchStatus::kBadRequest;
           result.error = "dnd:range";
           cJSON_Delete(root);
           return result;
         }
-        writer.SetU32(prefs::kDndStartHour, static_cast<uint32_t>(sh->valuedouble));
-        writer.SetU32(prefs::kDndStartMin, static_cast<uint32_t>(sm->valuedouble));
-        writer.SetU32(prefs::kDndEndHour, static_cast<uint32_t>(eh->valuedouble));
-        writer.SetU32(prefs::kDndEndMin, static_cast<uint32_t>(em->valuedouble));
+        writer.SetU32(prefs::kDndStartHour,
+                      static_cast<uint32_t>(sh->valuedouble));
+        writer.SetU32(prefs::kDndStartMin,
+                      static_cast<uint32_t>(sm->valuedouble));
+        writer.SetU32(prefs::kDndEndHour,
+                      static_cast<uint32_t>(eh->valuedouble));
+        writer.SetU32(prefs::kDndEndMin,
+                      static_cast<uint32_t>(em->valuedouble));
         result.touched_keys.emplace_back(prefs::kDndStartHour);
       }
     }

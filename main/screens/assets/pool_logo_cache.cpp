@@ -17,8 +17,6 @@
 // Host tests get the simpler `HasResolvedLogo` stub from
 // `pool_logo_cache_host.cpp` instead.
 
-#include "screens/assets/pool_logos.hpp"
-
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -29,6 +27,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "screens/assets/pool_logos.hpp"
 
 namespace btclock {
 namespace pool_logos {
@@ -48,7 +47,7 @@ std::string CachePath(const char* filename) {
 }
 
 bool FileExists(const std::string& path) {
-  struct stat st {};
+  struct stat st{};
   if (::stat(path.c_str(), &st) != 0) return false;
   return S_ISREG(st.st_mode) && st.st_size > 0;
 }
@@ -137,10 +136,8 @@ const PoolLogo* TryLoadFromCache(const std::string& folded,
   if (!FileExists(path)) return nullptr;
   // Upstream `.bin` files are header-less raw bytes:
   // expected = stride * height where stride = ceil(width/8).
-  const std::size_t stride =
-      static_cast<std::size_t>((meta.width + 7) / 8);
-  const std::size_t expected =
-      stride * static_cast<std::size_t>(meta.height);
+  const std::size_t stride = static_cast<std::size_t>((meta.width + 7) / 8);
+  const std::size_t expected = stride * static_cast<std::size_t>(meta.height);
 
   std::lock_guard<std::mutex> lk(SlotMutex());
   CacheSlot& s = Slot();

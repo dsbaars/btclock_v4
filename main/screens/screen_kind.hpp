@@ -27,19 +27,19 @@ namespace btclock {
 // as kCustom / kDebug below: it's a push-driven override, not a user-
 // rotatable catalogue entry. api_id 70 is owned by kMiningPoolHashrate
 // (matches the old firmware's SCREEN_MINING_POOL_STATS_HASHRATE).
-#define BTCLOCK_SCREEN_KIND_LIST(X)                                     \
-  X(kBlockHeight,         0,  "block",      "Block Height")             \
-  X(kClock,               3,  "clock",      "Time")                     \
-  X(kHalving,             4,  "halving",    "Halving countdown")        \
-  X(kBlockFeeRate,        6,  "fee",        "Block Fee Rate")           \
-  X(kMoscowTime,          10, "moscow",     "Sats per dollar")          \
-  X(kBtcPrice,            20, "price",      "Ticker")                   \
-  X(kMarketCap,           30, "mcap",       "Market Cap")               \
-  X(kBitcoinSupply,       40, "supply",     "Bitcoin Supply")           \
-  X(kMiningPoolHashrate,  70, "poolhash",   "Mining Pool Hashrate")     \
-  X(kMiningPoolEarnings,  71, "poolearn",   "Mining Pool Earnings")     \
-  X(kBitaxeHashrate,      80, "bxhash",     "Bitaxe Hashrate")          \
-  X(kBitaxeBestDiff,      81, "bxdiff",     "Bitaxe Best Difficulty")
+#define BTCLOCK_SCREEN_KIND_LIST(X)                              \
+  X(kBlockHeight, 0, "block", "Block Height")                    \
+  X(kClock, 3, "clock", "Time")                                  \
+  X(kHalving, 4, "halving", "Halving countdown")                 \
+  X(kBlockFeeRate, 6, "fee", "Block Fee Rate")                   \
+  X(kMoscowTime, 10, "moscow", "Sats per dollar")                \
+  X(kBtcPrice, 20, "price", "Ticker")                            \
+  X(kMarketCap, 30, "mcap", "Market Cap")                        \
+  X(kBitcoinSupply, 40, "supply", "Bitcoin Supply")              \
+  X(kMiningPoolHashrate, 70, "poolhash", "Mining Pool Hashrate") \
+  X(kMiningPoolEarnings, 71, "poolearn", "Mining Pool Earnings") \
+  X(kBitaxeHashrate, 80, "bxhash", "Bitaxe Hashrate")            \
+  X(kBitaxeBestDiff, 81, "bxdiff", "Bitaxe Best Difficulty")
 
 // Which top-level screen is currently being displayed. Screen rotation
 // and button navigation cycle through these. Values are dense 0..N-1

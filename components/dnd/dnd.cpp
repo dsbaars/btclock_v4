@@ -18,15 +18,15 @@ Dnd::Dnd() = default;
 void Dnd::Load() {
   Prefs p(kNamespace);
   std::lock_guard<std::mutex> lk(mu_);
-  cfg_.enabled      = p.GetBool(prefs::kDndEnabled, cfg_.enabled);
+  cfg_.enabled = p.GetBool(prefs::kDndEnabled, cfg_.enabled);
   cfg_.time_enabled = p.GetBool(prefs::kDndTimeEnabled, cfg_.time_enabled);
-  cfg_.start_hour   = static_cast<uint8_t>(
+  cfg_.start_hour = static_cast<uint8_t>(
       p.GetU32(prefs::kDndStartHour, cfg_.start_hour) & 0xFFu);
   cfg_.start_minute = static_cast<uint8_t>(
       p.GetU32(prefs::kDndStartMin, cfg_.start_minute) & 0xFFu);
-  cfg_.end_hour     = static_cast<uint8_t>(
-      p.GetU32(prefs::kDndEndHour, cfg_.end_hour) & 0xFFu);
-  cfg_.end_minute   = static_cast<uint8_t>(
+  cfg_.end_hour =
+      static_cast<uint8_t>(p.GetU32(prefs::kDndEndHour, cfg_.end_hour) & 0xFFu);
+  cfg_.end_minute = static_cast<uint8_t>(
       p.GetU32(prefs::kDndEndMin, cfg_.end_minute) & 0xFFu);
 }
 
@@ -53,11 +53,9 @@ bool Dnd::IsActive() const {
   std::tm tm_now{};
   localtime_r(&t, &tm_now);
   return ComputeDndActive(
-      static_cast<uint8_t>(tm_now.tm_hour),
-      static_cast<uint8_t>(tm_now.tm_min),
-      snapshot.start_hour, snapshot.start_minute,
-      snapshot.end_hour, snapshot.end_minute,
-      snapshot.enabled, snapshot.time_enabled);
+      static_cast<uint8_t>(tm_now.tm_hour), static_cast<uint8_t>(tm_now.tm_min),
+      snapshot.start_hour, snapshot.start_minute, snapshot.end_hour,
+      snapshot.end_minute, snapshot.enabled, snapshot.time_enabled);
 }
 
 void Dnd::SetEnabled(bool enabled) {

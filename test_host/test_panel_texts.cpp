@@ -6,13 +6,12 @@
 // tests (see test_datahandler_parity.cpp) but drive the actual IDF
 // helper rather than a local copy.
 
-#include "doctest.h"
-
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "data_core/snapshot.hpp"
+#include "doctest.h"
 #include "screens/assets/pool_logos.hpp"
 #include "screens/panel_texts.hpp"
 
@@ -81,6 +80,27 @@ TEST_CASE("panel_texts — bitcoin supply label + right-justified digits") {
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "BTC/SUPPLY");
   CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — bitcoin supply big-chars fills all tail cells") {
+  // SupplyAtBlock(880000) = 19.8125M → with the bumped (n_panels-1)=6
+  // budget the formatter emits "19.81M" (6 chars), packing all 6 tail
+  // slots on a 7-panel board with no leading blank. Pins the budget
+  // bump from n_panels-2 to n_panels-1; before the fix the formatter
+  // got 5 chars and emitted "19.8M" with a leading blank cell.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBitcoinSupply;
+  in.block_height = 880000u;
+  in.supply_big_chars = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/SUPPLY");
+  CHECK(out[1] == "1");
+  CHECK(out[2] == "9");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "8");
+  CHECK(out[5] == "1");
+  CHECK(out[6] == "M");
 }
 
 TEST_CASE("panel_texts — halving time-mode emits labelled breakdown") {
@@ -267,7 +287,8 @@ TEST_CASE("panel_texts — SATS/<CCY> label for non-USD currencies") {
   CHECK(out[0] == "SATS/EUR");
 }
 
-TEST_CASE("panel_texts — useMscwTime=false forces SATS/USD for USD classic range") {
+TEST_CASE(
+    "panel_texts — useMscwTime=false forces SATS/USD for USD classic range") {
   // bd btclock_v4-5wj — the /api/settings useMscwTime toggle now gates
   // the Moscow-time label. With the flag off, USD in the classic range
   // falls back to the uniform SATS/USD heading (old firmware parity —
@@ -275,7 +296,7 @@ TEST_CASE("panel_texts — useMscwTime=false forces SATS/USD for USD classic ran
   PanelTextInputs in;
   in.kind = ScreenType::kMoscowTime;
   in.currency = "USD";
-  in.price = "2684";        // 37259 sats — in classic MSCW/TIME range
+  in.price = "2684";  // 37259 sats — in classic MSCW/TIME range
   in.use_mscw_time = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
@@ -308,8 +329,8 @@ TEST_CASE("panel_texts — useSatsSymbol=false drops the STS marker cell") {
   CHECK(out[0] == "MSCW/TIME");
   // No "STS" anywhere in the row; the marker slot is empty.
   for (std::size_t i = 1; i < 7; ++i) CHECK(out[i] != "STS");
-  CHECK(out[1] == "");      // marker slot now blank
-  CHECK(out[2] == "3");     // digits still right-justified
+  CHECK(out[1] == "");   // marker slot now blank
+  CHECK(out[2] == "3");  // digits still right-justified
   CHECK(out[6] == "8");
 }
 
@@ -319,7 +340,7 @@ TEST_CASE("panel_texts — useBlkCountdown=true keeps blocks countdown form") {
   PanelTextInputs in;
   in.kind = ScreenType::kHalving;
   in.block_height = 210000u - 5;
-  in.halving_as_blocks = true;   // = useBlkCountdown from NVS
+  in.halving_as_blocks = true;  // = useBlkCountdown from NVS
   const auto out = BuildPanelTexts(in, 7);
   CHECK(out[0] == "HAL/VING");
   CHECK(out[6] == "5");
@@ -632,7 +653,8 @@ TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 78280 → $0.078M
   CHECK(out[6] == "M");
 }
 
-TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 1000000 → $1.000M") {
+TEST_CASE(
+    "panel_texts — mowMode=true + suffixPrice=true for 1000000 → $1.000M") {
   // 1e6 + mow → "1.000M"(6). "$1.000M"(7) = 7 cells → overflow path.
   PanelTextInputs in;
   in.kind = ScreenType::kBtcPrice;
@@ -670,7 +692,9 @@ TEST_CASE("panel_texts — mowMode=true + suffixPrice=true for 99999 → $0.099M
   CHECK(out[6] == "M");
 }
 
-TEST_CASE("panel_texts — mowMode=true, suffixPrice=false, short price stays integer") {
+TEST_CASE(
+    "panel_texts — mowMode=true, suffixPrice=false, short price stays "
+    "integer") {
   // v3 precedence: `mowMode` only takes effect when the suffix branch
   // fires (either `useSuffixFormat=true` OR the integer itself is too
   // wide to fit). Without suffix_price and with 78280 (5 digits, fits a
@@ -934,7 +958,142 @@ TEST_CASE("panel_texts — mowMode overflow: slot 0 is never BTC/<CCY> label") {
   }
 }
 
-TEST_CASE("panel_texts — integer-overflow path with EUR in overflow (8-digit +)") {
+// --- shareDot panel-text parity ---
+// Mirrors the v3 RenderPriceDataSuffixShareDot reference cases in
+// test_datahandler_parity.cpp (PriceSuffixModeCompact1/Compact2 and
+// PriceSuffixModeMowCompact). shareDot widens the formatter budget by
+// one and folds the '.' into its preceding cell so the K/M label form
+// keeps the BTC/<CCY> label and gets one more digit panel.
+
+TEST_CASE("panel_texts — shareDot 78080 USD → BTC/USD label, dot folded") {
+  // 78080 / 1000 = 78.08 → "78.08K" (6 bytes). With the symbol prepended
+  // raw width is 7 cells, but the dot fold shaves one → effective 6 ≤ 6
+  // digit slots → label path retains "BTC/USD" and slot 4 carries "8.".
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "78080";
+  in.suffix_price = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "7");
+  CHECK(out[3] == "8.");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "8");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — shareDot 100000 USD → BTC/USD label, '0.' folded") {
+  // Mirrors PriceSuffixModeCompact1: 100000 + shareDot → "$100.0K" (7),
+  // dot folds → ["$","1","0","0.","0","K"] right-justified after label.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "100000";
+  in.suffix_price = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "0.");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "K");
+}
+
+TEST_CASE("panel_texts — shareDot 1000000 USD → BTC/USD label, '1.' folded") {
+  // Mirrors PriceSuffixModeCompact2: 1000000 + shareDot → "$1.000M" (7),
+  // dot folds at position 1 → ["$","1.","0","0","0","M"].
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "1000000";
+  in.suffix_price = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1.");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — shareDot+mow 93600 USD → MOW/UNITS, '0.' folded") {
+  // Mirrors PriceSuffixModeMowCompact: 93600 + mow + shareDot →
+  // "$0.093M" (7 raw bytes), dot folds → ["$","0.","0","9","3","M"]
+  // and the label path stays alive so slot 0 is "MOW/UNITS".
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "93600";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "MOW/UNITS");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "0.");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "9");
+  CHECK(out[5] == "3");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — market cap shareDot folds dot into preceding cell") {
+  // Same fold pattern propagated to market-cap big-chars. At ~$1.02T cap
+  // the formatter (one extra digit of budget) emits "1.021T" → "$1.021T"
+  // (7 bytes) → fold "1." into one cell so the magnitude reads as
+  // ["$","1.","0","2","1","T"] across the 6 tail slots (7-panel board).
+  PanelTextInputs in;
+  in.kind = ScreenType::kMarketCap;
+  in.currency = "USD";
+  in.block_height = 831000u;
+  in.price = "52000";  // cap ≈ 1.02T
+  in.mcap_big_chars = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "USD/MCAP");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1.");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "1");
+  CHECK(out[6] == "T");
+}
+
+TEST_CASE("panel_texts — market cap shareDot=false keeps unfolded layout") {
+  // Counter-test: same inputs without shareDot must retain the existing
+  // big-chars shape ($1.02T spread across 6 cells, dot in its own cell).
+  PanelTextInputs in;
+  in.kind = ScreenType::kMarketCap;
+  in.currency = "USD";
+  in.block_height = 831000u;
+  in.price = "52000";
+  in.mcap_big_chars = true;
+  in.share_dot = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "USD/MCAP");
+  CHECK(out[1] == "$");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "2");
+  CHECK(out[6] == "T");
+}
+
+TEST_CASE(
+    "panel_texts — integer-overflow path with EUR in overflow (8-digit +)") {
   // For 9-digit prices the label is actually dropped on a 7-panel board:
   // FormatNumberWithSuffix(999_999_999, 5, false) → "1.00B" (5) + €(1)
   // = 6 cells. 6 < 7 → still label path. Try a case that actually
@@ -1116,7 +1275,8 @@ TEST_CASE("panel_texts — mining pool hashrate PH/S with decimal (logo path)") 
   CHECK(out[5] == "3");
 }
 
-TEST_CASE("panel_texts — mining pool hashrate EH/S large magnitude (logo path)") {
+TEST_CASE(
+    "panel_texts — mining pool hashrate EH/S large magnitude (logo path)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
   // bd btclock_v4-5yi: no pools ship vendored bitmaps any more, all
@@ -1140,7 +1300,8 @@ TEST_CASE("panel_texts — mining pool hashrate EH/S large magnitude (logo path)
   CHECK(out[5] == "4");
 }
 
-TEST_CASE("panel_texts — mining pool hashrate empty data shows H/S placeholder") {
+TEST_CASE(
+    "panel_texts — mining pool hashrate empty data shows H/S placeholder") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
   // Synthetic logo registered lower-case; query upper-case proves the
@@ -1177,7 +1338,8 @@ TEST_CASE("panel_texts — mining pool hashrate text fallback (single word)") {
   CHECK(out[5] == "3");
 }
 
-TEST_CASE("panel_texts — pre-fetch logo'd pool falls back to text (host stub)") {
+TEST_CASE(
+    "panel_texts — pre-fetch logo'd pool falls back to text (host stub)") {
   // bd btclock_v4-5yi: pools that ship an upstream `.bin` but have no
   // cached file on disk (e.g. first-boot before the fetcher runs)
   // resolve through the LittleFS cache on the device. Host tests have
@@ -1196,7 +1358,8 @@ TEST_CASE("panel_texts — pre-fetch logo'd pool falls back to text (host stub)"
   CHECK(out[6] == "PH/S");
 }
 
-TEST_CASE("panel_texts — mining pool hashrate text fallback (space split line)") {
+TEST_CASE(
+    "panel_texts — mining pool hashrate text fallback (space split line)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
   // A pool whose display name contains a space: the mirror encodes the
@@ -1211,7 +1374,9 @@ TEST_CASE("panel_texts — mining pool hashrate text fallback (space split line)
   CHECK(out[6] == "PH/S");
 }
 
-TEST_CASE("panel_texts — mining pool hashrate text fallback (underscore split line)") {
+TEST_CASE(
+    "panel_texts — mining pool hashrate text fallback (underscore split "
+    "line)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolHashrate;
   // "public_pool" is the pool_name() key — no vendored logo → split on
@@ -1243,7 +1408,9 @@ TEST_CASE("panel_texts — mining pool earnings sats verbatim (logo path)") {
   CHECK(out[5] == "1");
 }
 
-TEST_CASE("panel_texts — mining pool earnings 10K..99K keeps leading digit (7-panel)") {
+TEST_CASE(
+    "panel_texts — mining pool earnings 10K..99K keeps leading digit "
+    "(7-panel)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolEarnings;
   btclock::pool_logos::ClearTestLogos();
@@ -1284,7 +1451,9 @@ TEST_CASE("panel_texts — mining pool earnings 12.3K on 8-panel board") {
   CHECK(out[6] == "K");
 }
 
-TEST_CASE("panel_texts — mining pool earnings whale mode switches to BTC (text fallback)") {
+TEST_CASE(
+    "panel_texts — mining pool earnings whale mode switches to BTC (text "
+    "fallback)") {
   PanelTextInputs in;
   in.kind = ScreenType::kMiningPoolEarnings;
   // "BigPool" isn't in the registry → single-word text fallback in slot 0.
@@ -1527,8 +1696,7 @@ TEST_CASE("panel_texts — nostr zap with sats glyph (8 panels, 21000)") {
   CHECK(out[7] == "0");
 }
 
-TEST_CASE(
-    "panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
+TEST_CASE("panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
   // Same input, only the pref flips. With an amount that triggers the
   // suffix path ("210k", 4 chars on a 5-cell tail), toggling the glyph
   // pref only swaps the cell just before the most-significant amount
@@ -1596,6 +1764,8 @@ TEST_CASE("LatestZap merge: newer received_ms wins") {
   // Replicates the guard in hub.cpp: `other.received_ms > cur.received_ms`.
   CHECK(fresh.received_ms > cur.received_ms);
   if (fresh.received_ms > cur.received_ms) cur = fresh;
+  REQUIRE(cur.amount_sats.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*cur.amount_sats == 500);
   CHECK(cur.message == "newer");
 
@@ -1606,6 +1776,8 @@ TEST_CASE("LatestZap merge: newer received_ms wins") {
   stale.received_ms = 2000;
   CHECK(!(stale.received_ms > cur.received_ms));
   if (stale.received_ms > cur.received_ms) cur = stale;
+  REQUIRE(cur.amount_sats.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*cur.amount_sats == 500);
   CHECK(cur.message == "newer");
 }

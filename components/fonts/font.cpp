@@ -14,7 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #define MALLOC_CAP_SPIRAM 0
-#define MALLOC_CAP_8BIT   0
+#define MALLOC_CAP_8BIT 0
 static inline void* heap_caps_malloc(size_t n, int /*caps*/) {
   return std::malloc(n);
 }
@@ -39,13 +39,16 @@ static inline void* heap_caps_malloc(size_t n, int /*caps*/) {
 #ifdef BTCLOCK_WASM_BUILD
 #include "font_wasm_aa.hpp"
 #else
-namespace btclock { namespace wasm_aa {
-inline void SetPanelTargets(std::size_t, const uint8_t* const*,
-                            uint8_t* const*, int, int, int) {}
+namespace btclock {
+namespace wasm_aa {
+inline void SetPanelTargets(std::size_t, const uint8_t* const*, uint8_t* const*,
+                            int, int, int) {}
 inline void Clear() {}
 inline void WritePixel(const uint8_t*, int, int, uint8_t, bool) {}
 inline void FillRect(const uint8_t*, int, int, int, int, uint8_t) {}
-inline bool SetPixelSuppressed() { return false; }
+inline bool SetPixelSuppressed() {
+  return false;
+}
 class SetPixelSuppressScope {
  public:
   SetPixelSuppressScope() = default;
@@ -53,7 +56,8 @@ class SetPixelSuppressScope {
   SetPixelSuppressScope(const SetPixelSuppressScope&) = delete;
   SetPixelSuppressScope& operator=(const SetPixelSuppressScope&) = delete;
 };
-}}  // namespace btclock::wasm_aa
+}  // namespace wasm_aa
+}  // namespace btclock
 #endif
 
 namespace btclock {
@@ -67,30 +71,30 @@ constexpr const char* kTag = "fonts";
 // advance `p`. On malformed input, advances one byte and returns U+FFFD.
 int NextCodepoint(const char*& p) {
   const uint8_t c = static_cast<uint8_t>(*p);
-  if (c < 0x80) { ++p; return c; }
+  if (c < 0x80) {
+    ++p;
+    return c;
+  }
   if ((c & 0xE0) == 0xC0 && (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80) {
-    const int cp = ((c & 0x1F) << 6) |
-                    (static_cast<uint8_t>(p[1]) & 0x3F);
+    const int cp = ((c & 0x1F) << 6) | (static_cast<uint8_t>(p[1]) & 0x3F);
     p += 2;
     return cp;
   }
-  if ((c & 0xF0) == 0xE0 &&
-      (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
+  if ((c & 0xF0) == 0xE0 && (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
       (static_cast<uint8_t>(p[2]) & 0xC0) == 0x80) {
     const int cp = ((c & 0x0F) << 12) |
-                    ((static_cast<uint8_t>(p[1]) & 0x3F) << 6) |
-                    (static_cast<uint8_t>(p[2]) & 0x3F);
+                   ((static_cast<uint8_t>(p[1]) & 0x3F) << 6) |
+                   (static_cast<uint8_t>(p[2]) & 0x3F);
     p += 3;
     return cp;
   }
-  if ((c & 0xF8) == 0xF0 &&
-      (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
+  if ((c & 0xF8) == 0xF0 && (static_cast<uint8_t>(p[1]) & 0xC0) == 0x80 &&
       (static_cast<uint8_t>(p[2]) & 0xC0) == 0x80 &&
       (static_cast<uint8_t>(p[3]) & 0xC0) == 0x80) {
     const int cp = ((c & 0x07) << 18) |
-                    ((static_cast<uint8_t>(p[1]) & 0x3F) << 12) |
-                    ((static_cast<uint8_t>(p[2]) & 0x3F) << 6) |
-                    (static_cast<uint8_t>(p[3]) & 0x3F);
+                   ((static_cast<uint8_t>(p[1]) & 0x3F) << 12) |
+                   ((static_cast<uint8_t>(p[2]) & 0x3F) << 6) |
+                   (static_cast<uint8_t>(p[3]) & 0x3F);
     p += 4;
     return cp;
   }
@@ -110,8 +114,7 @@ void ClearFb(LandscapeFb& fb, bool white) {
   // pointer — unique per panel because each panel's LandscapeFb points
   // into a distinct ctx.fbs[i] slice. Logical orientation; alpha=0 for
   // a white/no-ink bg, 255 for a black bg.
-  wasm_aa::FillRect(fb.native_fb, 0, 0,
-                    LogicalWidth(fb), LogicalHeight(fb),
+  wasm_aa::FillRect(fb.native_fb, 0, 0, LogicalWidth(fb), LogicalHeight(fb),
                     white ? 0 : 255);
 }
 
@@ -170,7 +173,8 @@ Font::GlyphMetrics Font::GetMetrics(int codepoint, float pixel_height) const {
   auto* info = static_cast<stbtt_fontinfo*>(info_);
   const float scale = stbtt_ScaleForPixelHeight(info, pixel_height);
   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-  stbtt_GetCodepointBitmapBox(info, codepoint, scale, scale, &x0, &y0, &x1, &y1);
+  stbtt_GetCodepointBitmapBox(info, codepoint, scale, scale, &x0, &y0, &x1,
+                              &y1);
   int advance = 0, lsb = 0;
   stbtt_GetCodepointHMetrics(info, codepoint, &advance, &lsb);
   m.w = x1 - x0;
@@ -181,8 +185,8 @@ Font::GlyphMetrics Font::GetMetrics(int codepoint, float pixel_height) const {
   return m;
 }
 
-void Font::RenderGlyph(int codepoint, float pixel_height, uint8_t* out,
-                       int w, int h) const {
+void Font::RenderGlyph(int codepoint, float pixel_height, uint8_t* out, int w,
+                       int h) const {
   if (info_ == nullptr) return;
   auto* info = static_cast<stbtt_fontinfo*>(info_);
   const float scale = stbtt_ScaleForPixelHeight(info, pixel_height);
@@ -207,8 +211,8 @@ Font::ReferenceBox Font::GetReferenceBox(const char* chars,
     const int cp = NextCodepoint(p);
     const auto m = GetMetrics(cp, pixel_height);
     if (m.w <= 0 || m.h <= 0) continue;
-    const int above = -m.yoff;            // positive if glyph extends above baseline
-    const int below = m.yoff + m.h;       // positive if glyph extends below baseline
+    const int above = -m.yoff;       // positive if glyph extends above baseline
+    const int below = m.yoff + m.h;  // positive if glyph extends below baseline
     if (above > rb.above_baseline) rb.above_baseline = above;
     if (below > rb.below_baseline) rb.below_baseline = below;
   }
@@ -221,7 +225,7 @@ namespace {
 
 // Scratch buffer for the biggest glyph we expect to rasterize. Lives in
 // PSRAM so it doesn't eat internal RAM.
-constexpr size_t kMaxGlyphBytes = 200 * 200;   // 40 KB
+constexpr size_t kMaxGlyphBytes = 200 * 200;  // 40 KB
 uint8_t* glyph_buf() {
   static uint8_t* buf = nullptr;
   if (buf == nullptr) {
@@ -229,7 +233,8 @@ uint8_t* glyph_buf() {
         heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_SPIRAM));
     if (buf == nullptr) {
       ESP_LOGE(kTag, "glyph PSRAM alloc failed, falling back to internal");
-      buf = static_cast<uint8_t*>(heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_8BIT));
+      buf = static_cast<uint8_t*>(
+          heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_8BIT));
     }
   }
   return buf;
@@ -237,9 +242,8 @@ uint8_t* glyph_buf() {
 
 }  // namespace
 
-int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
-                      const char* text, const Font& font,
-                      float pixel_height, bool white_text) {
+int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline, const char* text,
+                      const Font& font, float pixel_height, bool white_text) {
   int pen_x = x;
   uint8_t* buf = glyph_buf();
   const char* p = text;
@@ -264,8 +268,8 @@ int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
             // (no-op on device). This is what gives the preview canvas
             // smooth edges even though the physical panel still gets
             // the thresholded 1bpp pixel below.
-            wasm_aa::WritePixel(fb.native_fb, top_left_x + dx,
-                                top_left_y + dy, a, white_text);
+            wasm_aa::WritePixel(fb.native_fb, top_left_x + dx, top_left_y + dy,
+                                a, white_text);
             if (a >= 128) {
               SetPixelLandscape(fb, top_left_x + dx, top_left_y + dy,
                                 white_text);
@@ -279,8 +283,7 @@ int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
   return pen_x - x;
 }
 
-int MeasureTextWidth(const char* text, const Font& font,
-                     float pixel_height) {
+int MeasureTextWidth(const char* text, const Font& font, float pixel_height) {
   int total = 0;
   const char* p = text;
   while (*p) {
@@ -294,8 +297,8 @@ int MeasureTextWidth(const char* text, const Font& font,
 // of the last, so we measure the *ink* width (bitmap coverage) rather than
 // the pen-advance width. Centering with advance leaves uneven visual
 // margins; centering with ink centers the visible strokes.
-float FitTextPx(const char* text, const Font& font, float max_px,
-                float min_px, int target_w) {
+float FitTextPx(const char* text, const Font& font, float max_px, float min_px,
+                int target_w) {
   return FitTextPxBy(
       [&](float px) { return MeasureInkWidth(text, font, px, nullptr); },
       max_px, min_px, target_w);
@@ -314,7 +317,10 @@ int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
     if (m.w > 0 && m.h > 0) {
       const int gl = pen + m.xoff;
       const int gr = gl + m.w;
-      if (first) { ink_left = gl; first = false; }
+      if (first) {
+        ink_left = gl;
+        first = false;
+      }
       if (gr > ink_right) ink_right = gr;
     }
     pen += m.advance;
@@ -333,13 +339,11 @@ namespace {
 // from `ref_box` sitting inside a region [y_top, y_top + region_h].
 void DrawLineCentered(LandscapeFb& fb, int panel_w, int y_top, int region_h,
                       const char* text, const Font::ReferenceBox& ref_box,
-                      const Font& font, float pixel_height,
-                      bool white_text, int x_offset_px = 0,
-                      int y_offset_px = 0) {
+                      const Font& font, float pixel_height, bool white_text,
+                      int x_offset_px = 0, int y_offset_px = 0) {
   int left_bearing = 0;
   const int ink_w = MeasureInkWidth(text, font, pixel_height, &left_bearing);
-  const int x_origin =
-      (panel_w - ink_w) / 2 - left_bearing + x_offset_px;
+  const int x_origin = (panel_w - ink_w) / 2 - left_bearing + x_offset_px;
 
   const int ref_h = ref_box.above_baseline + ref_box.below_baseline;
   const int ref_top = y_top + (region_h - ref_h) / 2;
@@ -364,7 +368,10 @@ void FillRoundRect(LandscapeFb& fb, int x, int y, int w, int h, int r,
   if (r < 0) r = 0;
   if (r > h / 2) r = h / 2;
   if (r > w / 2) r = w / 2;
-  if (r == 0) { FillRect(fb, x, y, w, h, white); return; }
+  if (r == 0) {
+    FillRect(fb, x, y, w, h, white);
+    return;
+  }
   // Middle strip: full-height rectangle between the two rounded ends.
   FillRect(fb, x + r, y, w - 2 * r, h, white);
   // Side strips (between the corner arcs): full-width minus corners.
@@ -374,10 +381,11 @@ void FillRoundRect(LandscapeFb& fb, int x, int y, int w, int h, int r,
   for (int dy = 0; dy <= r; ++dy) {
     for (int dx = 0; dx <= r; ++dx) {
       if (dx * dx + dy * dy <= r * r) {
-        SetPixelLandscape(fb, x + r - dx, y + r - dy, white);             // TL
-        SetPixelLandscape(fb, x + w - r - 1 + dx, y + r - dy, white);     // TR
-        SetPixelLandscape(fb, x + r - dx, y + h - r - 1 + dy, white);     // BL
-        SetPixelLandscape(fb, x + w - r - 1 + dx, y + h - r - 1 + dy, white); // BR
+        SetPixelLandscape(fb, x + r - dx, y + r - dy, white);          // TL
+        SetPixelLandscape(fb, x + w - r - 1 + dx, y + r - dy, white);  // TR
+        SetPixelLandscape(fb, x + r - dx, y + h - r - 1 + dy, white);  // BL
+        SetPixelLandscape(fb, x + w - r - 1 + dx, y + h - r - 1 + dy,
+                          white);  // BR
       }
     }
   }
@@ -386,13 +394,12 @@ void FillRoundRect(LandscapeFb& fb, int x, int y, int w, int h, int r,
 }  // namespace
 
 void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
-                      const char* text, const char* ref_chars,
-                      const Font& font, float pixel_height,
-                      bool white_text, int x_offset_px, int y_offset_px) {
+                      const char* text, const char* ref_chars, const Font& font,
+                      float pixel_height, bool white_text, int x_offset_px,
+                      int y_offset_px) {
   const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
-  DrawLineCentered(fb, panel_w, /*y_top=*/0, /*region_h=*/panel_h, text,
-                   rb, font, pixel_height, white_text, x_offset_px,
-                   y_offset_px);
+  DrawLineCentered(fb, panel_w, /*y_top=*/0, /*region_h=*/panel_h, text, rb,
+                   font, pixel_height, white_text, x_offset_px, y_offset_px);
 }
 
 void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
@@ -446,8 +453,8 @@ void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
   }
   uint8_t* scratch = glyph_buf();
   if (scratch == nullptr) return;
-  font.RenderGlyph(static_cast<int>(codepoint), pixel_height, scratch,
-                   m.w, m.h);
+  font.RenderGlyph(static_cast<int>(codepoint), pixel_height, scratch, m.w,
+                   m.h);
   int ix_min = m.w, ix_max = -1, iy_min = m.h, iy_max = -1;
   for (int y = 0; y < m.h; ++y) {
     const uint8_t* row = scratch + y * m.w;
@@ -474,8 +481,8 @@ void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
 }
 
 void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
-                bool (*get_module)(int, int, const void*),
-                const void* ctx, bool white_bg) {
+                bool (*get_module)(int, int, const void*), const void* ctx,
+                bool white_bg) {
   if (size <= 0) return;
   // Pick the biggest integer module size that fits both dimensions.
   const int max_dim = panel_w < panel_h ? panel_w : panel_h;
@@ -491,18 +498,17 @@ void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
       const bool white = white_bg ? !dark : dark;
       for (int dy = 0; dy < mod_px; ++dy) {
         for (int dx = 0; dx < mod_px; ++dx) {
-          SetPixelLandscape(fb, x0 + mx * mod_px + dx,
-                            y0 + my * mod_px + dy, white);
+          SetPixelLandscape(fb, x0 + mx * mod_px + dx, y0 + my * mod_px + dy,
+                            white);
         }
       }
     }
   }
 }
 
-void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
-                  const char* text,
-                  const Font& regular, const Font& bold,
-                  float pixel_height, bool white_text) {
+void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h, const char* text,
+                  const Font& regular, const Font& bold, float pixel_height,
+                  bool white_text) {
   const auto lines = ParseMarkdownLines(text);
 
   // Vertical layout: each line occupies `line_h` px; total height is
@@ -521,22 +527,21 @@ void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
     int lb = 0;
     const int ink_w = MeasureInkWidth(line.text.c_str(), f, pixel_height, &lb);
     const int x = (panel_w - ink_w) / 2 - lb;
-    DrawTextLandscape(fb, x, y, line.text.c_str(), f, pixel_height,
-                      white_text);
+    DrawTextLandscape(fb, x, y, line.text.c_str(), f, pixel_height, white_text);
     y += static_cast<int>(line_h);
   }
 }
 
 void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* top_text, const char* bottom_text,
-                   const char* ref_chars, const Font& font,
-                   float pixel_height, bool white_text) {
+                   const char* ref_chars, const Font& font, float pixel_height,
+                   bool white_text) {
   // Layout mirrors the existing firmware's splitText
   // (src/lib/drivers/epd/epd.cpp): a 6 px pill-ended separator at the
   // panel vertical centre, each text's reference box offset by `kGap`
   // from the centre line, and the separator as wide as the narrower of
   // the two ink widths.
-  constexpr int kGap = 12;           // pixels between centre and text edge
+  constexpr int kGap = 12;  // pixels between centre and text edge
   constexpr int kLineThickness = 6;
   constexpr int kLineRadius = 3;
 
@@ -570,7 +575,8 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
 
   int top_lb = 0, bot_lb = 0;
   const int top_ink_w = MeasureInkWidth(top_text, font, pixel_height, &top_lb);
-  const int bot_ink_w = MeasureInkWidth(bottom_text, font, pixel_height, &bot_lb);
+  const int bot_ink_w =
+      MeasureInkWidth(bottom_text, font, pixel_height, &bot_lb);
   const int top_x = (panel_w - top_ink_w) / 2 - top_lb;
   const int bot_x = (panel_w - bot_ink_w) / 2 - bot_lb;
 

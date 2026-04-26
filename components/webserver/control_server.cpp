@@ -1,13 +1,4 @@
 #include "control_server.hpp"
-#include "auth_gate.hpp"
-#include "control_validators.hpp"
-#include "heap_metrics.hpp"
-#include "light_metrics.hpp"
-#include "mime.hpp"
-#include "pool_logo_fetcher/pool_logo_fetcher.hpp"
-#include "show_text_parse.hpp"
-#include "sse_server.hpp"
-#include "url_decode.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -20,19 +11,13 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 #include <utility>
 
-#include <sys/stat.h>
-
+#include "auth_gate.hpp"
 #include "cJSON.h"
+#include "control_validators.hpp"
 #include "epd_ssd1680.hpp"
-#include "net_util/hostname.hpp"
-#include "ota_manager.hpp"
-#include "ota_upload_bounds.hpp"
-#include "settings/api.hpp"
-#include "settings/build_time.hpp"
-#include "settings/nvs_store.hpp"
-#include "settings/pref_keys.hpp"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -43,7 +28,22 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "heap_metrics.hpp"
+#include "light_metrics.hpp"
 #include "littlefs.hpp"
+#include "mime.hpp"
+#include "net_util/hostname.hpp"
+#include "ota_manager.hpp"
+#include "ota_upload_bounds.hpp"
+#include "pool_logo_fetcher/pool_logo_fetcher.hpp"
+#include "settings/api.hpp"
+#include "settings/build_time.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
+#include "show_text_parse.hpp"
+#include "sse_server.hpp"
+#include "url_decode.hpp"
 
 namespace btclock {
 namespace {
@@ -104,8 +104,7 @@ esp_err_t SendNotImplemented(httpd_req_t* req, const char* tracking) {
 // themselves. Good enough at this scale (all control endpoints take
 // 0-1 parameters) without pulling in a query-string library.
 
-bool QueryParam(httpd_req_t* req, const char* key,
-                char* out, size_t out_size) {
+bool QueryParam(httpd_req_t* req, const char* key, char* out, size_t out_size) {
   size_t qlen = httpd_req_get_url_query_len(req);
   if (qlen == 0 || qlen >= 256) return false;
   char qbuf[256];
@@ -277,10 +276,9 @@ char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
   if (!buf) return nullptr;
   int total = 0;
   while (total < static_cast<int>(req->content_len)) {
-    const int r =
-        httpd_req_recv(req, buf + total,
-                       static_cast<size_t>(
-                           static_cast<int>(req->content_len) - total));
+    const int r = httpd_req_recv(
+        req, buf + total,
+        static_cast<size_t>(static_cast<int>(req->content_len) - total));
     if (r <= 0) {
       heap_caps_free(buf);
       return nullptr;
@@ -297,8 +295,10 @@ char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
 
 ControlServer::ControlServer(Config cfg) : cfg_(std::move(cfg)) {
   status_.current_slot = 0;
-  status_.slot_count = cfg_.currencies.empty() ? 1
-                       : static_cast<int32_t>(1 + 2 * cfg_.currencies.size());
+  status_.slot_count =
+      cfg_.currencies.empty()
+          ? 1
+          : static_cast<int32_t>(1 + 2 * cfg_.currencies.size());
   status_.timer_running = true;
   status_.currency = "";
 }
@@ -370,10 +370,8 @@ esp_err_t ControlServer::Start() {
 
   auto reg = [&](const char* uri, httpd_method_t method,
                  esp_err_t (*h)(httpd_req_t*)) {
-    const httpd_uri_t entry = {.uri = uri,
-                               .method = method,
-                               .handler = h,
-                               .user_ctx = this};
+    const httpd_uri_t entry = {
+        .uri = uri, .method = method, .handler = h, .user_ctx = this};
     return httpd_register_uri_handler(server_, &entry);
   };
 
@@ -423,8 +421,7 @@ esp_err_t ControlServer::Start() {
   if (sse_) {
     const esp_err_t sse_err = sse_->RegisterRoute(server_);
     if (sse_err != ESP_OK) {
-      ESP_LOGW(kTag, "sse RegisterRoute failed: %s",
-               esp_err_to_name(sse_err));
+      ESP_LOGW(kTag, "sse RegisterRoute failed: %s", esp_err_to_name(sse_err));
     }
   }
   // TODO(btclock_v3_fci-equ): `GET /` static-file serve from LittleFS.
@@ -494,8 +491,7 @@ esp_err_t ControlServer::TrampolineScreenPrev(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleScreenPrev(req);
 }
 esp_err_t ControlServer::TrampolineStopDataSources(httpd_req_t* req) {
-  return static_cast<ControlServer*>(req->user_ctx)
-      ->HandleStopDataSources(req);
+  return static_cast<ControlServer*>(req->user_ctx)->HandleStopDataSources(req);
 }
 esp_err_t ControlServer::TrampolineRestartDataSources(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)
@@ -571,8 +567,7 @@ esp_err_t ControlServer::TrampolineFirmwareAutoUpdate(httpd_req_t* req) {
       ->HandleFirmwareAutoUpdate(req);
 }
 esp_err_t ControlServer::TrampolineUploadFirmware(httpd_req_t* req) {
-  return static_cast<ControlServer*>(req->user_ctx)
-      ->HandleUploadFirmware(req);
+  return static_cast<ControlServer*>(req->user_ctx)->HandleUploadFirmware(req);
 }
 esp_err_t ControlServer::TrampolineFactoryReset(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleFactoryReset(req);
@@ -659,13 +654,11 @@ std::string ControlServer::BuildStatusJson() const {
   const bool timer_running =
       cfg_.timer ? !cfg_.timer->IsPaused() : live.timer_running;
   cJSON_AddBoolToObject(root, "timerRunning", timer_running);
-  cJSON_AddBoolToObject(root, "isOTAUpdating",
-                        GetOtaManager().IsUpdating());
+  cJSON_AddBoolToObject(root, "isOTAUpdating", GetOtaManager().IsUpdating());
 
   const int64_t uptime_s = esp_timer_get_time() / 1000000;
   cJSON_AddNumberToObject(root, "espUptime", static_cast<double>(uptime_s));
-  cJSON_AddBoolToObject(root, "epdInverted",
-                        btclock::EpdGetGlobalInverted());
+  cJSON_AddBoolToObject(root, "epdInverted", btclock::EpdGetGlobalInverted());
   // "espFreeHeap"/"espHeapSize" describe INTERNAL SRAM only; PSRAM is
   // split into espFreePsram/espPsramSize so the free <= size invariant
   // holds. See heap_metrics.hpp for the full field contract.
@@ -674,11 +667,9 @@ std::string ControlServer::BuildStatusJson() const {
                                  : 0;
   const std::size_t psram_total_bytes =
       esp_psram_is_initialized() ? esp_psram_get_size() : 0;
-  AttachHeapMetricsJson(root,
-                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+  AttachHeapMetricsJson(root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                         heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
-                        psram_free_bytes,
-                        psram_total_bytes);
+                        psram_free_bytes, psram_total_bytes);
 
   cJSON* conn = cJSON_AddObjectToObject(root, "connectionStatus");
   // Each channel reports its real upstream state when a callback is
@@ -694,9 +685,8 @@ std::string ControlServer::BuildStatusJson() const {
   cJSON_AddBoolToObject(
       conn, "blocks",
       cfg_.blocks_connected ? cfg_.blocks_connected() : fallback_up);
-  cJSON_AddBoolToObject(
-      conn, "V2",
-      cfg_.v2_connected ? cfg_.v2_connected() : fallback_up);
+  cJSON_AddBoolToObject(conn, "V2",
+                        cfg_.v2_connected ? cfg_.v2_connected() : fallback_up);
   // Nostr tracks the zap-relay WebSocket's live state when wired. An
   // unset provider means the listener isn't configured (nostrZapNotify
   // off or relay URL blank) — report false in that case so the WebUI
@@ -714,9 +704,8 @@ std::string ControlServer::BuildStatusJson() const {
   // before the first successful render).
   cJSON* data = cJSON_AddArrayToObject(root, "data");
   for (size_t i = 0; i < cfg_.num_screens; ++i) {
-    const char* s = (i < live.panel_texts.size())
-                        ? live.panel_texts[i].c_str()
-                        : "";
+    const char* s =
+        (i < live.panel_texts.size()) ? live.panel_texts[i].c_str() : "";
     cJSON_AddItemToArray(data, cJSON_CreateString(s));
   }
 
@@ -735,8 +724,7 @@ std::string ControlServer::BuildStatusJson() const {
                 static_cast<unsigned>(ds.start_hour),
                 static_cast<unsigned>(ds.start_minute));
   cJSON_AddStringToObject(dnd, "startTime", buf);
-  std::snprintf(buf, sizeof(buf), "%u:%02u",
-                static_cast<unsigned>(ds.end_hour),
+  std::snprintf(buf, sizeof(buf), "%u:%02u", static_cast<unsigned>(ds.end_hour),
                 static_cast<unsigned>(ds.end_minute));
   cJSON_AddStringToObject(dnd, "endTime", buf);
   cJSON_AddBoolToObject(dnd, "active", ds.active);
@@ -749,8 +737,7 @@ std::string ControlServer::BuildStatusJson() const {
   // Rev A / V8 wire light_sensor=nullptr so the field is suppressed.
   const bool light_available =
       cfg_.light_sensor && cfg_.light_sensor->IsAvailable();
-  const float light_lux =
-      light_available ? cfg_.light_sensor->GetLux() : -1.0f;
+  const float light_lux = light_available ? cfg_.light_sensor->GetLux() : -1.0f;
   AttachLightLevelJson(root, light_available, light_lux);
 
   // LEDs — mirror the per-pixel state, same shape /api/lights/status
@@ -759,8 +746,10 @@ std::string ControlServer::BuildStatusJson() const {
   if (cfg_.leds) {
     const LedsIface::Status st = cfg_.leds->GetStatus();
     cJSON* leds = BuildLightsStatusArray(st);
-    if (leds) cJSON_AddItemToObject(root, "leds", leds);
-    else cJSON_AddItemToObject(root, "leds", cJSON_CreateArray());
+    if (leds)
+      cJSON_AddItemToObject(root, "leds", leds);
+    else
+      cJSON_AddItemToObject(root, "leds", cJSON_CreateArray());
   } else {
     cJSON_AddItemToObject(root, "leds", cJSON_CreateArray());
   }
@@ -789,11 +778,9 @@ esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
                                  : 0;
   const std::size_t psram_total =
       esp_psram_is_initialized() ? esp_psram_get_size() : 0;
-  AttachHeapMetricsJson(root,
-                        heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+  AttachHeapMetricsJson(root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
                         heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
-                        psram_free,
-                        psram_total);
+                        psram_free, psram_total);
 
   // LittleFS usage — zero-out on error so the WebUI panel still
   // renders. Mount lives in main.cpp (see beads-bq0 / btclock_fs).
@@ -854,8 +841,7 @@ esp_err_t ControlServer::HandleFactoryReset(httpd_req_t* req) {
   cJSON* root = cJSON_Parse(body_str.c_str());
   const cJSON* confirm =
       root ? cJSON_GetObjectItemCaseSensitive(root, "confirm") : nullptr;
-  const bool ok = confirm && cJSON_IsString(confirm) &&
-                  confirm->valuestring &&
+  const bool ok = confirm && cJSON_IsString(confirm) && confirm->valuestring &&
                   std::string(confirm->valuestring) == "ERASE";
   cJSON_Delete(root);
 
@@ -992,8 +978,8 @@ esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
     parsed.cells.assign(n_panels, std::string());
     for (std::size_t i = 0; i < text.size() && i < n_panels; ++i) {
       const unsigned char u = static_cast<unsigned char>(text[i]);
-      parsed.cells[i].assign(
-          1, static_cast<char>(u < 0x80 ? std::toupper(u) : u));
+      parsed.cells[i].assign(1,
+                             static_cast<char>(u < 0x80 ? std::toupper(u) : u));
     }
   } else {
     // Fall back to JSON body. Bound it well below any realistic use
@@ -1093,8 +1079,7 @@ esp_err_t ControlServer::HandleFrontlightOn(httpd_req_t* req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    const char kBody[] =
-        "{\"error\":\"frontlight not present on this board\"}";
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   cfg_.frontlight->On();
@@ -1108,8 +1093,7 @@ esp_err_t ControlServer::HandleFrontlightOff(httpd_req_t* req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    const char kBody[] =
-        "{\"error\":\"frontlight not present on this board\"}";
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   cfg_.frontlight->Off();
@@ -1123,8 +1107,7 @@ esp_err_t ControlServer::HandleFrontlightFlash(httpd_req_t* req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    const char kBody[] =
-        "{\"error\":\"frontlight not present on this board\"}";
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   cfg_.frontlight->Flash();
@@ -1137,8 +1120,7 @@ esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    const char kBody[] =
-        "{\"error\":\"frontlight not present on this board\"}";
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   // Match the old firmware's shape: `{"flStatus":[<per-channel-duty>…]}`.
@@ -1154,8 +1136,8 @@ esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
   cJSON* arr = cJSON_AddArrayToObject(root, "flStatus");
   const size_t count = cfg_.num_screens > 0 ? cfg_.num_screens : 1;
   for (size_t i = 0; i < count; ++i) {
-    cJSON_AddItemToArray(arr,
-                         cJSON_CreateNumber(static_cast<double>(st.current_duty)));
+    cJSON_AddItemToArray(
+        arr, cJSON_CreateNumber(static_cast<double>(st.current_duty)));
   }
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
@@ -1168,8 +1150,7 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
     httpd_resp_set_status(req, "503 Service Unavailable");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    const char kBody[] =
-        "{\"error\":\"frontlight not present on this board\"}";
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   // Old firmware accepts `?b=<value>` on the query string (and a path
@@ -1195,10 +1176,10 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
 // src/lib/net/webserver/lights.cpp shapes 1:1 so the existing WebUI
 // drives this port unchanged:
 //
-//   GET  /api/lights          -> [{"red":R,"green":G,"blue":B,"hex":"#RRGGBB"}, ...]
-//   POST /api/lights/color?c=RRGGBB  (or "off") -> same status body
-//   POST /api/lights/off      -> 200 OK, empty body
-//   POST /api/lights/set      -> body is a JSON array of per-pixel
+//   GET  /api/lights          -> [{"red":R,"green":G,"blue":B,"hex":"#RRGGBB"},
+//   ...] POST /api/lights/color?c=RRGGBB  (or "off") -> same status body POST
+//   /api/lights/off      -> 200 OK, empty body POST /api/lights/set      ->
+//   body is a JSON array of per-pixel
 //                                objects {"red":..,"green":..,"blue":..}
 //                                or {"hex":"#RRGGBB"}.
 //
@@ -1328,8 +1309,8 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
     return ESP_FAIL;
   }
   uint32_t pixels[8] = {0};
-  for (int i = 0; i < n && i < static_cast<int>(sizeof(pixels) /
-                                                sizeof(pixels[0])); ++i) {
+  for (int i = 0;
+       i < n && i < static_cast<int>(sizeof(pixels) / sizeof(pixels[0])); ++i) {
     cJSON* entry = cJSON_GetArrayItem(root, i);
     if (!entry || !cJSON_IsObject(entry)) {
       cJSON_Delete(root);
@@ -1383,9 +1364,9 @@ esp_err_t ControlServer::HandleWifiTxPower(httpd_req_t* req) {
   char body[kMaxBody + 1];
   int total = 0;
   while (total < static_cast<int>(req->content_len)) {
-    const int r = httpd_req_recv(req, body + total,
-                                 static_cast<size_t>(
-                                     static_cast<int>(req->content_len) - total));
+    const int r = httpd_req_recv(
+        req, body + total,
+        static_cast<size_t>(static_cast<int>(req->content_len) - total));
     if (r <= 0) {
       httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "recv");
       return ESP_FAIL;
@@ -1447,8 +1428,8 @@ int HttpdRecvTrampoline(void* ctx, char* buf, size_t want) {
   for (int attempt = 0; attempt <= kHttpdRecvTimeoutRetries; ++attempt) {
     const int r = httpd_req_recv(req, buf, want);
     if (r != HTTPD_SOCK_ERR_TIMEOUT) return r;
-    ESP_LOGW(kTag, "httpd_req_recv timeout (attempt %d/%d)",
-             attempt + 1, kHttpdRecvTimeoutRetries + 1);
+    ESP_LOGW(kTag, "httpd_req_recv timeout (attempt %d/%d)", attempt + 1,
+             kHttpdRecvTimeoutRetries + 1);
   }
   return HTTPD_SOCK_ERR_TIMEOUT;
 }
@@ -1457,7 +1438,9 @@ int HttpdRecvTrampoline(void* ctx, char* buf, size_t want) {
 // response has flushed to the client's socket before the reboot fires;
 // otherwise the client sees a TCP-reset and surfaces a generic error
 // instead of the "reboot scheduled" body we sent.
-void RebootTimerCallback(void* /*arg*/) { esp_restart(); }
+void RebootTimerCallback(void* /*arg*/) {
+  esp_restart();
+}
 
 void ScheduleReboot(uint32_t delay_ms) {
   esp_timer_create_args_t targs = {};
@@ -1496,20 +1479,18 @@ esp_err_t ControlServer::HandleUploadWebui(httpd_req_t* req) {
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     char body[96];
-    std::snprintf(body, sizeof(body),
-                  "{\"error\":\"oversize\",\"max\":%u}",
+    std::snprintf(body, sizeof(body), "{\"error\":\"oversize\",\"max\":%u}",
                   static_cast<unsigned>(part_size));
     httpd_resp_send(req, body, strlen(body));
     return ESP_FAIL;
   }
 
   ESP_LOGW(kTag, "webui upload starting: content-length=%u partition=%u",
-           static_cast<unsigned>(expected),
-           static_cast<unsigned>(part_size));
+           static_cast<unsigned>(expected), static_cast<unsigned>(part_size));
 
   size_t written = 0;
-  const esp_err_t rc = btclock::FlashWebuiImage(
-      &HttpdRecvTrampoline, req, expected, &written);
+  const esp_err_t rc =
+      btclock::FlashWebuiImage(&HttpdRecvTrampoline, req, expected, &written);
 
   if (rc == ESP_ERR_INVALID_SIZE) {
     // Truncated upload: the declared Content-Length wasn't delivered.
@@ -1534,8 +1515,7 @@ esp_err_t ControlServer::HandleUploadWebui(httpd_req_t* req) {
   ESP_LOGW(kTag, "webui upload ok: bytes=%u; rebooting in 500ms",
            static_cast<unsigned>(written));
   char body[96];
-  std::snprintf(body, sizeof(body),
-                "{\"result\":\"ok\",\"bytes\":%u}",
+  std::snprintf(body, sizeof(body), "{\"result\":\"ok\",\"bytes\":%u}",
                 static_cast<unsigned>(written));
   SendJson(req, body);
   ScheduleReboot(500);
@@ -1597,8 +1577,7 @@ esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     char body[96];
-    std::snprintf(body, sizeof(body),
-                  "{\"error\":\"oversize\",\"max\":%u}",
+    std::snprintf(body, sizeof(body), "{\"error\":\"oversize\",\"max\":%u}",
                   static_cast<unsigned>(next->size));
     httpd_resp_send(req, body, strlen(body));
     return ESP_FAIL;
@@ -1610,13 +1589,12 @@ esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
   const bool have_sha = QueryParam(req, "sha256", sha_buf, sizeof(sha_buf));
 
   ESP_LOGW(kTag, "firmware upload starting: content-length=%u partition=%u",
-           static_cast<unsigned>(expected),
-           static_cast<unsigned>(next->size));
+           static_cast<unsigned>(expected), static_cast<unsigned>(next->size));
 
   size_t written = 0;
-  const esp_err_t rc = GetOtaManager().WritePushImage(
-      &HttpdRecvTrampoline, req, expected,
-      have_sha ? sha_buf : nullptr, &written);
+  const esp_err_t rc =
+      GetOtaManager().WritePushImage(&HttpdRecvTrampoline, req, expected,
+                                     have_sha ? sha_buf : nullptr, &written);
 
   if (rc == ESP_ERR_INVALID_STATE) {
     // Already updating — pull-OTA is in progress, or a previous push
@@ -1643,10 +1621,10 @@ esp_err_t ControlServer::HandleUploadFirmware(httpd_req_t* req) {
     return ESP_FAIL;
   }
 
-  ESP_LOGW(kTag, "firmware upload ok: bytes=%u", static_cast<unsigned>(written));
+  ESP_LOGW(kTag, "firmware upload ok: bytes=%u",
+           static_cast<unsigned>(written));
   char body[96];
-  std::snprintf(body, sizeof(body),
-                "{\"result\":\"ok\",\"bytes\":%u}",
+  std::snprintf(body, sizeof(body), "{\"result\":\"ok\",\"bytes\":%u}",
                 static_cast<unsigned>(written));
   SendJson(req, body);
   // Completion blink runs AFTER the HTTP body has flushed so the
@@ -1854,8 +1832,7 @@ btclock::settings::DeviceContext BuildDeviceContext(
     // `HH:MM:SS` — both treated as UTC. Parse once per GET; the result
     // is a small integer so recomputing it is cheaper than caching.
     ctx.last_build_time_unix =
-        btclock::settings::ParseCompilerBuildTimeUnix(desc->date,
-                                                     desc->time);
+        btclock::settings::ParseCompilerBuildTimeUnix(desc->date, desc->time);
   }
   ctx.available_fonts = cfg.available_fonts;
   ctx.available_pools = cfg.available_pools;
@@ -1866,8 +1843,9 @@ btclock::settings::DeviceContext BuildDeviceContext(
   // read-every-request shape used by `screen_is_hidden` below.
   {
     btclock::Prefs p(btclock::prefs::kSettingsNs);
-    ctx.mining_pool_stats_enabled = p.GetBool(prefs::kMiningPoolStats, false);
-    ctx.bitaxe_enabled = p.GetBool(prefs::kBitaxeEnabled, false);
+    ctx.mining_pool_stats_enabled =
+        btclock::settings::ReadBool(p, prefs::kMiningPoolStats);
+    ctx.bitaxe_enabled = btclock::settings::ReadBool(p, prefs::kBitaxeEnabled);
   }
   for (const auto& s : cfg.screens_catalog) {
     ctx.screens.push_back({s.id, s.name});
@@ -1913,9 +1891,9 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   body.resize(req->content_len);
   int total = 0;
   while (total < static_cast<int>(req->content_len)) {
-    const int r = httpd_req_recv(req, body.data() + total,
-                                 static_cast<size_t>(
-                                     static_cast<int>(req->content_len) - total));
+    const int r = httpd_req_recv(
+        req, body.data() + total,
+        static_cast<size_t>(static_cast<int>(req->content_len) - total));
     if (r <= 0) {
       httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "recv");
       return ESP_FAIL;
@@ -1929,8 +1907,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
       btclock::settings::ApplyPatch(body.c_str(), ctx, prefs, prefs);
   if (result.status != btclock::settings::PatchStatus::kOk) {
     char buf[128];
-    std::snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}",
-                  result.error.c_str());
+    std::snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", result.error.c_str());
     httpd_resp_set_status(req, "400 Bad Request");
     httpd_resp_set_type(req, kJsonType);
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -1959,8 +1936,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
           k == btclock::prefs::kDndTimeEnabled ||
           k == btclock::prefs::kDndStartHour ||
           k == btclock::prefs::kDndStartMin ||
-          k == btclock::prefs::kDndEndHour ||
-          k == btclock::prefs::kDndEndMin) {
+          k == btclock::prefs::kDndEndHour || k == btclock::prefs::kDndEndMin) {
         cfg_.on_dnd_changed();
         break;
       }
@@ -2084,8 +2060,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   if (cfg_.on_screens_changed) {
     for (const auto& k : result.touched_keys) {
       const bool is_order = (k == btclock::prefs::kScreenOrder);
-      const bool is_visible = (k.size() > 7 &&
-                               k.compare(0, 6, "screen") == 0 &&
+      const bool is_visible = (k.size() > 7 && k.compare(0, 6, "screen") == 0 &&
                                k.compare(k.size() - 7, 7, "Visible") == 0);
       const bool is_currencies = (k == btclock::prefs::kActCurrencies);
       if (is_order || is_visible || is_currencies) {
@@ -2109,8 +2084,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
           k == btclock::prefs::kFlOffWhenDark ||
           k == btclock::prefs::kFlMaxBrightness ||
           k == btclock::prefs::kFlEffectDelay ||
-          k == btclock::prefs::kFlAlwaysOn ||
-          k == btclock::prefs::kFlDisable ||
+          k == btclock::prefs::kFlAlwaysOn || k == btclock::prefs::kFlDisable ||
           k == btclock::prefs::kFlFlashOnUpd) {
         cfg_.on_frontlight_changed();
         break;
@@ -2174,8 +2148,7 @@ esp_err_t ControlServer::HandleDndStatus(httpd_req_t* req) {
                 static_cast<unsigned>(ds.start_hour),
                 static_cast<unsigned>(ds.start_minute));
   cJSON_AddStringToObject(root, "startTime", buf);
-  std::snprintf(buf, sizeof(buf), "%u:%02u",
-                static_cast<unsigned>(ds.end_hour),
+  std::snprintf(buf, sizeof(buf), "%u:%02u", static_cast<unsigned>(ds.end_hour),
                 static_cast<unsigned>(ds.end_minute));
   cJSON_AddStringToObject(root, "endTime", buf);
   cJSON_AddBoolToObject(root, "active", ds.active);
@@ -2252,12 +2225,16 @@ esp_err_t ControlServer::HandleActionSimulateZap(httpd_req_t* req) {
   if (req->content_len > 0 && req->content_len <= kMaxBody) {
     if (char* body = ReadFullBody(req, kMaxBody)) {
       if (cJSON* root = cJSON_Parse(body)) {
-        const cJSON* amt = cJSON_GetObjectItemCaseSensitive(root, "amount_sats");
+        const cJSON* amt =
+            cJSON_GetObjectItemCaseSensitive(root, "amount_sats");
         if (cJSON_IsNumber(amt)) {
           const double v = amt->valuedouble;
-          if (v < 0.0) amount_sats = 0;
-          else if (v > static_cast<double>(INT64_MAX)) amount_sats = INT64_MAX;
-          else amount_sats = static_cast<int64_t>(v);
+          if (v < 0.0)
+            amount_sats = 0;
+          else if (v > static_cast<double>(INT64_MAX))
+            amount_sats = INT64_MAX;
+          else
+            amount_sats = static_cast<int64_t>(v);
         }
         const cJSON* msg = cJSON_GetObjectItemCaseSensitive(root, "message");
         if (cJSON_IsString(msg) && msg->valuestring) {
@@ -2277,10 +2254,20 @@ esp_err_t ControlServer::HandleActionSimulateZap(httpd_req_t* req) {
 esp_err_t ControlServer::HandleActionClearPoolLogos(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
   // Best-effort: clear what's there, log a count, never error out so
-  // the WebUI button is harmless on a fresh device. The next pool
-  // selection (or refetch trigger from the user picking the pool
-  // again) re-downloads.
+  // the WebUI button is harmless on a fresh device.
   const int n = btclock::pool_logos::ClearAllCached();
+  // Re-enqueue a fetch for the active pool so the user doesn't have
+  // to switch pools (or reboot) to repopulate the cache after a
+  // deliberate clear. EnqueueFetch is a no-op when the pool has no
+  // upstream logo (LookupMeta returns nullptr).
+  {
+    btclock::Prefs settings(btclock::prefs::kSettingsNs);
+    const std::string active = btclock::settings::ReadString(
+        settings, btclock::prefs::kMiningPoolName);
+    if (!active.empty()) {
+      (void)btclock::pool_logos::EnqueueFetch(active);
+    }
+  }
   char body[64];
   std::snprintf(body, sizeof(body), "{\"removed\":%d}", n < 0 ? 0 : n);
   httpd_resp_set_type(req, "application/json");

@@ -2,11 +2,10 @@
 // in the ESP-IDF I2C master API, but the numeric helper lives in its
 // own header with zero dependencies so we can exercise it offline.
 
-#include "doctest.h"
-
 #include <cstdint>
 
 #include "bh1750_math.hpp"
+#include "doctest.h"
 
 using btclock::bh1750::RawToLux;
 

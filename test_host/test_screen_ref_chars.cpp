@@ -1,8 +1,8 @@
-#include "doctest.h"
-
 #include <fstream>
 #include <sstream>
 #include <string>
+
+#include "doctest.h"
 
 // Regression tests for the 2026-04-23 baseline-mismatch bug
 // ===========================================================
@@ -56,12 +56,11 @@ TEST_CASE("kDigitAndPuncRef was removed and is not re-introduced") {
   // formatters are integer-only), so the constant itself is a trap:
   // a contributor unfamiliar with the descender interaction may reach
   // for it. Keep it deleted.
-  for (const char* name : {"common.hpp", "common.cpp",
-                            "block_height.cpp", "moscow_time.cpp",
-                            "btc_price.cpp", "fee_rate.cpp"}) {
+  for (const char* name :
+       {"common.hpp", "common.cpp", "block_height.cpp", "moscow_time.cpp",
+        "btc_price.cpp", "fee_rate.cpp"}) {
     CAPTURE(name);
-    const std::string contents =
-        ReadFile(std::string("main/screens/") + name);
+    const std::string contents = ReadFile(std::string("main/screens/") + name);
     CHECK(contents.find("kDigitAndPuncRef") == std::string::npos);
   }
 }
@@ -72,10 +71,9 @@ TEST_CASE("screen renderers don't inline a ref_chars literal with punct") {
   // we encounter them; a regex-based scan would be more thorough but
   // also more fragile to comment / string formatting changes.
   for (const char* name : {"block_height.cpp", "moscow_time.cpp",
-                            "btc_price.cpp", "fee_rate.cpp"}) {
+                           "btc_price.cpp", "fee_rate.cpp"}) {
     CAPTURE(name);
-    const std::string contents =
-        ReadFile(std::string("main/screens/") + name);
+    const std::string contents = ReadFile(std::string("main/screens/") + name);
     CHECK(contents.find("\"0123456789.\"") == std::string::npos);
     CHECK(contents.find("\"0123456789,\"") == std::string::npos);
     CHECK(contents.find("\"0123456789.,:\"") == std::string::npos);

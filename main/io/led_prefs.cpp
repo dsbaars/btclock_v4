@@ -21,7 +21,7 @@ constexpr const char* kLegacyKeyFlashUpdate = "flashUpdate";
 constexpr uint8_t kDefaultBrightness = 128;
 constexpr uint32_t kDefaultBlockFlashColor = 0xE04300u;
 constexpr bool kDefaultDisabled = false;
-constexpr bool kDefaultFlashOnUpdate = false;
+constexpr bool kDefaultFlashOnUpdate = true;
 
 }  // namespace
 

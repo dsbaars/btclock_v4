@@ -8,9 +8,8 @@
 // render pipeline. Matches the contract specified by the bug brief
 // ("fix full-vs-partial EPD refresh cadence").
 
-#include "doctest.h"
-
 #include "app/refresh_policy.hpp"
+#include "doctest.h"
 
 using btclock::RefreshPolicy;
 using btclock::RefreshPolicyState;
@@ -78,7 +77,9 @@ TEST_CASE("refrScrnChange=false: screen change within window is partial") {
   CHECK(s.last_full_refresh_ms == 0);
 }
 
-TEST_CASE("refrScrnChange=false: screen change past window is full and timer resets") {
+TEST_CASE(
+    "refrScrnChange=false: screen change past window is full and timer "
+    "resets") {
   RefreshPolicyState s;
   s.last_full_refresh_ms = 0;
   // Exactly at the threshold — the "≥" compare should fire full.
@@ -210,7 +211,9 @@ TEST_CASE("default fullRefreshMin=60 honors partial rotation for <60 min") {
   CHECK(s.last_full_refresh_ms == 60 * kMin);
 }
 
-TEST_CASE("scheduled full fires even if refrScrnChange=false and only one nav a session") {
+TEST_CASE(
+    "scheduled full fires even if refrScrnChange=false and only one nav a "
+    "session") {
   // Long-running device that's been on slot X for an hour: the first
   // screen change at that point must produce a full refresh to clear
   // accumulated ghosting.

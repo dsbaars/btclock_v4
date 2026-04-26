@@ -41,8 +41,7 @@ uint16_t ComputeStaggeredDuty(uint32_t tick, uint8_t led_index,
       // last-lit-LED (index 0) holds at max until its countdown starts.
       duty_cycle =
           max_b - static_cast<int32_t>(tick) * static_cast<int32_t>(step);
-      offset =
-          (n - 1 - static_cast<int32_t>(led_index)) * phase_step;
+      offset = (n - 1 - static_cast<int32_t>(led_index)) * phase_step;
       break;
     }
   }
@@ -52,7 +51,7 @@ uint16_t ComputeStaggeredDuty(uint32_t tick, uint8_t led_index,
 }
 
 uint32_t StaggerTotalTicks(uint8_t num_leds, uint16_t max_brightness,
-                            uint16_t step) {
+                           uint16_t step) {
   if (num_leds == 0 || step == 0 || max_brightness == 0) return 0;
   const int32_t max_b = static_cast<int32_t>(max_brightness);
   const int32_t n = static_cast<int32_t>(num_leds);

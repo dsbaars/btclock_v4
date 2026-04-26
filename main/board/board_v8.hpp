@@ -16,8 +16,8 @@ namespace board {
 // --- I2C (two MCP23017 expanders — no PCA9685, no BH1750 on V8) ---
 constexpr gpio_num_t kI2cSda = GPIO_NUM_1;
 constexpr gpio_num_t kI2cScl = GPIO_NUM_2;
-constexpr uint16_t kMcp1Addr = 0x20;     // buttons + BUSY inputs
-constexpr uint16_t kMcp2Addr = 0x21;     // EPD CS + RESET outputs
+constexpr uint16_t kMcp1Addr = 0x20;  // buttons + BUSY inputs
+constexpr uint16_t kMcp2Addr = 0x21;  // EPD CS + RESET outputs
 // Sentinel values for unused peripheral addresses / pins.
 constexpr uint16_t kPcaAddr = 0x00;
 constexpr uint16_t kBhAddr = 0x00;
@@ -69,12 +69,12 @@ constexpr gpio_num_t kMcpResetGpio = GPIO_NUM_21;
 // 001 → 0x21 (mcp2) match the Arduino-era firmware's setupMcp().
 constexpr bool kHasMcpAddressGpios = true;
 constexpr std::array<gpio_num_t, 6> kMcpAddressGpios = {
-    GPIO_NUM_6,  GPIO_NUM_7,  GPIO_NUM_8,    // mcp1 A0, A1, A2
-    GPIO_NUM_9,  GPIO_NUM_10, GPIO_NUM_14,   // mcp2 A0, A1, A2
+    GPIO_NUM_6, GPIO_NUM_7,  GPIO_NUM_8,   // mcp1 A0, A1, A2
+    GPIO_NUM_9, GPIO_NUM_10, GPIO_NUM_14,  // mcp2 A0, A1, A2
 };
 constexpr std::array<bool, 6> kMcpAddressLevels = {
-    false, false, false,                      // mcp1: 000 → 0x20
-    true,  false, false,                      // mcp2: 001 → 0x21
+    false, false, false,  // mcp1: 000 → 0x20
+    true,  false, false,  // mcp2: 001 → 0x21
 };
 
 // --- EPD pin routing (everything on the expanders) ---

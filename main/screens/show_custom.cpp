@@ -1,9 +1,8 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstddef>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 namespace {
@@ -12,8 +11,7 @@ namespace {
 // digits so labels ("BLOCK", "HEIGHT") and single-char digits align on
 // the same baseline — matches the old firmware where showChars and
 // showDigit paths both sat on the digit-height baseline.
-constexpr const char* kAnyRef =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+constexpr const char* kAnyRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 // Pick a render size scaling roughly with the cell length:
 // - 1 char  → large (digit-sized).
@@ -36,9 +34,8 @@ float PickPixelHeight(const char* text, int panel_w, const Font& font) {
 
 template <size_t N>
 void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-              uint8_t (&fb_storage)[N][16 * 296],
-              const AppFonts& fonts, size_t i,
-              const std::string& cell) {
+              uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+              size_t i, const std::string& cell) {
   auto lfb = PrepFb(panels, fb_storage, i);
   ClearFb(lfb, /*white=*/true);
   if (cell.empty()) return;
@@ -56,10 +53,10 @@ void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     // Fit the wider half so both halves share a single pixel height —
     // keeps letter metrics consistent across the two rows.
     const int target = lfb.native_width - 6;
-    float px_top = FitTextPx(top.c_str(), fonts.oswald_bold(), 54.0f,
-                             14.0f, target);
-    float px_bot = FitTextPx(bot.c_str(), fonts.oswald_bold(), 54.0f,
-                             14.0f, target);
+    float px_top =
+        FitTextPx(top.c_str(), fonts.oswald_bold(), 54.0f, 14.0f, target);
+    float px_bot =
+        FitTextPx(bot.c_str(), fonts.oswald_bold(), 54.0f, 14.0f, target);
     const float px = px_top < px_bot ? px_top : px_bot;
     DrawSplitText(lfb, lfb.native_width, lfb.native_height, top.c_str(),
                   bot.c_str(), kAnyRef, fonts.oswald_bold(), px,
@@ -76,18 +73,18 @@ void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }  // namespace
 
 template <size_t N>
-void RenderCustomScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const std::array<std::string, N>& cells,
-    const std::array<std::string, N>& prev_cells,
-    bool cell_diff_reset, bool full_refresh_mode) {
+void RenderCustomScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                        uint8_t (&fb_storage)[N][16 * 296],
+                        const AppFonts& fonts,
+                        const std::array<std::string, N>& cells,
+                        const std::array<std::string, N>& prev_cells,
+                        bool cell_diff_reset, bool full_refresh_mode) {
   // `cell_diff_reset` forces every cell to repaint (transition / first
   // paint). `full_refresh_mode` drives the EPD refresh kind.
   std::array<bool, N> dirty{};
   for (size_t i = 0; i < N; ++i) {
-    dirty[i] = cell_diff_reset || full_refresh_mode ||
-               cells[i] != prev_cells[i];
+    dirty[i] =
+        cell_diff_reset || full_refresh_mode || cells[i] != prev_cells[i];
   }
 
   for (size_t i = 0; i < N; ++i) {
@@ -107,13 +104,15 @@ void RenderCustomScreen(
   }
 }
 
-template void RenderCustomScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::array<std::string, 7>&,
-    const std::array<std::string, 7>&, bool, bool);
-template void RenderCustomScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::array<std::string, 8>&,
-    const std::array<std::string, 8>&, bool, bool);
+template void RenderCustomScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                    uint8_t (&)[7][16 * 296], const AppFonts&,
+                                    const std::array<std::string, 7>&,
+                                    const std::array<std::string, 7>&, bool,
+                                    bool);
+template void RenderCustomScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                    uint8_t (&)[8][16 * 296], const AppFonts&,
+                                    const std::array<std::string, 8>&,
+                                    const std::array<std::string, 8>&, bool,
+                                    bool);
 
 }  // namespace btclock

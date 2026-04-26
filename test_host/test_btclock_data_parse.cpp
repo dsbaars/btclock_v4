@@ -4,12 +4,11 @@
 // extraction helpers, which is the critical invariant for the new
 // DataSource path (issue btclock_v3_fci-znf).
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <string>
 
 #include "btclock_data_parse.hpp"
+#include "doctest.h"
 
 using btclock::parse::ExtractJsonInt;
 using btclock::parse::ExtractJsonNumber;
@@ -33,7 +32,8 @@ TEST_CASE("blockfee (integer) still parses as a number") {
 }
 
 TEST_CASE("blockfee2 with whitespace and trailing fields") {
-  const std::string frame = R"({ "blockheight" : 870123 ,  "blockfee2":12.75 })";
+  const std::string frame =
+      R"({ "blockheight" : 870123 ,  "blockfee2":12.75 })";
   double v = 0;
   CHECK(ExtractJsonNumber(frame, "blockfee2", v));
   CHECK(v == doctest::Approx(12.75).epsilon(1e-9));

@@ -3,11 +3,11 @@
 // the host tests can cover the parse/compare paths without ESP-IDF.
 
 #include "auth_gate.hpp"
-#include "auth_gate_logic.hpp"
 
 #include <string>
 #include <string_view>
 
+#include "auth_gate_logic.hpp"
 #include "esp_log.h"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
@@ -65,16 +65,14 @@ bool RequireHttpAuth(httpd_req_t* req) {
     return true;
   }
 
-  const std::string_view user_view =
-      configured_user.empty()
-          ? std::string_view(kDefaultUser)
-          : std::string_view(configured_user);
+  const std::string_view user_view = configured_user.empty()
+                                         ? std::string_view(kDefaultUser)
+                                         : std::string_view(configured_user);
 
   // Read the Authorization header. `httpd_req_get_hdr_value_len`
   // returns the byte count excluding the terminator; the `_str` call
   // wants the destination sized one larger.
-  const size_t hdr_len =
-      httpd_req_get_hdr_value_len(req, "Authorization");
+  const size_t hdr_len = httpd_req_get_hdr_value_len(req, "Authorization");
   if (hdr_len == 0) {
     return SendUnauthorized(req) == ESP_OK ? false : false;
   }
@@ -90,8 +88,8 @@ bool RequireHttpAuth(httpd_req_t* req) {
 
   std::string hdr;
   hdr.resize(hdr_len + 1);
-  if (httpd_req_get_hdr_value_str(req, "Authorization",
-                                  hdr.data(), hdr.size()) != ESP_OK) {
+  if (httpd_req_get_hdr_value_str(req, "Authorization", hdr.data(),
+                                  hdr.size()) != ESP_OK) {
     SendUnauthorized(req);
     return false;
   }

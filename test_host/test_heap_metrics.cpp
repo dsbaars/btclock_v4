@@ -74,18 +74,21 @@ TEST_CASE("AttachHeapMetricsJson: boards without PSRAM zero the siblings") {
   cJSON_Delete(root);
 }
 
-TEST_CASE("AttachHeapMetricsJson: original bug report values would fail the invariant") {
+TEST_CASE(
+    "AttachHeapMetricsJson: original bug report values would fail the "
+    "invariant") {
   // The bug report: espFreeHeap=1991268, espHeapSize=329995.
   // That mixture — free sourced from esp_get_free_heap_size() (includes
   // PSRAM) paired with a size from MALLOC_CAP_INTERNAL — produced
   // free > size. If the helper is ever misused to replay that mix,
   // this test documents exactly why it's wrong.
   cJSON* root = cJSON_CreateObject();
-  btclock::AttachHeapMetricsJson(root,
-                                 /*free_internal=*/1'991'268,  // intentionally wrong
-                                 /*total_internal=*/329'995,
-                                 /*free_psram=*/0,
-                                 /*total_psram=*/0);
+  btclock::AttachHeapMetricsJson(
+      root,
+      /*free_internal=*/1'991'268,  // intentionally wrong
+      /*total_internal=*/329'995,
+      /*free_psram=*/0,
+      /*total_psram=*/0);
   const auto h = ReadFields(root);
   CHECK_FALSE(h.free_heap <= h.heap_size);  // demonstrates the bug shape
   cJSON_Delete(root);

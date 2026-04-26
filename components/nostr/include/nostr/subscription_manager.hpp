@@ -28,11 +28,11 @@ class RelayClient;
 // Extending is trivial — see `BuildReqJson` in subscription_manager.cpp.
 struct Filter {
   std::vector<uint32_t> kinds;
-  std::vector<std::string> authors;    // lowercase hex pubkeys
-  std::vector<std::string> d_tags;     // `#d` — NIP-33 parameterized slot
-  std::vector<std::string> p_tags;     // `#p` — referenced pubkey (zaps)
-  uint64_t since = 0;                  // unix seconds; 0 => omit field
-  int limit = 0;                       // 0 => omit field
+  std::vector<std::string> authors;  // lowercase hex pubkeys
+  std::vector<std::string> d_tags;   // `#d` — NIP-33 parameterized slot
+  std::vector<std::string> p_tags;   // `#p` — referenced pubkey (zaps)
+  uint64_t since = 0;                // unix seconds; 0 => omit field
+  int limit = 0;                     // 0 => omit field
 };
 
 class SubscriptionManager {
@@ -48,7 +48,7 @@ class SubscriptionManager {
   ~SubscriptionManager();
 
   void SetOnEvent(EventCallback cb) { on_event_ = std::move(cb); }
-  void SetOnEose(EoseCallback cb)   { on_eose_  = std::move(cb); }
+  void SetOnEose(EoseCallback cb) { on_eose_ = std::move(cb); }
 
   // Open a subscription with the given filter. If the relay is already
   // connected the REQ is sent immediately; otherwise it's queued and
@@ -74,7 +74,7 @@ class SubscriptionManager {
   std::mutex mu_;
   std::map<std::string, Filter> subs_;  // sub_id -> filter
   EventCallback on_event_;
-  EoseCallback  on_eose_;
+  EoseCallback on_eose_;
 };
 
 // Build a NIP-01 REQ JSON string for the given sub_id + filter. Exposed

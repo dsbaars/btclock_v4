@@ -17,8 +17,6 @@
 // IDF port; tests for those are skipped with SUBCASE-less no-ops and a
 // link to the issue.
 
-#include "doctest.h"
-
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -27,6 +25,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "doctest.h"
 
 // Host test can't include screens/common.hpp — it pulls EPD/font device
 // headers. Instead we inline verbatim copies of the pure-logic helpers
@@ -45,8 +45,10 @@ inline void FormatDigits(uint32_t h, char* digits, std::size_t slots) {
   const std::size_t len = std::strlen(buf);
   const char* src = buf;
   std::size_t pad = 0;
-  if (len > slots) src = buf + (len - slots);
-  else pad = slots - len;
+  if (len > slots)
+    src = buf + (len - slots);
+  else
+    pad = slots - len;
   for (std::size_t i = 0; i < slots; ++i) {
     digits[i] = (i < pad) ? ' ' : src[i - pad];
   }
@@ -58,7 +60,7 @@ inline int32_t SatsPerUnit(const std::string& price_str) {
   if (p <= 0.0 || endp == price_str.c_str()) return -1;
   const double sats = 1e8 / p;
   if (sats > 4e9) return -1;
-  return static_cast<int32_t>(sats + 0.5);
+  return static_cast<int32_t>(std::lround(sats));
 }
 inline int32_t PriceInt(const std::string& price_str) {
   if (price_str.empty()) return -1;
@@ -66,7 +68,7 @@ inline int32_t PriceInt(const std::string& price_str) {
   const double p = std::strtod(price_str.c_str(), &endp);
   if (p < 0.0 || endp == price_str.c_str()) return -1;
   if (p > 2e9) return -1;
-  return static_cast<int32_t>(p + 0.5);
+  return static_cast<int32_t>(std::lround(p));
 }
 inline const char* CurrencySymbolUtf8(const std::string& ccy) {
   if (ccy == "USD") return "$";
@@ -117,11 +119,16 @@ constexpr char kCurJPY = '^';
 
 std::string IsoFromChar(char c) {
   switch (c) {
-    case kCurUSD: return "USD";
-    case kCurEUR: return "EUR";
-    case kCurGBP: return "GBP";
-    case kCurJPY: return "JPY";
-    default:      return "USD";
+    case kCurUSD:
+      return "USD";
+    case kCurEUR:
+      return "EUR";
+    case kCurGBP:
+      return "GBP";
+    case kCurJPY:
+      return "JPY";
+    default:
+      return "USD";
   }
 }
 
@@ -194,9 +201,8 @@ Out RenderSatsPerCurrency(uint32_t price, char ccy, bool /*with_sats_symbol*/,
   out.fill("");
   if (price == 0) {
     // Div-by-zero guard: label only, no digits.
-    out[0] = (ccy == kCurUSD && use_mscw_time)
-                 ? std::string("MSCW/TIME")
-                 : ("SATS/" + iso);
+    out[0] = (ccy == kCurUSD && use_mscw_time) ? std::string("MSCW/TIME")
+                                               : ("SATS/" + iso);
     return out;
   }
 
@@ -209,8 +215,8 @@ Out RenderSatsPerCurrency(uint32_t price, char ccy, bool /*with_sats_symbol*/,
     std::snprintf(buf, sizeof(buf), "%.3f", sp);
     s = buf;
   } else {
-    const int32_t sats = static_cast<int32_t>(
-        std::round(1e8 / static_cast<double>(price)));
+    const int32_t sats =
+        static_cast<int32_t>(std::round(1e8 / static_cast<double>(price)));
     s = std::to_string(sats);
   }
 
@@ -228,16 +234,17 @@ Out RenderSatsPerCurrency(uint32_t price, char ccy, bool /*with_sats_symbol*/,
   return out;
 }
 
-// parseMarketCap bigChars=true — currency glyph prefix + FormatNumberWithSuffix,
-// right-padded across the 7-slot array with "<CCY>/MCAP" in slot[0].
-// Port of lib/btclock/data_handler.cpp::parseMarketCap's big-chars branch.
+// parseMarketCap bigChars=true — currency glyph prefix +
+// FormatNumberWithSuffix, right-padded across the 7-slot array with
+// "<CCY>/MCAP" in slot[0]. Port of
+// lib/btclock/data_handler.cpp::parseMarketCap's big-chars branch.
 Out RenderMarketCapBigChars(uint32_t height, uint32_t price, char ccy) {
   Out out;
   out.fill("");
   const uint64_t supply = btclock::SupplyAtBlock(height);
   const uint64_t cap = supply * static_cast<uint64_t>(price);
-  std::string ps = std::string(1, ccy) +
-                   btclock::FormatNumberWithSuffix(cap, 7 - 2);
+  std::string ps =
+      std::string(1, ccy) + btclock::FormatNumberWithSuffix(cap, 7 - 2);
   if (ps.size() < 7) ps.insert(ps.begin(), 7 - ps.size(), ' ');
   out[0] = IsoFromChar(ccy) + "/MCAP";
   for (size_t i = 1; i < 7; ++i) out[i] = std::string(1, ps[i]);
@@ -331,8 +338,8 @@ Out RenderPriceDataSuffix(uint32_t price, char ccy) {
   Out out;
   out.fill("");
   const int num_chars = 7 - 2;  // no shareDot/mowMode path
-  std::string ps = std::string(1, ccy) +
-                   btclock::FormatNumberWithSuffix(price, num_chars);
+  std::string ps =
+      std::string(1, ccy) + btclock::FormatNumberWithSuffix(price, num_chars);
   if (ps.size() < 7) ps.insert(ps.begin(), 7 - ps.size(), ' ');
   out[0] = "BTC/" + IsoFromChar(ccy);
   for (size_t i = 1; i < 7; ++i) out[i] = std::string(1, ps[i]);
@@ -368,11 +375,10 @@ Out RenderPriceDataSuffixShareDot(uint32_t price, char ccy, bool mow) {
         cells.push_back(std::string(1, ps[i]) + ".");
         ++i;  // consume the dot byte
       } else {
-        cells.push_back(std::string(1, ps[i]));
+        cells.emplace_back(1, ps[i]);
       }
     }
-    for (size_t i = first_idx;
-         i < 7 && i - first_idx < cells.size(); ++i) {
+    for (size_t i = first_idx; i < 7 && i - first_idx < cells.size(); ++i) {
       out[i] = cells[i - first_idx];
     }
   } else {
@@ -416,9 +422,9 @@ Out RenderHalvingCountdownTime(uint32_t height) {
   const auto tb = btclock::HalvingCountdownBreakdown(height);
   out[0] = "BIT/COIN";
   out[1] = "HAL/VING";
-  out[7 - 5] = std::to_string(tb.years)   + "/YRS";
-  out[7 - 4] = std::to_string(tb.days)    + "/DAYS";
-  out[7 - 3] = std::to_string(tb.hours)   + "/HRS";
+  out[7 - 5] = std::to_string(tb.years) + "/YRS";
+  out[7 - 4] = std::to_string(tb.days) + "/DAYS";
+  out[7 - 3] = std::to_string(tb.hours) + "/HRS";
   out[7 - 2] = std::to_string(tb.minutes) + "/MINS";
   out[7 - 1] = "TO/GO";
   return out;
@@ -439,8 +445,7 @@ Out RenderBlockFees(float fee) {
     std::snprintf(buf, sizeof(buf), "%.2f", fee);
     s = buf;
   } else {
-    s = std::to_string(
-        static_cast<int>(std::round(static_cast<double>(fee))));
+    s = std::to_string(static_cast<int>(std::round(static_cast<double>(fee))));
   }
 
   // Old firmware: pads with (NUM_SCREENS - len - 1) spaces (one fewer
@@ -690,8 +695,7 @@ TEST_CASE("parsePriceData — PriceSuffixModeMow (93600, mow)") {
 
 TEST_CASE("parsePriceData — PriceSuffixModeMowCompact (93600, mow+shareDot)") {
   // mowMode + shareDot → "MOW/UNITS" label and "0.093M" collapsed.
-  const auto out =
-      RenderPriceDataSuffixShareDot(93600, kCurUSD, /*mow=*/true);
+  const auto out = RenderPriceDataSuffixShareDot(93600, kCurUSD, /*mow=*/true);
   CHECK(out[0] == "MOW/UNITS");
   CHECK(out[7 - 6] == "$");
   CHECK(out[7 - 5] == "0.");
@@ -725,8 +729,7 @@ TEST_CASE("parseMarketCap — Mcap1TrillionUsd (bigChars suffix)") {
 }
 
 TEST_CASE("parseMarketCap — Mcap1TrillionUsdSmallChars") {
-  const auto out =
-      RenderMarketCapSmallChars(831000, 52000, kCurUSD);
+  const auto out = RenderMarketCapSmallChars(831000, 52000, kCurUSD);
   CHECK(out[0] == "USD/MCAP");
   CHECK(out[7 - 6] == " $ ");
   CHECK(out[7 - 5] == "  1");
@@ -752,12 +755,10 @@ TEST_CASE("parseMarketCap — Mcap1TrillionEur (bigChars suffix)") {
 }
 
 TEST_CASE("parseMarketCap — Mcap1TrillionEurSmallChars") {
-  const auto out =
-      RenderMarketCapSmallChars(831000, 52000, kCurEUR);
+  const auto out = RenderMarketCapSmallChars(831000, 52000, kCurEUR);
   CHECK(out[0] == "EUR/MCAP");
   char expected_eur_cell[4];
-  std::snprintf(expected_eur_cell, sizeof(expected_eur_cell), " %c ",
-                kCurEUR);
+  std::snprintf(expected_eur_cell, sizeof(expected_eur_cell), " %c ", kCurEUR);
   CHECK(out[7 - 6] == expected_eur_cell);
   CHECK(out[7 - 5] == "  1");
   CHECK(out[7 - 4] == "020");
@@ -778,12 +779,10 @@ TEST_CASE("parseMarketCap — Mcap1TrillionJpy (bigChars suffix)") {
 }
 
 TEST_CASE("parseMarketCap — Mcap1TrillionJpySmallChars") {
-  const auto out =
-      RenderMarketCapSmallChars(831000, 52000, kCurJPY);
+  const auto out = RenderMarketCapSmallChars(831000, 52000, kCurJPY);
   CHECK(out[0] == "JPY/MCAP");
   char expected_jpy_cell[4];
-  std::snprintf(expected_jpy_cell, sizeof(expected_jpy_cell), " %c ",
-                kCurJPY);
+  std::snprintf(expected_jpy_cell, sizeof(expected_jpy_cell), " %c ", kCurJPY);
   CHECK(out[7 - 6] == expected_jpy_cell);
   CHECK(out[7 - 5] == "  1");
   CHECK(out[7 - 4] == "020");

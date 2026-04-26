@@ -6,7 +6,6 @@
 // both helpers need independent coverage.
 
 #include "doctest.h"
-
 #include "ota_progress.hpp"
 
 TEST_CASE("ProgressFractionToLedCount boundaries") {
@@ -60,7 +59,7 @@ TEST_CASE("End-to-end: bytes → LED count for a 1.5 MiB image") {
   // Cross-check the two helpers on a typical image size (matches the
   // btclock firmware binary roughly). Each checkpoint should land on
   // the documented step of the 4-LED bar.
-  constexpr std::size_t total = 1536u * 1024u;
+  constexpr std::size_t total = std::size_t{1536} * 1024;
   auto count_at = [](std::size_t written, std::size_t total) {
     return btclock::ProgressFractionToLedCount(
         btclock::ProgressFraction(written, total));

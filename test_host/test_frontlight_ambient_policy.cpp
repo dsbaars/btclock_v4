@@ -3,10 +3,9 @@
 // user-off latch. See btclock_v3_fci main.cpp:31-47 for the v3 path
 // we mirror (without hysteresis, without a user-off latch).
 
-#include "doctest.h"
-
 #include <initializer_list>
 
+#include "doctest.h"
 #include "io/frontlight_ambient_policy.hpp"
 
 using btclock::FrontlightAmbientAction;

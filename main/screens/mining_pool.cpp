@@ -1,5 +1,3 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstring>
 #include <string>
@@ -7,6 +5,7 @@
 #include "screens/assets/pool_logos.hpp"
 #include "screens/common.hpp"
 #include "screens/panel_texts.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -15,8 +14,7 @@ namespace {
 // Reference chars for the split-text pool label. Uppercase + digits
 // covers every display name the pool plugins register today; a narrower
 // set would drop a baseline on names like "Ocean" vs "OCEAN".
-constexpr const char* kPoolLabelRef =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+constexpr const char* kPoolLabelRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 // Case-insensitive equality for two pool names. The polling sources
 // report names in various casings ("Ocean", "OCEAN", "ocean"); comparing
@@ -162,8 +160,8 @@ void RenderMiningPoolHashrateScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool,
-    bool full_refresh_mode, bool vertical_desc) {
+    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
+    bool vertical_desc) {
   static_assert(N >= 7, "mining-pool hashrate layout needs at least 7 panels");
   // Panel 0 holds the pool logo (or split-text fallback), panel N-1 holds
   // the unit label, so the digit area is N-2 slots starting at panel 1.
@@ -223,8 +221,8 @@ void RenderMiningPoolHashrateScreen(
   update[N - 1] = cell_diff_reset || full_refresh_mode ||
                   now_layout.unit != prev_layout.unit;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template <size_t N>
@@ -232,8 +230,8 @@ void RenderMiningPoolEarningsScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool,
-    bool full_refresh_mode, bool vertical_desc) {
+    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
+    bool vertical_desc) {
   static_assert(N >= 7, "mining-pool earnings layout needs at least 7 panels");
   // Same (label, digits…, unit) shape as the hashrate screen: 1 label +
   // N-2 digits + 1 unit. Previous 2-label layout truncated the 5-char
@@ -291,8 +289,8 @@ void RenderMiningPoolEarningsScreen(
   slots[N - 1] = BuildUnitSlot(unit);
   update[N - 1] = cell_diff_reset || full_refresh_mode || unit != prev_unit;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderMiningPoolHashrateScreen<7>(

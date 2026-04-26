@@ -50,8 +50,7 @@ constexpr int64_t kZapMaxAgeSeconds = 15 * 60;
 // SubscriptionManager methods the host tests don't build).
 inline bool ShouldShowZap(int64_t now, int64_t event_created_at,
                           int64_t last_shown_created_at) {
-  if (last_shown_created_at > 0 &&
-      event_created_at <= last_shown_created_at) {
+  if (last_shown_created_at > 0 && event_created_at <= last_shown_created_at) {
     return false;
   }
   if (event_created_at > now) return true;
@@ -64,7 +63,7 @@ class ZapListener {
   struct ZapInfo {
     uint64_t amount_msat = 0;
     std::string bolt11;
-    std::string content;  // zapper-supplied message (may be empty)
+    std::string content;         // zapper-supplied message (may be empty)
     const Event* raw = nullptr;  // lifetime: valid only inside callback
   };
   using Callback = std::function<void(const ZapInfo& z)>;

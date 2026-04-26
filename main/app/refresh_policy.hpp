@@ -55,12 +55,9 @@ struct RefreshPolicy {
   // `now_ms` — next call re-starts its timer from the same point,
   // so a settings-change full and a schedule-driven full can't
   // fire back-to-back on the following tick.
-  static bool Decide(RefreshPolicyState& state,
-                     int64_t now_ms,
-                     bool is_screen_change,
-                     bool is_force_full,
-                     bool refr_scrn_change,
-                     int full_refresh_min);
+  static bool Decide(RefreshPolicyState& state, int64_t now_ms,
+                     bool is_screen_change, bool is_force_full,
+                     bool refr_scrn_change, int full_refresh_min);
 };
 
 }  // namespace btclock

@@ -14,7 +14,6 @@
 // around with a pure-logic surface.
 
 #include "doctest.h"
-
 #include "font_bundle_map.hpp"
 #include "fonts_app.hpp"
 
@@ -63,14 +62,16 @@ TEST_CASE("ResolveBundleSlots maps Atkinson to its (regular, bold) pair") {
   CHECK(s.bold == FontSlot::kAtkinsonBold);
 }
 
-TEST_CASE("ResolveBundleSlots Merriweather maps to its own slots on Rev B / V8") {
+TEST_CASE(
+    "ResolveBundleSlots Merriweather maps to its own slots on Rev B / V8") {
   const auto s = ResolveBundleSlots(FontFamily::kMerriweather,
                                     /*has_merriweather=*/true);
   CHECK(s.regular == FontSlot::kMerriweatherRegular);
   CHECK(s.bold == FontSlot::kMerriweatherBold);
 }
 
-TEST_CASE("ResolveBundleSlots Merriweather collapses to source-serif on Rev A") {
+TEST_CASE(
+    "ResolveBundleSlots Merriweather collapses to source-serif on Rev A") {
   // Rev A's 4 MB flash drops the Merriweather pair from EMBED_FILES;
   // a stored or WebUI-set kMerriweather still resolves to *something*
   // serif-y rather than refusing to switch or falling back to antonio.
@@ -110,13 +111,13 @@ TEST_CASE("FontSlot enumerators are unique") {
   // The slot ids only matter relative to AppFonts storage but a
   // duplicate would silently merge two backing fonts under one id.
   const FontSlot all[] = {
-      FontSlot::kAntonio,
-      FontSlot::kOswaldRegular,       FontSlot::kOswaldBold,
-      FontSlot::kInterRegular,        FontSlot::kInterBold,
-      FontSlot::kSourceSerifRegular,  FontSlot::kSourceSerifBold,
-      FontSlot::kMerriweatherRegular, FontSlot::kMerriweatherBold,
-      FontSlot::kBitterRegular,       FontSlot::kBitterBold,
-      FontSlot::kAtkinsonRegular,     FontSlot::kAtkinsonBold,
+      FontSlot::kAntonio,          FontSlot::kOswaldRegular,
+      FontSlot::kOswaldBold,       FontSlot::kInterRegular,
+      FontSlot::kInterBold,        FontSlot::kSourceSerifRegular,
+      FontSlot::kSourceSerifBold,  FontSlot::kMerriweatherRegular,
+      FontSlot::kMerriweatherBold, FontSlot::kBitterRegular,
+      FontSlot::kBitterBold,       FontSlot::kAtkinsonRegular,
+      FontSlot::kAtkinsonBold,
   };
   const std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {

@@ -11,8 +11,7 @@ namespace btclock {
 
 void FormatDigits64(uint64_t v, char* digits, std::size_t slots) {
   char buf[24];
-  std::snprintf(buf, sizeof(buf), "%llu",
-                static_cast<unsigned long long>(v));
+  std::snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(v));
   const std::size_t len = std::strlen(buf);
   const char* src = buf;
   std::size_t pad = 0;
@@ -134,8 +133,7 @@ std::string FormatNumberWithSuffix(uint64_t num, int num_characters,
       std::snprintf(result, sizeof(result), "%s%c",
                     mow_as_string.substr(0, take).c_str(), suffix);
     } else {
-      std::snprintf(result, sizeof(result), "%.*f%c", rest_len, num_d,
-                    suffix);
+      std::snprintf(result, sizeof(result), "%.*f%c", rest_len, num_d, suffix);
     }
   }
 
@@ -172,21 +170,29 @@ MiningPoolHashrateLayout LayoutMiningPoolHashrate(
   std::size_t suffix_len = 0;
   const std::size_t n = hashrate_raw.size();
   if (n > 21) {
-    out.unit = "ZH/S"; suffix_len = 21;
+    out.unit = "ZH/S";
+    suffix_len = 21;
   } else if (n > 18) {
-    out.unit = "EH/S"; suffix_len = 18;
+    out.unit = "EH/S";
+    suffix_len = 18;
   } else if (n > 15) {
-    out.unit = "PH/S"; suffix_len = 15;
+    out.unit = "PH/S";
+    suffix_len = 15;
   } else if (n > 12) {
-    out.unit = "TH/S"; suffix_len = 12;
+    out.unit = "TH/S";
+    suffix_len = 12;
   } else if (n > 9) {
-    out.unit = "GH/S"; suffix_len = 9;
+    out.unit = "GH/S";
+    suffix_len = 9;
   } else if (n > 6) {
-    out.unit = "MH/S"; suffix_len = 6;
+    out.unit = "MH/S";
+    suffix_len = 6;
   } else if (n > 3) {
-    out.unit = "KH/S"; suffix_len = 3;
+    out.unit = "KH/S";
+    suffix_len = 3;
   } else {
-    out.unit = "H/S"; suffix_len = 0;
+    out.unit = "H/S";
+    suffix_len = 0;
   }
 
   char* endp = nullptr;
@@ -236,9 +242,9 @@ MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats) {
   }
   if (daily_sats >= 10000000LL) {
     // 10M..99.9M sats → "NN.NM" (one decimal).
-    const int64_t tens_of_millions = daily_sats / 1000000LL;      // e.g. 12
+    const int64_t tens_of_millions = daily_sats / 1000000LL;  // e.g. 12
     const int64_t hundred_thousands_digit =
-        (daily_sats / 100000LL) % 10LL;                            // 0..9
+        (daily_sats / 100000LL) % 10LL;  // 0..9
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%lld.%lldM",
                   static_cast<long long>(tens_of_millions),
@@ -248,9 +254,9 @@ MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats) {
   }
   if (daily_sats >= 1000000LL) {
     // 1M..9.99M sats → "N.NNM" (two decimals).
-    const int64_t millions = daily_sats / 1000000LL;               // 1..9
+    const int64_t millions = daily_sats / 1000000LL;  // 1..9
     const int64_t hundreds_of_thousands =
-        (daily_sats / 10000LL) % 100LL;                            // 0..99
+        (daily_sats / 10000LL) % 100LL;  // 0..99
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%lld.%02lldM",
                   static_cast<long long>(millions),
@@ -266,8 +272,8 @@ MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats) {
   }
   if (daily_sats >= 10000LL) {
     // 10K..99.9K sats → "NN.NK" (one decimal).
-    const int64_t tens_of_k = daily_sats / 1000LL;                 // e.g. 12
-    const int64_t hundred_digit = (daily_sats / 100LL) % 10LL;     // 0..9
+    const int64_t tens_of_k = daily_sats / 1000LL;              // e.g. 12
+    const int64_t hundred_digit = (daily_sats / 100LL) % 10LL;  // 0..9
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%lld.%lldK",
                   static_cast<long long>(tens_of_k),
@@ -298,8 +304,7 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
   // layout width stays constant — only the glyph in the leading slot
   // changes. Matches the user-visible "7:00" example in the setting
   // description: minute stays two-digit ("7:05", not "7:5").
-  l.digits[base + 0] =
-      (hide_leading_zero && h < 10) ? ' ' : tens;
+  l.digits[base + 0] = (hide_leading_zero && h < 10) ? ' ' : tens;
   l.digits[base + 1] = static_cast<char>('0' + (h % 10));
   l.digits[base + 2] = ':';
   l.digits[base + 3] = static_cast<char>('0' + (m / 10));

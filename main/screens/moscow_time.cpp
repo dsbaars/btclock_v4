@@ -1,9 +1,8 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <string>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -18,13 +17,13 @@ namespace btclock {
 // digit), which is what V8 hardware needs to look like.
 
 template <size_t N>
-void RenderMoscowTimeScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const std::string& currency, const std::string& price,
-    const std::string& prev_price, uint8_t sats_variant,
-    bool use_sats_symbol, bool use_mscw_time,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                            uint8_t (&fb_storage)[N][16 * 296],
+                            const AppFonts& fonts, const std::string& currency,
+                            const std::string& price,
+                            const std::string& prev_price, uint8_t sats_variant,
+                            bool use_sats_symbol, bool use_mscw_time,
+                            bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Moscow-time layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
   // `cell_diff_reset` forces every cell to repaint; `full_refresh_mode`
@@ -67,29 +66,27 @@ void RenderMoscowTimeScreen(
     const size_t panel_idx = 1 + i;
     if (now.is_sats[i]) {
       slots[panel_idx] = PaintSlot{PaintSlot::kSatsGlyph,
-                                   std::string(glyph.c_str()),
-                                   nullptr, 0, 0};
+                                   std::string(glyph.c_str()), nullptr, 0, 0};
     } else {
-      slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                   std::string(1, now.digits[i]),
-                                   nullptr, 0, 0};
+      slots[panel_idx] = PaintSlot{
+          PaintSlot::kDigit, std::string(1, now.digits[i]), nullptr, 0, 0};
     }
     update[panel_idx] = cell_diff_reset || full_refresh_mode ||
                         now.digits[i] != before.digits[i] ||
                         now.is_sats[i] != before.is_sats[i];
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderMoscowTimeScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    const std::string&, uint8_t, bool, bool, bool, bool);
+    const AppFonts&, const std::string&, const std::string&, const std::string&,
+    uint8_t, bool, bool, bool, bool);
 template void RenderMoscowTimeScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    const std::string&, uint8_t, bool, bool, bool, bool);
+    const AppFonts&, const std::string&, const std::string&, const std::string&,
+    uint8_t, bool, bool, bool, bool);
 
 }  // namespace btclock

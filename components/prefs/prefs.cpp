@@ -14,7 +14,8 @@ bool g_nvs_inited = false;
 esp_err_t Prefs::InitOnce() {
   if (g_nvs_inited) return ESP_OK;
   esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
+      err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
     ESP_LOGW(kTag, "NVS truncated (%s); erasing", esp_err_to_name(err));
     nvs_flash_erase();
     err = nvs_flash_init();
@@ -45,7 +46,7 @@ std::string Prefs::GetString(const char* key, const char* default_value) const {
   out.resize(len);
   err = nvs_get_str(handle_, key, out.data(), &len);
   if (err != ESP_OK) return default_value ? default_value : "";
-  if (!out.empty() && out.back() == '\0') out.pop_back();   // strip trailing NUL
+  if (!out.empty() && out.back() == '\0') out.pop_back();  // strip trailing NUL
   return out;
 }
 

@@ -26,8 +26,7 @@
 
 namespace btclock {
 
-inline void AttachHeapMetricsJson(cJSON* root,
-                                  std::size_t free_internal,
+inline void AttachHeapMetricsJson(cJSON* root, std::size_t free_internal,
                                   std::size_t total_internal,
                                   std::size_t free_psram,
                                   std::size_t total_psram) {

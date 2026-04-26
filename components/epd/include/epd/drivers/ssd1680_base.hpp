@@ -22,8 +22,8 @@ class Ssd1680Base : public IEpdPanel {
   ~Ssd1680Base() override;
 
   esp_err_t Init() override;
-  esp_err_t DrawFramebufferStart(const uint8_t* fb,
-                                 RefreshKind kind = RefreshKind::kFull) override;
+  esp_err_t DrawFramebufferStart(
+      const uint8_t* fb, RefreshKind kind = RefreshKind::kFull) override;
   esp_err_t WaitForRefresh(uint32_t timeout_ms = 10'000) override;
   bool IsIdle() const override;
 
@@ -69,8 +69,7 @@ class Ssd1680Base : public IEpdPanel {
   void WaitIdle(uint32_t timeout_ms);
   uint32_t BusyPollMs() const;
   esp_err_t WriteInitCommands();
-  esp_err_t SetPartialRamArea(uint16_t x, uint16_t y, uint16_t w,
-                              uint16_t h);
+  esp_err_t SetPartialRamArea(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
   esp_err_t WriteVram(uint8_t write_cmd, const uint8_t* fb);
 
   PanelConfig cfg_;

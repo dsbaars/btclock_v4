@@ -8,14 +8,14 @@
 //   - No two partitions overlap.
 //   - The two OTA app slots (ota_0 / ota_1) are the same size.
 
-#include "doctest.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "doctest.h"
 
 #ifndef BTCLOCK_PROJECT_ROOT
 #error "BTCLOCK_PROJECT_ROOT must be defined (see test_host/CMakeLists.txt)"
@@ -93,18 +93,16 @@ void CheckCsv(const std::string& path, uint32_t flash_size) {
                   r.name << " offset not aligned to 0x" << std::hex << align);
 
     const uint64_t end = static_cast<uint64_t>(r.offset) + r.size;
-    CHECK_MESSAGE(end <= flash_size,
-                  r.name << " extends past flash end (flash=0x" << std::hex
-                         << flash_size << ")");
+    CHECK_MESSAGE(end <= flash_size, r.name
+                                         << " extends past flash end (flash=0x"
+                                         << std::hex << flash_size << ")");
 
     if (i > 0) {
       const auto& prev = rows[i - 1];
       CHECK_MESSAGE(prev.offset < r.offset,
                     r.name << " is not strictly after " << prev.name);
-      const uint64_t prev_end =
-          static_cast<uint64_t>(prev.offset) + prev.size;
-      CHECK_MESSAGE(prev_end <= r.offset,
-                    prev.name << " overlaps " << r.name);
+      const uint64_t prev_end = static_cast<uint64_t>(prev.offset) + prev.size;
+      CHECK_MESSAGE(prev_end <= r.offset, prev.name << " overlaps " << r.name);
     }
   }
 
@@ -112,8 +110,10 @@ void CheckCsv(const std::string& path, uint32_t flash_size) {
   const Row* app0 = nullptr;
   const Row* app1 = nullptr;
   for (const auto& r : rows) {
-    if (r.sub_type == "ota_0") app0 = &r;
-    else if (r.sub_type == "ota_1") app1 = &r;
+    if (r.sub_type == "ota_0")
+      app0 = &r;
+    else if (r.sub_type == "ota_1")
+      app1 = &r;
   }
   // Parens around the expression stop doctest from trying to decompose `&&`.
   REQUIRE_MESSAGE((app0 && app1), "both OTA slots required in " << path);

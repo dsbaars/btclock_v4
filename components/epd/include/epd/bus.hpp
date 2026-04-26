@@ -68,8 +68,7 @@ class EpdBus {
   EpdBus& operator=(const EpdBus&) = delete;
 
   esp_err_t SendCommand(EpdIoPin& cs, uint8_t cmd,
-                        const uint8_t* params = nullptr,
-                        size_t nparams = 0);
+                        const uint8_t* params = nullptr, size_t nparams = 0);
   esp_err_t SendData(EpdIoPin& cs, const uint8_t* data, size_t len);
 
  private:

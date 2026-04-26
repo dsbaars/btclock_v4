@@ -21,10 +21,10 @@
 #include "timezone/tz_table_generated.hpp"
 
 #ifdef __has_include
-#  if __has_include("esp_err.h")
-#    include "esp_err.h"
-#    define BTCLOCK_TZ_HAS_ESP_ERR 1
-#  endif
+#if __has_include("esp_err.h")
+#include "esp_err.h"
+#define BTCLOCK_TZ_HAS_ESP_ERR 1
+#endif
 #endif
 
 #ifndef BTCLOCK_TZ_HAS_ESP_ERR

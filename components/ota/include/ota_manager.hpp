@@ -34,7 +34,6 @@
 #include <string>
 
 #include "esp_err.h"
-
 #include "ota_progress.hpp"
 
 namespace btclock {
@@ -93,9 +92,7 @@ class OtaManager {
   // hex string; on mismatch the OTA is aborted and the partition is
   // NOT activated. On success the next boot partition is set; the
   // caller is responsible for rebooting (mirrors HandleUploadWebui).
-  esp_err_t WritePushImage(RecvFn recv,
-                           void* ctx,
-                           size_t expected_bytes,
+  esp_err_t WritePushImage(RecvFn recv, void* ctx, size_t expected_bytes,
                            const char* expected_sha256_hex,
                            size_t* out_written);
 

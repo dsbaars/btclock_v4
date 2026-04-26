@@ -32,8 +32,7 @@ ShowTextParseResult SplitTextAcrossPanels(const std::string& text,
   ShowTextParseResult r;
   r.ok = true;
   r.cells.resize(n_panels);
-  const std::size_t take =
-      text.size() < n_panels ? text.size() : n_panels;
+  const std::size_t take = text.size() < n_panels ? text.size() : n_panels;
   for (std::size_t i = 0; i < take; ++i) {
     r.cells[i].assign(1, UpperAsciiOnly(text[i]));
   }
@@ -93,9 +92,8 @@ ShowTextParseResult ParseShowCustomBody(std::string_view body,
   r.ok = true;
   r.cells.resize(n_panels);
   const int n = cJSON_GetArraySize(arr);
-  const int take = n < static_cast<int>(n_panels)
-                       ? n
-                       : static_cast<int>(n_panels);
+  const int take =
+      n < static_cast<int>(n_panels) ? n : static_cast<int>(n_panels);
   for (int i = 0; i < take; ++i) {
     const cJSON* e = cJSON_GetArrayItem(arr, i);
     if (!cJSON_IsString(e) || e->valuestring == nullptr) {

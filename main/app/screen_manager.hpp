@@ -233,18 +233,19 @@ class ScreenManager {
   // mode, so the debug overlay isn't stomped on a data push.
   template <size_t N>
   void Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-              uint8_t (&fb)[N][16 * 296],
-              const AppFonts& fonts,
+              uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
               const DataSnapshot& snap);
 
-  // Paint the off-rotation debug screen. Always full-refresh. Sets
-  // last_panel_texts_ to the debug mirror so /api/status `data[]`
-  // reflects the active screen.
+  // Paint the off-rotation debug screen. `force_full=true` (debug entry
+  // / first paint) pins a full refresh; `force_full=false` (the 10 s
+  // auto-tick) consults RefreshPolicy so partial refreshes ride between
+  // mandatory fullRefreshMin-driven full clears. Sets last_panel_texts_
+  // to the debug mirror so /api/status `data[]` reflects the overlay.
   template <size_t N>
   void RenderDebug(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                   uint8_t (&fb)[N][16 * 296],
-                   const AppFonts& fonts,
-                   const DebugScreenInfo& info);
+                   uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
+                   const DebugScreenInfo& info, int64_t now_ms,
+                   bool force_full);
 
   // Per-panel text mirror of the current slot's on-EPD content, kept in
   // sync by Render(). Same shape the old firmware's /api/status `data[]`
@@ -302,9 +303,9 @@ class ScreenManager {
   // Pause flag + last-advance timestamp live on RotationTimer so the
   // auto-rotate decision is a single pure-logic call (host-testable).
   RotationTimer rot_;
-  uint32_t last_seen_height_ = 0;     // snapshot-side tracking (LED flash)
-  uint32_t last_rendered_height_ = 0; // screen-side tracking (digit diff)
-  std::string last_rendered_price_;   // shared Moscow-time + price diff
+  uint32_t last_seen_height_ = 0;      // snapshot-side tracking (LED flash)
+  uint32_t last_rendered_height_ = 0;  // screen-side tracking (digit diff)
+  std::string last_rendered_price_;    // shared Moscow-time + price diff
   // minSecPriceUpd (seconds): monotonic-ms timestamp of the last price-
   // bearing screen paint (kMoscowTime / kBtcPrice / kMarketCap). Read
   // by ShouldRender to throttle EPD writes when the WS pushes prices
@@ -312,7 +313,7 @@ class ScreenManager {
   // burn-in. Mutable so the const-qualified ShouldRender can stamp it,
   // but the actual stamp lives in Render() after the paint completes.
   mutable int64_t last_price_apply_ms_ = 0;
-  double last_rendered_fee_ = -1.0;   // fee-rate screen diff (<0 = unknown)
+  double last_rendered_fee_ = -1.0;  // fee-rate screen diff (<0 = unknown)
   // Market-cap diff: price *and* height both feed into the output,
   // so we remember the last height that drove a cap render (distinct
   // from last_rendered_height_, which is the block-height-screen diff).

@@ -24,10 +24,10 @@ namespace btclock {
 namespace bitaxe {
 
 struct ParsedStats {
-  std::optional<double>      hashrate_ghs;
-  std::optional<std::string> best_diff;      // canonicalised "<val><unit>"
-  std::optional<double>      temperature_c;
-  std::optional<int32_t>     shares_accepted;
+  std::optional<double> hashrate_ghs;
+  std::optional<std::string> best_diff;  // canonicalised "<val><unit>"
+  std::optional<double> temperature_c;
+  std::optional<int32_t> shares_accepted;
 };
 
 // Canonicalise an AxeOS-supplied bestDiff value into a string the

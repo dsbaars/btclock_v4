@@ -55,7 +55,9 @@ class Mcp23017 {
     explicit Lock(SemaphoreHandle_t m) : m_(m) {
       if (m_ != nullptr) xSemaphoreTakeRecursive(m_, portMAX_DELAY);
     }
-    ~Lock() { if (m_ != nullptr) xSemaphoreGiveRecursive(m_); }
+    ~Lock() {
+      if (m_ != nullptr) xSemaphoreGiveRecursive(m_);
+    }
     Lock(const Lock&) = delete;
     Lock& operator=(const Lock&) = delete;
 

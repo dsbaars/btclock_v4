@@ -27,12 +27,21 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "esp_err.h"
 
 namespace btclock {
 namespace pool_logos {
+
+// Callback invoked from the fetch task immediately after a `.bin` is
+// written to LittleFS. Lets the renderer mark the relevant screens
+// dirty so the new logo paints on the next tick instead of waiting
+// for an unrelated repaint to displace the stale text-fallback. The
+// callback is invoked on the fetch task; do minimal work and avoid
+// blocking. Pass an empty std::function to disable.
+void SetOnFetchComplete(std::function<void(const std::string& pool_name)> cb);
 
 // Kick off a background fetch for `pool_name` if no cache file exists
 // AND the pool has logo metadata in `LookupMeta`. Returns ESP_OK if

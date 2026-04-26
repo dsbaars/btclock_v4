@@ -1,7 +1,7 @@
 #include "app/boot/helpers.hpp"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -17,7 +17,9 @@ namespace {
 constexpr const char* kTag = "btclock";
 }  // namespace
 
-int64_t MsNow() { return esp_timer_get_time() / 1000; }
+int64_t MsNow() {
+  return esp_timer_get_time() / 1000;
+}
 
 std::string MakeApSsid() {
   uint8_t mac[6] = {};
@@ -63,8 +65,8 @@ void RunLittleFsSelfTest(const char* base_path) {
   const size_t rn = std::fread(buf, 1, sizeof(buf) - 1, rf);
   std::fclose(rf);
 
-  const bool ok = (rn == sizeof(kPayload) - 1) &&
-                  (std::memcmp(buf, kPayload, rn) == 0);
+  const bool ok =
+      (rn == sizeof(kPayload) - 1) && (std::memcmp(buf, kPayload, rn) == 0);
   if (ok) {
     ESP_LOGI(kTag, "selftest: OK (%u bytes round-tripped)",
              static_cast<unsigned>(rn));

@@ -7,11 +7,10 @@
 // what you PATCH", which is exactly the regression this test guards
 // against.
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <string>
 
+#include "doctest.h"
 #include "sources/sources.hpp"
 
 TEST_CASE("BuildBtclockSourceUri: dataSource=0 -> public default") {
@@ -24,11 +23,9 @@ TEST_CASE("BuildBtclockSourceUri: dataSource=0 -> public default") {
 }
 
 TEST_CASE("BuildBtclockSourceUri: dataSource=2 honours ceEndpoint + scheme") {
-  CHECK(btclock::BuildBtclockSourceUri(2, "ws-testing.btclock.dev",
-                                       false) ==
+  CHECK(btclock::BuildBtclockSourceUri(2, "ws-testing.btclock.dev", false) ==
         "wss://ws-testing.btclock.dev/api/v2/ws");
-  CHECK(btclock::BuildBtclockSourceUri(2, "ws-testing.btclock.dev",
-                                       true) ==
+  CHECK(btclock::BuildBtclockSourceUri(2, "ws-testing.btclock.dev", true) ==
         "ws://ws-testing.btclock.dev/api/v2/ws");
 }
 
@@ -36,12 +33,12 @@ TEST_CASE("BuildBtclockSourceUri: dataSource=2 strips a leading scheme") {
   // Users routinely paste a full URL into the textbox. The scheme must
   // come from ceDisableSSL, not from whatever the user typed, otherwise
   // the two settings can disagree.
-  CHECK(btclock::BuildBtclockSourceUri(
-            2, "wss://ws-testing.btclock.dev", false) ==
+  CHECK(btclock::BuildBtclockSourceUri(2, "wss://ws-testing.btclock.dev",
+                                       false) ==
         "wss://ws-testing.btclock.dev/api/v2/ws");
-  CHECK(btclock::BuildBtclockSourceUri(
-            2, "ws://ws-testing.btclock.dev", true) ==
-        "ws://ws-testing.btclock.dev/api/v2/ws");
+  CHECK(
+      btclock::BuildBtclockSourceUri(2, "ws://ws-testing.btclock.dev", true) ==
+      "ws://ws-testing.btclock.dev/api/v2/ws");
 }
 
 TEST_CASE("BuildBtclockSourceUri: dataSource=2 keeps a trailing slash") {
@@ -49,12 +46,13 @@ TEST_CASE("BuildBtclockSourceUri: dataSource=2 keeps a trailing slash") {
   // the ESP-IDF websocket client but ugly. We document the current
   // behaviour rather than try to clean every quirk: only the leading
   // scheme is stripped.
-  CHECK(btclock::BuildBtclockSourceUri(
-            2, "wss://ws-testing.btclock.dev/", false) ==
+  CHECK(btclock::BuildBtclockSourceUri(2, "wss://ws-testing.btclock.dev/",
+                                       false) ==
         "wss://ws-testing.btclock.dev//api/v2/ws");
 }
 
-TEST_CASE("BuildBtclockSourceUri: dataSource=2 with empty endpoint -> default") {
+TEST_CASE(
+    "BuildBtclockSourceUri: dataSource=2 with empty endpoint -> default") {
   // Empty string would produce "wss:///api/v2/ws" which is unroutable.
   // Falling back to the public default keeps the device functional.
   CHECK(btclock::BuildBtclockSourceUri(2, "", false) ==

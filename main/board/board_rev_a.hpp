@@ -32,11 +32,11 @@ constexpr gpio_num_t kEpdDc = GPIO_NUM_14;
 constexpr int kNumPanels = 7;
 // Same as Rev B except index 4 — Rev A uses GPIO 33 there (Rev B GPIO 38).
 constexpr std::array<gpio_num_t, kNumPanels> kEpdCs = {
-    GPIO_NUM_2, GPIO_NUM_4, GPIO_NUM_6, GPIO_NUM_10,
+    GPIO_NUM_2,  GPIO_NUM_4,  GPIO_NUM_6,  GPIO_NUM_10,
     GPIO_NUM_33, GPIO_NUM_21, GPIO_NUM_17,
 };
 constexpr std::array<gpio_num_t, kNumPanels> kEpdBusy = {
-    GPIO_NUM_3, GPIO_NUM_5, GPIO_NUM_7, GPIO_NUM_9,
+    GPIO_NUM_3,  GPIO_NUM_5,  GPIO_NUM_7,  GPIO_NUM_9,
     GPIO_NUM_37, GPIO_NUM_18, GPIO_NUM_16,
 };
 constexpr std::array<uint8_t, kNumPanels> kEpdResetMcp = {

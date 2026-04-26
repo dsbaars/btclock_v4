@@ -16,8 +16,8 @@ class Bh1750 {
     // POWER_ON opcode is sent before any measurement mode — the datasheet
     // requires it when coming out of POWER_DOWN (the post-reset default).
     kPowerOn = 0x01,
-    kContinuousHighRes = 0x10,  // 1 lx resolution, 120 ms
-    kContinuousHighRes2 = 0x11, // 0.5 lx resolution, 120 ms
+    kContinuousHighRes = 0x10,   // 1 lx resolution, 120 ms
+    kContinuousHighRes2 = 0x11,  // 0.5 lx resolution, 120 ms
     kOneshotHighRes = 0x20,
   };
 

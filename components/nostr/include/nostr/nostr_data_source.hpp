@@ -37,8 +37,8 @@ class NostrDataSource : public DataSource {
  public:
   struct Config {
     std::string relay_url;
-    std::string author_pubkey_hex;     // publisher pubkey
-    std::string sub_id = "btclock-v1"; // local NIP-01 sub identifier
+    std::string author_pubkey_hex;      // publisher pubkey
+    std::string sub_id = "btclock-v1";  // local NIP-01 sub identifier
     // Optional — narrow to specific `d` slots. Empty => all slots
     // published under the given pubkey (price:*, blockheight, medianFee).
     std::vector<std::string> d_tags;

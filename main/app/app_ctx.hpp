@@ -73,9 +73,9 @@ struct AppCtx {
 
   // Hardware — I2C + port expanders + PWM + light sensor.
   std::optional<I2cBus> i2c;
-  std::optional<Mcp23017> mcp;        // always present
-  std::optional<Mcp23017> mcp2;       // V8 only
-  std::optional<Pca9685> pca;         // boards with frontlight
+  std::optional<Mcp23017> mcp;   // always present
+  std::optional<Mcp23017> mcp2;  // V8 only
+  std::optional<Pca9685> pca;    // boards with frontlight
   std::unique_ptr<FrontlightController> frontlight;
   std::optional<Bh1750> bh;
   std::unique_ptr<LightSensor> light_sensor;
@@ -98,7 +98,7 @@ struct AppCtx {
   std::unique_ptr<DnsHijack> dns;
   std::string ap_ssid;
   std::string ap_pw;
-  std::string sta_ssid;                 // remembered for the debug screen
+  std::string sta_ssid;  // remembered for the debug screen
   std::unique_ptr<OutageWatchdog> outage_watchdog;
 
   // Data pipeline — the hub aggregates every DataSource; the screen

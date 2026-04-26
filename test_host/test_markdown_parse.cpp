@@ -2,11 +2,10 @@
 // The rules are tiny but the trim-trailing-whitespace branch + the
 // "any '*' in line" stripping are easy to break in a copy-paste edit.
 
-#include "doctest.h"
-
 #include <string>
 #include <vector>
 
+#include "doctest.h"
 #include "markdown_parse.hpp"
 
 using btclock::MarkdownLine;
@@ -119,7 +118,8 @@ TEST_CASE("ParseMarkdownLines empty bold line collapses to empty regular") {
   CHECK(lines[0].is_bold);
 }
 
-TEST_CASE("ParseMarkdownLines trailing newline produces a trailing empty line") {
+TEST_CASE(
+    "ParseMarkdownLines trailing newline produces a trailing empty line") {
   // Same flush-at-EOF reason as the empty-input case — the count
   // matters for vertical centring.
   const auto lines = ParseMarkdownLines("foo\n");

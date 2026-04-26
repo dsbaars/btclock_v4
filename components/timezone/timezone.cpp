@@ -6,6 +6,8 @@
 
 #include "esp_log.h"
 #include "prefs.hpp"
+#include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock::timezone {
 namespace {
@@ -48,17 +50,18 @@ esp_err_t SetTimezoneByName(const char* iana_name) {
 std::string GetTimezoneName() {
   // The settings subsystem writes the PATCHed `tzString` into the
   // "settings" namespace alongside the rest of the WebUI-exposed prefs.
-  // Prefer that when present — the legacy ("time"/"tz") location only
-  // exists for installs that ran the IDF firmware before tzString was
-  // plumbed through PATCH. We keep it as a fallback rather than a
-  // one-shot migration so reverting the firmware can still find the
-  // user's zone.
+  // settings::ReadString returns the schema's default ("Europe/Amsterdam"
+  // per schema.hpp::kFields) when the slot is missing or empty, so a
+  // fresh device matches what GET /api/settings reports.
   {
     btclock::Prefs settings_prefs(kSettingsNamespace);
-    const std::string from_settings =
-        settings_prefs.GetString(kSettingsKey, "");
+    const std::string from_settings = btclock::settings::ReadString(
+        settings_prefs, btclock::prefs::kTzString);
     if (!from_settings.empty()) return from_settings;
   }
+  // Legacy fallback — only reachable if the schema default is also
+  // empty (it isn't today). Kept so an unforeseen schema regression
+  // doesn't strand devices that still have the old "time"/"tz" slot.
   btclock::Prefs prefs(kNvsNamespace);
   std::string value = prefs.GetString(kNvsKey, kDefaultZone);
   if (value.empty()) value = kDefaultZone;
@@ -70,8 +73,8 @@ void InitFromNvs() {
   const esp_err_t err = SetTimezoneByName(zone.c_str());
   if (err == ESP_OK) return;
   if (err == ESP_ERR_NOT_FOUND) {
-    ESP_LOGW(kTag, "stored zone '%s' unknown; falling back to %s",
-             zone.c_str(), kDefaultZone);
+    ESP_LOGW(kTag, "stored zone '%s' unknown; falling back to %s", zone.c_str(),
+             kDefaultZone);
   } else {
     ESP_LOGW(kTag, "SetTimezoneByName('%s') -> %s; falling back to %s",
              zone.c_str(), esp_err_to_name(err), kDefaultZone);

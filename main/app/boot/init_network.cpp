@@ -7,15 +7,15 @@
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/time_sync.hpp"
-#include "io/wifi_guard.hpp"
 #include "board/board.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_wifi.h"
+#include "io/wifi_guard.hpp"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 #include "prefs.hpp"
@@ -23,6 +23,7 @@
 #include "sdkconfig.h"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -48,11 +49,10 @@ void InitNetwork(AppCtx& ctx) {
   {
     Prefs settings_for_wifi(prefs::kSettingsNs);
     wifi_reboot_minutes =
-        settings_for_wifi.GetU32(prefs::kWifiRebootMin, 10);
+        btclock::settings::ReadU32(settings_for_wifi, prefs::kWifiRebootMin);
     if (wifi_reboot_minutes > 120) wifi_reboot_minutes = 120;
   }
-  ctx.outage_watchdog =
-      std::make_unique<OutageWatchdog>(wifi_reboot_minutes);
+  ctx.outage_watchdog = std::make_unique<OutageWatchdog>(wifi_reboot_minutes);
 
   if (!ssid.empty()) {
     ESP_ERROR_CHECK(ctx.wifi->Start());
@@ -68,8 +68,7 @@ void InitNetwork(AppCtx& ctx) {
     // GetI32 — it lets us distinguish "key absent" from a stored 0.
     {
       settings::NvsPrefs settings_for_tx(prefs::kSettingsNs);
-      const int32_t tx =
-          settings_for_tx.GetI32(prefs::kTxPower, INT32_MIN);
+      const int32_t tx = settings_for_tx.GetI32(prefs::kTxPower, INT32_MIN);
       if (tx >= -1 && tx <= 78) {
         esp_wifi_set_max_tx_power(static_cast<int8_t>(tx));
       }
@@ -125,10 +124,10 @@ void InitNetwork(AppCtx& ctx) {
     {
       Prefs settings_for_wp(prefs::kSettingsNs);
       uint32_t wp_timeout_s =
-          settings_for_wp.GetU32(prefs::kWpTimeout, 15 * 60);
+          btclock::settings::ReadU32(settings_for_wp, prefs::kWpTimeout);
       if (wp_timeout_s > 3600) wp_timeout_s = 3600;
-      const bool prior_creds = settings_for_wp.GetBool(
-          prefs::kWifiConfigured, false);
+      const bool prior_creds =
+          settings_for_wp.GetBool(prefs::kWifiConfigured, false);
       if (wp_timeout_s > 0 && prior_creds) {
         esp_timer_create_args_t args = {};
         args.callback = [](void*) {
@@ -139,8 +138,8 @@ void InitNetwork(AppCtx& ctx) {
         args.name = "wpTimeout";
         esp_timer_handle_t h = nullptr;
         if (esp_timer_create(&args, &h) == ESP_OK) {
-          esp_timer_start_once(h, static_cast<uint64_t>(wp_timeout_s) *
-                                      1000ULL * 1000ULL);
+          esp_timer_start_once(
+              h, static_cast<uint64_t>(wp_timeout_s) * 1000ULL * 1000ULL);
         }
       }
     }

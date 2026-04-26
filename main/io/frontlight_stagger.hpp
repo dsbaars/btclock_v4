@@ -57,7 +57,7 @@ uint16_t ComputeStaggeredDuty(uint32_t tick, uint8_t led_index,
 // TotalTicks()) then stop — at TotalTicks() - 1, kIn lands every LED
 // on max_brightness and kOut lands every LED on 0.
 uint32_t StaggerTotalTicks(uint8_t num_leds, uint16_t max_brightness,
-                            uint16_t step);
+                           uint16_t step);
 
 // Per-tick wall delay. Floor division matches v3 — for flEffectDelay=15
 // and N=7 that's 2ms (the extra 1ms is absorbed in the visible cadence).

@@ -32,8 +32,8 @@ namespace foundry {
 // a few field names because Foundry's docs are gated and field names
 // have shifted between API versions.
 inline bool ExtractHashrate(const cJSON* point, std::string& out) {
-  static const char* const kCandidates[] = {
-      "hashrate", "shareHashrate", "value", "hashRate"};
+  static const char* const kCandidates[] = {"hashrate", "shareHashrate",
+                                            "value", "hashRate"};
   for (const char* name : kCandidates) {
     cJSON* v = cJSON_GetObjectItemCaseSensitive(point, name);
     if (cJSON_IsNumber(v)) {

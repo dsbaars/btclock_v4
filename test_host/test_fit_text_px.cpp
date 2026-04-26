@@ -4,7 +4,6 @@
 // passes a lambda over MeasureInkWidth(font, …) at the call site.
 
 #include "doctest.h"
-
 #include "fit_text_px.hpp"
 
 using btclock::FitTextPxBy;
@@ -14,9 +13,7 @@ namespace {
 // Width is k * pixel_height — mirrors how a constant-stride glyph
 // scales linearly with size. Pick k = 10 to keep the math obvious.
 auto LinearMeasure(double k) {
-  return [k](float px) {
-    return static_cast<int>(px * k);
-  };
+  return [k](float px) { return static_cast<int>(px * k); };
 }
 
 }  // namespace

@@ -13,8 +13,7 @@ namespace {
 // labels share the same baseline regardless of which letters they
 // contain. Matches the literal passed at every `DrawSplitText` call
 // site in the data screens before the DRY refactor.
-constexpr const char* kLabelRef =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+constexpr const char* kLabelRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 // Historical pixel-height baselines, hoisted here so the per-screen
 // renderers can't drift independently. A screen that genuinely needs a
@@ -39,8 +38,7 @@ constexpr float kUnitPx = 54.0f;
 // "draw as single-line label" if needed. `PaintSlotIntoFb` instead
 // always calls DrawSplitText, which renders an empty bottom string as
 // blank — visually equivalent on the typical "TOP/BOTTOM" inputs.
-void SplitOnSlash(const std::string& s, std::string& top,
-                  std::string& bottom) {
+void SplitOnSlash(const std::string& s, std::string& top, std::string& bottom) {
   const auto pos = s.find('/');
   if (pos == std::string::npos) {
     top = s;
@@ -73,8 +71,7 @@ void PaintInvertedBitmap(LandscapeFb& lfb, const std::uint8_t* bitmap,
     const std::uint8_t* row = bitmap + py * stride;
     for (int px = 0; px < bmp_w; ++px) {
       const std::uint8_t byte = row[px >> 3];
-      const std::uint8_t bit =
-          static_cast<std::uint8_t>(1U << (7 - (px & 7)));
+      const std::uint8_t bit = static_cast<std::uint8_t>(1U << (7 - (px & 7)));
       if ((byte & bit) == 0) {
         SetPixelLandscape(lfb, x_off + px, y_off + py, /*white=*/false);
       }
@@ -98,8 +95,8 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
   // flip the label sees a 250×122 region instead of 122×250, so the
   // text's long axis follows the panel's physical long axis.
   const bool rotate_label =
-      vertical_desc && (slot.kind == PaintSlot::kLabel ||
-                        slot.kind == PaintSlot::kLabelSplit);
+      vertical_desc &&
+      (slot.kind == PaintSlot::kLabel || slot.kind == PaintSlot::kLabelSplit);
   if (rotate_label) lfb.rotation = Rotation::k90Cw;
   const int w = LogicalWidth(lfb);
   const int h = LogicalHeight(lfb);
@@ -119,8 +116,8 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       std::string top, bottom;
       SplitOnSlash(slot.text, top, bottom);
       const char* ref = slot.ref_override ? slot.ref_override : kLabelRef;
-      DrawSplitText(lfb, w, h, top.c_str(), bottom.c_str(), ref,
-                    fonts.label(), px(kLabelPx), /*white_text=*/false);
+      DrawSplitText(lfb, w, h, top.c_str(), bottom.c_str(), ref, fonts.label(),
+                    px(kLabelPx), /*white_text=*/false);
       return;
     }
     case PaintSlot::kLabel:
@@ -160,8 +157,8 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       std::string top, bottom;
       SplitOnSlash(slot.text, top, bottom);
       const char* ref = slot.ref_override ? slot.ref_override : kLabelRef;
-      DrawSplitText(lfb, w, h, top.c_str(), bottom.c_str(), ref,
-                    fonts.unit(), px(kUnitPx), /*white_text=*/false);
+      DrawSplitText(lfb, w, h, top.c_str(), bottom.c_str(), ref, fonts.unit(),
+                    px(kUnitPx), /*white_text=*/false);
       return;
     }
     case PaintSlot::kIconBitmap:
@@ -223,8 +220,8 @@ int32_t PriceInt(const std::string& price_str) {
 const char* CurrencySymbolUtf8(const std::string& ccy) {
   if (ccy == "USD") return "$";
   if (ccy == "EUR") return "\xE2\x82\xAC";  // U+20AC
-  if (ccy == "GBP") return "\xC2\xA3";       // U+00A3
-  if (ccy == "JPY") return "\xC2\xA5";       // U+00A5
+  if (ccy == "GBP") return "\xC2\xA3";      // U+00A3
+  if (ccy == "JPY") return "\xC2\xA5";      // U+00A5
   // CAD / AUD share the dollar glyph; CHF has no single-char Unicode
   // symbol, so fall back to the ISO code (renderer fits ~3 chars at
   // the currency slot's medium font size).

@@ -7,13 +7,12 @@
 // so the Rev A / Rev B / V8 instantiations sweep across the shared
 // template.
 
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstddef>
 #include <string>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 namespace {
@@ -26,8 +25,8 @@ constexpr const char* kAnyRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 template <size_t N>
 void PaintUpdatePanel(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                      uint8_t (&fb_storage)[N][16 * 296],
-                      const AppFonts& fonts, size_t i) {
+                      uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+                      size_t i) {
   auto lfb = PrepFb(panels, fb_storage, i);
   ClearFb(lfb, /*white=*/true);
   const char* top = "UP";
@@ -36,10 +35,10 @@ void PaintUpdatePanel(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   // Fit both halves to the same pixel height so the letters line up —
   // pick the smaller of the two computed sizes; matches the sizing
   // choice in show_custom's split-text branch.
-  const float px_top = FitTextPx(top, fonts.oswald_bold(), 54.0f, 14.0f,
-                                 target);
-  const float px_bot = FitTextPx(bot, fonts.oswald_bold(), 54.0f, 14.0f,
-                                 target);
+  const float px_top =
+      FitTextPx(top, fonts.oswald_bold(), 54.0f, 14.0f, target);
+  const float px_bot =
+      FitTextPx(bot, fonts.oswald_bold(), 54.0f, 14.0f, target);
   const float px = px_top < px_bot ? px_top : px_bot;
   DrawSplitText(lfb, lfb.native_width, lfb.native_height, top, bot, kAnyRef,
                 fonts.oswald_bold(), px, /*white_text=*/false);
@@ -48,9 +47,9 @@ void PaintUpdatePanel(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }  // namespace
 
 template <size_t N>
-void RenderOtaUpdateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts) {
+void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                           uint8_t (&fb_storage)[N][16 * 296],
+                           const AppFonts& fonts) {
   for (size_t i = 0; i < N; ++i) {
     PaintUpdatePanel(panels, fb_storage, fonts, i);
   }
@@ -63,10 +62,10 @@ void RenderOtaUpdateScreen(
 }
 
 template void RenderOtaUpdateScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&,
-    uint8_t (&)[7][16 * 296], const AppFonts&);
+    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&);
 template void RenderOtaUpdateScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&,
-    uint8_t (&)[8][16 * 296], const AppFonts&);
+    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&);
 
 }  // namespace btclock

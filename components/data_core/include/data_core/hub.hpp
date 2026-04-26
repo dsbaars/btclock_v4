@@ -26,10 +26,9 @@
 #include <mutex>
 #include <vector>
 
-#include "esp_err.h"
-
 #include "data_core/snapshot.hpp"
 #include "data_core/source.hpp"
+#include "esp_err.h"
 
 namespace btclock {
 

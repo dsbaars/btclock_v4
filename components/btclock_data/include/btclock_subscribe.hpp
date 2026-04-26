@@ -75,8 +75,7 @@ inline std::string BuildSubscribeLogLine(
 // be dropped so the snapshot fee field reflects exactly one wire
 // source. Topics other than the two fee streams are passed through
 // unconditionally.
-inline bool ShouldDispatchTopic(const std::string& topic,
-                                bool block_fee_dec) {
+inline bool ShouldDispatchTopic(const std::string& topic, bool block_fee_dec) {
   if (topic == "blockfee") return !block_fee_dec;
   if (topic == "blockfee2") return block_fee_dec;
   return true;

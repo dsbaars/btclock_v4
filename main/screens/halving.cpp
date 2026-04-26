@@ -1,10 +1,9 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstdio>
 #include <string>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -36,9 +35,9 @@ std::array<std::string, 7> TimeModeSlots(uint32_t block_height) {
   std::array<std::string, 7> s;
   s[0] = "BIT/COIN";
   s[1] = "HAL/VING";
-  s[7 - 5] = std::to_string(tb.years)   + "/YRS";
-  s[7 - 4] = std::to_string(tb.days)    + "/DAYS";
-  s[7 - 3] = std::to_string(tb.hours)   + "/HRS";
+  s[7 - 5] = std::to_string(tb.years) + "/YRS";
+  s[7 - 4] = std::to_string(tb.days) + "/DAYS";
+  s[7 - 3] = std::to_string(tb.hours) + "/HRS";
   s[7 - 2] = std::to_string(tb.minutes) + "/MINS";
   s[7 - 1] = "TO/GO";
   return s;
@@ -48,36 +47,33 @@ std::array<std::string, 7> TimeModeSlots(uint32_t block_height) {
 // and the unit label (UNIT) floats underneath. Uses the label role so
 // the user's `fontName` pick flows through — see block_height.cpp for
 // the Bug 1 note.
-void DrawSlashSplit(auto& lfb, const AppFonts& fonts,
-                    const std::string& cell) {
+void DrawSlashSplit(auto& lfb, const AppFonts& fonts, const std::string& cell) {
   const std::size_t slash = cell.find('/');
   if (slash == std::string::npos) {
     // Defensive: emit the raw string if slashless — matches the block
     // of parsed text the label builders produce.
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                     cell.c_str(),
-                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-                     fonts.label(), 54.0f, /*white_text=*/false);
+    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, cell.c_str(),
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", fonts.label(),
+                     54.0f, /*white_text=*/false);
     return;
   }
   const std::string top = cell.substr(0, slash);
   const std::string bot = cell.substr(slash + 1);
   // Label role so split-text slots follow the user's font pick in the
   // preview (Bug 1 — see block_height.cpp).
-  DrawSplitText(lfb, lfb.native_width, lfb.native_height,
-                top.c_str(), bot.c_str(),
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  DrawSplitText(lfb, lfb.native_width, lfb.native_height, top.c_str(),
+                bot.c_str(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
                 fonts.label(), 54.0f, /*white_text=*/false);
 }
 
 }  // namespace
 
 template <size_t N>
-void RenderHalvingScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    uint32_t block_height, uint32_t prev_height, bool as_blocks,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                         uint8_t (&fb_storage)[N][16 * 296],
+                         const AppFonts& fonts, uint32_t block_height,
+                         uint32_t prev_height, bool as_blocks,
+                         bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "halving layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -107,15 +103,14 @@ void RenderHalvingScreen(
     // cells short-circuit to no paint inside kDigit.
     for (size_t i = 0; i < kDigitPanels; ++i) {
       const size_t panel_idx = 1 + i;
-      slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                   std::string(1, new_digits[i]),
-                                   nullptr, 0, 0};
+      slots[panel_idx] = PaintSlot{
+          PaintSlot::kDigit, std::string(1, new_digits[i]), nullptr, 0, 0};
       update[panel_idx] = cell_diff_reset || full_refresh_mode ||
                           new_digits[i] != old_digits[i];
     }
 
-    PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                    full_refresh_mode, vertical_desc);
+    PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                    vertical_desc);
     return;
   }
 
@@ -129,9 +124,8 @@ void RenderHalvingScreen(
   // slot DrawSplitText with slot-specific content that doesn't fit the
   // label/digit/unit shape the helper was designed around.
   const auto new_slots = TimeModeSlots(block_height);
-  const auto old_slots = cell_diff_reset
-                             ? std::array<std::string, 7>{}
-                             : TimeModeSlots(prev_height);
+  const auto old_slots = cell_diff_reset ? std::array<std::string, 7>{}
+                                         : TimeModeSlots(prev_height);
   constexpr size_t kSlotOffset = N - 7;
 
   std::array<bool, N> update{};
@@ -168,11 +162,11 @@ void RenderHalvingScreen(
   }
 }
 
-template void RenderHalvingScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
-template void RenderHalvingScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
+template void RenderHalvingScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                     uint8_t (&)[7][16 * 296], const AppFonts&,
+                                     uint32_t, uint32_t, bool, bool, bool);
+template void RenderHalvingScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                     uint8_t (&)[8][16 * 296], const AppFonts&,
+                                     uint32_t, uint32_t, bool, bool, bool);
 
 }  // namespace btclock

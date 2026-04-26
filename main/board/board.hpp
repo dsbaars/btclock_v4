@@ -33,5 +33,6 @@ enum class PinSource : uint8_t { kNative, kMcp1, kMcp2 };
 #elif defined(BTCLOCK_BOARD_V8)
 #include "board_v8.hpp"
 #else
-#error "No BTCLOCK_BOARD variant selected — pass -DBTCLOCK_BOARD=REV_A, REV_B or V8"
+#error \
+    "No BTCLOCK_BOARD variant selected — pass -DBTCLOCK_BOARD=REV_A, REV_B or V8"
 #endif

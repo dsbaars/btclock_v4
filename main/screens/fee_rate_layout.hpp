@@ -78,8 +78,7 @@ inline constexpr const char* kFeeRateDotRef = "0123456789.";
 // on the intermediate cents value). On overflow the fractional tail is
 // dropped before leading integer digits.
 template <size_t Slots>
-inline void LayoutFeeRate(double fee_sats_vb,
-                          std::array<char, Slots>& digits) {
+inline void LayoutFeeRate(double fee_sats_vb, std::array<char, Slots>& digits) {
   for (size_t i = 0; i < Slots; ++i) digits[i] = ' ';
   if (!(fee_sats_vb >= 0.0)) return;  // catches NaN + negatives
 
@@ -96,8 +95,7 @@ inline void LayoutFeeRate(double fee_sats_vb,
   char buf[32];
   if (integer_valued) {
     // Plain integer render.
-    const long long iv =
-        static_cast<long long>(std::llround(rounded));
+    const long long iv = static_cast<long long>(std::llround(rounded));
     std::snprintf(buf, sizeof(buf), "%lld", iv);
   } else {
     // Decimal with 2 places.
@@ -107,8 +105,7 @@ inline void LayoutFeeRate(double fee_sats_vb,
   size_t len = std::strlen(buf);
   if (len > Slots) {
     // Too wide. Try dropping decimals first (integer-only fallback).
-    const long long iv =
-        static_cast<long long>(std::llround(rounded));
+    const long long iv = static_cast<long long>(std::llround(rounded));
     std::snprintf(buf, sizeof(buf), "%lld", iv);
     len = std::strlen(buf);
     if (len > Slots) {
@@ -127,8 +124,7 @@ inline void LayoutFeeRate(double fee_sats_vb,
 // positions whose glyph changed are flagged.
 template <size_t Slots>
 inline std::array<bool, Slots> DiffFeeRateDigits(
-    const std::array<char, Slots>& now,
-    const std::array<char, Slots>& before,
+    const std::array<char, Slots>& now, const std::array<char, Slots>& before,
     bool full_refresh) {
   std::array<bool, Slots> update{};
   for (size_t i = 0; i < Slots; ++i) {

@@ -4,10 +4,9 @@
 // Exercises the Breath + Ramp + Scale helpers that the FreeRTOS-side
 // effect handlers rely on (heartbeat, data-error, identify decay).
 
-#include "doctest.h"
-
 #include <cstdint>
 
+#include "doctest.h"
 #include "io/led_curves.hpp"
 
 using btclock::led_curves::Breath;

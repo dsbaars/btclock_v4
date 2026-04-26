@@ -17,7 +17,9 @@ constexpr const char* kTag = "nostr-src";
 
 NostrDataSource::NostrDataSource(Config cfg) : cfg_(std::move(cfg)) {}
 
-NostrDataSource::~NostrDataSource() { Stop(); }
+NostrDataSource::~NostrDataSource() {
+  Stop();
+}
 
 esp_err_t NostrDataSource::Start(DataHub& hub) {
   hub_ = &hub;
@@ -25,9 +27,8 @@ esp_err_t NostrDataSource::Start(DataHub& hub) {
   relay_ = std::make_unique<RelayClient>(cfg_.relay_url);
   subs_ = std::make_unique<SubscriptionManager>(*relay_);
 
-  subs_->SetOnEvent([this](const std::string& sid, const Event& ev) {
-    OnEvent(sid, ev);
-  });
+  subs_->SetOnEvent(
+      [this](const std::string& sid, const Event& ev) { OnEvent(sid, ev); });
 
   const esp_err_t rc = relay_->Start();
   if (rc != ESP_OK) {

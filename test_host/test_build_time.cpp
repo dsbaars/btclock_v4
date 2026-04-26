@@ -3,11 +3,10 @@
 // /api/settings lastBuildTime field stays lossless across compiler
 // versions and host locales.
 
-#include "doctest.h"
-
-#include "settings/build_time.hpp"
-
 #include <cstdint>
+
+#include "doctest.h"
+#include "settings/build_time.hpp"
 
 using btclock::settings::ParseCompilerBuildTimeUnix;
 
@@ -35,18 +34,12 @@ TEST_CASE("ParseCompilerBuildTimeUnix handles all months") {
     int64_t expected;
   };
   const Case cases[] = {
-      {"Jan  1 2024", 1704067200},
-      {"Feb 29 2024", 1709164800},
-      {"Mar 15 2024", 1710460800},
-      {"Apr  1 2024", 1711929600},
-      {"May 31 2024", 1717113600},
-      {"Jun 15 2024", 1718409600},
-      {"Jul  4 2024", 1720051200},
-      {"Aug 20 2024", 1724112000},
-      {"Sep  9 2024", 1725840000},
-      {"Oct 31 2024", 1730332800},
-      {"Nov 11 2024", 1731283200},
-      {"Dec 25 2024", 1735084800},
+      {"Jan  1 2024", 1704067200}, {"Feb 29 2024", 1709164800},
+      {"Mar 15 2024", 1710460800}, {"Apr  1 2024", 1711929600},
+      {"May 31 2024", 1717113600}, {"Jun 15 2024", 1718409600},
+      {"Jul  4 2024", 1720051200}, {"Aug 20 2024", 1724112000},
+      {"Sep  9 2024", 1725840000}, {"Oct 31 2024", 1730332800},
+      {"Nov 11 2024", 1731283200}, {"Dec 25 2024", 1735084800},
   };
   for (const auto& c : cases) {
     CHECK(ParseCompilerBuildTimeUnix(c.date, "00:00:00") == c.expected);

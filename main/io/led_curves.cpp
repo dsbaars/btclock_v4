@@ -43,8 +43,8 @@ uint8_t Breath(uint8_t peak, uint32_t tick, uint32_t total_ticks) {
       total_ticks > 1 ? static_cast<float>(total_ticks - 1) : 1.0f;
   const float x = static_cast<float>(tick) / denom;
   const float y = BreathNormalized(x);
-  const uint32_t scaled = static_cast<uint32_t>(
-      (y * static_cast<float>(peak)) + 0.5f);
+  const uint32_t scaled =
+      static_cast<uint32_t>((y * static_cast<float>(peak)) + 0.5f);
   if (scaled > peak) return peak;
   return static_cast<uint8_t>(scaled);
 }
@@ -75,8 +75,8 @@ uint32_t ParseHexColor(std::string_view in, uint32_t fallback) {
 size_t FormatHexColor(uint32_t rgb, char* out) {
   // snprintf returns the number of chars that *would* be written (excl.
   // NUL), which for our fixed format is always 7.
-  const int n = std::snprintf(out, 8, "#%06X",
-                              static_cast<unsigned>(rgb & 0x00FFFFFFu));
+  const int n =
+      std::snprintf(out, 8, "#%06X", static_cast<unsigned>(rgb & 0x00FFFFFFu));
   return n < 0 ? 0 : static_cast<size_t>(n);
 }
 

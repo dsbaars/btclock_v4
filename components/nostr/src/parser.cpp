@@ -54,14 +54,30 @@ size_t ParseString(const std::string& s, size_t p, std::string& out) {
       if (p + 1 >= s.size()) return std::string::npos;
       const char esc = s[p + 1];
       switch (esc) {
-        case '"': out.push_back('"'); break;
-        case '\\': out.push_back('\\'); break;
-        case '/': out.push_back('/'); break;
-        case 'n': out.push_back('\n'); break;
-        case 'r': out.push_back('\r'); break;
-        case 't': out.push_back('\t'); break;
-        case 'b': out.push_back('\b'); break;
-        case 'f': out.push_back('\f'); break;
+        case '"':
+          out.push_back('"');
+          break;
+        case '\\':
+          out.push_back('\\');
+          break;
+        case '/':
+          out.push_back('/');
+          break;
+        case 'n':
+          out.push_back('\n');
+          break;
+        case 'r':
+          out.push_back('\r');
+          break;
+        case 't':
+          out.push_back('\t');
+          break;
+        case 'b':
+          out.push_back('\b');
+          break;
+        case 'f':
+          out.push_back('\f');
+          break;
         case 'u':
           // Not decoded — pass through the `\uXXXX` bytes literally so
           // downstream string-match consumers still work. (NIP-01 fields
@@ -75,7 +91,8 @@ size_t ParseString(const std::string& s, size_t p, std::string& out) {
           out.push_back(s[p + 5]);
           p += 4;  // consume the 4 hex digits in addition to the `\u`
           break;
-        default: return std::string::npos;
+        default:
+          return std::string::npos;
       }
       p += 2;
       continue;
@@ -139,8 +156,13 @@ size_t SkipValue(const std::string& s, size_t p) {
         ++p;
         continue;
       }
-      if (d == '"') { in_string = true; ++p; continue; }
-      if (d == open) ++depth;
+      if (d == '"') {
+        in_string = true;
+        ++p;
+        continue;
+      }
+      if (d == open)
+        ++depth;
       else if (d == close) {
         --depth;
         if (depth == 0) return p + 1;
@@ -310,7 +332,8 @@ bool ParseEnvelope(const std::string& frame, Envelope& out) {
     // the matching `}`.
     const size_t obj_end = SkipValue(frame, p);
     if (obj_end == std::string::npos) return false;
-    if (!ParseEventObject(frame.substr(p, obj_end - p), out.event)) return false;
+    if (!ParseEventObject(frame.substr(p, obj_end - p), out.event))
+      return false;
     return true;
   }
   if (type == "EOSE") {
@@ -446,8 +469,8 @@ bool ParseNip78Content(const std::string& d_tag, const std::string& content,
     out.block_fee_precise = d;
     // Round-half-away-from-zero matches the publisher's upstream
     // integer-fee behaviour (blockfee vs blockfee2 in NOSTR.md).
-    out.block_fee = static_cast<int32_t>(d < 0 ? std::ceil(d - 0.5)
-                                                : std::floor(d + 0.5));
+    out.block_fee =
+        static_cast<int32_t>(d < 0 ? std::ceil(d - 0.5) : std::floor(d + 0.5));
     return true;
   }
   // Price slot: "price:<CCY>". Currency code is the remainder after the

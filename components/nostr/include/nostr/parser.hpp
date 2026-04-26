@@ -70,8 +70,7 @@ bool ShouldSurfaceZap(const Event& ev);
 // decides whether to log+drop. Malformed content (e.g. non-numeric
 // height) → false, snapshot is left in whatever partial state it was
 // in (caller should not use it on false return).
-bool ParseNip78Content(const std::string& d_tag,
-                       const std::string& content,
+bool ParseNip78Content(const std::string& d_tag, const std::string& content,
                        DataSnapshot& out);
 
 }  // namespace nostr

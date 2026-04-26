@@ -8,11 +8,7 @@
 #include "app/block_event_policy.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_control_api.hpp"
-#include "io/frontlight_controller.hpp"
-#include "io/led_controller.hpp"
-#include "io/light_sensor.hpp"
 #include "app/screen_manager.hpp"
-#include "io/wifi_guard.hpp"
 #include "board/board.hpp"
 #include "buttons.hpp"
 #include "control_server.hpp"
@@ -23,10 +19,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "io/frontlight_controller.hpp"
+#include "io/led_controller.hpp"
+#include "io/light_sensor.hpp"
+#include "io/wifi_guard.hpp"
 #include "mcp23017.hpp"
 #include "prefs.hpp"
 #include "screens/screens.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -58,6 +59,22 @@ constexpr const char* kTag = "btclock";
   // tick. We drain the button queue first so a queued click is honoured
   // before we sleep on the task-notify.
   int64_t last_heartbeat_ms = 0;
+  int64_t last_debug_render_ms = 0;
+
+  auto render_debug = [&](int64_t now_ms, bool force_full) {
+    DebugScreenInfo info;
+    info.ip = wifi.ip();
+    info.ssid = ssid;
+    info.free_heap =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    info.free_psram =
+        static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    info.hw_name = board::kHardwareName;
+    info.built = __DATE__;
+    info.uptime_s = static_cast<uint32_t>(now_ms / 1000);
+    sm.RenderDebug(panels, fb_storage, fonts, info, now_ms, force_full);
+    last_debug_render_ms = now_ms;
+  };
 
   while (true) {
     // Drain control-API commands first. These ride in on the httpd
@@ -125,7 +142,8 @@ constexpr const char* kTag = "btclock";
           break;
         }
       }
-      if (re_render && hub) sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      if (re_render && hub)
+        sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
       continue;
     }
@@ -169,17 +187,7 @@ constexpr const char* kTag = "btclock";
         }
       }
       if (show_debug) {
-        DebugScreenInfo info;
-        info.ip = wifi.ip();
-        info.ssid = ssid;
-        info.free_heap = static_cast<uint32_t>(
-            heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
-        info.free_psram = static_cast<uint32_t>(
-            heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-        info.hw_name = board::kHardwareName;
-        info.built = __DATE__;
-        info.uptime_s = static_cast<uint32_t>(MsNow() / 1000);
-        sm.RenderDebug(panels, fb_storage, fonts, info);
+        render_debug(MsNow(), /*force_full=*/true);
       } else if (re_render && hub) {
         sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       }
@@ -202,18 +210,27 @@ constexpr const char* kTag = "btclock";
       // Prefer the cached reading from the poll task so we don't race
       // on the I2C bus with it. Falls back to -1.0 when no sensor.
       const float lux = light_sensor ? light_sensor->GetLux() : -1.0f;
-      ESP_LOGI(kTag, "t=%llds buttons=0x%X lux=%.1f heap=%u psram=%u",
-               static_cast<long long>(now_ms / 1000),
-               static_cast<unsigned>(port & 0xF), lux,
-               static_cast<unsigned>(
-                   heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-               static_cast<unsigned>(
-                   heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+      ESP_LOGI(
+          kTag, "t=%llds buttons=0x%X lux=%.1f heap=%u psram=%u",
+          static_cast<long long>(now_ms / 1000),
+          static_cast<unsigned>(port & 0xF), lux,
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
       // Auto-off: feed each fresh lux reading to the frontlight
       // controller. Below threshold -> on, above -> off. No-op if the
       // board has no frontlight or no ambient sensor.
       if (frontlight) frontlight->OnAmbientLux(lux);
       last_heartbeat_ms = now_ms;
+    }
+
+    // Debug overlay auto-refresh: while the debug screen is up, repaint
+    // every 10 s so uptime / free-heap / free-psram stay live without
+    // requiring a button press. Skips silently when the overlay is not
+    // active so the rest of the loop is unaffected.
+    if (sm.IsDebug() && now_ms - last_debug_render_ms >= 10'000) {
+      render_debug(now_ms, /*force_full=*/false);
+      publish_status();
+      continue;
     }
 
     // Zap notification: push the overlay onto ScreenManager from the
@@ -222,8 +239,7 @@ constexpr const char* kTag = "btclock";
     // single-threaded. Expected bool for exchange — clear the flag
     // before dispatching.
     bool pending_zap = true;
-    if (zap_notify_pending.compare_exchange_strong(pending_zap, false) &&
-        hub) {
+    if (zap_notify_pending.compare_exchange_strong(pending_zap, false) && hub) {
       // timerSeconds (seconds) drives the overlay's visible-time
       // window when scrnRestoreZap=true. Read at dispatch time so a
       // live PATCH lands without a reboot; ZapOverlayPolicy clamps 0
@@ -232,8 +248,7 @@ constexpr const char* kTag = "btclock";
       Prefs zap_prefs(prefs::kSettingsNs);
       const int64_t timer_s =
           static_cast<int64_t>(zap_prefs.GetU32(prefs::kTimerSeconds, 0));
-      const int64_t timeout_ms =
-          ZapOverlayPolicy::ComputeTimeoutMs(timer_s);
+      const int64_t timeout_ms = ZapOverlayPolicy::ComputeTimeoutMs(timer_s);
       sm.SetZapNotify(now_ms, zap_screen_auto_restore.load(), timeout_ms);
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
@@ -247,8 +262,8 @@ constexpr const char* kTag = "btclock";
     Prefs rotate_prefs(prefs::kSettingsNs);
     const uint32_t timer_s = rotate_prefs.GetU32(prefs::kTimerSeconds, 30);
     const int64_t auto_rotate_ms = static_cast<int64_t>(timer_s) * 1000;
-    if (auto_rotate_ms > 0 &&
-        sm.MaybeAutoRotate(now_ms, auto_rotate_ms) && hub) {
+    if (auto_rotate_ms > 0 && sm.MaybeAutoRotate(now_ms, auto_rotate_ms) &&
+        hub) {
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
       continue;
@@ -267,7 +282,7 @@ constexpr const char* kTag = "btclock";
       // block the steal (see BlockEventPolicy::ShouldSteal).
       Prefs block_prefs(prefs::kSettingsNs);
       const bool steal_focus =
-          block_prefs.GetBool(prefs::kStealFocus, false);
+          btclock::settings::ReadBool(block_prefs, prefs::kStealFocus);
       if (BlockEventPolicy::ShouldSteal(steal_focus, sm.current_kind())) {
         if (sm.SetKind(ScreenType::kBlockHeight, now_ms)) {
           sm.Render(panels, fb_storage, fonts, snap);

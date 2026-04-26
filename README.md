@@ -102,6 +102,68 @@ cmake -S test_host -B build-host && cmake --build build-host && \
 Do **not** source the IDF env for these — they use the system
 toolchain.
 
+## Linting
+
+Style is enforced by `clang-format` (config at `.clang-format`) and
+`clang-tidy` (config at `.clang-tidy`):
+
+```bash
+tools/lint/format.sh           # format in place
+tools/lint/format.sh --check   # CI-style verify
+tools/lint/tidy.sh             # static analysis (advisory today)
+```
+
+`format.sh` covers `components/`, `main/`, `test_host/` (excluding
+`vendor/` and `build*/`). `tidy.sh` runs against the host-test sources
+because they're the only TU set with a tractable include graph; for
+firmware-side TUs run `clang-tidy -p build-rev-b path/to/file.cpp`
+locally. macOS users need `brew install clang-format llvm`; the LLVM
+formula provides `clang-tidy`. **CI is pinned to LLVM 22** — output
+between majors drifts (Include block grouping, line wrapping
+heuristics), so use a matching version locally to avoid sweep churn.
+Brew currently ships LLVM 22.
+
+Both the format check and the tidy job run in CI (`lint.yaml`) and
+gate merges. `WarningsAsErrors` is `*` in `.clang-tidy`, so any new
+violation of the configured checks fails the build — fix or NOLINT
+before merging.
+
+## Sanitizers
+
+ASan + UBSan catch use-after-free, OOB reads, signed overflow, and
+misaligned loads that boot fine on macOS local but misbehave on the
+ESP32-S3. The host-test suite has an opt-in sanitizer build (default
+OFF, gated in CI):
+
+```bash
+cmake -S test_host -B build-host-san -DBTCLOCK_HOST_TESTS_SANITIZE=ON
+cmake --build build-host-san
+ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1 \
+  ./build-host-san/btclock_host_tests
+```
+
+macOS ASan does not implement leak detection — drop `detect_leaks=1`
+locally on macOS; CI runs Linux where leaks are flagged.
+
+## Coverage
+
+Optional gcov instrumentation produces an HTML coverage report. CI
+runs this as an informational job and uploads the HTML as an artifact
+(retention 14 days).
+
+```bash
+cmake -S test_host -B build-host-cov -DBTCLOCK_HOST_TESTS_COVERAGE=ON
+cmake --build build-host-cov && ./build-host-cov/btclock_host_tests
+gcovr --root . --filter 'components/' --filter 'main/' \
+  --exclude 'test_host/' --exclude '.*vendor/' \
+  --html-details build-host-cov/coverage.html --print-summary \
+  build-host-cov/
+open build-host-cov/coverage.html
+```
+
+macOS local needs `brew install gcovr`. Coverage flags work with both
+gcc and clang.
+
 ## Layout
 
 - `main/`               — application entry, screen renderers, board headers
@@ -115,7 +177,10 @@ toolchain.
 
 [Forgejo Actions](.forgejo/workflows/) drive two pipelines:
 
-- `host_tests.yaml` — runs the host regression suite on every push and PR.
+- `host_tests.yaml` — runs the host regression suite on every push and
+  PR; also runs an ASan + UBSan build (gating) and a gcov coverage
+  build (informational, uploads HTML report as an artifact).
+- `lint.yaml` — clang-format check (gating) + clang-tidy (advisory).
 - `release.yaml` — tag-triggered (`v*`); gates on host tests, builds the
   WebUI once, packs per-size LittleFS images, then matrix-builds firmware
   for `rev-a`, `rev-a-29`, `rev-b`, `v8` and attaches per-variant zips

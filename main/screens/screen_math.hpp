@@ -39,8 +39,7 @@ inline constexpr uint64_t SupplyAtBlock(uint32_t height) {
   uint64_t reward = 5000000000ULL;
   uint32_t h = height;
   for (uint32_t era = 0; era < kMaxHalvingEras && h > 0; ++era) {
-    const uint32_t in_era =
-        h >= kHalvingInterval ? kHalvingInterval : h;
+    const uint32_t in_era = h >= kHalvingInterval ? kHalvingInterval : h;
     sats += static_cast<uint64_t>(in_era) * reward;
     h -= in_era;
     reward >>= 1;
@@ -113,8 +112,8 @@ std::string FormatNumberWithSuffix(uint64_t num, int num_characters = 4,
 // Matches old firmware lib/btclock/data_handler.cpp parseBlockHeight.
 inline bool BlockHeightDropsLabel(uint32_t height, std::size_t panels) {
   char buf[16];
-  const int len = std::snprintf(buf, sizeof(buf), "%u",
-                                static_cast<unsigned>(height));
+  const int len =
+      std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(height));
   return len >= 0 && static_cast<std::size_t>(len) >= panels;
 }
 
@@ -154,9 +153,9 @@ MiningPoolHashrateLayout LayoutMiningPoolHashrate(
 // with the whole-BTC count. Returns the value string and the unit label
 // the renderer should print on the trailing panel.
 struct MiningPoolEarningsLayout {
-  std::string value;        // "21000", "12.3K", "1.50M", "1"
-  std::string unit_label;   // "SATS" or "BTC" depending on magnitude
-  bool valid = false;       // false when daily_sats is absent / negative
+  std::string value;       // "21000", "12.3K", "1.50M", "1"
+  std::string unit_label;  // "SATS" or "BTC" depending on magnitude
+  bool valid = false;      // false when daily_sats is absent / negative
 };
 MiningPoolEarningsLayout LayoutMiningPoolEarnings(int64_t daily_sats);
 

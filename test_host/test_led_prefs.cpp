@@ -15,12 +15,11 @@
 // Pure-logic — uses the same FakePrefs shape as test_settings_api.cpp
 // against the PrefsReader/PrefsWriter abstraction.
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <map>
 #include <string>
 
+#include "doctest.h"
 #include "io/led_prefs.hpp"
 #include "settings/api.hpp"
 #include "settings/pref_keys.hpp"
@@ -87,8 +86,7 @@ TEST_CASE("ledBrightness PATCH is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
   settings_ns.SetU32(btclock::prefs::kLedBrightness, 42);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.brightness == 42);
   CHECK_FALSE(s.migrated_from_legacy);
@@ -98,8 +96,7 @@ TEST_CASE("disableLeds PATCH is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
   settings_ns.SetBool(btclock::prefs::kDisableLeds, true);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.disabled);
   CHECK_FALSE(s.migrated_from_legacy);
@@ -107,13 +104,12 @@ TEST_CASE("disableLeds PATCH is observed by the LED controller") {
 
 TEST_CASE("ledFlashOnUpd PATCH (false) is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
-  // Schema default for ledFlashOnUpd is false — explicitly write false
-  // and confirm the loader doesn't fall through to the legacy "true"
-  // default the earlier controller used.
+  // Schema default for ledFlashOnUpd is true (raised in v4 to match
+  // flFlashOnUpd) — explicitly write false and confirm the loader honours
+  // the PATCHed value rather than falling back to the schema default.
   settings_ns.SetBool(btclock::prefs::kLedFlashOnUpd, false);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK_FALSE(s.flash_on_update);
   CHECK_FALSE(s.migrated_from_legacy);
@@ -123,8 +119,7 @@ TEST_CASE("ledFlashOnUpd PATCH (true) is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
   settings_ns.SetBool(btclock::prefs::kLedFlashOnUpd, true);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.flash_on_update);
   CHECK_FALSE(s.migrated_from_legacy);
@@ -134,8 +129,7 @@ TEST_CASE("blockFlashColor PATCH is observed by the LED controller") {
   FakePrefs settings_ns, legacy_ns;
   settings_ns.SetU32(btclock::prefs::kBlockFlashColor, 0x123456u);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.block_flash_color == 0x123456u);
 }
@@ -147,13 +141,13 @@ TEST_CASE("blockFlashColor PATCH is observed by the LED controller") {
 TEST_CASE("Empty NVS yields schema defaults") {
   FakePrefs settings_ns, legacy_ns;
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.brightness == 128);
   CHECK(s.block_flash_color == 0xE04300u);
   CHECK_FALSE(s.disabled);
-  CHECK_FALSE(s.flash_on_update);
+  // ledFlashOnUpd default is true (matches flFlashOnUpd).
+  CHECK(s.flash_on_update);
   CHECK_FALSE(s.migrated_from_legacy);
 }
 
@@ -165,8 +159,7 @@ TEST_CASE("Legacy 'led/brightness' migrates into settings on first boot") {
   FakePrefs settings_ns, legacy_ns;
   legacy_ns.SetU32("brightness", 64);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.brightness == 64);
   CHECK(s.migrated_from_legacy);
@@ -179,8 +172,7 @@ TEST_CASE("Legacy 'led/disable' (true) migrates into settings") {
   FakePrefs settings_ns, legacy_ns;
   legacy_ns.SetBool("disable", true);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.disabled);
   CHECK(s.migrated_from_legacy);
@@ -193,8 +185,7 @@ TEST_CASE("Legacy 'led/flashUpdate' migrates into settings") {
   // most care about preserving across the migration.
   legacy_ns.SetBool("flashUpdate", true);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.flash_on_update);
   CHECK(s.migrated_from_legacy);
@@ -206,8 +197,7 @@ TEST_CASE("Settings value wins over legacy when both are present") {
   settings_ns.SetU32(btclock::prefs::kLedBrightness, 99);
   legacy_ns.SetU32("brightness", 1);
 
-  const auto s =
-      btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
+  const auto s = btclock::ResolveLedPrefs(settings_ns, settings_ns, legacy_ns);
 
   CHECK(s.brightness == 99);
   CHECK_FALSE(s.migrated_from_legacy);

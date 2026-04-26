@@ -3,9 +3,8 @@
 #include <cstdio>
 #include <cstring>
 
-#include "esp_log.h"
-
 #include "board/board.hpp"
+#include "esp_log.h"
 #include "net_util.hpp"
 #include "qrcodegen.h"
 
@@ -13,8 +12,7 @@ namespace btclock {
 namespace {
 constexpr const char* kTag = "prov-ui";
 
-constexpr const char* kRef =
-    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+constexpr const char* kRef = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 template <size_t N>
 LandscapeFb PrepFb(std::array<std::unique_ptr<EpdPanel>, N>& panels,
@@ -32,13 +30,15 @@ void DrawQr(LandscapeFb& lfb, const char* text) {
   static uint8_t qr_buf[qrcodegen_BUFFER_LEN_MAX];
   static uint8_t qr_temp[qrcodegen_BUFFER_LEN_MAX];
   if (!qrcodegen_encodeText(text, qr_temp, qr_buf, qrcodegen_Ecc_MEDIUM,
-                             qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
-                             qrcodegen_Mask_AUTO, true)) {
+                            qrcodegen_VERSION_MIN, qrcodegen_VERSION_MAX,
+                            qrcodegen_Mask_AUTO, true)) {
     ESP_LOGW(kTag, "qr encode failed: %s", text);
     return;
   }
   const int size = qrcodegen_getSize(qr_buf);
-  struct Ctx { const uint8_t* buf; };
+  struct Ctx {
+    const uint8_t* buf;
+  };
   Ctx ctx{qr_buf};
   auto get = [](int x, int y, const void* c) {
     return qrcodegen_getModule(static_cast<const Ctx*>(c)->buf, x, y);
@@ -53,10 +53,10 @@ constexpr const char* kHwName = board::kHardwareName;
 }  // namespace
 
 template <size_t N>
-void RenderProvisioningScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const std::string& ap_ssid, const std::string& ap_pw) {
+void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                              uint8_t (&fb_storage)[N][16 * 296],
+                              const AppFonts& fonts, const std::string& ap_ssid,
+                              const std::string& ap_pw) {
   static_assert(N >= 7, "provisioning layout needs at least 7 panels");
 
   const Font& reg = fonts.atkinson();
@@ -69,35 +69,35 @@ void RenderProvisioningScreen(
   {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
-    const float px = FitTextPx("Welcome!", bold, 32.0f, 14.0f,
-                                lfb.native_width - 6);
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, "Welcome!",
-                     kRef, bold, px, /*white_text=*/false);
+    const float px =
+        FitTextPx("Welcome!", bold, 32.0f, 14.0f, lfb.native_width - 6);
+    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, "Welcome!", kRef,
+                     bold, px, /*white_text=*/false);
   }
   // P1 — Bienvenidos!
   {
     auto lfb = PrepFb(panels, fb_storage, 1);
     ClearFb(lfb, true);
-    const float px = FitTextPx("Bienvenidos!", bold, 28.0f, 12.0f,
-                                lfb.native_width - 6);
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height,
-                     "Bienvenidos!", kRef, bold, px, false);
+    const float px =
+        FitTextPx("Bienvenidos!", bold, 28.0f, 12.0f, lfb.native_width - 6);
+    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, "Bienvenidos!",
+                     kRef, bold, px, false);
   }
   // P2 — EN instructions
   {
     auto lfb = PrepFb(panels, fb_storage, 2);
     ClearFb(lfb, true);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height,
-                 "To setup\nscan QR or\nconnect\nmanually",
-                 reg, bold, kInstrPx, false);
+                 "To setup\nscan QR or\nconnect\nmanually", reg, bold, kInstrPx,
+                 false);
   }
   // P3 — ES instructions (same px as EN)
   {
     auto lfb = PrepFb(panels, fb_storage, 3);
     ClearFb(lfb, true);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height,
-                 "Para\nconfigurar\nescanear QR\no conectar\nmanualmente",
-                 reg, bold, kInstrPx, false);
+                 "Para\nconfigurar\nescanear QR\no conectar\nmanualmente", reg,
+                 bold, kInstrPx, false);
   }
   // P4 — SSID / Password / Hostname
   {
@@ -133,8 +133,7 @@ void RenderProvisioningScreen(
     auto lfb = PrepFb(panels, fb_storage, 7);
     ClearFb(lfb, true);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height,
-                 "*Web:*\nhttp://\n192.168.\n4.1",
-                 reg, bold, kInfoPx, false);
+                 "*Web:*\nhttp://\n192.168.\n4.1", reg, bold, kInfoPx, false);
   }
 
   // Parallel full-refresh of every panel.

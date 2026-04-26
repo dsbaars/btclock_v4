@@ -15,9 +15,8 @@
 namespace btclock {
 
 template <size_t N>
-void RenderSplashScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296],
-    const AppFonts& fonts);
+void RenderSplashScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                        uint8_t (&fb_storage)[N][16 * 296],
+                        const AppFonts& fonts);
 
 }  // namespace btclock

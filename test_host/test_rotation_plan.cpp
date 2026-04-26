@@ -6,13 +6,12 @@
 // ignored) at the building-block layer before the ScreenManager tests
 // exercise the composed behaviour.
 
-#include "doctest.h"
-
 #include <string>
 #include <vector>
 
 #include "app/rotation_plan.hpp"
 #include "app/screen_slot_map.hpp"
+#include "doctest.h"
 
 namespace rp = btclock::rotation_plan;
 namespace sm = btclock::slot_map;
@@ -80,7 +79,8 @@ TEST_CASE("Bug 2: screenOrder drives traversal, not slot_map index order") {
 }
 
 TEST_CASE(
-    "Bug 2: disabled screen is dropped from rotation even when in screenOrder") {
+    "Bug 2: disabled screen is dropped from rotation even when in "
+    "screenOrder") {
   // User ordered [BlockHeight, Clock, Halving] but has Clock disabled.
   // Clock is api_id 3.
   auto enabled = [](int api_id) { return api_id != 3; };
@@ -239,9 +239,9 @@ TEST_CASE("skip predicate hides earnings on solo pool (composed)") {
   const auto seq = rp::BuildRotationSequence("0,70,71,4", kAllEnabled, 1);
   REQUIRE(seq.size() == 4);
   CHECK(seq[0] == 0);
-  CHECK(seq[1] == 4);   // MiningPoolHashrate
-  CHECK(seq[2] == 5);   // MiningPoolEarnings
-  CHECK(seq[3] == 2);   // Halving
+  CHECK(seq[1] == 4);  // MiningPoolHashrate
+  CHECK(seq[2] == 5);  // MiningPoolEarnings
+  CHECK(seq[3] == 2);  // Halving
 
   auto skip_earnings = [](std::size_t slot) {
     return slot == 5;  // solo pool hides earnings slot

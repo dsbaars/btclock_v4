@@ -57,11 +57,10 @@ int64_t DaysFromCivil(int y, unsigned m, unsigned d) {
   y -= (m <= 2 ? 1 : 0);
   const int era = (y >= 0 ? y : y - 399) / 400;
   const unsigned yoe = static_cast<unsigned>(y - era * 400);
-  const unsigned doy =
-      (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
+  const unsigned doy = (153 * (m > 2 ? m - 3 : m + 9) + 2) / 5 + d - 1;
   const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-  return static_cast<int64_t>(era) * 146097 +
-         static_cast<int64_t>(doe) - 719468;
+  return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) -
+         719468;
 }
 
 }  // namespace
@@ -99,8 +98,9 @@ int64_t ParseCompilerBuildTimeUnix(std::string_view date_str,
   int second = 0;
   if (!ParseIntAt(time_str, pos, 2, second)) return 0;
 
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
-      second < 0 || second > 60) return 0;  // allow leap second
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 ||
+      second > 60)
+    return 0;  // allow leap second
 
   const int64_t days = DaysFromCivil(year, static_cast<unsigned>(month),
                                      static_cast<unsigned>(day));

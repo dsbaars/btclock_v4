@@ -55,8 +55,8 @@ esp_err_t ButtonReader::Start() {
     return ESP_ERR_INVALID_STATE;
   }
   // 3 KB stack — we do no printf-in-hot-path and the work is trivial.
-  if (xTaskCreate(TaskTrampoline, "btn", 3072, this,
-                  tskIDLE_PRIORITY + 1, &task_) != pdPASS) {
+  if (xTaskCreate(TaskTrampoline, "btn", 3072, this, tskIDLE_PRIORITY + 1,
+                  &task_) != pdPASS) {
     ESP_LOGE(kTag, "xTaskCreate failed");
     task_ = nullptr;
     return ESP_ERR_NO_MEM;
@@ -151,7 +151,10 @@ void ButtonReader::Run() {
     // expectation that "let go" cancels the combo.
     bool all_held = true;
     for (uint8_t i = 0; i < kNumButtons; ++i) {
-      if (!state_[i].pressed) { all_held = false; break; }
+      if (!state_[i].pressed) {
+        all_held = false;
+        break;
+      }
     }
     if (all_held) {
       if (all_pressed_ticks_ < UINT32_MAX) ++all_pressed_ticks_;

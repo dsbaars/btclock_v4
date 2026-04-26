@@ -4,8 +4,6 @@
 // between ScreenType and BTCLOCK_SCREEN_KIND_LIST — fails here before
 // it ships to a device.
 
-#include "doctest.h"
-
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -14,6 +12,7 @@
 
 #include "app/catalogs.hpp"
 #include "cJSON.h"
+#include "doctest.h"
 #include "settings/api.hpp"
 #include "settings/pref_keys.hpp"
 
@@ -73,8 +72,7 @@ std::set<std::string> StringArrayToSet(cJSON* arr) {
 
 TEST_CASE("availableFonts is a plain-string array with known ids") {
   NullPrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
   REQUIRE(root != nullptr);
 
   cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "availableFonts");
@@ -107,8 +105,7 @@ TEST_CASE("availableFonts is a plain-string array with known ids") {
 
 TEST_CASE("availableCurrencies is a plain-string array of ISO-4217 codes") {
   NullPrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
   REQUIRE(root != nullptr);
 
   cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "availableCurrencies");
@@ -166,8 +163,7 @@ TEST_CASE("availableCurrencies is a plain-string array of ISO-4217 codes") {
 
 TEST_CASE("screens catalogue matches BTCLOCK_SCREEN_KIND_LIST") {
   NullPrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
   REQUIRE(root != nullptr);
 
   cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "screens");

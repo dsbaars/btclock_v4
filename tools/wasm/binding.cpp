@@ -653,12 +653,12 @@ val renderMarketCap(int block_height, int price_int, std::string currency,
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMarketCapScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, bh, "", 0, true,
-            /*full_refresh_mode=*/true, vd);
+            /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMarketCapScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, bh, "", 0, true,
-            /*full_refresh_mode=*/true, vd);
+            /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -969,13 +969,13 @@ val renderMarketCapAlpha(int block_height, int price_int,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMarketCapScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, bh, "", 0,
-          true, true, vd);
+          true, /*share_dot=*/false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMarketCapScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, bh, "", 0,
-          true, true, vd);
+          true, /*share_dot=*/false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });

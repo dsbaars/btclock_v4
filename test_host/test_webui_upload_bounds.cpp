@@ -1,5 +1,4 @@
 #include "doctest.h"
-
 #include "webui_upload_bounds.hpp"
 
 namespace {
@@ -34,15 +33,13 @@ TEST_CASE("IsValidWebuiUploadSize accepts in-bounds payloads") {
 }
 
 TEST_CASE("IsValidWebuiUploadSize rejects oversize payloads") {
-  CHECK_FALSE(btclock::IsValidWebuiUploadSize(kRevAPartition + 1,
-                                              kRevAPartition));
-  CHECK_FALSE(btclock::IsValidWebuiUploadSize(kRevBPartition + 1,
-                                              kRevBPartition));
-  CHECK_FALSE(btclock::IsValidWebuiUploadSize(kV8Partition + 1,
-                                              kV8Partition));
+  CHECK_FALSE(
+      btclock::IsValidWebuiUploadSize(kRevAPartition + 1, kRevAPartition));
+  CHECK_FALSE(
+      btclock::IsValidWebuiUploadSize(kRevBPartition + 1, kRevBPartition));
+  CHECK_FALSE(btclock::IsValidWebuiUploadSize(kV8Partition + 1, kV8Partition));
   // A webui built for Rev B (820 KiB) would overflow Rev A (412 KiB)
   // if flashed to the wrong variant — this is the exact case we want
   // the 413 gate to catch before erasing the partition.
-  CHECK_FALSE(
-      btclock::IsValidWebuiUploadSize(kRevBPartition, kRevAPartition));
+  CHECK_FALSE(btclock::IsValidWebuiUploadSize(kRevBPartition, kRevAPartition));
 }

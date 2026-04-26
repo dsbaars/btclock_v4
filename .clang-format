@@ -1,0 +1,28 @@
+# Google base with two project tweaks:
+#   - ColumnLimit stays at 80 — matches existing wrapping
+#   - DerivePointerAlignment off so we don't drift from `T* p` to `T *p`
+# Run `tools/lint/format.sh` to apply or `--check` to verify.
+BasedOnStyle: Google
+Language: Cpp
+Standard: c++17
+ColumnLimit: 80
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+AccessModifierOffset: -1
+AllowShortFunctionsOnASingleLine: Inline
+SortIncludes: CaseInsensitive
+IncludeBlocks: Regroup
+# Block 0 is the matching `*.hpp` for a `.cpp` (Google convention).
+# Block 1 is C/C++ system headers (<...>).
+# Block 2 is everything else: ESP-IDF + project headers.
+IncludeCategories:
+  - Regex:           '^<.*\.h>'
+    Priority:        1
+  - Regex:           '^<.*'
+    Priority:        1
+  - Regex:           '.*'
+    Priority:        2

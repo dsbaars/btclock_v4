@@ -42,9 +42,7 @@ class RelayClient {
 
   // Send a UTF-8 text frame. Thread-safe.
   bool SendText(const char* data, size_t len);
-  bool SendText(const std::string& s) {
-    return SendText(s.data(), s.size());
-  }
+  bool SendText(const std::string& s) { return SendText(s.data(), s.size()); }
 
   bool connected() const { return connected_; }
   const std::string& url() const { return url_; }

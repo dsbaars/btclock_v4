@@ -29,101 +29,101 @@
 namespace btclock {
 namespace prefs {
 
-inline constexpr const char* kActCurrencies    = "actCurrencies";
-inline constexpr const char* kBgColor          = "bgColor";
-inline constexpr const char* kBitaxeEnabled    = "bitaxeEnabled";
-inline constexpr const char* kBitaxeHostname   = "bitaxeHostname";
-inline constexpr const char* kBitaxePollSec    = "bitaxePollSec";
-inline constexpr const char* kBlockFeeDec      = "blockFeeDec";
-inline constexpr const char* kBlockFlashColor  = "blockFlashColor";
-inline constexpr const char* kBlockHeight      = "blockHeight";
-inline constexpr const char* kCeDisableSSL     = "ceDisableSSL";
-inline constexpr const char* kCeEndpoint       = "ceEndpoint";
-inline constexpr const char* kCurrentScreen    = "currentScreen";
-inline constexpr const char* kDataSource       = "dataSource";
-inline constexpr const char* kDisableLeds      = "disableLeds";
-inline constexpr const char* kDndEnabled       = "dndEnabled";
-inline constexpr const char* kDndEndHour       = "dndEndHour";
-inline constexpr const char* kDndEndMin        = "dndEndMin";
-inline constexpr const char* kDndStartHour     = "dndStartHour";
-inline constexpr const char* kDndStartMin      = "dndStartMin";
-inline constexpr const char* kDndTimeEnabled   = "dndTimeEnabled";
-inline constexpr const char* kEnableDebugLog   = "enableDebugLog";
-inline constexpr const char* kFgColor          = "fgColor";
-inline constexpr const char* kFlAlwaysOn       = "flAlwaysOn";
-inline constexpr const char* kFlDisable        = "flDisable";
-inline constexpr const char* kFlEffectDelay    = "flEffectDelay";
-inline constexpr const char* kFlFlashOnUpd     = "flFlashOnUpd";
-inline constexpr const char* kFlFlashOnZap     = "flFlashOnZap";
-inline constexpr const char* kFlMaxBrightness  = "flMaxBrightness";
-inline constexpr const char* kFlOffWhenDark    = "flOffWhenDark";
-inline constexpr const char* kFontName         = "fontName";
+inline constexpr const char* kActCurrencies = "actCurrencies";
+inline constexpr const char* kBgColor = "bgColor";
+inline constexpr const char* kBitaxeEnabled = "bitaxeEnabled";
+inline constexpr const char* kBitaxeHostname = "bitaxeHostname";
+inline constexpr const char* kBitaxePollSec = "bitaxePollSec";
+inline constexpr const char* kBlockFeeDec = "blockFeeDec";
+inline constexpr const char* kBlockFlashColor = "blockFlashColor";
+inline constexpr const char* kBlockHeight = "blockHeight";
+inline constexpr const char* kCeDisableSSL = "ceDisableSSL";
+inline constexpr const char* kCeEndpoint = "ceEndpoint";
+inline constexpr const char* kCurrentScreen = "currentScreen";
+inline constexpr const char* kDataSource = "dataSource";
+inline constexpr const char* kDisableLeds = "disableLeds";
+inline constexpr const char* kDndEnabled = "dndEnabled";
+inline constexpr const char* kDndEndHour = "dndEndHour";
+inline constexpr const char* kDndEndMin = "dndEndMin";
+inline constexpr const char* kDndStartHour = "dndStartHour";
+inline constexpr const char* kDndStartMin = "dndStartMin";
+inline constexpr const char* kDndTimeEnabled = "dndTimeEnabled";
+inline constexpr const char* kEnableDebugLog = "enableDebugLog";
+inline constexpr const char* kFgColor = "fgColor";
+inline constexpr const char* kFlAlwaysOn = "flAlwaysOn";
+inline constexpr const char* kFlDisable = "flDisable";
+inline constexpr const char* kFlEffectDelay = "flEffectDelay";
+inline constexpr const char* kFlFlashOnUpd = "flFlashOnUpd";
+inline constexpr const char* kFlFlashOnZap = "flFlashOnZap";
+inline constexpr const char* kFlMaxBrightness = "flMaxBrightness";
+inline constexpr const char* kFlOffWhenDark = "flOffWhenDark";
+inline constexpr const char* kFontName = "fontName";
 // Foundry USA Pool: per-account API key (suppressed in GET like
 // httpAuthPass) + plain subaccount path segment. NVS 15-char cap forces
 // the short forms — `foundryApiKey` is exactly 13 chars; `foundrySubacct`
 // is 14. Stable on-flash names; do not rename.
-inline constexpr const char* kFullRefreshMin   = "fullRefreshMin";
-inline constexpr const char* kGitReleaseUrl    = "gitReleaseUrl";
-inline constexpr const char* kGmtOffset        = "gmtOffset";
+inline constexpr const char* kFullRefreshMin = "fullRefreshMin";
+inline constexpr const char* kGitReleaseUrl = "gitReleaseUrl";
+inline constexpr const char* kGmtOffset = "gmtOffset";
 // Clock screen: drop the leading zero on single-digit hours
 // ("07:00" → "7:00"). Minute always stays zero-padded. NVS 15-char
 // cap forces the short form — the old "hideTimeLeadingZero" name
 // would need 19 bytes. Key is stable once shipped; do not rename.
-inline constexpr const char* kHideLeadZero     = "hideLeadZero";
-inline constexpr const char* kHostnamePrefix   = "hostnamePrefix";
-inline constexpr const char* kHttpAuthEnabled  = "httpAuthEnabled";
-inline constexpr const char* kHttpAuthPass     = "httpAuthPass";
-inline constexpr const char* kHttpAuthUser     = "httpAuthUser";
-inline constexpr const char* kInverseButtons   = "inverseButtons";
-inline constexpr const char* kInvertedColor    = "invertedColor";
-inline constexpr const char* kLedBrightness    = "ledBrightness";
-inline constexpr const char* kLedFlashOnUpd    = "ledFlashOnUpd";
-inline constexpr const char* kLedFlashOnZap    = "ledFlashOnZap";
-inline constexpr const char* kLedTestOnPower   = "ledTestOnPower";
-inline constexpr const char* kLocalPoolHost    = "localPoolHost";
-inline constexpr const char* kLuxLightToggle   = "luxLightToggle";
-inline constexpr const char* kMcapBigChar      = "mcapBigChar";
-inline constexpr const char* kMdnsEnabled      = "mdnsEnabled";
-inline constexpr const char* kMempoolInstance  = "mempoolInstance";
-inline constexpr const char* kMempoolSecure    = "mempoolSecure";
-inline constexpr const char* kMinSecPriceUpd   = "minSecPriceUpd";
-inline constexpr const char* kMiningPoolName   = "miningPoolName";
-inline constexpr const char* kMiningPoolStats  = "miningPoolStats";
-inline constexpr const char* kMiningPoolUser   = "miningPoolUser";
-inline constexpr const char* kPoolWorker       = "poolWorker";
-inline constexpr const char* kMowMode          = "mowMode";
-inline constexpr const char* kNostrPubKey      = "nostrPubKey";
-inline constexpr const char* kNostrRelay       = "nostrRelay";
-inline constexpr const char* kNostrZapNotify   = "nostrZapNotify";
-inline constexpr const char* kNostrZapPubkey   = "nostrZapPubkey";
-inline constexpr const char* kOtaEnabled       = "otaEnabled";
-inline constexpr const char* kOtaPass          = "otaPass";
-inline constexpr const char* kPoolGlobalStats  = "poolGlobalStats";
-inline constexpr const char* kPoolLogosUrl     = "poolLogosUrl";
-inline constexpr const char* kPoolPollSec      = "poolPollSec";
-inline constexpr const char* kRefrScrnChange   = "refrScrnChange";
-inline constexpr const char* kScreenOrder      = "screenOrder";
-inline constexpr const char* kScrnRestoreZap   = "scrnRestoreZap";
-inline constexpr const char* kStealFocus       = "stealFocus";
-inline constexpr const char* kSuffixPrice      = "suffixPrice";
-inline constexpr const char* kSuffixShareDot   = "suffixShareDot";
-inline constexpr const char* kSupplyPercent    = "supplyPercent";
-inline constexpr const char* kTimerActive      = "timerActive";
-inline constexpr const char* kTimerSeconds     = "timerSeconds";
-inline constexpr const char* kTxPower          = "txPower";
-inline constexpr const char* kTzString         = "tzString";
-inline constexpr const char* kUseBlkCountdown  = "useBlkCountdown";
-inline constexpr const char* kUseMscwTime      = "useMscwTime";
-inline constexpr const char* kUseSatsSymbol    = "useSatsSymbol";
-inline constexpr const char* kVerticalDesc     = "verticalDesc";
+inline constexpr const char* kHideLeadZero = "hideLeadZero";
+inline constexpr const char* kHostnamePrefix = "hostnamePrefix";
+inline constexpr const char* kHttpAuthEnabled = "httpAuthEnabled";
+inline constexpr const char* kHttpAuthPass = "httpAuthPass";
+inline constexpr const char* kHttpAuthUser = "httpAuthUser";
+inline constexpr const char* kInverseButtons = "inverseButtons";
+inline constexpr const char* kInvertedColor = "invertedColor";
+inline constexpr const char* kLedBrightness = "ledBrightness";
+inline constexpr const char* kLedFlashOnUpd = "ledFlashOnUpd";
+inline constexpr const char* kLedFlashOnZap = "ledFlashOnZap";
+inline constexpr const char* kLedTestOnPower = "ledTestOnPower";
+inline constexpr const char* kLocalPoolHost = "localPoolHost";
+inline constexpr const char* kLuxLightToggle = "luxLightToggle";
+inline constexpr const char* kMcapBigChar = "mcapBigChar";
+inline constexpr const char* kMdnsEnabled = "mdnsEnabled";
+inline constexpr const char* kMempoolInstance = "mempoolInstance";
+inline constexpr const char* kMempoolSecure = "mempoolSecure";
+inline constexpr const char* kMinSecPriceUpd = "minSecPriceUpd";
+inline constexpr const char* kMiningPoolName = "miningPoolName";
+inline constexpr const char* kMiningPoolStats = "miningPoolStats";
+inline constexpr const char* kMiningPoolUser = "miningPoolUser";
+inline constexpr const char* kPoolWorker = "poolWorker";
+inline constexpr const char* kMowMode = "mowMode";
+inline constexpr const char* kNostrPubKey = "nostrPubKey";
+inline constexpr const char* kNostrRelay = "nostrRelay";
+inline constexpr const char* kNostrZapNotify = "nostrZapNotify";
+inline constexpr const char* kNostrZapPubkey = "nostrZapPubkey";
+inline constexpr const char* kOtaEnabled = "otaEnabled";
+inline constexpr const char* kOtaPass = "otaPass";
+inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
+inline constexpr const char* kPoolLogosUrl = "poolLogosUrl";
+inline constexpr const char* kPoolPollSec = "poolPollSec";
+inline constexpr const char* kRefrScrnChange = "refrScrnChange";
+inline constexpr const char* kScreenOrder = "screenOrder";
+inline constexpr const char* kScrnRestoreZap = "scrnRestoreZap";
+inline constexpr const char* kStealFocus = "stealFocus";
+inline constexpr const char* kSuffixPrice = "suffixPrice";
+inline constexpr const char* kSuffixShareDot = "suffixShareDot";
+inline constexpr const char* kSupplyPercent = "supplyPercent";
+inline constexpr const char* kTimerActive = "timerActive";
+inline constexpr const char* kTimerSeconds = "timerSeconds";
+inline constexpr const char* kTxPower = "txPower";
+inline constexpr const char* kTzString = "tzString";
+inline constexpr const char* kUseBlkCountdown = "useBlkCountdown";
+inline constexpr const char* kUseMscwTime = "useMscwTime";
+inline constexpr const char* kUseSatsSymbol = "useSatsSymbol";
+inline constexpr const char* kVerticalDesc = "verticalDesc";
 // ViaBTC: per-account API key (suppressed in GET like httpAuthPass).
 // 13 chars — fits the NVS 15-char cap. Stable on-flash name; do not rename.
-inline constexpr const char* kWifiConfigured   = "wifiConfigured";
+inline constexpr const char* kWifiConfigured = "wifiConfigured";
 // Minutes of continuous STA disconnect before a soft reboot. Ported
 // from the Arduino main.cpp::checkWiFiConnection() 10-min brute-force
 // recovery path; 0 disables. Key is truncated to the NVS 15-char cap.
-inline constexpr const char* kWifiRebootMin    = "wifiRebootMin";
-inline constexpr const char* kWpTimeout        = "wpTimeout";
+inline constexpr const char* kWifiRebootMin = "wifiRebootMin";
+inline constexpr const char* kWpTimeout = "wpTimeout";
 
 // NVS namespace that holds every key listed above. One namespace keeps
 // settings migration atomic — a reset blows the whole thing away, and

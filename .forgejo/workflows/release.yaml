@@ -142,7 +142,7 @@ jobs:
           done
           ls -la dist-lfs
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: lfs-storage-images
           path: dist-lfs/*.bin
@@ -206,6 +206,15 @@ jobs:
           curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get install -y --no-install-recommends nodejs
 
+      # ccache shrinks cache-miss rebuilds (sdkconfig touched but
+      # source unchanged) from ~10 min/variant to a link + a few
+      # recompiles. ESP-IDF picks it up via IDF_CCACHE_ENABLE=1 below.
+      - name: Install ccache
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ccache
+
       - uses: actions/checkout@v6
         with:
           submodules: recursive
@@ -227,6 +236,26 @@ jobs:
           restore-keys: |
             idf-v6.0-${{ matrix.variant_label }}-
 
+      # Independent ccache cache: the SHA-keyed primary write means
+      # each commit gets a fresh save, while the prefix-keyed restore
+      # keys let a miss fall back to the most recent variant cache
+      # (and then to any variant's cache as a last resort). Kept
+      # separate from the build-dir cache above so a miss on one key
+      # doesn't blow away the other.
+      #
+      # Path is the literal CCACHE_DIR (see build step env below). We
+      # don't use ~/.ccache here because actions/cache expands `~` at
+      # the runner side, which may not match the in-container HOME for
+      # the espressif/idf image — pin both ends to the same absolute
+      # path and there's no ambiguity.
+      - uses: actions/cache@v5
+        with:
+          path: /root/.ccache
+          key: ccache-idf-v6.0-${{ matrix.variant_label }}-${{ github.sha }}
+          restore-keys: |
+            ccache-idf-v6.0-${{ matrix.variant_label }}-
+            ccache-idf-v6.0-
+
       - name: Download prebuilt LFS images
         uses: https://code.forgejo.org/forgejo/download-artifact@v7
         with:
@@ -238,14 +267,36 @@ jobs:
         # The espressif/idf container's entrypoint sources export.sh
         # but `shell: bash` bypasses the entrypoint, so source it
         # explicitly here.
+        #
+        # IDF_CCACHE_ENABLE is read by ESP-IDF at cmake-configure time,
+        # so it has to be in the step's `env:` block, not just exported
+        # in the script body. CCACHE_DIR is pinned to a literal absolute
+        # path (the espressif/idf image runs as root, so $HOME is
+        # /root) so it matches the actions/cache `path:` exactly.
+        env:
+          IDF_CCACHE_ENABLE: "1"
+          CCACHE_DIR: /root/.ccache
         run: |
           . /opt/esp/idf/export.sh
+          # Cap before the build so the limit applies to writes from
+          # this run, not just the next one.
+          ccache -M 2G
           idf.py \
             -B "${{ matrix.sdkconfig_dir }}" \
             -D BTCLOCK_BOARD=${{ matrix.btclock_board }} \
             -D BTCLOCK_PANEL=${{ matrix.btclock_panel }} \
             -D SDKCONFIG="${{ matrix.sdkconfig_dir }}/sdkconfig" \
             build
+
+      # Surface hit/miss rates in the CI log so we can see whether the
+      # cache is actually warming across runs. First run reports ~0%;
+      # second run on unchanged source should be ~95%+.
+      - name: ccache stats
+        if: always()
+        shell: bash
+        env:
+          CCACHE_DIR: /root/.ccache
+        run: ccache -s
 
       - name: Stage artifacts
         shell: bash
@@ -263,7 +314,7 @@ jobs:
           # SHA-256 of the app binary for OTA integrity checks.
           ( cd "$out" && sha256sum btclock_idf_proto.bin > btclock_idf_proto.bin.sha256 )
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}
           path: dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}/**
@@ -319,7 +370,7 @@ jobs:
           done
           ls -la release
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: release-${{ github.ref_name }}
           path: release/*.zip

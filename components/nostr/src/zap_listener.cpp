@@ -11,7 +11,8 @@ namespace nostr {
 
 ZapListener::ZapListener(SubscriptionManager& subs, std::string sub_id,
                          std::string recipient_pubkey_hex)
-    : subs_(subs), sub_id_(std::move(sub_id)),
+    : subs_(subs),
+      sub_id_(std::move(sub_id)),
       recipient_(std::move(recipient_pubkey_hex)) {
   // We install a manager-level event callback that dispatches by sub_id
   // here. Callers that need multiple ZapListeners per manager should
@@ -22,7 +23,9 @@ ZapListener::ZapListener(SubscriptionManager& subs, std::string sub_id,
   });
 }
 
-ZapListener::~ZapListener() { Stop(); }
+ZapListener::~ZapListener() {
+  Stop();
+}
 
 bool ZapListener::Start() {
   if (started_) return true;

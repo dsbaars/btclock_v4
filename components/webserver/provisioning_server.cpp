@@ -58,9 +58,8 @@ std::string FormField(const std::string& body, const std::string& key) {
     }
     const size_t vstart = eq + needle.size();
     const size_t vend = body.find('&', vstart);
-    return UrlDecode(body.substr(vstart,
-                                 vend == std::string::npos ? std::string::npos
-                                                           : vend - vstart));
+    return UrlDecode(body.substr(
+        vstart, vend == std::string::npos ? std::string::npos : vend - vstart));
   }
   return "";
 }
@@ -70,16 +69,25 @@ std::string JsonEscape(const std::string& s) {
   out.reserve(s.size() + 4);
   for (char c : s) {
     switch (c) {
-      case '"': out += "\\\""; break;
-      case '\\': out += "\\\\"; break;
-      case '\n': out += "\\n"; break;
-      case '\r': out += "\\r"; break;
-      case '\t': out += "\\t"; break;
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
       default:
         if (static_cast<unsigned char>(c) < 0x20) {
           char buf[8];
-          std::snprintf(buf, sizeof(buf), "\\u%04x",
-                        static_cast<unsigned>(c));
+          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned>(c));
           out += buf;
         } else {
           out.push_back(c);
@@ -112,8 +120,10 @@ esp_err_t ProvisioningServer::Start() {
   esp_err_t err = httpd_start(&server_, &cfg);
   if (err != ESP_OK) return err;
 
-  const httpd_uri_t portal = {
-      .uri = "/", .method = HTTP_GET, .handler = HandlePortal, .user_ctx = this};
+  const httpd_uri_t portal = {.uri = "/",
+                              .method = HTTP_GET,
+                              .handler = HandlePortal,
+                              .user_ctx = this};
   const httpd_uri_t scan = {.uri = "/api/scan",
                             .method = HTTP_GET,
                             .handler = HandleScan,
@@ -126,10 +136,8 @@ esp_err_t ProvisioningServer::Start() {
                             .method = HTTP_POST,
                             .handler = HandleWifi,
                             .user_ctx = this};
-  const httpd_uri_t any = {.uri = "/*",
-                           .method = HTTP_GET,
-                           .handler = HandleAny,
-                           .user_ctx = this};
+  const httpd_uri_t any = {
+      .uri = "/*", .method = HTTP_GET, .handler = HandleAny, .user_ctx = this};
   httpd_register_uri_handler(server_, &portal);
   httpd_register_uri_handler(server_, &scan);
   httpd_register_uri_handler(server_, &version);
@@ -145,10 +153,8 @@ esp_err_t ProvisioningServer::HandlePortal(httpd_req_t* req) {
   httpd_resp_set_type(req, "text/html; charset=utf-8");
   httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
   httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-  const size_t len =
-      static_cast<size_t>(kPortalHtmlGzEnd - kPortalHtmlGzStart);
-  return httpd_resp_send(req,
-                         reinterpret_cast<const char*>(kPortalHtmlGzStart),
+  const size_t len = static_cast<size_t>(kPortalHtmlGzEnd - kPortalHtmlGzStart);
+  return httpd_resp_send(req, reinterpret_cast<const char*>(kPortalHtmlGzStart),
                          len);
 }
 
@@ -214,8 +220,8 @@ esp_err_t ProvisioningServer::HandleWifi(httpd_req_t* req) {
   body.resize(remaining);
   int received = 0;
   while (received < remaining) {
-    const int r = httpd_req_recv(req, body.data() + received,
-                                 remaining - received);
+    const int r =
+        httpd_req_recv(req, body.data() + received, remaining - received);
     if (r <= 0) {
       httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
       return ESP_FAIL;
@@ -237,8 +243,8 @@ esp_err_t ProvisioningServer::HandleWifi(httpd_req_t* req) {
   // the original "save and reboot" path bricked the device on any typo.
   // 15 s covers slow DHCP on real networks; anything longer and the
   // portal feels dead.
-  const esp_err_t try_err = self->wifi_->TryConnect(
-      ssid.c_str(), pw.c_str(), 15'000);
+  const esp_err_t try_err =
+      self->wifi_->TryConnect(ssid.c_str(), pw.c_str(), 15'000);
   if (try_err == ESP_OK) {
     ESP_LOGI(kTag, "creds verified; saving + rebooting");
     if (self->on_save_) self->on_save_(ssid, pw);
@@ -251,12 +257,18 @@ esp_err_t ProvisioningServer::HandleWifi(httpd_req_t* req) {
   // last_disconnect_reason is 0 if we timed out before any disconnect.
   const uint8_t reason = self->wifi_->last_disconnect_reason();
   const char* code = "unknown";
-  if (try_err == ESP_ERR_TIMEOUT) code = "timeout";
-  else if (reason == 201) code = "no_ap_found";
-  else if (reason == 202) code = "auth_fail";
-  else if (reason == 203) code = "assoc_fail";
-  else if (reason == 204) code = "handshake_timeout";
-  else if (reason == 205) code = "connection_fail";
+  if (try_err == ESP_ERR_TIMEOUT)
+    code = "timeout";
+  else if (reason == 201)
+    code = "no_ap_found";
+  else if (reason == 202)
+    code = "auth_fail";
+  else if (reason == 203)
+    code = "assoc_fail";
+  else if (reason == 204)
+    code = "handshake_timeout";
+  else if (reason == 205)
+    code = "connection_fail";
   char body_out[96];
   const int n = std::snprintf(body_out, sizeof(body_out),
                               "{\"ok\":false,\"code\":\"%s\",\"reason\":%u}",

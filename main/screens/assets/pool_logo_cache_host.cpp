@@ -12,10 +12,10 @@
 // `kMiningPoolHashrate` "logo path" cases in test_panel_texts.cpp use
 // it instead of relying on a real vendored entry.
 
-#include "screens/assets/pool_logos.hpp"
-
 #include <set>
 #include <string>
+
+#include "screens/assets/pool_logos.hpp"
 
 namespace btclock {
 namespace pool_logos {

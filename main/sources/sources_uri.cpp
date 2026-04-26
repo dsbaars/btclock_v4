@@ -2,10 +2,10 @@
 // shape without dragging in ESP-IDF / FreeRTOS / NVS. WireDataSources
 // is the only firmware caller; everything else lives in test_host.
 
-#include "sources/sources.hpp"
-
 #include <cstdint>
 #include <string>
+
+#include "sources/sources.hpp"
 
 namespace btclock {
 namespace {

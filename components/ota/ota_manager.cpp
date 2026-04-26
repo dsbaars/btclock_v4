@@ -61,8 +61,7 @@ esp_err_t FetchEventHandler(esp_http_client_event_t* evt) {
 // Fetch `url` into a caller-owned std::string. Returns ESP_OK on a
 // 200 response that fit within `cap`; any transport or cap failure
 // returns ESP_FAIL with an empty body.
-esp_err_t HttpGetString(const std::string& url, size_t cap,
-                        std::string* out) {
+esp_err_t HttpGetString(const std::string& url, size_t cap, std::string* out) {
   out->clear();
   if (url.empty()) return ESP_ERR_INVALID_ARG;
 
@@ -93,8 +92,7 @@ esp_err_t HttpGetString(const std::string& url, size_t cap,
     status = esp_http_client_get_status_code(client);
   }
   if (err != ESP_OK) {
-    ESP_LOGW(kTag, "http GET %s failed: %s", url.c_str(),
-             esp_err_to_name(err));
+    ESP_LOGW(kTag, "http GET %s failed: %s", url.c_str(), esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return err;
   }
@@ -127,7 +125,7 @@ bool ExtractSha256Hex(const std::string& raw, std::string* out_hex) {
     const bool hex = (lc >= '0' && lc <= '9') || (lc >= 'a' && lc <= 'f');
     if (!hex) {
       if (!out_hex->empty()) break;  // stop at first non-hex past digest
-      continue;                       // tolerate leading whitespace
+      continue;                      // tolerate leading whitespace
     }
     out_hex->push_back(lc);
   }
@@ -181,8 +179,7 @@ bool HashOtaPartition(const esp_partition_t* part, size_t image_bytes,
                       std::string* out_hex) {
   mbedtls_md_context_t md;
   mbedtls_md_init(&md);
-  const mbedtls_md_info_t* info =
-      mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
   if (!info || mbedtls_md_setup(&md, info, 0) != 0) {
     mbedtls_md_free(&md);
     return false;
@@ -195,11 +192,12 @@ bool HashOtaPartition(const esp_partition_t* part, size_t image_bytes,
   // pressure if reconnects fire mid-update. unique_ptr with a custom
   // deleter so early returns can't leak.
   constexpr size_t kChunk = 4096;
-  auto buf_deleter = [](uint8_t* p) { if (p) heap_caps_free(p); };
+  auto buf_deleter = [](uint8_t* p) {
+    if (p) heap_caps_free(p);
+  };
   std::unique_ptr<uint8_t, decltype(buf_deleter)> buf(
       static_cast<uint8_t*>(heap_caps_malloc_prefer(
-          kChunk, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
-          MALLOC_CAP_8BIT)),
+          kChunk, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_8BIT)),
       buf_deleter);
   if (!buf) {
     ESP_LOGE(kTag, "hash buffer alloc failed");
@@ -209,11 +207,10 @@ bool HashOtaPartition(const esp_partition_t* part, size_t image_bytes,
   size_t offset = 0;
   while (offset < image_bytes) {
     const size_t want = std::min(kChunk, image_bytes - offset);
-    const esp_err_t rc =
-        esp_partition_read(part, offset, buf.get(), want);
+    const esp_err_t rc = esp_partition_read(part, offset, buf.get(), want);
     if (rc != ESP_OK) {
-      ESP_LOGE(kTag, "partition_read@%u: %s",
-               static_cast<unsigned>(offset), esp_err_to_name(rc));
+      ESP_LOGE(kTag, "partition_read@%u: %s", static_cast<unsigned>(offset),
+               esp_err_to_name(rc));
       mbedtls_md_free(&md);
       return false;
     }
@@ -255,9 +252,8 @@ esp_err_t OtaManager::TriggerAutoUpdate() {
     return ESP_ERR_INVALID_STATE;
   }
   // 8 KB stack is comfortable for cJSON + esp_https_ota_perform.
-  const BaseType_t rc = xTaskCreate(&AutoUpdateTaskTrampoline, "ota_auto",
-                                    8192, this, tskIDLE_PRIORITY + 3,
-                                    nullptr);
+  const BaseType_t rc = xTaskCreate(&AutoUpdateTaskTrampoline, "ota_auto", 8192,
+                                    this, tskIDLE_PRIORITY + 3, nullptr);
   if (rc != pdPASS) {
     is_updating_.store(false);
     return ESP_ERR_NO_MEM;
@@ -347,9 +343,9 @@ void OtaManager::RunAutoUpdate() {
   // here means esp_https_ota_finish (which flips the boot partition)
   // only runs on a match.
   std::string actual_hex;
-  bool hash_ok = target && image_len > 0 &&
-                 HashOtaPartition(target, static_cast<size_t>(image_len),
-                                  &actual_hex);
+  bool hash_ok =
+      target && image_len > 0 &&
+      HashOtaPartition(target, static_cast<size_t>(image_len), &actual_hex);
   if (!hash_ok) {
     ESP_LOGE(kTag, "partition rehash failed");
     esp_https_ota_abort(handle);
@@ -442,8 +438,7 @@ esp_err_t OtaManager::WritePushImage(RecvFn recv, void* ctx,
 
   mbedtls_md_context_t md;
   mbedtls_md_init(&md);
-  const mbedtls_md_info_t* info =
-      mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
   if (!info || mbedtls_md_setup(&md, info, 0) != 0) {
     mbedtls_md_free(&md);
     esp_ota_abort(handle);
@@ -491,8 +486,7 @@ esp_err_t OtaManager::WritePushImage(RecvFn recv, void* ctx,
       break;
     }
     if (n <= 0) {
-      ESP_LOGE(kTag, "recv error at %u: %d",
-               static_cast<unsigned>(written), n);
+      ESP_LOGE(kTag, "recv error at %u: %d", static_cast<unsigned>(written), n);
       mbedtls_md_free(&md);
       esp_ota_abort(handle);
       prog.phase = OtaProgress::Phase::kFailed;
@@ -504,8 +498,8 @@ esp_err_t OtaManager::WritePushImage(RecvFn recv, void* ctx,
                       static_cast<size_t>(n));
     rc = esp_ota_write(handle, buf, static_cast<size_t>(n));
     if (rc != ESP_OK) {
-      ESP_LOGE(kTag, "esp_ota_write@%u: %s",
-               static_cast<unsigned>(written), esp_err_to_name(rc));
+      ESP_LOGE(kTag, "esp_ota_write@%u: %s", static_cast<unsigned>(written),
+               esp_err_to_name(rc));
       mbedtls_md_free(&md);
       esp_ota_abort(handle);
       prog.phase = OtaProgress::Phase::kFailed;

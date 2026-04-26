@@ -7,7 +7,6 @@
 // tests nail down the exact bytes on the wire.
 
 #include "doctest.h"
-
 #include "sse_frame.hpp"
 
 using btclock::MakeSseComment;
@@ -49,8 +48,7 @@ TEST_CASE("MakeSseFrame trailing newline yields trailing empty data field") {
   // N '\n' in the source -> N+1 `data:` lines on the wire. This is
   // pedantic but matches the spec; the browser will join them back
   // into the original string with an embedded trailing '\n'.
-  CHECK(MakeSseFrame("status", "a\n") ==
-        "event: status\ndata: a\ndata:\n\n");
+  CHECK(MakeSseFrame("status", "a\n") == "event: status\ndata: a\ndata:\n\n");
 }
 
 TEST_CASE("MakeSseFrame handles a payload that's purely a newline") {
@@ -63,8 +61,7 @@ TEST_CASE("MakeSseFrame preserves embedded JSON without escaping") {
   // Quotes, braces and Unicode should pass through unchanged so the
   // client's JSON.parse() round-trips the original payload.
   const std::string payload = R"({"c":"EUR","v":42,"nested":{"ok":true}})";
-  const std::string expected =
-      "event: status\ndata: " + payload + "\n\n";
+  const std::string expected = "event: status\ndata: " + payload + "\n\n";
   CHECK(MakeSseFrame("status", payload) == expected);
 }
 

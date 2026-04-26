@@ -84,7 +84,7 @@ class SseServer {
 
  private:
   struct Client {
-    httpd_req_t* req;       // detached async request
+    httpd_req_t* req;  // detached async request
     int64_t last_heartbeat_us;
   };
 

@@ -1,8 +1,7 @@
-#include "doctest.h"
-
 #include <cstdint>
 #include <cstring>
 
+#include "doctest.h"
 #include "fonts_app.hpp"
 
 // ClampSatsVariant is the NVS read-path guard — if the stored value is
@@ -23,8 +22,10 @@ TEST_CASE("ClampSatsVariant returns the documented default at 16 and above") {
   CHECK(btclock::ClampSatsVariant(0xFFFFFFFFu) == btclock::kSatsVariantDefault);
 }
 
-TEST_CASE("SatsGlyphUtf8 encodes each variant as the correct 3-byte codepoint") {
-  // U+E000+variant lives in the UTF-8 3-byte range — [0xEE, 0x80|..., 0x80|...].
+TEST_CASE(
+    "SatsGlyphUtf8 encodes each variant as the correct 3-byte codepoint") {
+  // U+E000+variant lives in the UTF-8 3-byte range — [0xEE, 0x80|...,
+  // 0x80|...].
   for (uint8_t v = 0; v <= btclock::kSatsVariantMax; ++v) {
     const auto buf = btclock::SatsGlyphUtf8(v);
     const uint32_t cp = 0xE000u + v;

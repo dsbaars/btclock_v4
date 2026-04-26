@@ -18,14 +18,13 @@
 //     folded into an adjacent digit (mirrors parsePriceData shareDot=
 //     false in the old firmware's suffix mode).
 
-#include "doctest.h"
-
 #include <array>
 #include <cstddef>
 #include <fstream>
 #include <sstream>
 #include <string>
 
+#include "doctest.h"
 #include "screens/price_layout.hpp"
 
 namespace {
@@ -35,12 +34,13 @@ constexpr std::size_t kSlots8 = 7;  // 8-panel board → 7 digit cells
 
 template <std::size_t Slots>
 std::string Render(const std::array<char, Slots>& digits,
-                   const std::array<bool, Slots>& is_sym,
-                   char sym_char = '$') {
+                   const std::array<bool, Slots>& is_sym, char sym_char = '$') {
   std::string s(Slots, ' ');
   for (std::size_t i = 0; i < Slots; ++i) {
-    if (is_sym[i]) s[i] = sym_char;
-    else s[i] = digits[i];
+    if (is_sym[i])
+      s[i] = sym_char;
+    else
+      s[i] = digits[i];
   }
   return s;
 }
@@ -155,7 +155,8 @@ TEST_CASE("price_layout — V8 8-panel preserves 6-digit integer + glyph") {
   CHECK(is_sym[0]);
 }
 
-TEST_CASE("price_layout — V8 8-panel sub-dollar rounds rather than emits decimals") {
+TEST_CASE(
+    "price_layout — V8 8-panel sub-dollar rounds rather than emits decimals") {
   // Altcoin-scale prices round to 0 on V8 (integer-only path). The old
   // firmware parity's integer branch did the same: sub-$1 tickers got
   // their value rounded away. V8 boards' 8-panel layout matches that.
@@ -178,15 +179,15 @@ TEST_CASE("price_layout — PriceDecimalPlaces thresholds") {
   CHECK(btclock::PriceDecimalPlaces(200000.0) == 0);
   CHECK(btclock::PriceDecimalPlaces(100000.0) == 0);
   CHECK(btclock::PriceDecimalPlaces(99999.99) == 1);
-  CHECK(btclock::PriceDecimalPlaces(100.0)    == 1);
-  CHECK(btclock::PriceDecimalPlaces(99.99)    == 2);
-  CHECK(btclock::PriceDecimalPlaces(1.0)      == 2);
-  CHECK(btclock::PriceDecimalPlaces(0.99)     == 3);
-  CHECK(btclock::PriceDecimalPlaces(0.01)     == 3);
+  CHECK(btclock::PriceDecimalPlaces(100.0) == 1);
+  CHECK(btclock::PriceDecimalPlaces(99.99) == 2);
+  CHECK(btclock::PriceDecimalPlaces(1.0) == 2);
+  CHECK(btclock::PriceDecimalPlaces(0.99) == 3);
+  CHECK(btclock::PriceDecimalPlaces(0.01) == 3);
   // Sub-cent → integer fallback rather than "0.000" noise.
-  CHECK(btclock::PriceDecimalPlaces(0.001)    == 0);
-  CHECK(btclock::PriceDecimalPlaces(0.0)      == 0);
-  CHECK(btclock::PriceDecimalPlaces(-1.0)     == 0);
+  CHECK(btclock::PriceDecimalPlaces(0.001) == 0);
+  CHECK(btclock::PriceDecimalPlaces(0.0) == 0);
+  CHECK(btclock::PriceDecimalPlaces(-1.0) == 0);
 }
 
 TEST_CASE("price_layout — no-symbol currency keeps decimal layout") {
@@ -195,8 +196,7 @@ TEST_CASE("price_layout — no-symbol currency keeps decimal layout") {
   // right-justified without a symbol cell.
   std::array<char, kSlots7> digits;
   std::array<bool, kSlots7> is_sym;
-  btclock::LayoutBtcPrice<kSlots7>(45.67, /*use_symbol=*/false, digits,
-                                   is_sym);
+  btclock::LayoutBtcPrice<kSlots7>(45.67, /*use_symbol=*/false, digits, is_sym);
   CHECK(Render(digits, is_sym) == " 45.67");
   for (bool s : is_sym) CHECK(!s);
 }
@@ -205,8 +205,7 @@ TEST_CASE("price_layout — LayoutBtcPriceStrings mirrors renderer cells") {
   // The WebUI mirror path goes through LayoutBtcPriceStrings — the
   // returned array is one std::string per cell, with the UTF-8 glyph
   // filled in where the boolean layout had is_sym=true.
-  const auto out =
-      btclock::LayoutBtcPriceStrings<kSlots7>(45.67, "$");
+  const auto out = btclock::LayoutBtcPriceStrings<kSlots7>(45.67, "$");
   CHECK(out[0] == "$");
   CHECK(out[1] == "4");
   CHECK(out[2] == "5");
@@ -216,8 +215,7 @@ TEST_CASE("price_layout — LayoutBtcPriceStrings mirrors renderer cells") {
 }
 
 TEST_CASE("price_layout — LayoutBtcPriceStrings blanks on invalid price") {
-  const auto out =
-      btclock::LayoutBtcPriceStrings<kSlots7>(-1.0, "$");
+  const auto out = btclock::LayoutBtcPriceStrings<kSlots7>(-1.0, "$");
   for (const auto& s : out) CHECK(s.empty());
 }
 
@@ -231,7 +229,8 @@ TEST_CASE("price_layout — dot is emitted in a dedicated cell") {
   std::array<bool, kSlots7> is_sym;
   btclock::LayoutBtcPrice<kSlots7>(12.34, true, digits, is_sym);
   int dot_cells = 0;
-  for (char c : digits) if (c == '.') ++dot_cells;
+  for (char c : digits)
+    if (c == '.') ++dot_cells;
   CHECK(dot_cells == 1);
 }
 

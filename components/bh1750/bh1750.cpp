@@ -36,9 +36,9 @@ esp_err_t Bh1750::Init(Mode mode) {
     return ESP_ERR_NOT_FOUND;
   }
   if (!bus_->Probe(addr_7bit_)) {
-    const uint16_t alt_addr =
-        (addr_7bit_ == 0x5C) ? static_cast<uint16_t>(0x23)
-                             : static_cast<uint16_t>(0x5C);
+    const uint16_t alt_addr = (addr_7bit_ == 0x5C)
+                                  ? static_cast<uint16_t>(0x23)
+                                  : static_cast<uint16_t>(0x5C);
     if (bus_->Probe(alt_addr)) {
       ESP_LOGW(kTag, "no device at 0x%02X, found at 0x%02X — using alt",
                addr_7bit_, alt_addr);
@@ -48,8 +48,8 @@ esp_err_t Bh1750::Init(Mode mode) {
       addr_7bit_ = alt_addr;
       dev_ = bus_->AddDevice(alt_addr, scl_hz_);
     } else {
-      ESP_LOGW(kTag, "no device at 0x%02X (alt 0x%02X also absent)",
-               addr_7bit_, alt_addr);
+      ESP_LOGW(kTag, "no device at 0x%02X (alt 0x%02X also absent)", addr_7bit_,
+               alt_addr);
       initialised_ = false;
       return ESP_ERR_NOT_FOUND;
     }

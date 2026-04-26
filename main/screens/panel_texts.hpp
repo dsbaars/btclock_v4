@@ -29,8 +29,8 @@
 namespace btclock {
 
 struct MiningPoolMirror {
-  std::string name;        // Pool display label for slot 0 when no logo.
-  std::string hashrate;    // Raw integer H/s string (empty = no sample).
+  std::string name;      // Pool display label for slot 0 when no logo.
+  std::string hashrate;  // Raw integer H/s string (empty = no sample).
   std::optional<int64_t> daily_sats;
 };
 
@@ -59,7 +59,7 @@ struct PanelTextInputs {
   ScreenType kind = ScreenType::kBlockHeight;
   std::string currency;  // "" for currency-agnostic slots
   std::optional<uint32_t> block_height;
-  std::optional<double>   block_fee_sats_vb;  // -1 / nullopt → "not yet"
+  std::optional<double> block_fee_sats_vb;  // -1 / nullopt → "not yet"
   // Price is the raw string the data hub stores (e.g. "64211.53").
   // Empty = no price yet.
   std::string price;
@@ -78,18 +78,18 @@ struct PanelTextInputs {
   // /api/status data[] matches what the EPDs actually paint — see
   // settings/pref_keys.hpp. Only the bits relevant to a given `kind`
   // are consulted by BuildPanelTexts; the rest are ignored.
-  bool halving_as_blocks  = true;   // useBlkCountdown; false → "N/YRS N/DAYS..."
-  bool supply_big_chars   = true;   // false → 3-digit-group small chars
-  bool supply_percent     = false;  // overrides supply_big_chars when set
-  bool mcap_big_chars     = true;   // false → 3-digit-group small chars
+  bool halving_as_blocks = true;  // useBlkCountdown; false → "N/YRS N/DAYS..."
+  bool supply_big_chars = true;   // false → 3-digit-group small chars
+  bool supply_percent = false;    // overrides supply_big_chars when set
+  bool mcap_big_chars = true;     // false → 3-digit-group small chars
   // Moscow-time decoration. `use_sats_symbol=false` replaces the "STS"
   // marker cell with a blank, matching the old firmware's
   // parseSatsPerCurrency(..., useSatsSymbol=false) branch.
-  bool use_sats_symbol    = true;
+  bool use_sats_symbol = true;
   // `use_mscw_time=false` forces the label to SATS/<CCY> even for the
   // classic-range USD case. Default true preserves the legacy MSCW/TIME
   // label on USD in the classic range.
-  bool use_mscw_time      = true;
+  bool use_mscw_time = true;
   // BTC price decorations. `suffix_price` routes the price screen
   // through FormatNumberWithSuffix (K/M/B/T/Q) so huge values fit
   // readably — 78280 → "$78.3K". `mow_mode` forces the MOW (millions
@@ -98,12 +98,13 @@ struct PanelTextInputs {
   // (parsePriceData), so setting mow_mode without suffix_price on a
   // short integer price renders plain digits — the suffix branch fires
   // only when the integer itself is wide enough (>= N digits).
-  bool suffix_price       = false;
-  bool mow_mode           = false;
+  bool suffix_price = false;
+  bool mow_mode = false;
   // suffixShareDot: see RenderPrefs::suffix_share_dot — pack the
   // decimal point into its preceding digit cell so the K/M label form
-  // gets one more digit panel of width.
-  bool share_dot          = false;
+  // gets one more digit panel of width. Applies to BTC-price suffix
+  // and MOW modes, plus market-cap big-chars.
+  bool share_dot = false;
   // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
   MiningPoolMirror pool{};
   // Bitaxe screens. Empty hostname means "no sample yet" — mirror

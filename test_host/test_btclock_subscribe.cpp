@@ -6,13 +6,12 @@
 // by `blockFeeDec`. The dispatch helper mirrors HandleBinaryFrame's
 // gate so a future refactor that drops it would surface here too.
 
-#include "doctest.h"
-
 #include <algorithm>
 #include <string>
 #include <vector>
 
 #include "btclock_subscribe.hpp"
+#include "doctest.h"
 
 using btclock::subscribe::BuildSubscribeLogLine;
 using btclock::subscribe::BuildSubscribeTopics;
@@ -26,7 +25,8 @@ bool Contains(const std::vector<std::string>& v, const std::string& s) {
 
 }  // namespace
 
-TEST_CASE("BuildSubscribeTopics: blockFeeDec=true emits blockfee2, not blockfee") {
+TEST_CASE(
+    "BuildSubscribeTopics: blockFeeDec=true emits blockfee2, not blockfee") {
   const auto topics =
       BuildSubscribeTopics({"USD", "EUR"}, /*block_fee_dec=*/true);
   CHECK(Contains(topics, "blockfee2"));
@@ -40,9 +40,9 @@ TEST_CASE("BuildSubscribeTopics: blockFeeDec=true emits blockfee2, not blockfee"
   CHECK(topics[1] == "blockfee2");
 }
 
-TEST_CASE("BuildSubscribeTopics: blockFeeDec=false emits blockfee, not blockfee2") {
-  const auto topics =
-      BuildSubscribeTopics({"USD"}, /*block_fee_dec=*/false);
+TEST_CASE(
+    "BuildSubscribeTopics: blockFeeDec=false emits blockfee, not blockfee2") {
+  const auto topics = BuildSubscribeTopics({"USD"}, /*block_fee_dec=*/false);
   CHECK(Contains(topics, "blockfee"));
   CHECK_FALSE(Contains(topics, "blockfee2"));
   CHECK(topics[1] == "blockfee");
@@ -71,12 +71,15 @@ TEST_CASE("BuildSubscribeLogLine: serial line names exactly one fee stream") {
   CHECK(line_int.find("blockfee2") == std::string::npos);
 }
 
-TEST_CASE("ShouldDispatchTopic: blockFeeDec=true accepts blockfee2, drops blockfee") {
+TEST_CASE(
+    "ShouldDispatchTopic: blockFeeDec=true accepts blockfee2, drops blockfee") {
   CHECK(ShouldDispatchTopic("blockfee2", /*block_fee_dec=*/true));
   CHECK_FALSE(ShouldDispatchTopic("blockfee", /*block_fee_dec=*/true));
 }
 
-TEST_CASE("ShouldDispatchTopic: blockFeeDec=false accepts blockfee, drops blockfee2") {
+TEST_CASE(
+    "ShouldDispatchTopic: blockFeeDec=false accepts blockfee, drops "
+    "blockfee2") {
   CHECK(ShouldDispatchTopic("blockfee", /*block_fee_dec=*/false));
   CHECK_FALSE(ShouldDispatchTopic("blockfee2", /*block_fee_dec=*/false));
 }

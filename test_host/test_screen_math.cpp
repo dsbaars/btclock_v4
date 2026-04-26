@@ -1,9 +1,8 @@
-#include "doctest.h"
-
 #include <cstdint>
 #include <cstring>
 #include <limits>
 
+#include "doctest.h"
 #include "screens/screen_math.hpp"
 
 // ----- HalvingCountdown -----
@@ -62,8 +61,7 @@ TEST_CASE("SupplyAtBlock plateaus once the reward rounds to zero") {
   CHECK(btclock::SupplyAtBlock(50 * 210000) == 20999999ULL);
   // The explicit cap still prevents runaway growth if reward math
   // ever overflows.
-  CHECK(btclock::SupplyAtBlock(33 * 210000 + 1) <=
-        btclock::kMaxSupplyBtc);
+  CHECK(btclock::SupplyAtBlock(33 * 210000 + 1) <= btclock::kMaxSupplyBtc);
 }
 
 // ----- MarketCap -----
@@ -78,8 +76,7 @@ TEST_CASE("MarketCap round-trips through a known current-ish value") {
   // (50+25+12.5+6.25 = 93.75 BTC-per-block-average × 210000 × 4 eras
   // exactly: 10500000+5250000+2625000+1312500 = 19687500).
   CHECK(btclock::SupplyAtBlock(840000) == 19687500ULL);
-  CHECK(btclock::MarketCap(100000, 840000) ==
-        100000ULL * 19687500ULL);
+  CHECK(btclock::MarketCap(100000, 840000) == 100000ULL * 19687500ULL);
 }
 
 // ----- FormatDigits64 -----
@@ -231,7 +228,8 @@ TEST_CASE("ComputeClockLayout hide_leading_zero keeps minute zero-pad") {
   CHECK(l.digits[4] == '5');
 }
 
-TEST_CASE("ComputeClockLayout hide_leading_zero untouched for two-digit hours") {
+TEST_CASE(
+    "ComputeClockLayout hide_leading_zero untouched for two-digit hours") {
   // Noon: 12:00 stays 12:00 with or without the flag.
   const auto noon_hide = btclock::ComputeClockLayout(true, 12, 0, 5, true);
   CHECK(noon_hide.digits[0] == '1');
@@ -338,7 +336,8 @@ TEST_CASE("LayoutMiningPoolEarnings — two/three-digit sats verbatim") {
   CHECK(btclock::LayoutMiningPoolEarnings(999).value == "999");
 }
 
-TEST_CASE("LayoutMiningPoolEarnings — 1K..9K sats render verbatim (v3 convention)") {
+TEST_CASE(
+    "LayoutMiningPoolEarnings — 1K..9K sats render verbatim (v3 convention)") {
   // v3's parseMiningPoolStatsDailyEarnings has no 1K..9.99K branch — plebs
   // with 1_000..9_999 sats/day see the raw four-digit number. We keep that
   // so parity tests against old-firmware fixtures stay clean.

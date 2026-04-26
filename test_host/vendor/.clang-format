@@ -1,0 +1,5 @@
+# cJSON + doctest are vendored unchanged. DisableFormat keeps clang-format
+# from rewriting them if anyone runs the tool against the directory
+# directly (the project-wide format.sh already excludes vendor/).
+DisableFormat: true
+SortIncludes: false

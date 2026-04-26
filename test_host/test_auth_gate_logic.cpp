@@ -4,12 +4,11 @@
 // tested here (it touches httpd_req_t and NVS); this exercises every
 // byte-level decision the gate makes on attacker-controlled input.
 
-#include "doctest.h"
-
-#include "auth_gate_logic.hpp"
-
 #include <string>
 #include <string_view>
+
+#include "auth_gate_logic.hpp"
+#include "doctest.h"
 
 using btclock::auth::ConstantTimeEquals;
 using btclock::auth::CredentialsMatch;

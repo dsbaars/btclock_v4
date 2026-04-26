@@ -1,6 +1,5 @@
-#include "doctest.h"
-
 #include "control_validators.hpp"
+#include "doctest.h"
 
 TEST_CASE("IsValidWifiTxPower accepts documented range") {
   // ESP-IDF's esp_wifi_set_max_tx_power takes quarter-dBm. We allow

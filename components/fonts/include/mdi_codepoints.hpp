@@ -9,9 +9,11 @@
 namespace btclock {
 namespace mdi {
 
-inline constexpr std::uint32_t kIconLightningBolt = 0xF140B;  // mdi-lightning-bolt
+inline constexpr std::uint32_t kIconLightningBolt =
+    0xF140B;                                            // mdi-lightning-bolt
 inline constexpr std::uint32_t kIconPickaxe = 0xF08B7;  // mdi-pickaxe
-inline constexpr std::uint32_t kIconRocketLaunch = 0xF14DE;  // mdi-rocket-launch
+inline constexpr std::uint32_t kIconRocketLaunch =
+    0xF14DE;  // mdi-rocket-launch
 
 }  // namespace mdi
 }  // namespace btclock

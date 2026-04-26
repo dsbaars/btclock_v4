@@ -9,6 +9,7 @@
 #include "prefs.hpp"
 #include "sdkconfig.h"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 #include "timezone/timezone.hpp"
 
 namespace btclock {
@@ -27,20 +28,18 @@ void InitStorage(AppCtx& /*ctx*/) {
   // Reboot is required to re-tighten — matches the SETTINGS.md row.
   {
     Prefs settings(prefs::kSettingsNs);
-    if (settings.GetBool(prefs::kEnableDebugLog, false)) {
+    if (btclock::settings::ReadBool(settings, prefs::kEnableDebugLog)) {
       esp_log_level_set("*", ESP_LOG_DEBUG);
     }
   }
 
   // Install the EPD polarity flag from NVS before the first data-driven
-  // render. Boot splash above already painted (non-inverted) — that's
-  // intentional: a corrupted NVS shouldn't leave a user staring at a
-  // black screen. The first post-provisioning paint will honour the
-  // stored value. Default `true` matches BuildGetResponse's shipping
-  // default (white-on-black for the black-hardware majority).
+  // render. Boot splash above already painted non-inverted; the schema
+  // default agrees so a fresh device matches the splash. Flipping the
+  // default is a one-line edit in schema.hpp.
   {
     Prefs p(prefs::kSettingsNs);
-    EpdSetGlobalInverted(p.GetBool(prefs::kInvertedColor, true));
+    EpdSetGlobalInverted(btclock::settings::ReadBool(p, prefs::kInvertedColor));
   }
 
   // Set the process-wide TZ from NVS (namespace "time", key "tz")

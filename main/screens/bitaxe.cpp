@@ -1,5 +1,3 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -9,6 +7,7 @@
 #include "screens/assets/bitaxe_logo.hpp"
 #include "screens/common.hpp"
 #include "screens/panel_texts.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 namespace {
@@ -37,9 +36,12 @@ std::vector<std::string> SplitCodepoints(const std::string& s) {
   while (i < s.size()) {
     const unsigned char lead = static_cast<unsigned char>(s[i]);
     std::size_t len = 1;
-    if ((lead & 0xE0) == 0xC0) len = 2;
-    else if ((lead & 0xF0) == 0xE0) len = 3;
-    else if ((lead & 0xF8) == 0xF0) len = 4;
+    if ((lead & 0xE0) == 0xC0)
+      len = 2;
+    else if ((lead & 0xF0) == 0xE0)
+      len = 3;
+    else if ((lead & 0xF8) == 0xF0)
+      len = 4;
     if (i + len > s.size()) len = s.size() - i;
     out.emplace_back(s.substr(i, len));
     i += len;
@@ -91,13 +93,9 @@ PaintSlot BuildTailCell(const std::string& cell, const char* ref) {
 template <size_t N>
 void RenderBitaxeHashrateScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296],
-    const AppFonts& fonts,
-    const std::string& hostname,
-    const std::optional<double>& hashrate_ghs,
-    bool full_refresh_mode,
-    const std::string& prev_value,
-    bool vertical_desc) {
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& hostname, const std::optional<double>& hashrate_ghs,
+    bool full_refresh_mode, const std::string& prev_value, bool vertical_desc) {
   static_assert(N >= 7, "bitaxe layout needs at least 7 panels");
 
   const bool offline = hostname.empty() || !hashrate_ghs;
@@ -105,8 +103,7 @@ void RenderBitaxeHashrateScreen(
   // detection and the prev_value cache — keeps the caller's contract
   // unchanged (screen_manager.cpp stores this string between frames).
   const std::string value =
-      offline ? std::string("OFFLINE")
-              : FormatBitaxeHashrate(*hashrate_ghs);
+      offline ? std::string("OFFLINE") : FormatBitaxeHashrate(*hashrate_ghs);
 
   // `cell_diff_reset` forces every tail cell to repaint when there's no
   // prior value cached; `full_refresh_mode` drives the EPD refresh
@@ -160,20 +157,16 @@ void RenderBitaxeHashrateScreen(
     update[N - 1] = tail_changed;
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template <size_t N>
 void RenderBitaxeBestDiffScreen(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296],
-    const AppFonts& fonts,
-    const std::string& hostname,
-    const std::optional<std::string>& best_diff,
-    bool full_refresh_mode,
-    const std::string& prev_value,
-    bool vertical_desc) {
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& hostname, const std::optional<std::string>& best_diff,
+    bool full_refresh_mode, const std::string& prev_value, bool vertical_desc) {
   static_assert(N >= 7, "bitaxe layout needs at least 7 panels");
 
   const std::string value =
@@ -203,25 +196,25 @@ void RenderBitaxeBestDiffScreen(
     update[panel_idx] = tail_changed;
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderBitaxeHashrateScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::string&,
-    const std::optional<double>&, bool, const std::string&, bool);
+    const AppFonts&, const std::string&, const std::optional<double>&, bool,
+    const std::string&, bool);
 template void RenderBitaxeHashrateScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::string&,
-    const std::optional<double>&, bool, const std::string&, bool);
+    const AppFonts&, const std::string&, const std::optional<double>&, bool,
+    const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::string&,
-    const std::optional<std::string>&, bool, const std::string&, bool);
+    const AppFonts&, const std::string&, const std::optional<std::string>&,
+    bool, const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::string&,
-    const std::optional<std::string>&, bool, const std::string&, bool);
+    const AppFonts&, const std::string&, const std::optional<std::string>&,
+    bool, const std::string&, bool);
 
 }  // namespace btclock

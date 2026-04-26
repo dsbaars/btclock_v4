@@ -1,7 +1,7 @@
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace btclock {
 
@@ -23,7 +23,7 @@ enum class Rotation : uint8_t { k0, k90Cw, k180, k90Ccw };
 struct LandscapeFb {
   uint8_t* native_fb;
   int native_stride;
-  int native_width;    // visible, 0..native_width-1 addressable
+  int native_width;  // visible, 0..native_width-1 addressable
   int native_height;
   Rotation rotation = Rotation::k180;
 };
@@ -61,17 +61,17 @@ class Font {
   struct GlyphMetrics {
     int w = 0;
     int h = 0;
-    int xoff = 0;      // distance from pen x to top-left of bitmap
-    int yoff = 0;      // distance from baseline (positive y = below)
-    int advance = 0;   // pen advance after this glyph
+    int xoff = 0;     // distance from pen x to top-left of bitmap
+    int yoff = 0;     // distance from baseline (positive y = below)
+    int advance = 0;  // pen advance after this glyph
   };
 
   GlyphMetrics GetMetrics(int codepoint, float pixel_height) const;
 
   // Rasterize into caller-provided alpha buffer (w*h bytes). No bounds
   // checks — caller uses metrics.w * metrics.h.
-  void RenderGlyph(int codepoint, float pixel_height, uint8_t* out,
-                   int w, int h) const;
+  void RenderGlyph(int codepoint, float pixel_height, uint8_t* out, int w,
+                   int h) const;
 
   // Ascent in pixels, post-scale. Use as baseline offset from text top.
   int AscentPx(float pixel_height) const;
@@ -100,9 +100,8 @@ class Font {
 // Draws text onto a landscape framebuffer with left-edge-of-text at
 // (x, y) where y is the baseline row. One shot — no caching.
 // Returns x-advance (total rendered width in pixels).
-int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline,
-                      const char* text, const Font& font,
-                      float pixel_height, bool white_text);
+int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline, const char* text,
+                      const Font& font, float pixel_height, bool white_text);
 
 // Measure width of text at given pixel height, without rendering.
 int MeasureTextWidth(const char* text, const Font& font, float pixel_height);
@@ -117,8 +116,8 @@ int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
 // rendered in `font` has an ink width ≤ `target_w`. Linear search at
 // 0.5 pt granularity — cheap and always finds a fit for any text
 // shorter than the panel can hold at ~10 pt.
-float FitTextPx(const char* text, const Font& font, float max_px,
-                float min_px, int target_w);
+float FitTextPx(const char* text, const Font& font, float max_px, float min_px,
+                int target_w);
 
 // Centre `text` horizontally on a `panel_w`-wide panel and place its
 // baseline using the vertical bounding box of the `ref_chars` set —
@@ -133,20 +132,19 @@ float FitTextPx(const char* text, const Font& font, float max_px,
 // y_offset to compensate for panel/case vertical asymmetries where the
 // visible area is not symmetric around the addressed gate lines.
 void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
-                      const char* text, const char* ref_chars,
-                      const Font& font, float pixel_height,
-                      bool white_text,
-                      int x_offset_px = 0, int y_offset_px = 0);
+                      const char* text, const char* ref_chars, const Font& font,
+                      float pixel_height, bool white_text, int x_offset_px = 0,
+                      int y_offset_px = 0);
 
 // Two-line layout. Top text is centred in the upper half, bottom text
 // in the lower half. Each half uses `ref_chars` to pick a consistent
 // baseline so "." etc. doesn't float to the mid-line. Typical use:
-// DrawSplitText(lfb, W, H, "BLOCK", "HEIGHT", "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+// DrawSplitText(lfb, W, H, "BLOCK", "HEIGHT",
+// "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 //               antonio, 70.0f, false).
 void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* top_text, const char* bottom_text,
-                   const char* ref_chars,
-                   const Font& font, float pixel_height,
+                   const char* ref_chars, const Font& font, float pixel_height,
                    bool white_text);
 
 // Render one glyph (by raw codepoint) centred on the panel, sized via
@@ -154,9 +152,8 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
 // live in the Private Use Area so `kDigitRef` contains none of their
 // codepoints and would compute a zero reference box.
 void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
-                           std::uint32_t codepoint,
-                           const Font& font, float pixel_height,
-                           bool white_text);
+                           std::uint32_t codepoint, const Font& font,
+                           float pixel_height, bool white_text);
 
 // Mini-markdown renderer for multi-line text with inline-bold lines.
 //
@@ -169,10 +166,9 @@ void DrawCodepointCentered(LandscapeFb& fb, int panel_w, int panel_h,
 //
 // Lines are centred horizontally per-line and the whole block is
 // centred vertically on the panel.
-void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
-                  const char* text,
-                  const Font& regular, const Font& bold,
-                  float pixel_height, bool white_text);
+void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h, const char* text,
+                  const Font& regular, const Font& bold, float pixel_height,
+                  bool white_text);
 
 // Render a QR code (already generated via qrcodegen) centred on the
 // panel's logical rect (panel_w × panel_h). The QR occupies the largest
@@ -182,8 +178,7 @@ void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h,
 //
 // `size` is the matrix dimension (e.g. 29 for version 3, 33 for v4).
 // `get_module(x, y)` is a callback into qrcodegen that returns 1/0.
-void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h,
-                int size,
+void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
                 bool (*get_module)(int x, int y, const void* ctx),
                 const void* ctx, bool white_bg);
 
@@ -238,14 +233,10 @@ extern const uint8_t kOswaldBoldTtf[] asm("_binary_OswaldBold_ttf_start");
 extern const uint8_t kOswaldBoldTtfEnd[] asm("_binary_OswaldBold_ttf_end");
 extern const uint8_t kInterTtf[] asm("_binary_Inter_ttf_start");
 extern const uint8_t kInterTtfEnd[] asm("_binary_Inter_ttf_end");
-extern const uint8_t kInterBoldTtf[] asm(
-    "_binary_InterBold_ttf_start");
-extern const uint8_t kInterBoldTtfEnd[] asm(
-    "_binary_InterBold_ttf_end");
-extern const uint8_t kSourceSerifTtf[] asm(
-    "_binary_SourceSerif_ttf_start");
-extern const uint8_t kSourceSerifTtfEnd[] asm(
-    "_binary_SourceSerif_ttf_end");
+extern const uint8_t kInterBoldTtf[] asm("_binary_InterBold_ttf_start");
+extern const uint8_t kInterBoldTtfEnd[] asm("_binary_InterBold_ttf_end");
+extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_start");
+extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_end");
 extern const uint8_t kSourceSerifBoldTtf[] asm(
     "_binary_SourceSerifBold_ttf_start");
 extern const uint8_t kSourceSerifBoldTtfEnd[] asm(
@@ -254,10 +245,8 @@ extern const uint8_t kSourceSerifBoldTtfEnd[] asm(
 // declaring the asm symbols here would leave the linker with unresolved
 // references, so gate them out on that board.
 #ifndef BTCLOCK_BOARD_REV_A
-extern const uint8_t kMerriweatherTtf[] asm(
-    "_binary_Merriweather_ttf_start");
-extern const uint8_t kMerriweatherTtfEnd[] asm(
-    "_binary_Merriweather_ttf_end");
+extern const uint8_t kMerriweatherTtf[] asm("_binary_Merriweather_ttf_start");
+extern const uint8_t kMerriweatherTtfEnd[] asm("_binary_Merriweather_ttf_end");
 extern const uint8_t kMerriweatherBoldTtf[] asm(
     "_binary_MerriweatherBold_ttf_start");
 extern const uint8_t kMerriweatherBoldTtfEnd[] asm(
@@ -265,20 +254,15 @@ extern const uint8_t kMerriweatherBoldTtfEnd[] asm(
 #endif
 extern const uint8_t kBitterTtf[] asm("_binary_Bitter_ttf_start");
 extern const uint8_t kBitterTtfEnd[] asm("_binary_Bitter_ttf_end");
-extern const uint8_t kBitterBoldTtf[] asm(
-    "_binary_BitterBold_ttf_start");
-extern const uint8_t kBitterBoldTtfEnd[] asm(
-    "_binary_BitterBold_ttf_end");
+extern const uint8_t kBitterBoldTtf[] asm("_binary_BitterBold_ttf_start");
+extern const uint8_t kBitterBoldTtfEnd[] asm("_binary_BitterBold_ttf_end");
 extern const uint8_t kAtkinsonTtf[] asm("_binary_Atkinson_ttf_start");
 extern const uint8_t kAtkinsonTtfEnd[] asm("_binary_Atkinson_ttf_end");
-extern const uint8_t kAtkinsonBoldTtf[] asm(
-    "_binary_AtkinsonBold_ttf_start");
-extern const uint8_t kAtkinsonBoldTtfEnd[] asm(
-    "_binary_AtkinsonBold_ttf_end");
+extern const uint8_t kAtkinsonBoldTtf[] asm("_binary_AtkinsonBold_ttf_start");
+extern const uint8_t kAtkinsonBoldTtfEnd[] asm("_binary_AtkinsonBold_ttf_end");
 // Satoshi Symbol — subsetted to the single 'S' glyph that renders as the
 // sats-prefix marker. Use this font only for literal "S" text.
-extern const uint8_t kSatoshiSymbolTtf[] asm(
-    "_binary_SatoshiSymbol_ttf_start");
+extern const uint8_t kSatoshiSymbolTtf[] asm("_binary_SatoshiSymbol_ttf_start");
 extern const uint8_t kSatoshiSymbolTtfEnd[] asm(
     "_binary_SatoshiSymbol_ttf_end");
 // Material Design Icons — subsetted to just the icons the firmware

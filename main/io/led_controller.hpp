@@ -33,7 +33,7 @@
 //   ledBrightness    uint32_t   0..255,   default 128
 //   blockFlashColor  uint32_t   0xRRGGBB, default 0xE04300 (orange)
 //   disableLeds      bool       mute all effects, default false
-//   ledFlashOnUpd    bool       flash on data update, default false
+//   ledFlashOnUpd    bool       flash on data update, default true
 
 #pragma once
 
@@ -96,7 +96,9 @@ void PostLedEffect(LedEffect ev);
 
 // Alias — kept for the 3-event API in main.cpp / existing call sites.
 using LedEvent = LedEffect;
-inline void PostLedEvent(LedEffect ev) { PostLedEffect(ev); }
+inline void PostLedEvent(LedEffect ev) {
+  PostLedEffect(ev);
+}
 
 // --- State + prefs API for the control server ---
 // All setters persist to NVS and apply to the runtime state on the

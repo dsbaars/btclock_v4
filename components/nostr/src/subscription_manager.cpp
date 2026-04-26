@@ -13,16 +13,15 @@ constexpr const char* kTag = "nostr-sub";
 }  // namespace
 
 SubscriptionManager::SubscriptionManager(RelayClient& relay) : relay_(relay) {
-  relay_.SetOnFrame([this](const char* data, size_t len) {
-    HandleTextFrame(data, len);
-  });
+  relay_.SetOnFrame(
+      [this](const char* data, size_t len) { HandleTextFrame(data, len); });
   relay_.SetOnConnect([this](bool connected) { OnConnect(connected); });
 }
 
 SubscriptionManager::~SubscriptionManager() = default;
 
 bool SubscriptionManager::Subscribe(const std::string& sub_id,
-                                     const Filter& filter) {
+                                    const Filter& filter) {
   {
     std::lock_guard<std::mutex> lk(mu_);
     if (subs_.count(sub_id) != 0) return false;
@@ -80,8 +79,7 @@ void SubscriptionManager::HandleTextFrame(const char* data, size_t len) {
       ESP_LOGI(kTag, "NOTICE: %s", env.message.c_str());
       break;
     case EnvelopeType::kClosed:
-      ESP_LOGI(kTag, "CLOSED %s: %s", env.sub_id.c_str(),
-               env.message.c_str());
+      ESP_LOGI(kTag, "CLOSED %s: %s", env.sub_id.c_str(), env.message.c_str());
       break;
     case EnvelopeType::kOk:
     case EnvelopeType::kUnknown:

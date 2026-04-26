@@ -46,8 +46,8 @@ inline bool parse(const char* body, ParsedStats& out) {
     return false;
   }
 
-  cJSON* earn = cJSON_GetObjectItemCaseSensitive(
-      result, "estimated_earn_next_block");
+  cJSON* earn =
+      cJSON_GetObjectItemCaseSensitive(result, "estimated_earn_next_block");
   if (cJSON_IsNumber(earn)) {
     out.has_daily_sats = true;
     out.daily_sats =

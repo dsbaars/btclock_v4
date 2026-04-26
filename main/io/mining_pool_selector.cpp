@@ -48,8 +48,8 @@ void MirrorSettingsIntoPoolNs() {
       settings.GetString(btclock::prefs::kMiningPoolUser, "");
   pool.SetString(kPoolUserKey, user.c_str());
 
-  const bool global_stats = settings.GetBool(btclock::prefs::kPoolGlobalStats,
-                                              false);
+  const bool global_stats =
+      settings.GetBool(btclock::prefs::kPoolGlobalStats, false);
   pool.SetBool(kPoolGlobalKey, global_stats);
 
   const std::string local_host =
@@ -107,10 +107,10 @@ std::vector<std::string> AvailablePoolNames() {
   // so the WebUI dropdown renders identically on upgrade. New ckpool-
   // family forks (NerdMiner) are appended after the original ckpool
   // entries to keep the existing pool order stable.
-  return {"ocean",         "noderunners",     "satoshi_radio", "braiins",
-          "public_pool",   "local_public_pool", "gobrrr_pool",
-          "ckpool",        "eu_ckpool",       "nerdminers_org",
-          "nerdminer_io",  "foundry_usa",     "viabtc"};
+  return {"ocean",       "noderunners",       "satoshi_radio", "braiins",
+          "public_pool", "local_public_pool", "gobrrr_pool",   "ckpool",
+          "eu_ckpool",   "nerdminers_org",    "nerdminer_io",  "foundry_usa",
+          "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {
@@ -145,8 +145,7 @@ std::unique_ptr<DataSource> MakeActivePoolSource() {
   // text-split fallback until the bytes land — see bd btclock_v4-5yi.
   // Fire AFTER the source is built so a later failure-to-spawn doesn't
   // leave the in-flight set populated with no task to drain it.
-  const esp_err_t enq =
-      btclock::pool_logos::EnqueueFetch(pool_name);
+  const esp_err_t enq = btclock::pool_logos::EnqueueFetch(pool_name);
   if (enq != ESP_OK && enq != ESP_ERR_INVALID_STATE) {
     ESP_LOGD(kTag, "logo fetch enqueue for '%s': %s", pool_name.c_str(),
              esp_err_to_name(enq));

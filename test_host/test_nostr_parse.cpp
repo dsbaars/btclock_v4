@@ -4,12 +4,11 @@
 // receipt without depending on a live relay. These are the two fields
 // the ZapListener surfaces to the application.
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <string>
 
 #include "data_core/snapshot.hpp"
+#include "doctest.h"
 #include "nostr/event.hpp"
 #include "nostr/parser.hpp"
 #include "nostr/subscription_manager.hpp"
@@ -238,7 +237,7 @@ TEST_CASE("ShouldSurfaceZap: non-zap kind never surfaces") {
 TEST_CASE("BuildReqJson: kind + author filter is a valid NIP-01 REQ") {
   Filter f;
   f.kinds.push_back(30078);
-  f.authors.push_back("deadbeef");
+  f.authors.emplace_back("deadbeef");
 
   const std::string req = BuildReqJson("s1", f);
   CHECK(req == R"(["REQ","s1",{"kinds":[30078],"authors":["deadbeef"]}])");
@@ -250,7 +249,7 @@ TEST_CASE("BuildReqJson: kind + author filter is a valid NIP-01 REQ") {
 TEST_CASE("BuildReqJson: zap filter emits #p") {
   Filter f;
   f.kinds.push_back(kKindZapReceipt);
-  f.p_tags.push_back("aabbcc");
+  f.p_tags.emplace_back("aabbcc");
   const std::string req = BuildReqJson("zap-sub", f);
   CHECK(req == R"(["REQ","zap-sub",{"kinds":[9735],"#p":["aabbcc"]}])");
 }
@@ -262,13 +261,12 @@ TEST_CASE("BuildReqJson: since + limit emit on the wire in order") {
   // and back them up with the arrival-time guard in ZapListener.
   Filter f;
   f.kinds.push_back(kKindZapReceipt);
-  f.p_tags.push_back("aabbcc");
+  f.p_tags.emplace_back("aabbcc");
   f.since = 1745000000;
   f.limit = 1;
   const std::string req = BuildReqJson("zap-sub", f);
-  CHECK(req ==
-        R"(["REQ","zap-sub",{"kinds":[9735],"#p":["aabbcc"],)"
-        R"("since":1745000000,"limit":1}])");
+  CHECK(req == R"(["REQ","zap-sub",{"kinds":[9735],"#p":["aabbcc"],)"
+               R"("since":1745000000,"limit":1}])");
 }
 
 TEST_CASE("BuildReqJson: since alone (no limit) still emits") {
@@ -290,14 +288,14 @@ TEST_CASE("BuildCloseJson: matches NIP-01") {
 
 TEST_CASE("ShouldShowZap: fresh zap (just now) surfaces") {
   constexpr int64_t now = 1'745'000'000;
-  CHECK(ShouldShowZap(now, now, /*last=*/0));
-  CHECK(ShouldShowZap(now, now - 1, /*last=*/0));
+  CHECK(ShouldShowZap(now, now, /*last_shown_created_at=*/0));
+  CHECK(ShouldShowZap(now, now - 1, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: 14-minute-old zap surfaces") {
   constexpr int64_t now = 1'745'000'000;
-  const int64_t fourteen_min_ago = now - (14 * 60);
-  CHECK(ShouldShowZap(now, fourteen_min_ago, /*last=*/0));
+  const int64_t fourteen_min_ago = now - (int64_t{14} * 60);
+  CHECK(ShouldShowZap(now, fourteen_min_ago, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: exactly at the 15-minute cutoff surfaces") {
@@ -305,19 +303,19 @@ TEST_CASE("ShouldShowZap: exactly at the 15-minute cutoff surfaces") {
   // exactly kZapMaxAgeSeconds ago still shows.
   constexpr int64_t now = 1'745'000'000;
   const int64_t at_cutoff = now - kZapMaxAgeSeconds;
-  CHECK(ShouldShowZap(now, at_cutoff, /*last=*/0));
+  CHECK(ShouldShowZap(now, at_cutoff, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: one second past the cutoff is dropped") {
   constexpr int64_t now = 1'745'000'000;
   const int64_t just_past = now - (kZapMaxAgeSeconds + 1);
-  CHECK_FALSE(ShouldShowZap(now, just_past, /*last=*/0));
+  CHECK_FALSE(ShouldShowZap(now, just_past, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: 16-minute-old zap is dropped") {
   constexpr int64_t now = 1'745'000'000;
-  const int64_t sixteen_min_ago = now - (16 * 60);
-  CHECK_FALSE(ShouldShowZap(now, sixteen_min_ago, /*last=*/0));
+  const int64_t sixteen_min_ago = now - (int64_t{16} * 60);
+  CHECK_FALSE(ShouldShowZap(now, sixteen_min_ago, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: event at or before last-shown is dropped") {
@@ -335,14 +333,16 @@ TEST_CASE("ShouldShowZap: future-dated event (clock skew) surfaces") {
   // Don't drop on NTP jitter. The `since` filter + dedupe already
   // bound this from the other side.
   constexpr int64_t now = 1'745'000'000;
-  CHECK(ShouldShowZap(now, now + 5, /*last=*/0));
+  CHECK(ShouldShowZap(now, now + 5, /*last_shown_created_at=*/0));
 }
 
 TEST_CASE("ShouldShowZap: dedupe check ignored when last-shown is 0") {
   // First zap of the session: the sentinel value 0 disables dedupe.
   constexpr int64_t now = 1'745'000'000;
-  CHECK(ShouldShowZap(now, 1, /*last=*/0) == false);  // too old
-  CHECK(ShouldShowZap(now, now - 60, /*last=*/0));    // fresh, no dedupe
+  CHECK(ShouldShowZap(now, 1, /*last_shown_created_at=*/0) ==
+        false);  // too old
+  CHECK(ShouldShowZap(now, now - 60,
+                      /*last_shown_created_at=*/0));  // fresh, no dedupe
 }
 
 // --- ParseNip78Content ------------------------------------------------
@@ -356,6 +356,7 @@ TEST_CASE("ParseNip78Content: d=blockheight populates block_height") {
   DataSnapshot s;
   REQUIRE(ParseNip78Content("blockheight", "870124", s));
   REQUIRE(s.block_height.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*s.block_height == 870124u);
   CHECK_FALSE(s.block_fee.has_value());
   CHECK_FALSE(s.block_fee_precise.has_value());
@@ -366,19 +367,28 @@ TEST_CASE("ParseNip78Content: d=medianFee populates both fee fields") {
   DataSnapshot s;
   REQUIRE(ParseNip78Content("medianFee", "12.75", s));
   REQUIRE(s.block_fee_precise.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*s.block_fee_precise == doctest::Approx(12.75));
   REQUIRE(s.block_fee.has_value());
-  CHECK(*s.block_fee == 13);  // round-half-away-from-zero
+  // round-half-away-from-zero
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  CHECK(*s.block_fee == 13);
 
   // Exact integer string → integer rounds trivially.
   DataSnapshot s2;
   REQUIRE(ParseNip78Content("medianFee", "12", s2));
+  REQUIRE(s2.block_fee_precise.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*s2.block_fee_precise == doctest::Approx(12.0));
+  REQUIRE(s2.block_fee.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*s2.block_fee == 12);
 
   // Below-half rounds down.
   DataSnapshot s3;
   REQUIRE(ParseNip78Content("medianFee", "12.4", s3));
+  REQUIRE(s3.block_fee.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*s3.block_fee == 12);
 }
 
@@ -395,7 +405,8 @@ TEST_CASE("ParseNip78Content: d=price:<CCY> populates prices map verbatim") {
   CHECK(s.prices["USD"] == "64321.50");  // unchanged
 }
 
-TEST_CASE("ParseNip78Content: unknown d tag returns false, snapshot unchanged") {
+TEST_CASE(
+    "ParseNip78Content: unknown d tag returns false, snapshot unchanged") {
   DataSnapshot s;
   s.block_height = 42;  // pre-populated to check non-mutation
   CHECK_FALSE(ParseNip78Content("totallyUnknown", "whatever", s));

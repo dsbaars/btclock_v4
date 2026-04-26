@@ -1,8 +1,7 @@
-#include "screens/screens.hpp"
-
 #include <cstdio>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 namespace {
@@ -10,10 +9,10 @@ namespace {
 constexpr const char* kRef =
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.:";
 
-// Reused from provisioning_ui.cpp's markdown defaults — the Atkinson
-// Hyperlegible regular/bold pair (purpose-built for low-DPI legibility)
-// renders cleanly down to ~16 px on the 2.13" panel.
-constexpr float kBodyPx = 18.0f;
+// Atkinson Hyperlegible regular/bold pair (purpose-built for low-DPI
+// legibility). 22 px reads cleanly on the 2.13" panel — the prior 18 px
+// looked cramped on the bench, especially the Heap/PSRAM/Uptime values.
+constexpr float kBodyPx = 22.0f;
 
 // "12345678" → "12.3 MB" style. KB for < 1 MB, MB with one decimal
 // otherwise. Good enough for debug readout; no call-site cares about
@@ -49,10 +48,10 @@ void FormatUptime(uint32_t seconds, char* out, size_t n) {
 }  // namespace
 
 template <size_t N>
-void RenderDebugScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const DebugScreenInfo& info) {
+void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                       uint8_t (&fb_storage)[N][16 * 296],
+                       const AppFonts& fonts, const DebugScreenInfo& info,
+                       bool full_refresh) {
   static_assert(N >= 7, "debug layout needs at least 7 panels");
 
   const Font& reg = fonts.atkinson();
@@ -70,8 +69,8 @@ void RenderDebugScreen(
   {
     auto lfb = PrepFb(panels, fb_storage, 0);
     ClearFb(lfb, /*white=*/true);
-    const float px = FitTextPx("DEBUG", bold, 48.0f, 20.0f,
-                               lfb.native_width - 6);
+    const float px =
+        FitTextPx("DEBUG", bold, 48.0f, 20.0f, lfb.native_width - 6);
     DrawTextCentered(lfb, lfb.native_width, lfb.native_height, "DEBUG", kRef,
                      bold, px, /*white_text=*/false);
   }
@@ -118,8 +117,8 @@ void RenderDebugScreen(
     auto lfb = PrepFb(panels, fb_storage, 5);
     ClearFb(lfb, true);
     char body[128];
-    std::snprintf(body, sizeof(body), "*HW:*\n%s\n\n*Built:*\n%s",
-                  info.hw_name, info.built);
+    std::snprintf(body, sizeof(body), "*HW:*\n%s\n\n*Built:*\n%s", info.hw_name,
+                  info.built);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kBodyPx, false);
   }
@@ -140,19 +139,21 @@ void RenderDebugScreen(
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kBodyPx, false);
   }
+  const RefreshKind kind =
+      full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;
   for (size_t i = 0; i < N; ++i) {
-    panels[i]->DrawFramebufferStart(fb_storage[i], RefreshKind::kFull);
+    panels[i]->DrawFramebufferStart(fb_storage[i], kind);
   }
   for (size_t i = 0; i < N; ++i) {
     panels[i]->WaitForRefresh();
   }
 }
 
-template void RenderDebugScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&,
-    uint8_t (&)[7][16 * 296], const AppFonts&, const DebugScreenInfo&);
-template void RenderDebugScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&,
-    uint8_t (&)[8][16 * 296], const AppFonts&, const DebugScreenInfo&);
+template void RenderDebugScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                   uint8_t (&)[7][16 * 296], const AppFonts&,
+                                   const DebugScreenInfo&, bool);
+template void RenderDebugScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                   uint8_t (&)[8][16 * 296], const AppFonts&,
+                                   const DebugScreenInfo&, bool);
 
 }  // namespace btclock

@@ -57,9 +57,7 @@ class EUCKPool : public CKPoolBase {
   const char* name() const override { return "pool.ckpool.eu"; }
 
  protected:
-  std::string base_url() const override {
-    return "https://eusolo.ckpool.org";
-  }
+  std::string base_url() const override { return "https://eusolo.ckpool.org"; }
   // Old firmware used a distinct pool identity so per-pool caches
   // (downloaded logo, settings) don't collide between mirrors. Keep
   // that separation here even though the UI shows the same label.

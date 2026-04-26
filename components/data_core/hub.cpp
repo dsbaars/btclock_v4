@@ -16,14 +16,12 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
     block_height = other.block_height;
     changed = true;
   }
-  if (other.block_fee &&
-      (!block_fee || *block_fee != *other.block_fee)) {
+  if (other.block_fee && (!block_fee || *block_fee != *other.block_fee)) {
     block_fee = other.block_fee;
     changed = true;
   }
   if (other.block_fee_precise &&
-      (!block_fee_precise ||
-       *block_fee_precise != *other.block_fee_precise)) {
+      (!block_fee_precise || *block_fee_precise != *other.block_fee_precise)) {
     block_fee_precise = other.block_fee_precise;
     changed = true;
   }
@@ -39,8 +37,7 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
   // don't try to merge field-by-field because hashrate/workers/sats all
   // come from the same API response and should be consistent.
   if (!other.pool.name.empty()) {
-    if (pool.name != other.pool.name ||
-        pool.hashrate != other.pool.hashrate ||
+    if (pool.name != other.pool.name || pool.hashrate != other.pool.hashrate ||
         pool.daily_sats != other.pool.daily_sats ||
         pool.workers != other.pool.workers) {
       pool = other.pool;
@@ -77,7 +74,9 @@ const std::string* DataSnapshot::PriceOf(const std::string& ccy) const {
   return it == prices.end() ? nullptr : &it->second;
 }
 
-DataHub::~DataHub() { StopAll(); }
+DataHub::~DataHub() {
+  StopAll();
+}
 
 void DataHub::AddSource(std::unique_ptr<DataSource> src) {
   if (src) sources_.push_back(std::move(src));

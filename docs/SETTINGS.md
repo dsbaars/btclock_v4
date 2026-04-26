@@ -50,7 +50,7 @@ derived keys the WebUI uses to render that section.
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
 | `fontName` | string (enum) | `"antonio"` | Font family used by label / digit / small-chars / unit screen roles. | Values come from `availableFonts` in GET (`antonio`, `oswald`, `inter`, `sourceSerif`, `merriweather`, `bitter`, `atkinson`). Rebound live via the `on_font_changed` hook, which marks the screen dirty for a repaint. PATCH validates against the catalogue. Devices upgrading from a build that stored the retired `"dejavu"` value fall back to `"antonio"` at boot via the validation walk. |
-| `invertedColor` | bool | `true` | White-on-black when `true`, black-on-white when `false`. | PATCH side-writes `fgColor` / `bgColor` to keep EPD polarity consistent. Applied live: `EpdSetGlobalInverted` + `ScreenManager::MarkDirty`. |
+| `invertedColor` | bool | `false` | White-on-black when `true`, black-on-white when `false` (default — matches the natural EPD polarity, where un-driven pixels are white). | PATCH side-writes `fgColor` / `bgColor` to keep EPD polarity consistent. Applied live: `EpdSetGlobalInverted` + `ScreenManager::MarkDirty`. |
 | `fgColor` | uint (hex RGB) | `0xFFFF` | EPD foreground colour. | Auto-updated when `invertedColor` is PATCHed; schema does not expose it as a PATCH key, but GET emits it. |
 | `bgColor` | uint (hex RGB) | `0x0000` | EPD background colour. | Same auto-update rule as `fgColor`. |
 | `fullRefreshMin` | uint | `60` | Minutes between mandatory full-refresh cycles on the EPDs. | Range 0..1440. Honored by `ScreenManager::LoadScreenRenderPrefs`. |
@@ -263,7 +263,7 @@ context.
 | `otaPassSet` | bool | NVS presence | `true` iff `otaPass` is non-empty. |
 | `miningPoolUserSet` | bool | NVS presence | Emitted **only** when the active `miningPoolName` is a secret-key pool (`viabtc`, `foundry_usa`); `true` iff `miningPoolUser` is non-empty. For public-info pools the raw `miningPoolUser` rides plaintext and this companion is omitted. |
 | `timerRunning` | bool | runtime | Rotation-timer live state. |
-| `invertedColor` | bool | NVS | Device-dependent default of `true` when the key is absent. |
+| `invertedColor` | bool | NVS | Default `false` (black-on-white) when the key is absent. |
 
 Two additional GET-only bodies are surfaced by sibling endpoints that
 the WebUI calls alongside `/api/settings`:

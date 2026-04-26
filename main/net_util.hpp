@@ -42,7 +42,7 @@ std::string GenerateApPassword(Rng rng, int len = 8) {
 // Does not escape semicolons, commas, or colons in ssid/password; the
 // generated SSID and kApPasswordCharset exclude those, so it's safe.
 inline std::string FormatWifiQr(std::string_view ssid,
-                                 std::string_view password) {
+                                std::string_view password) {
   std::string out;
   out.reserve(32 + ssid.size() + password.size());
   out.append("WIFI:T:WPA;S:");

@@ -10,9 +10,9 @@ constexpr const char* kSplashLetters = "BTCLOCK!";
 }  // namespace
 
 template <size_t N>
-void RenderSplashScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts) {
+void RenderSplashScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                        uint8_t (&fb_storage)[N][16 * 296],
+                        const AppFonts& fonts) {
   static_assert(N <= 8, "kSplashLetters only spells out eight glyphs");
 
   const Font& font = fonts.digit();
@@ -32,8 +32,8 @@ void RenderSplashScreen(
     // Fit the glyph as large as it goes without clipping — Oswald's
     // condensed bold lets a single letter eat most of the 122 px panel
     // width at roughly 180–200 px height.
-    const float px = FitTextPx(one, font, 220.0f, 100.0f,
-                                lfb.native_width - 12);
+    const float px =
+        FitTextPx(one, font, 220.0f, 100.0f, lfb.native_width - 12);
     DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
                      kSplashLetters, font, px, /*white_text=*/false);
 
@@ -44,11 +44,9 @@ void RenderSplashScreen(
   }
 }
 
-template void RenderSplashScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&,
-    uint8_t (&)[7][16 * 296], const AppFonts&);
-template void RenderSplashScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&,
-    uint8_t (&)[8][16 * 296], const AppFonts&);
+template void RenderSplashScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                    uint8_t (&)[7][16 * 296], const AppFonts&);
+template void RenderSplashScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                    uint8_t (&)[8][16 * 296], const AppFonts&);
 
 }  // namespace btclock

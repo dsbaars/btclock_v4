@@ -3,10 +3,9 @@
 // Only pure-logic cases — FrontlightFader has no FreeRTOS / ESP-IDF
 // dependency so we include + link it directly. See btclock_v3_fci-7ma.
 
-#include "doctest.h"
-
 #include <cstdint>
 
+#include "doctest.h"
 #include "io/frontlight_fader.hpp"
 
 using btclock::FrontlightFader;

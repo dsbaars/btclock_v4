@@ -12,10 +12,6 @@
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
-#include "io/frontlight_controller.hpp"
-#include "io/led_controller.hpp"
-#include "io/light_sensor.hpp"
-#include "io/mining_pool_selector.hpp"
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "app/screen_slot_map.hpp"
@@ -25,11 +21,15 @@
 #include "data_core/hub.hpp"
 #include "dnd/dnd.hpp"
 #include "epd_ssd1680.hpp"
-#include "fonts_app.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/frontlight_controller.hpp"
+#include "io/led_controller.hpp"
+#include "io/light_sensor.hpp"
+#include "io/mining_pool_selector.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/zap_listener.hpp"
 #include "ota_manager.hpp"
@@ -37,9 +37,10 @@
 #include "prefs.hpp"
 #include "screens/screens.hpp"
 #include "sdkconfig.h"
-#include "sources/mempool_kraken_source.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
+#include "sources/mempool_kraken_source.hpp"
 #include "sse_server.hpp"
 #include "timezone/timezone.hpp"
 #include "wifi.hpp"
@@ -58,40 +59,41 @@ constexpr const char* kTag = "btclock";
 OtaManager::Config MakeOtaConfig() {
   settings::NvsPrefs ota_prefs(prefs::kSettingsNs);
   OtaManager::Config ocfg;
-  ocfg.release_url = ota_prefs.GetString(prefs::kGitReleaseUrl, "");
+  ocfg.release_url =
+      btclock::settings::ReadString(ota_prefs, prefs::kGitReleaseUrl);
 #if defined(BTCLOCK_BOARD_REV_A)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   ocfg.firmware_asset = "btclock_rev_a_29_ota.bin";
   ocfg.webui_asset = "btclock_rev_a_29_webui.bin";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   ocfg.firmware_asset = "btclock_rev_a_75_ota.bin";
   ocfg.webui_asset = "btclock_rev_a_75_webui.bin";
-#  else
+#else
   ocfg.firmware_asset = "btclock_rev_a_ota.bin";
   ocfg.webui_asset = "btclock_rev_a_webui.bin";
-#  endif
+#endif
 #elif defined(BTCLOCK_BOARD_REV_B)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   ocfg.firmware_asset = "btclock_rev_b_29_ota.bin";
   ocfg.webui_asset = "btclock_rev_b_29_webui.bin";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   ocfg.firmware_asset = "btclock_rev_b_75_ota.bin";
   ocfg.webui_asset = "btclock_rev_b_75_webui.bin";
-#  else
+#else
   ocfg.firmware_asset = "btclock_rev_b_ota.bin";
   ocfg.webui_asset = "btclock_rev_b_webui.bin";
-#  endif
+#endif
 #elif defined(BTCLOCK_BOARD_V8)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   ocfg.firmware_asset = "btclock_v8_29_ota.bin";
   ocfg.webui_asset = "btclock_v8_29_webui.bin";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   ocfg.firmware_asset = "btclock_v8_75_ota.bin";
   ocfg.webui_asset = "btclock_v8_75_webui.bin";
-#  else
+#else
   ocfg.firmware_asset = "btclock_v8_ota.bin";
   ocfg.webui_asset = "btclock_v8_webui.bin";
-#  endif
+#endif
 #else
   // TODO: fill in exact filename once a release ships for this variant.
   ocfg.firmware_asset = "btclock_unknown_ota.bin";
@@ -108,8 +110,7 @@ void InitControlApi(AppCtx& ctx) {
   // declaration order in AppCtx puts `ctrl` ahead of the adapter
   // members so destruction runs in the right order (ctrl first).
   if (ctx.frontlight) {
-    ctx.fl_adapter =
-        std::make_unique<FrontlightAdapter>(ctx.frontlight.get());
+    ctx.fl_adapter = std::make_unique<FrontlightAdapter>(ctx.frontlight.get());
   }
   ctx.leds_adapter = std::make_unique<LedsAdapter>();
   ctx.dnd_adapter = std::make_unique<DndAdapter>();
@@ -223,18 +224,21 @@ void InitControlApi(AppCtx& ctx) {
             prefs::kLuxLightToggle, frontlight::kDefaultLuxThreshold);
         fl->SetLuxThreshold(lux_threshold);
         fl->SetAmbientAutoOff(lux_threshold != 0);
-        fl->SetOffWhenDark(settings.GetBool(prefs::kFlOffWhenDark, true));
-        const uint32_t max_brightness = settings.GetU32(
-            prefs::kFlMaxBrightness,
-            static_cast<uint32_t>(frontlight::kDefaultMaxDuty));
+        fl->SetOffWhenDark(
+            btclock::settings::ReadBool(settings, prefs::kFlOffWhenDark));
+        const uint32_t max_brightness =
+            btclock::settings::ReadU32(settings, prefs::kFlMaxBrightness);
         if (max_brightness > 0 && max_brightness <= 0xFFFFu) {
           fl->SetConfiguredBrightness(static_cast<uint16_t>(max_brightness));
         }
-        fl->SetEffectDelay(settings.GetU32(prefs::kFlEffectDelay,
-                                            frontlight::kDefaultEffectDelayMs));
-        fl->SetAlwaysOn(settings.GetBool(prefs::kFlAlwaysOn, true));
-        fl->SetDisabled(settings.GetBool(prefs::kFlDisable, false));
-        fl->SetFlashOnUpdate(settings.GetBool(prefs::kFlFlashOnUpd, true));
+        fl->SetEffectDelay(
+            btclock::settings::ReadU32(settings, prefs::kFlEffectDelay));
+        fl->SetAlwaysOn(
+            btclock::settings::ReadBool(settings, prefs::kFlAlwaysOn));
+        fl->SetDisabled(
+            btclock::settings::ReadBool(settings, prefs::kFlDisable));
+        fl->SetFlashOnUpdate(
+            btclock::settings::ReadBool(settings, prefs::kFlFlashOnUpd));
       };
     }
     // Every successful /api/settings PATCH pulses the LEDs green so
@@ -262,14 +266,13 @@ void InitControlApi(AppCtx& ctx) {
     // source's currency subscription is refreshed in lock-step so price
     // ticks for newly-added codes start flowing without a reboot.
     BtclockDataSource* data_src = ctx_ptr->btclock_ws;
-    ccfg.on_screens_changed = [ctx_ptr, sm_ptr, main_task_for_hooks,
-                               data_src] {
+    ccfg.on_screens_changed = [ctx_ptr, sm_ptr, main_task_for_hooks, data_src] {
       if (!sm_ptr) return;
       Prefs settings(prefs::kSettingsNs);
       const std::string order_csv =
-          settings.GetString(prefs::kScreenOrder, "");
+          btclock::settings::ReadString(settings, prefs::kScreenOrder);
       const std::string ccy_csv =
-          settings.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+          btclock::settings::ReadString(settings, prefs::kActCurrencies);
       std::vector<std::string> new_currencies;
       {
         std::stringstream ss(ccy_csv);
@@ -312,16 +315,20 @@ void InitControlApi(AppCtx& ctx) {
       Prefs settings_ns(prefs::kSettingsNs);
       auto& d = dnd::Instance();
       d.SetTimeEnabled(
-          settings_ns.GetBool(prefs::kDndTimeEnabled, false));
+          btclock::settings::ReadBool(settings_ns, prefs::kDndTimeEnabled));
       d.SetTimeRange(
           static_cast<uint8_t>(
-              settings_ns.GetU32(prefs::kDndStartHour, 22) & 0xFFu),
+              btclock::settings::ReadU32(settings_ns, prefs::kDndStartHour) &
+              0xFFu),
           static_cast<uint8_t>(
-              settings_ns.GetU32(prefs::kDndStartMin, 0) & 0xFFu),
+              btclock::settings::ReadU32(settings_ns, prefs::kDndStartMin) &
+              0xFFu),
           static_cast<uint8_t>(
-              settings_ns.GetU32(prefs::kDndEndHour, 7) & 0xFFu),
+              btclock::settings::ReadU32(settings_ns, prefs::kDndEndHour) &
+              0xFFu),
           static_cast<uint8_t>(
-              settings_ns.GetU32(prefs::kDndEndMin, 0) & 0xFFu));
+              btclock::settings::ReadU32(settings_ns, prefs::kDndEndMin) &
+              0xFFu));
     };
     // Runtime catalogues for GET /api/settings drop-downs. Copies of the
     // constexpr arrays in app/catalogs.hpp; the settings handler holds
@@ -383,7 +390,8 @@ void InitControlApi(AppCtx& ctx) {
     ccfg.screen_is_hidden = [](int api_id) -> bool {
       if (api_id != slot_map::kApiIdMiningPoolEarnings) return false;
       Prefs p(prefs::kSettingsNs);
-      const std::string name = p.GetString(prefs::kMiningPoolName, "");
+      const std::string name =
+          btclock::settings::ReadString(p, prefs::kMiningPoolName);
       return !mining_pools::PoolSupportsDailyEarnings(name);
     };
     // POST /api/show/screen?s=<api_id> and the `currentScreen` field in
@@ -398,16 +406,17 @@ void InitControlApi(AppCtx& ctx) {
     // 200 OK body has flushed and before ScheduleReboot. Kept inline so
     // the webserver component doesn't need to link against the LED
     // controller (it already depends on a stack of non-HW components).
-    ccfg.on_ota_completion_blink = []() {
-      PlayOtaCompletionBlink(3, 150);
-    };
+    ccfg.on_ota_completion_blink = []() { PlayOtaCompletionBlink(3, 150); };
 
     ccfg.api_id_to_slot = [sm_ptr](int api_id) -> int {
       const auto& ccs = sm_ptr->currencies();
       std::size_t pref = 0;
       const std::string& cur = sm_ptr->current_currency();
       for (std::size_t i = 0; i < ccs.size(); ++i) {
-        if (ccs[i] == cur) { pref = i; break; }
+        if (ccs[i] == cur) {
+          pref = i;
+          break;
+        }
       }
       return slot_map::SlotForApiId(api_id, ccs.size(), pref);
     };

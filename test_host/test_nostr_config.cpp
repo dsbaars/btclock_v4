@@ -13,12 +13,11 @@
 //
 // bd btclock_v4-aw5 (NostrDataSource) + btclock_v4-q1l (ZapListener).
 
-#include "doctest.h"
-
 #include <cstdint>
 #include <map>
 #include <string>
 
+#include "doctest.h"
 #include "settings/api.hpp"
 #include "settings/nostr_config.hpp"
 #include "settings/pref_keys.hpp"
@@ -33,8 +32,7 @@ class FakePrefs final : public btclock::settings::PrefsReader,
   std::string GetString(const char* key,
                         const char* default_value) const override {
     auto it = str_.find(key);
-    return it != str_.end() ? it->second
-                            : (default_value ? default_value : "");
+    return it != str_.end() ? it->second : (default_value ? default_value : "");
   }
   uint32_t GetU32(const char* key, uint32_t default_value) const override {
     auto it = u32_.find(key);
@@ -108,8 +106,7 @@ TEST_CASE(
   CHECK(cfg.author_pubkey_hex == pub);
 }
 
-TEST_CASE(
-    "ReadNostrSourceConfig: dataSource != 2 keeps the source disabled") {
+TEST_CASE("ReadNostrSourceConfig: dataSource != 2 keeps the source disabled") {
   // Even with valid relay + pubkey, only dataSource=2 (Nostr) flips
   // `enabled` on. dataSource=0 is the v2 WS source (default), 1 is
   // unimplemented/fallback, 3 is custom-endpoint.
@@ -132,14 +129,15 @@ TEST_CASE(
 TEST_CASE("ReadZapListenerConfig: defaults match schema (no NVS writes)") {
   FakePrefs prefs;
   const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
-  CHECK(cfg.zap_screen_notify);             // default true
-  CHECK(cfg.enabled);                       // gated on zap_screen_notify
+  // Schema-driven defaults (single source of truth — see schema.hpp).
+  CHECK_FALSE(cfg.zap_screen_notify);  // schema kNostrZapNotify = false
+  CHECK_FALSE(cfg.enabled);            // gated on zap_screen_notify
   CHECK(cfg.relay_url == "wss://relay.primal.net");
   CHECK(cfg.zap_pubkey ==
         "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422");
-  CHECK(cfg.zap_screen_auto_restore);       // default true
-  CHECK(cfg.led_flash_on_zap);              // default true
-  CHECK_FALSE(cfg.frontlight_flash_on_zap); // default false
+  CHECK(cfg.zap_screen_auto_restore);  // schema kScrnRestoreZap = true
+  CHECK(cfg.led_flash_on_zap);         // schema kLedFlashOnZap   = true
+  CHECK(cfg.frontlight_flash_on_zap);  // schema kFlFlashOnZap    = true
 }
 
 TEST_CASE(
@@ -166,8 +164,7 @@ TEST_CASE(
   CHECK(cfg.zap_pubkey == pub);
 }
 
-TEST_CASE(
-    "ReadZapListenerConfig: nostrZapNotify is the master enable") {
+TEST_CASE("ReadZapListenerConfig: nostrZapNotify is the master enable") {
   // Toggling nostrZapNotify=false also flips `enabled` so the
   // listener's "should we wire this up at all" check sees a single
   // source of truth.

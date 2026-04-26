@@ -6,6 +6,6 @@
 idf_component_register(
     SRCS "timezone.cpp"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES prefs
+    PRIV_REQUIRES prefs settings
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

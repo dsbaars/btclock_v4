@@ -42,8 +42,7 @@ class MempoolKrakenSource : public DataSource {
   // (`block_fee_precise`) is populated alongside the rounded one. Mirrors
   // the BtClock v2 behaviour so renderers don't see a regression when
   // the user flips dataSource at runtime.
-  MempoolKrakenSource(std::vector<std::string> currencies,
-                      bool block_fee_dec);
+  MempoolKrakenSource(std::vector<std::string> currencies, bool block_fee_dec);
   ~MempoolKrakenSource() override;
 
   const char* name() const override { return "mempool+kraken"; }

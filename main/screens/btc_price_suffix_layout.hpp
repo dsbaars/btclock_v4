@@ -6,17 +6,20 @@
 // mirror share one implementation without touching the existing v4
 // sub-dollar decimal-precision path.
 //
-// Rules (byte-for-byte from v3 with shareDot=false):
-//   numChars := mow_mode ? Panels-1 : Panels-2       (NUM_SCREENS-1 or -2)
+// Rules (byte-for-byte from v3):
+//   numChars := (mow_mode || share_dot) ? Panels-1 : Panels-2
 //   priceString := glyph + FormatNumberWithSuffix(price, numChars, mow)
-//   if priceString.size() < Panels   → label path:
+//   share_dot folds the '.' byte into its preceding cell ("X."), so
+//   the visual width is `priceString.size() - (has_dot ? 1 : 0)`.
+//   if visual width <= Panels-1   → label path:
 //     out_label = mow_mode ? "MOW/UNITS" : "BTC/<CCY>"
 //     cells[0] is left empty (caller paints out_label on panel 0)
 //     cells[1..Panels-1] hold the priceString left-padded in Panels-1
-//       cells (leading spaces → empty strings).
-//   else                              → overflow path:
+//       cells (leading spaces → empty strings; '.' folded when set).
+//   else                          → overflow path:
 //     out_label is cleared
-//     cells[0..Panels-1] hold priceString char-per-cell (label dropped).
+//     cells[0..Panels-1] hold priceString char-per-cell (label dropped,
+//       fold disabled — overflow is char-per-cell by definition).
 //
 // `mow_mode=true` forces the M-suffix form via FormatNumberWithSuffix's
 // mow branch: 78280 → "0.078M", 1_000_000 → "1.000M". v3 passes mowMode
@@ -42,15 +45,14 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
     std::uint64_t price_int, const std::string& currency,
     const char* symbol_utf8, bool mow_mode, bool share_dot,
     std::string& out_label) {
-  // share_dot only affects the !mow_mode label path: we let the digit
-  // formatter use one more character (Panels-1 instead of Panels-2) and
-  // then fold the resulting "." byte into the cell immediately before
-  // it. mow_mode already runs at Panels-1 because its M-suffix layout
-  // needs the extra width regardless; v3 parsePriceData treats them as
-  // an "either/or" budget bump, never additive.
-  const int num_chars = (mow_mode || share_dot)
-                            ? static_cast<int>(Panels) - 1
-                            : static_cast<int>(Panels) - 2;
+  // share_dot bumps num_chars to Panels-1 (one more digit cell) and
+  // folds the '.' byte into the cell immediately before it. mow_mode
+  // already runs at Panels-1 because its M-suffix layout needs the
+  // extra width regardless; v3 parsePriceData treats the bump as
+  // either/or rather than additive. The fold applies to both modes —
+  // see test_datahandler_parity PriceSuffixModeMowCompact.
+  const int num_chars = (mow_mode || share_dot) ? static_cast<int>(Panels) - 1
+                                                : static_cast<int>(Panels) - 2;
   const std::string num_str =
       FormatNumberWithSuffix(price_int, num_chars, mow_mode);
   const bool has_symbol = symbol_utf8 != nullptr && symbol_utf8[0] != '\0';
@@ -58,28 +60,25 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
   // length. v3 composes "$" + num_str (single byte) and pads against
   // NUM_SCREENS; pad at cell granularity here so multi-byte glyphs
   // (€, £, ¥) stay in their own cell.
-  const std::size_t cells_len = (has_symbol ? 1u : 0u) + num_str.size();
+  const std::size_t raw_cells_len = (has_symbol ? 1u : 0u) + num_str.size();
+  // Compute the fold up front: the visual width drives the label-path
+  // guard, not the raw byte count. Without this the label path bails
+  // for cases like 78080 + share_dot (raw=7, visual=6) on a 7-panel.
+  const std::size_t dot_pos = share_dot ? num_str.find('.') : std::string::npos;
+  const std::size_t fold_savings =
+      (dot_pos != std::string::npos && dot_pos > 0) ? 1u : 0u;
+  const std::size_t cells_len = raw_cells_len - fold_savings;
 
   std::array<std::string, Panels> out;
   for (auto& s : out) s.clear();
 
   if (cells_len < Panels) {
     // Label path. Panel 0 stays empty in `out`; caller paints label.
-    out_label = mow_mode ? std::string("MOW/UNITS")
-                         : (std::string("BTC/") + currency);
+    out_label =
+        mow_mode ? std::string("MOW/UNITS") : (std::string("BTC/") + currency);
     const std::size_t digit_cells = Panels - 1;
-    // share_dot folds the '.' byte into its preceding digit ("X."),
-    // shaving one cell from the rendered length so the K/M suffix and
-    // the bumped num_chars budget both fit. Compute the effective
-    // length first, then pad against `digit_cells`.
-    const std::size_t dot_pos = (share_dot && !mow_mode)
-                                    ? num_str.find('.')
-                                    : std::string::npos;
-    const std::size_t fold_savings =
-        (dot_pos != std::string::npos && dot_pos > 0) ? 1u : 0u;
-    const std::size_t effective_len = cells_len - fold_savings;
     const std::size_t pad =
-        effective_len < digit_cells ? digit_cells - effective_len : 0u;
+        cells_len < digit_cells ? digit_cells - cells_len : 0u;
     std::size_t idx = 1 + pad;  // +1 skips panel 0 (label slot)
     if (has_symbol) {
       out[idx++] = symbol_utf8;

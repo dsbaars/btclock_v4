@@ -13,14 +13,16 @@ namespace {
 
 constexpr const char* kTag = "frontlight";
 
-int64_t MsNow() { return esp_timer_get_time() / 1000; }
+int64_t MsNow() {
+  return esp_timer_get_time() / 1000;
+}
 
 }  // namespace
 
 // ----------------------------------------------------------- controller
 
 FrontlightController::FrontlightController(Pca9685& pca, uint8_t channel_first,
-                                            uint8_t channel_count)
+                                           uint8_t channel_count)
     : pca_(pca),
       channel_first_(channel_first),
       channel_count_(channel_count),
@@ -45,8 +47,8 @@ void FrontlightController::Start() {
   // Boot state: outputs disabled, fader at 0. kOn from main.cpp ramps
   // us up to the configured brightness.
   WriteAllChannels(0);
-  xTaskCreate(&FrontlightController::TaskTrampoline, "frontlight", 3072,
-              this, tskIDLE_PRIORITY + 1, nullptr);
+  xTaskCreate(&FrontlightController::TaskTrampoline, "frontlight", 3072, this,
+              tskIDLE_PRIORITY + 1, nullptr);
   ESP_LOGI(kTag, "init: ch=[%u..%u] max_duty=%u",
            static_cast<unsigned>(channel_first_),
            static_cast<unsigned>(channel_first_ + channel_count_ - 1),
@@ -191,17 +193,17 @@ void FrontlightController::WriteAllChannels(uint16_t duty) {
 }
 
 void FrontlightController::WriteStaggeredTick(uint32_t tick,
-                                               uint16_t max_brightness,
-                                               StaggerDirection direction) {
+                                              uint16_t max_brightness,
+                                              StaggerDirection direction) {
   // Per-LED duty uses the pure helper so host tests exercise the same
   // math the hardware sees. `i` here is the stagger index 0..N-1; it
   // maps to PCA channel `channel_first_ + i`. v3 pinned index 0 as
   // the first-to-light LED; we preserve that so the cascade direction
   // across the physical panel matches v3.
   for (uint8_t i = 0; i < channel_count_; ++i) {
-    const uint16_t duty = ComputeStaggeredDuty(
-        tick, i, channel_count_, max_brightness, frontlight::kFadeStep,
-        direction);
+    const uint16_t duty =
+        ComputeStaggeredDuty(tick, i, channel_count_, max_brightness,
+                             frontlight::kFadeStep, direction);
     pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), duty);
   }
 }
@@ -260,12 +262,11 @@ void FrontlightController::TaskLoop() {
     // Snapshot tunables so a concurrent PATCH can't change them mid-
     // pulse. `effect_delay_ms_` is volatile for the read.
     pulse_max_brightness = configured_brightness_ > 0
-                                ? configured_brightness_
-                                : frontlight::kDefaultMaxDuty;
+                               ? configured_brightness_
+                               : frontlight::kDefaultMaxDuty;
     const uint32_t effect_delay = effect_delay_ms_;
-    pulse_total_ticks = StaggerTotalTicks(channel_count_,
-                                           pulse_max_brightness,
-                                           frontlight::kFadeStep);
+    pulse_total_ticks = StaggerTotalTicks(channel_count_, pulse_max_brightness,
+                                          frontlight::kFadeStep);
     pulse_tick_delay_ms = StaggerDelayMs(effect_delay, channel_count_);
     pulse_mid_hold_ms = (ev == FrontlightEvent::kBlockFlash)
                             ? frontlight::kBlockFlashHoldMs
@@ -273,15 +274,13 @@ void FrontlightController::TaskLoop() {
 
     // Pre-flash state picks direction. v3: frontlightOn ? out+in : in+out.
     first_half_in = !logical_on_;
-    first_dir = first_half_in ? StaggerDirection::kIn
-                              : StaggerDirection::kOut;
+    first_dir = first_half_in ? StaggerDirection::kIn : StaggerDirection::kOut;
 
     pulse_tick = 0;
     pulse = PulsePhase::kFirstHalf;
     // Pause the fader so its Step() doesn't fight our per-channel
     // writes. Snap to the current visible duty on first_dir's tick 0.
-    fader_.Snap(first_dir == StaggerDirection::kIn ? 0
-                                                   : pulse_max_brightness);
+    fader_.Snap(first_dir == StaggerDirection::kIn ? 0 : pulse_max_brightness);
   };
 
   auto cancel_pulse = [&]() {
@@ -294,8 +293,7 @@ void FrontlightController::TaskLoop() {
     // per-LED cadence so the cascade rate is driven by flEffectDelay.
     // During fader transitions we wake every kTickMs. Otherwise block.
     TickType_t wait;
-    if (pulse == PulsePhase::kFirstHalf ||
-        pulse == PulsePhase::kSecondHalf) {
+    if (pulse == PulsePhase::kFirstHalf || pulse == PulsePhase::kSecondHalf) {
       wait = pdMS_TO_TICKS(pulse_tick_delay_ms);
     } else if (pulse == PulsePhase::kMidHold) {
       wait = pdMS_TO_TICKS(10);  // tight poll for the hold deadline
@@ -387,8 +385,8 @@ void FrontlightController::TaskLoop() {
       }
       case PulsePhase::kSecondHalf: {
         // Inverse direction of the first half.
-        const StaggerDirection second_dir =
-            first_dir == StaggerDirection::kIn ? StaggerDirection::kOut
+        const StaggerDirection second_dir = first_dir == StaggerDirection::kIn
+                                                ? StaggerDirection::kOut
                                                 : StaggerDirection::kIn;
         if (pulse_tick < pulse_total_ticks) {
           WriteStaggeredTick(pulse_tick, pulse_max_brightness, second_dir);
@@ -399,8 +397,7 @@ void FrontlightController::TaskLoop() {
           // v3 left whatever state the last fade ended on — which is
           // exactly what `configured_brightness_` (if on) or 0 (if off)
           // represents here.
-          const uint16_t restore =
-              logical_on_ ? configured_brightness_ : 0;
+          const uint16_t restore = logical_on_ ? configured_brightness_ : 0;
           fader_.Snap(restore);
           WriteAllChannels(restore);
           pulse = PulsePhase::kIdle;

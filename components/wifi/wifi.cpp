@@ -67,8 +67,8 @@ esp_err_t Wifi::Start() {
   ESP_RETURN_ON_ERROR(esp_wifi_init(&wcfg), kTag, "wifi_init");
 
   ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(
-                          WIFI_EVENT, ESP_EVENT_ANY_ID, EventTrampoline,
-                          this, &wifi_event_instance_),
+                          WIFI_EVENT, ESP_EVENT_ANY_ID, EventTrampoline, this,
+                          &wifi_event_instance_),
                       kTag, "reg wifi evt");
   ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(
                           IP_EVENT, ESP_EVENT_ANY_ID, EventTrampoline, this,
@@ -115,16 +115,14 @@ esp_err_t Wifi::TryConnect(const char* ssid, const char* password,
   // !ap_mode_ so a failure here won't trigger background reconnection.
   ESP_RETURN_ON_ERROR(Connect(ssid, password), kTag, "try_connect");
 
-  const TickType_t deadline =
-      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   while (xTaskGetTickCount() < deadline) {
     if (state_.load() == State::kConnected) {
       return ESP_OK;
     }
     const uint8_t reason = last_reason_.load();
-    const bool terminal =
-        reason == 201 || reason == 202 || reason == 203 ||
-        reason == 204 || reason == 205;
+    const bool terminal = reason == 201 || reason == 202 || reason == 203 ||
+                          reason == 204 || reason == 205;
     if (terminal) {
       // Stop the STA machinery so the portal can retry from a clean state.
       esp_wifi_disconnect();
@@ -141,8 +139,7 @@ esp_err_t Wifi::TryConnect(const char* ssid, const char* password,
 }
 
 esp_err_t Wifi::WaitConnected(uint32_t timeout_ms) {
-  const TickType_t deadline =
-      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   while (state_.load() != State::kConnected) {
     if (xTaskGetTickCount() >= deadline) return ESP_ERR_TIMEOUT;
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -150,7 +147,9 @@ esp_err_t Wifi::WaitConnected(uint32_t timeout_ms) {
   return ESP_OK;
 }
 
-std::string Wifi::ip() const { return Ipv4ToString(ip_.load()); }
+std::string Wifi::ip() const {
+  return Ipv4ToString(ip_.load());
+}
 
 std::string Wifi::ap_ip() const {
   if (!netif_ap_) return "0.0.0.0";
@@ -182,12 +181,12 @@ esp_err_t Wifi::StartSoftAp(const char* ssid, const char* password) {
     wifi_init_config_t wcfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_RETURN_ON_ERROR(esp_wifi_init(&wcfg), kTag, "wifi_init.ap");
     ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(
-                            WIFI_EVENT, ESP_EVENT_ANY_ID, EventTrampoline,
-                            this, &wifi_event_instance_),
+                            WIFI_EVENT, ESP_EVENT_ANY_ID, EventTrampoline, this,
+                            &wifi_event_instance_),
                         kTag, "reg wifi evt ap");
     ESP_RETURN_ON_ERROR(esp_event_handler_instance_register(
-                            IP_EVENT, ESP_EVENT_ANY_ID, EventTrampoline,
-                            this, &ip_event_instance_),
+                            IP_EVENT, ESP_EVENT_ANY_ID, EventTrampoline, this,
+                            &ip_event_instance_),
                         kTag, "reg ip evt ap");
   }
 
@@ -202,7 +201,7 @@ esp_err_t Wifi::StartSoftAp(const char* ssid, const char* password) {
     std::strncpy(reinterpret_cast<char*>(ap_cfg.ap.password), password,
                  sizeof(ap_cfg.ap.password) - 1);
     ap_cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
-    ap_cfg.ap.pmf_cfg.required = false;   // compatibility with WPA2-only clients
+    ap_cfg.ap.pmf_cfg.required = false;  // compatibility with WPA2-only clients
   } else {
     ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
   }
@@ -261,7 +260,11 @@ std::vector<WifiScanEntry> Wifi::Scan() {
   std::vector<WifiScanEntry> uniq;
   for (auto& e : out) {
     bool seen = false;
-    for (auto& u : uniq) if (u.ssid == e.ssid) { seen = true; break; }
+    for (auto& u : uniq)
+      if (u.ssid == e.ssid) {
+        seen = true;
+        break;
+      }
     if (!seen) uniq.push_back(std::move(e));
   }
   return uniq;
@@ -288,9 +291,8 @@ esp_err_t Wifi::StartBackgroundScan(uint32_t refresh_ms) {
 
   // Stop any prior periodic schedule, then restart. Idempotent.
   esp_timer_stop(scan_timer_);
-  esp_err_t err =
-      esp_timer_start_periodic(scan_timer_, static_cast<uint64_t>(refresh_ms) *
-                                                1000ULL);
+  esp_err_t err = esp_timer_start_periodic(
+      scan_timer_, static_cast<uint64_t>(refresh_ms) * 1000ULL);
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "scan timer start: %s", esp_err_to_name(err));
     return err;
@@ -372,7 +374,11 @@ void Wifi::OnScanDone() {
     uniq.reserve(out.size());
     for (auto& e : out) {
       bool seen = false;
-      for (auto& u : uniq) if (u.ssid == e.ssid) { seen = true; break; }
+      for (auto& u : uniq)
+        if (u.ssid == e.ssid) {
+          seen = true;
+          break;
+        }
       if (!seen) uniq.push_back(std::move(e));
     }
     out = std::move(uniq);
@@ -406,12 +412,11 @@ void Wifi::OnEvent(esp_event_base_t base, int32_t id, void* data) {
     // terminal reasons (AP reboot, roaming, interference) are transient
     // and MUST NOT bump the N-strikes counter or we'd nuke good creds
     // every time a router hiccups.
-    const bool terminal =
-        reason == 201 ||  // NO_AP_FOUND
-        reason == 202 ||  // AUTH_FAIL
-        reason == 203 ||  // ASSOC_FAIL
-        reason == 204 ||  // HANDSHAKE_TIMEOUT
-        reason == 205;    // CONNECTION_FAIL
+    const bool terminal = reason == 201 ||  // NO_AP_FOUND
+                          reason == 202 ||  // AUTH_FAIL
+                          reason == 203 ||  // ASSOC_FAIL
+                          reason == 204 ||  // HANDSHAKE_TIMEOUT
+                          reason == 205;    // CONNECTION_FAIL
     if (terminal) {
       terminal_strikes_.fetch_add(1);
     }

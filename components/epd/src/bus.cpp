@@ -51,8 +51,8 @@ esp_err_t EpdIoPin::ConfigureAsOutput(bool initial_high) {
   if (kind_ == Kind::kMcp) {
     if (mcp_ == nullptr) return ESP_ERR_INVALID_STATE;
     ESP_RETURN_ON_ERROR(
-        mcp_->SetDirection(mcp_pin_, Mcp23017::PinMode::kOutput),
-        kTag, "mcp.dir.out");
+        mcp_->SetDirection(mcp_pin_, Mcp23017::PinMode::kOutput), kTag,
+        "mcp.dir.out");
     return mcp_->WritePin(mcp_pin_, initial_high);
   }
   ConfigureNativeOutput(native_, initial_high ? 1 : 0);
@@ -115,8 +115,8 @@ EpdBus::~EpdBus() {
   spi_bus_free(host_);
 }
 
-esp_err_t EpdBus::SendCommand(EpdIoPin& cs, uint8_t cmd,
-                              const uint8_t* params, size_t nparams) {
+esp_err_t EpdBus::SendCommand(EpdIoPin& cs, uint8_t cmd, const uint8_t* params,
+                              size_t nparams) {
   spi_transaction_t t = {};
   cs.Write(false);
   gpio_set_level(dc_, 0);

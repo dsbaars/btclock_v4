@@ -22,12 +22,16 @@ TEST_CASE("bitaxe::Parse — full payload with string bestDiff") {
   ParsedStats p;
   CHECK(Parse(body, p));
   REQUIRE(p.hashrate_ghs.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.hashrate_ghs == doctest::Approx(1235.4));
   REQUIRE(p.best_diff.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.best_diff == "15.6M");
   REQUIRE(p.shares_accepted.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.shares_accepted == 4200);
   REQUIRE(p.temperature_c.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.temperature_c == doctest::Approx(62.5));
 }
 
@@ -42,6 +46,7 @@ TEST_CASE("bitaxe::Parse — numeric bestDiff gets canonicalised") {
   ParsedStats p;
   CHECK(Parse(body, p));
   REQUIRE(p.best_diff.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.best_diff == "1.6M");
 }
 
@@ -66,6 +71,7 @@ TEST_CASE("bitaxe::Parse — accepts `temperature` alias for `temp`") {
   ParsedStats p;
   CHECK(Parse(body, p));
   REQUIRE(p.temperature_c.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   CHECK(*p.temperature_c == doctest::Approx(55.0));
 }
 

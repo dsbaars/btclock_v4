@@ -39,13 +39,8 @@ namespace catalogs {
 // FontFamily's numeric values so WASM/IDF dropdowns and the WebUI line
 // up by index without a separate mapping table.
 inline constexpr std::array<std::string_view, 7> kAvailableFonts = {
-    "antonio",
-    "oswald",
-    "inter",
-    "sourceSerif",
-    "merriweather",
-    "bitter",
-    "atkinson",
+    "antonio",      "oswald", "inter",    "sourceSerif",
+    "merriweather", "bitter", "atkinson",
 };
 
 // ISO 4217 codes the price / moscow-time / market-cap screens can
@@ -71,8 +66,8 @@ struct ScreenKind {
 // is header-only constexpr without forcing a .cpp translation unit.
 inline constexpr auto kScreenKinds = [] {
 #define BTCLOCK_SCREEN_KIND_COUNT_ENTRY(enum_name, api_id, short_name, label) +1
-  constexpr std::size_t kCount = 0 BTCLOCK_SCREEN_KIND_LIST(
-      BTCLOCK_SCREEN_KIND_COUNT_ENTRY);
+  constexpr std::size_t kCount =
+      0 BTCLOCK_SCREEN_KIND_LIST(BTCLOCK_SCREEN_KIND_COUNT_ENTRY);
 #undef BTCLOCK_SCREEN_KIND_COUNT_ENTRY
   std::array<ScreenKind, kCount> arr{};
   std::size_t i = 0;

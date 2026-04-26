@@ -7,14 +7,14 @@
 #include <functional>
 #include <mutex>
 
-#include "io/led_curves.hpp"
-#include "io/led_prefs.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "io/led_curves.hpp"
+#include "io/led_prefs.hpp"
 #include "led_strip.h"
 #include "prefs.hpp"
 #include "settings/nvs_store.hpp"
@@ -38,8 +38,12 @@ struct Rgb {
   uint8_t r, g, b;
 };
 constexpr std::array<Rgb, 6> kBootPalette = {{
-    {64, 0, 0}, {64, 32, 0}, {64, 64, 0},
-    {0, 64, 0}, {0, 0, 64}, {32, 0, 64},
+    {64, 0, 0},
+    {64, 32, 0},
+    {64, 64, 0},
+    {0, 64, 0},
+    {0, 0, 64},
+    {32, 0, 64},
 }};
 
 // --- Shared state ---------------------------------------------------
@@ -74,11 +78,12 @@ std::function<bool()> g_suppressor;
 
 // Runtime helpers ---------------------------------------------------
 
-int64_t MsNow() { return esp_timer_get_time() / 1000; }
+int64_t MsNow() {
+  return esp_timer_get_time() / 1000;
+}
 
 uint32_t PackRgb(uint8_t r, uint8_t g, uint8_t b) {
-  return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) |
-         b;
+  return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
 }
 
 void Unpack(uint32_t rgb, uint8_t* r, uint8_t* g, uint8_t* b) {
@@ -100,8 +105,7 @@ void PushPixel(led_strip_handle_t strip, uint32_t idx, uint32_t rgb,
 
 // Paint + latch a uniform colour across the strip. Always honours the
 // master brightness pref — effect handlers don't have to scale.
-void PaintUniform(led_strip_handle_t strip, uint32_t rgb,
-                  uint8_t brightness) {
+void PaintUniform(led_strip_handle_t strip, uint32_t rgb, uint8_t brightness) {
   for (uint32_t i = 0; i < g_count; ++i) {
     PushPixel(strip, i, rgb, brightness);
   }
@@ -211,7 +215,7 @@ bool DndSuppressed() {
 
 // Short two-colour strobe. Matches LedHandler::blinkDelayTwoColor().
 void PlayTwoColorBlink(led_strip_handle_t strip, uint32_t c1, uint32_t c2,
-                      int d_ms, int times) {
+                       int d_ms, int times) {
   for (int j = 0; j < times; ++j) {
     PaintUniform(strip, c1, CurrentBrightness());
     vTaskDelay(pdMS_TO_TICKS(d_ms));
@@ -223,7 +227,7 @@ void PlayTwoColorBlink(led_strip_handle_t strip, uint32_t c1, uint32_t c2,
 
 // Single-colour strobe (on / off). Matches blinkDelayColor().
 void PlayColorBlink(led_strip_handle_t strip, uint32_t rgb, int d_ms,
-                   int times) {
+                    int times) {
   for (int j = 0; j < times; ++j) {
     PaintUniform(strip, rgb, CurrentBrightness());
     vTaskDelay(pdMS_TO_TICKS(d_ms));
@@ -301,8 +305,7 @@ void PlayPowerTest(led_strip_handle_t strip) {
   // 12 frames * 120 ms = ~1.4 s, roughly matches old rainbow(20) loop.
   for (size_t frame = 0; frame < 12; ++frame) {
     for (uint32_t i = 0; i < g_count; ++i) {
-      const Rgb& c =
-          kBootPalette[(frame + i) % kBootPalette.size()];
+      const Rgb& c = kBootPalette[(frame + i) % kBootPalette.size()];
       PushPixel(strip, i, PackRgb(c.r, c.g, c.b), CurrentBrightness());
     }
     led_strip_refresh(strip);
@@ -326,10 +329,18 @@ void Task(void* arg) {
   while (true) {
     TickType_t wait;
     switch (mode) {
-      case Mode::kBoot:        wait = pdMS_TO_TICKS(250); break;
-      case Mode::kBootFailed:  wait = portMAX_DELAY;      break;
-      case Mode::kIdle:        wait = portMAX_DELAY;      break;
-      default:                 wait = pdMS_TO_TICKS(500); break;
+      case Mode::kBoot:
+        wait = pdMS_TO_TICKS(250);
+        break;
+      case Mode::kBootFailed:
+        wait = portMAX_DELAY;
+        break;
+      case Mode::kIdle:
+        wait = portMAX_DELAY;
+        break;
+      default:
+        wait = pdMS_TO_TICKS(500);
+        break;
     }
 
     LedEffect ev;
@@ -338,8 +349,7 @@ void Task(void* arg) {
       // blank the strip and the resting mirror). DND behaves the same
       // — any effect except kSetIdle is silently swallowed so the
       // strip stays dark while the user's DND window is armed.
-      if ((EffectsDisabled() || DndSuppressed()) &&
-          ev != LedEffect::kSetIdle) {
+      if ((EffectsDisabled() || DndSuppressed()) && ev != LedEffect::kSetIdle) {
         continue;
       }
       // DND forces the idle path to paint black regardless of the
@@ -432,7 +442,7 @@ void Task(void* arg) {
           }
           if (enabled) {
             PlayTwoColorBlink(strip, PackRgb(0, 230, 0), PackRgb(230, 230, 0),
-                             250, 3);
+                              250, 3);
           }
           mode = Mode::kIdle;
           PaintResting(strip, bright);
@@ -454,7 +464,7 @@ void Task(void* arg) {
         case LedEffect::kWifiConnectError:
           // Red↔blue alternating, 3x @ 100 ms.
           PlayTwoColorBlink(strip, PackRgb(8, 161, 236), PackRgb(255, 0, 0),
-                           100, 3);
+                            100, 3);
           mode = Mode::kIdle;
           PaintResting(strip, bright);
           break;
@@ -468,8 +478,8 @@ void Task(void* arg) {
 
         case LedEffect::kWifiWaitForConfig:
           // Twin-blue flash, 1x @ 100 ms.
-          PlayTwoColorBlink(strip, PackRgb(8, 161, 236),
-                           PackRgb(156, 225, 240), 100, 1);
+          PlayTwoColorBlink(strip, PackRgb(8, 161, 236), PackRgb(156, 225, 240),
+                            100, 1);
           mode = Mode::kIdle;
           PaintResting(strip, bright);
           break;
@@ -549,8 +559,8 @@ void InitLeds(gpio_num_t pin, uint32_t count) {
            "flashUpdate=%d",
            static_cast<int>(pin), static_cast<unsigned>(count),
            static_cast<unsigned>(s.brightness),
-           static_cast<unsigned long>(s.block_flash_color),
-           s.disabled ? 1 : 0, s.flash_on_update ? 1 : 0);
+           static_cast<unsigned long>(s.block_flash_color), s.disabled ? 1 : 0,
+           s.flash_on_update ? 1 : 0);
 }
 
 void PostLedEffect(LedEffect ev) {
@@ -571,9 +581,8 @@ LedState GetLedState() {
   LedState s = g_state;
   // g_state.pixels is the resting mirror; make sure we echo whichever
   // was painted most recently by SetLedSolidColor / SetLedPixels.
-  for (uint32_t i = 0; i < s.pixel_count && i < sizeof(s.pixels) /
-                                                 sizeof(s.pixels[0]);
-       ++i) {
+  for (uint32_t i = 0;
+       i < s.pixel_count && i < sizeof(s.pixels) / sizeof(s.pixels[0]); ++i) {
     s.pixels[i] = g_resting_pixels[i];
   }
   return s;
@@ -654,14 +663,19 @@ void SetLedPixels(const uint32_t* rgb_array, uint32_t count) {
     // setLights() ledStatus flag.
     bool any = false;
     for (uint32_t i = 0; i < n; ++i) {
-      if (g_resting_pixels[i] != 0) { any = true; break; }
+      if (g_resting_pixels[i] != 0) {
+        any = true;
+        break;
+      }
     }
     g_state.disabled = !any;
   }
   PostLedEffect(LedEffect::kSetIdle);
 }
 
-bool LedsReady() { return g_queue != nullptr; }
+bool LedsReady() {
+  return g_queue != nullptr;
+}
 
 void SetLedActiveSuppressor(std::function<bool()> predicate) {
   std::lock_guard<std::mutex> lk(g_state_mu);

@@ -50,12 +50,12 @@ struct ZapListenerConfig {
   // True when nostrZapNotify is set. The listener is wired iff this is
   // true AND the relay URL + zap pubkey are valid.
   bool enabled = true;
-  std::string relay_url;     // kNostrRelay (shared with the data source)
-  std::string zap_pubkey;    // kNostrZapPubkey (lowercase hex, 64 chars)
-  bool zap_screen_notify = true;       // kNostrZapNotify
-  bool zap_screen_auto_restore = true; // kScrnRestoreZap
-  bool led_flash_on_zap = true;        // kLedFlashOnZap
-  bool frontlight_flash_on_zap = false; // kFlFlashOnZap
+  std::string relay_url;          // kNostrRelay (shared with the data source)
+  std::string zap_pubkey;         // kNostrZapPubkey (lowercase hex, 64 chars)
+  bool zap_screen_notify = true;  // kNostrZapNotify
+  bool zap_screen_auto_restore = true;   // kScrnRestoreZap
+  bool led_flash_on_zap = true;          // kLedFlashOnZap
+  bool frontlight_flash_on_zap = false;  // kFlFlashOnZap
 };
 
 // Read NostrSourceConfig from the canonical "settings" namespace. Caller

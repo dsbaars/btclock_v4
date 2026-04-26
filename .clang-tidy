@@ -1,0 +1,43 @@
+# Curated check set. Heavier categories (cppcoreguidelines-*, fuchsia-*,
+# google-readability-*) are deliberately excluded — they fight ESP-IDF's
+# C-API surface and the FreeRTOS task model and produce mostly noise.
+#
+# Run via `tools/lint/tidy.sh` (host-test sources) or directly with a
+# `compile_commands.json` from one of the `build-*/` dirs.
+#
+# HeaderFilterRegex is scoped to project headers so we don't lint every
+# IDF / mbedTLS / managed_components header that gets transitively pulled
+# in.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  modernize-loop-convert,
+  modernize-deprecated-headers,
+  modernize-use-emplace,
+  performance-*,
+  -performance-avoid-endl,
+  readability-redundant-string-cstr,
+  readability-redundant-string-init,
+  readability-redundant-control-flow,
+  readability-static-definition-in-anonymous-namespace,
+  readability-misleading-indentation,
+  readability-simplify-boolean-expr,
+  readability-container-size-empty,
+  readability-make-member-function-const
+
+# Every check enabled in `Checks` above currently passes at zero
+# warnings on the host-test surface, so promote them all to errors via
+# `*` — any new violation fails the lint job. Adding a new check?
+# Triage the warnings it surfaces first; otherwise CI starts failing.
+WarningsAsErrors: '*'
+# Match only project headers — IDF / mbedTLS / managed_components /
+# test_host/vendor are excluded so the report stays scoped to code we
+# can actually change.
+HeaderFilterRegex: '^.*/(components|main|test_host)/(?!vendor/).*\.(h|hpp)$'
+FormatStyle: file

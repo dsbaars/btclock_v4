@@ -23,18 +23,20 @@ BtclockDataSource::BtclockDataSource(const char* uri,
       currencies_(std::move(currencies)),
       block_fee_dec_(block_fee_dec) {}
 
-BtclockDataSource::~BtclockDataSource() { Stop(); }
+BtclockDataSource::~BtclockDataSource() {
+  Stop();
+}
 
 esp_err_t BtclockDataSource::Start(DataHub& hub) {
   hub_ = &hub;
 
   esp_websocket_client_config_t cfg = {};
   cfg.uri = uri_.c_str();
-  cfg.reconnect_timeout_ms = 5000;     // linear backoff, 5 s between retries
+  cfg.reconnect_timeout_ms = 5000;  // linear backoff, 5 s between retries
   cfg.network_timeout_ms = 10000;
   cfg.ping_interval_sec = 20;
   cfg.pingpong_timeout_sec = 15;
-  cfg.buffer_size = 4096;              // headroom for price map frames
+  cfg.buffer_size = 4096;  // headroom for price map frames
   cfg.task_stack = 6144;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
 
@@ -93,8 +95,8 @@ esp_err_t BtclockDataSource::Stop() {
 }
 
 void BtclockDataSource::EventHandlerTrampoline(void* arg, esp_event_base_t,
-                                                int32_t event_id,
-                                                void* event_data) {
+                                               int32_t event_id,
+                                               void* event_data) {
   static_cast<BtclockDataSource*>(arg)->HandleEvent(event_id, event_data);
 }
 
@@ -138,8 +140,7 @@ void BtclockDataSource::SendSubscriptions() {
       return;
     }
     const int sent = esp_websocket_client_send_bin(
-        client_, reinterpret_cast<const char*>(buf), n,
-        pdMS_TO_TICKS(2000));
+        client_, reinterpret_cast<const char*>(buf), n, pdMS_TO_TICKS(2000));
     if (sent < 0) ESP_LOGW(kTag, "send_bin failed (%s)", event_type);
   };
 
@@ -155,8 +156,9 @@ void BtclockDataSource::SendSubscriptions() {
   for (const auto& ccy : currencies_) {
     send_sub("price", ccy.c_str());
   }
-  ESP_LOGI(kTag, "%s",
-           subscribe::BuildSubscribeLogLine(currencies_, block_fee_dec_).c_str());
+  ESP_LOGI(
+      kTag, "%s",
+      subscribe::BuildSubscribeLogLine(currencies_, block_fee_dec_).c_str());
 }
 
 void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {

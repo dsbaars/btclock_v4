@@ -9,10 +9,10 @@
 #include "app/app_ctx.hpp"
 
 #include "app/boot/adapters.hpp"
+#include "control_server.hpp"
 #include "io/frontlight_controller.hpp"
 #include "io/light_sensor.hpp"
 #include "io/wifi_guard.hpp"
-#include "control_server.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
@@ -25,7 +25,7 @@ namespace btclock {
 AppCtx::AppCtx() = default;
 AppCtx::~AppCtx() = default;
 
-uint8_t (&AppCtx::fb_storage())[btclock::board::kNumPanels][16 * 296] {
+uint8_t (&AppCtx::fb_storage()) [btclock::board::kNumPanels][16 * 296] {
   static uint8_t storage[btclock::board::kNumPanels][16 * 296];
   return storage;
 }

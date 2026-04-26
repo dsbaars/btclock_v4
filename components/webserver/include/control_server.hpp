@@ -36,7 +36,6 @@ namespace btclock {
 
 class SseServer;  // components/webserver/include/sse_server.hpp
 
-
 // Minimal abstract surface the control server calls to drive the
 // per-board frontlight controller. Kept as a pure-virtual interface so
 // the webserver component doesn't have to depend on `main/`, where the
@@ -69,13 +68,13 @@ class FrontlightIface {
 class DndIface {
  public:
   struct Status {
-    bool enabled = false;         // manual "force on now" flag
-    bool time_enabled = false;    // schedule gate
+    bool enabled = false;       // manual "force on now" flag
+    bool time_enabled = false;  // schedule gate
     uint8_t start_hour = 0;
     uint8_t start_minute = 0;
     uint8_t end_hour = 0;
     uint8_t end_minute = 0;
-    bool active = false;          // current wall-clock query
+    bool active = false;  // current wall-clock query
   };
   virtual ~DndIface() = default;
   virtual Status GetStatus() const = 0;
@@ -147,8 +146,8 @@ struct ControlCommand {
     kFullRefresh,
     kIdentify,
     kRestart,
-    kShowScreen,      // arg_i = slot index
-    kShowCurrency,    // arg_s = currency code
+    kShowScreen,    // arg_i = slot index
+    kShowCurrency,  // arg_s = currency code
     kNextScreen,
     kPrevScreen,
     kStopDataSources,

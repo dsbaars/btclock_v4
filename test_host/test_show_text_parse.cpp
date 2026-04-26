@@ -3,10 +3,9 @@
 // array-of-strings verbatim for custom) against the bare-cJSON
 // implementation in components/webserver/show_text_parse.cpp.
 
-#include "doctest.h"
-
 #include <string>
 
+#include "doctest.h"
 #include "show_text_parse.hpp"
 
 using btclock::ParseShowCustomBody;
@@ -158,8 +157,7 @@ TEST_CASE("ParseShowCustomBody: wrong-shape object returns bad_json") {
 }
 
 TEST_CASE("ParseShowCustomBody: 8-panel V8 device gets all 8 cells") {
-  auto r = ParseShowCustomBody(
-      R"(["A","B","C","D","E","F","G","H"])", 8);
+  auto r = ParseShowCustomBody(R"(["A","B","C","D","E","F","G","H"])", 8);
   REQUIRE(r.ok);
   REQUIRE(r.cells.size() == 8);
   CHECK(r.cells[7] == "H");

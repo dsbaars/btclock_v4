@@ -68,8 +68,7 @@ void Ssd1680Base::WaitIdle(uint32_t timeout_ms) {
   // immediately we could see "idle" before the chip even starts.
   // Mirror GxEPD2's _waitWhileBusy delay(1) prelude.
   vTaskDelay(pdMS_TO_TICKS(1));
-  const TickType_t deadline =
-      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   const TickType_t step = pdMS_TO_TICKS(BusyPollMs());
   while (cfg_.busy.Read()) {
     if (xTaskGetTickCount() >= deadline) {
@@ -81,12 +80,13 @@ void Ssd1680Base::WaitIdle(uint32_t timeout_ms) {
   }
 }
 
-bool Ssd1680Base::IsIdle() const { return !cfg_.busy.Read(); }
+bool Ssd1680Base::IsIdle() const {
+  return !cfg_.busy.Read();
+}
 
 esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
   vTaskDelay(pdMS_TO_TICKS(1));
-  const TickType_t deadline =
-      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   const TickType_t step = pdMS_TO_TICKS(BusyPollMs());
   while (cfg_.busy.Read()) {
     if (xTaskGetTickCount() >= deadline) return ESP_ERR_TIMEOUT;
@@ -100,13 +100,11 @@ esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
   // without analog. So power off only after a partial refresh.
   if (last_kind_ == RefreshKind::kPartial) {
     const uint8_t duc2_off = 0x83;
-    esp_err_t off = cfg_.bus->SendCommand(cfg_.cs, kCmdDispUpdateCtl2,
-                                          &duc2_off, 1);
-    if (off == ESP_OK)
-      off = cfg_.bus->SendCommand(cfg_.cs, kCmdActivateUpdate);
+    esp_err_t off =
+        cfg_.bus->SendCommand(cfg_.cs, kCmdDispUpdateCtl2, &duc2_off, 1);
+    if (off == ESP_OK) off = cfg_.bus->SendCommand(cfg_.cs, kCmdActivateUpdate);
     if (off == ESP_OK) {
-      const TickType_t off_deadline =
-          xTaskGetTickCount() + pdMS_TO_TICKS(500);
+      const TickType_t off_deadline = xTaskGetTickCount() + pdMS_TO_TICKS(500);
       while (cfg_.busy.Read()) {
         if (xTaskGetTickCount() >= off_deadline) {
           ESP_LOGW(kTag, "cs=%s power-off busy stuck", cfg_.cs.Describe());
@@ -115,8 +113,7 @@ esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
         vTaskDelay(step);
       }
     } else {
-      ESP_LOGW(kTag, "cs=%s power-off send failed %d", cfg_.cs.Describe(),
-               off);
+      ESP_LOGW(kTag, "cs=%s power-off send failed %d", cfg_.cs.Describe(), off);
     }
   }
   return ESP_OK;
@@ -143,26 +140,25 @@ esp_err_t Ssd1680Base::SetPartialRamArea(uint16_t x, uint16_t y, uint16_t w,
   auto* bus = cfg_.bus;
   auto& cs = cfg_.cs;
   const uint8_t dem = 0x03;  // x increase, y increase
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdDataEntryMode, &dem, 1),
-                      kTag, "dem");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdDataEntryMode, &dem, 1), kTag,
+                      "dem");
   const uint8_t ramx[2] = {static_cast<uint8_t>(x / 8),
                            static_cast<uint8_t>((x + w - 1) / 8)};
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSetRamX, ramx, 2), kTag,
-                      "ramx");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSetRamX, ramx, 2), kTag, "ramx");
   const uint8_t ramy[4] = {
-      static_cast<uint8_t>(y % 256), static_cast<uint8_t>(y / 256),
+      static_cast<uint8_t>(y % 256),
+      static_cast<uint8_t>(y / 256),
       static_cast<uint8_t>((y + h - 1) % 256),
       static_cast<uint8_t>((y + h - 1) / 256),
   };
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSetRamY, ramy, 4), kTag,
-                      "ramy");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSetRamY, ramy, 4), kTag, "ramy");
   const uint8_t xcnt = static_cast<uint8_t>(x / 8);
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdRamXCounter, &xcnt, 1),
-                      kTag, "xcnt");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdRamXCounter, &xcnt, 1), kTag,
+                      "xcnt");
   const uint8_t ycnt[2] = {static_cast<uint8_t>(y % 256),
                            static_cast<uint8_t>(y / 256)};
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdRamYCounter, ycnt, 2),
-                      kTag, "ycnt");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdRamYCounter, ycnt, 2), kTag,
+                      "ycnt");
   return ESP_OK;
 }
 
@@ -175,8 +171,8 @@ esp_err_t Ssd1680Base::WriteVram(uint8_t write_cmd, const uint8_t* fb) {
   const uint8_t* to_send = fb;
   if (GetGlobalInverted()) {
     if (invert_scratch_ == nullptr) {
-      invert_scratch_ = static_cast<uint8_t*>(
-          heap_caps_malloc(n, MALLOC_CAP_SPIRAM));
+      invert_scratch_ =
+          static_cast<uint8_t*>(heap_caps_malloc(n, MALLOC_CAP_SPIRAM));
       if (invert_scratch_ == nullptr) {
         ESP_LOGE(kTag, "invert scratch alloc failed for panel cs=%s",
                  cfg_.cs.Describe());
@@ -202,8 +198,8 @@ esp_err_t Ssd1680Base::WriteInitCommands() {
                       kTag, "border");
   uint8_t duc1[2];
   DispUpdateControl1(duc1);
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdDispUpdateCtl1, duc1, 2),
-                      kTag, "duc1");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdDispUpdateCtl1, duc1, 2), kTag,
+                      "duc1");
   const uint8_t temp = 0x80;
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdTempSensor, &temp, 1), kTag,
                       "temp");
@@ -225,8 +221,7 @@ esp_err_t Ssd1680Base::Init() {
     shadow_ = static_cast<uint8_t*>(
         heap_caps_malloc(FrameBytes(), MALLOC_CAP_SPIRAM));
     if (shadow_ == nullptr) {
-      ESP_LOGE(kTag, "shadow alloc failed for panel cs=%s",
-               cfg_.cs.Describe());
+      ESP_LOGE(kTag, "shadow alloc failed for panel cs=%s", cfg_.cs.Describe());
       return ESP_ERR_NO_MEM;
     }
     std::memset(shadow_, 0xFF, FrameBytes());  // white = cleared
@@ -277,9 +272,8 @@ esp_err_t Ssd1680Base::DrawFramebufferStart(const uint8_t* fb,
     ESP_RETURN_ON_ERROR(WriteVram(kCmdWriteBwRam, fb), kTag, "full.bw");
     if (UseFastFullUpdate()) {
       const uint8_t temp_override = 0x64;
-      ESP_RETURN_ON_ERROR(
-          bus->SendCommand(cs, kCmdTempReg, &temp_override, 1), kTag,
-          "temp override");
+      ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdTempReg, &temp_override, 1),
+                          kTag, "temp override");
     }
     const uint8_t duc2 = Duc2Full();
     ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdDispUpdateCtl2, &duc2, 1),

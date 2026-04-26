@@ -2,10 +2,9 @@
 // Covers the edge cases the reboot path depends on: disabled watchdog,
 // below/above threshold, and the "never disconnected" sentinel.
 
-#include "doctest.h"
-
 #include <cstdint>
 
+#include "doctest.h"
 #include "io/wifi_guard.hpp"
 
 TEST_CASE("ShouldOutageReboot: zero outage_minutes disables the watchdog") {

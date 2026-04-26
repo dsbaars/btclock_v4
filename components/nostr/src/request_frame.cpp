@@ -46,8 +46,10 @@ std::string BuildReqJson(const std::string& sub_id, const Filter& f) {
 
   bool first = true;
   auto sep = [&] {
-    if (first) first = false;
-    else out.push_back(',');
+    if (first)
+      first = false;
+    else
+      out.push_back(',');
   };
 
   if (!f.kinds.empty()) {
@@ -56,8 +58,7 @@ std::string BuildReqJson(const std::string& sub_id, const Filter& f) {
     for (size_t i = 0; i < f.kinds.size(); ++i) {
       if (i > 0) out.push_back(',');
       char buf[16];
-      std::snprintf(buf, sizeof(buf), "%u",
-                    static_cast<unsigned>(f.kinds[i]));
+      std::snprintf(buf, sizeof(buf), "%u", static_cast<unsigned>(f.kinds[i]));
       out.append(buf);
     }
     out.push_back(']');

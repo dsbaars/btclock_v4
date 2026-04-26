@@ -1,9 +1,8 @@
-#include "doctest.h"
-
 #include <cstdint>
 #include <initializer_list>
 #include <string>
 
+#include "doctest.h"
 #include "net_util/hostname.hpp"
 
 TEST_CASE("ComputeHostname emits the v3_fci 6-hex-char shape") {
@@ -12,14 +11,12 @@ TEST_CASE("ComputeHostname emits the v3_fci 6-hex-char shape") {
   // mDNS published "btclock-9d5530.local" (6 chars). The 6-char form
   // wins — it's what the user can ping.
   const uint8_t mac[6] = {0x98, 0x88, 0xe0, 0x9d, 0x55, 0x30};
-  CHECK(btclock::net_util::ComputeHostname("btclock", mac) ==
-        "btclock-9d5530");
+  CHECK(btclock::net_util::ComputeHostname("btclock", mac) == "btclock-9d5530");
 }
 
 TEST_CASE("ComputeHostname uses lowercase hex, zero-padded") {
   const uint8_t mac[6] = {0, 0, 0, 0x01, 0x02, 0x03};
-  CHECK(btclock::net_util::ComputeHostname("btclock", mac) ==
-        "btclock-010203");
+  CHECK(btclock::net_util::ComputeHostname("btclock", mac) == "btclock-010203");
 }
 
 TEST_CASE("ComputeHostname honours custom prefixes") {
@@ -33,8 +30,7 @@ TEST_CASE("ComputeHostname truncates prefixes over the DNS ceiling") {
   // DNS label limit. A longer prefix must be silently clipped.
   const std::string overlong(80, 'a');
   const uint8_t mac[6] = {0, 0, 0, 0xAB, 0xCD, 0xEF};
-  const std::string out =
-      btclock::net_util::ComputeHostname(overlong, mac);
+  const std::string out = btclock::net_util::ComputeHostname(overlong, mac);
   // Prefix gets clipped to 56 chars, plus "-abcdef" (7) = 63.
   CHECK(out.size() == 63);
   CHECK(out.substr(0, 56) == std::string(56, 'a'));

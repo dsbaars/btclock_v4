@@ -19,10 +19,16 @@ namespace {
 std::atomic<bool> g_inverted{false};
 }  // namespace
 
-void SetGlobalInverted(bool inverted) { g_inverted.store(inverted); }
-bool GetGlobalInverted() { return g_inverted.load(); }
+void SetGlobalInverted(bool inverted) {
+  g_inverted.store(inverted);
+}
+bool GetGlobalInverted() {
+  return g_inverted.load();
+}
 
-bool InvertedNow() { return g_inverted.load(); }
+bool InvertedNow() {
+  return g_inverted.load();
+}
 
 }  // namespace epd
 
@@ -30,7 +36,11 @@ bool InvertedNow() { return g_inverted.load(); }
 // (init_storage, init_control_api, init_panels, control_server,
 // test_settings_api) compile without churn. New code should reach
 // for epd::SetGlobalInverted directly.
-void EpdSetGlobalInverted(bool inverted) { epd::SetGlobalInverted(inverted); }
-bool EpdGetGlobalInverted() { return epd::GetGlobalInverted(); }
+void EpdSetGlobalInverted(bool inverted) {
+  epd::SetGlobalInverted(inverted);
+}
+bool EpdGetGlobalInverted() {
+  return epd::GetGlobalInverted();
+}
 
 }  // namespace btclock

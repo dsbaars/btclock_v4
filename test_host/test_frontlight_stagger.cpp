@@ -6,10 +6,9 @@
 // the contract; see v3_fci src/lib/drivers/leds/led_handler.cpp:573-646
 // for the original loops this ports.
 
-#include "doctest.h"
-
 #include <cstdint>
 
+#include "doctest.h"
 #include "io/frontlight_stagger.hpp"
 
 using btclock::ComputeStaggeredDuty;
@@ -27,8 +26,8 @@ TEST_CASE("kIn tick 0: only LED 0 is (barely) lit; others still dark") {
   constexpr uint8_t kN = 7;
 
   for (uint8_t i = 0; i < kN; ++i) {
-    CHECK(ComputeStaggeredDuty(0, i, kN, kMax, kStep,
-                                StaggerDirection::kIn) == 0);
+    CHECK(ComputeStaggeredDuty(0, i, kN, kMax, kStep, StaggerDirection::kIn) ==
+          0);
   }
 }
 
@@ -41,21 +40,21 @@ TEST_CASE("kIn: later LEDs stay dark until the leader reaches their phase") {
 
   // At tick 1, leader (index 0) = 100; index 1 wants 100 - 300 = -200
   // => clamped to 0. Indices 2..6 also clamped to 0.
-  CHECK(ComputeStaggeredDuty(1, 0, kN, kMax, kStep,
-                              StaggerDirection::kIn) == 100);
+  CHECK(ComputeStaggeredDuty(1, 0, kN, kMax, kStep, StaggerDirection::kIn) ==
+        100);
   for (uint8_t i = 1; i < kN; ++i) {
-    CHECK(ComputeStaggeredDuty(1, i, kN, kMax, kStep,
-                                StaggerDirection::kIn) == 0);
+    CHECK(ComputeStaggeredDuty(1, i, kN, kMax, kStep, StaggerDirection::kIn) ==
+          0);
   }
 
   // At tick 3, leader = 300 >= phase -> LED 1 lights at 0 (just
   // started). LED 0 = 300, LED 2..6 still 0.
-  CHECK(ComputeStaggeredDuty(3, 0, kN, kMax, kStep,
-                              StaggerDirection::kIn) == 300);
-  CHECK(ComputeStaggeredDuty(3, 1, kN, kMax, kStep,
-                              StaggerDirection::kIn) == 0);
-  CHECK(ComputeStaggeredDuty(3, 2, kN, kMax, kStep,
-                              StaggerDirection::kIn) == 0);
+  CHECK(ComputeStaggeredDuty(3, 0, kN, kMax, kStep, StaggerDirection::kIn) ==
+        300);
+  CHECK(ComputeStaggeredDuty(3, 1, kN, kMax, kStep, StaggerDirection::kIn) ==
+        0);
+  CHECK(ComputeStaggeredDuty(3, 2, kN, kMax, kStep, StaggerDirection::kIn) ==
+        0);
   CHECK(kPhase == 300);  // silence unused warning + doc the phase
 }
 
@@ -68,7 +67,7 @@ TEST_CASE("kIn completes with every LED at max on the last tick") {
   // On the final tick every LED must be saturated at max.
   for (uint8_t i = 0; i < kN; ++i) {
     CHECK(ComputeStaggeredDuty(total - 1, i, kN, kMax, kStep,
-                                StaggerDirection::kIn) == kMax);
+                               StaggerDirection::kIn) == kMax);
   }
 }
 
@@ -80,7 +79,7 @@ TEST_CASE("kOut completes with every LED at 0 on the last tick") {
 
   for (uint8_t i = 0; i < kN; ++i) {
     CHECK(ComputeStaggeredDuty(total - 1, i, kN, kMax, kStep,
-                                StaggerDirection::kOut) == 0);
+                               StaggerDirection::kOut) == 0);
   }
 }
 
@@ -96,18 +95,18 @@ TEST_CASE("kOut tick 0: LED 0 already partially dim, LED N-1 at max") {
   constexpr uint8_t kN = 7;
 
   // LED 0 at tick 0 = 2100 - 6*300 = 300
-  CHECK(ComputeStaggeredDuty(0, 0, kN, kMax, kStep,
-                              StaggerDirection::kOut) == 300);
+  CHECK(ComputeStaggeredDuty(0, 0, kN, kMax, kStep, StaggerDirection::kOut) ==
+        300);
   // LED N-1 at tick 0 = 2100 - 0 = 2100
   CHECK(ComputeStaggeredDuty(0, kN - 1, kN, kMax, kStep,
-                              StaggerDirection::kOut) == kMax);
+                             StaggerDirection::kOut) == kMax);
 
   // LED 0 hits zero first on kOut: at ceil(300/25) = 12 ticks in.
-  CHECK(ComputeStaggeredDuty(12, 0, kN, kMax, kStep,
-                              StaggerDirection::kOut) == 0);
+  CHECK(ComputeStaggeredDuty(12, 0, kN, kMax, kStep, StaggerDirection::kOut) ==
+        0);
   // LED N-1 still bright at that tick (2100 - 12*25 = 1800).
   CHECK(ComputeStaggeredDuty(12, kN - 1, kN, kMax, kStep,
-                              StaggerDirection::kOut) == 1800);
+                             StaggerDirection::kOut) == 1800);
 }
 
 TEST_CASE("StaggerDelayMs floors at 1 and divides by LED count") {
@@ -128,10 +127,10 @@ TEST_CASE("out-of-range led_index returns 0 rather than UB") {
   constexpr uint16_t kMax = 2048;
   constexpr uint16_t kStep = 25;
   constexpr uint8_t kN = 7;
-  CHECK(ComputeStaggeredDuty(10, kN, kN, kMax, kStep,
-                              StaggerDirection::kIn) == 0);
+  CHECK(ComputeStaggeredDuty(10, kN, kN, kMax, kStep, StaggerDirection::kIn) ==
+        0);
   CHECK(ComputeStaggeredDuty(10, 250, kN, kMax, kStep,
-                              StaggerDirection::kOut) == 0);
+                             StaggerDirection::kOut) == 0);
 }
 
 TEST_CASE("total ticks matches v3 loop bound for canonical params") {

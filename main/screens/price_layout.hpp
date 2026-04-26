@@ -74,9 +74,9 @@ inline constexpr const char* kPriceDotRef = "0123456789.";
 inline constexpr int PriceDecimalPlaces(double price) {
   if (!(price > 0.0)) return 0;
   if (price >= 100000.0) return 0;
-  if (price >= 100.0)    return 1;
-  if (price >= 1.0)      return 2;
-  if (price >= 0.01)     return 3;
+  if (price >= 100.0) return 1;
+  if (price >= 1.0) return 2;
+  if (price >= 0.01) return 3;
   // Below 1 cent the sat-scale is too fine for this display; fall back
   // to integer (which rounds to "0") rather than emit "0.000". The data
   // source is expected to reject prices this small anyway.
@@ -157,8 +157,7 @@ inline bool LayoutBtcPrice(double price, bool use_symbol,
 
   // Right-justify `buf` into the cell array, reserving one leading slot
   // for the glyph when `emit_symbol` is true.
-  const std::size_t content_slots =
-      emit_symbol ? (Slots - 1) : Slots;
+  const std::size_t content_slots = emit_symbol ? (Slots - 1) : Slots;
   const std::size_t pad = content_slots - len;
   const std::size_t dst_base = emit_symbol ? 1 : 0;
   for (std::size_t i = 0; i < len; ++i) {

@@ -86,7 +86,7 @@ size_t GetLittleFsPartitionSize();
 // partition contents are undefined; callers should reboot so the next
 // mount triggers a fresh format.
 using WebuiRecvFn = int (*)(void* ctx, char* buf, size_t buf_len);
-esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx,
-                          size_t expected_len, size_t* bytes_written);
+esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx, size_t expected_len,
+                          size_t* bytes_written);
 
 }  // namespace btclock

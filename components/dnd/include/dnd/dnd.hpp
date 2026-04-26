@@ -24,9 +24,9 @@ namespace btclock {
 namespace dnd {
 
 struct DndConfig {
-  bool enabled = false;        // manual override: LEDs off now regardless
-  bool time_enabled = false;   // schedule gate
-  uint8_t start_hour = 23;     // defaults mirror led_handler.cpp:446-449
+  bool enabled = false;       // manual override: LEDs off now regardless
+  bool time_enabled = false;  // schedule gate
+  uint8_t start_hour = 23;    // defaults mirror led_handler.cpp:446-449
   uint8_t start_minute = 0;
   uint8_t end_hour = 7;
   uint8_t end_minute = 0;
@@ -51,8 +51,8 @@ class Dnd {
   // caller's perspective.
   void SetEnabled(bool enabled);
   void SetTimeEnabled(bool enabled);
-  void SetTimeRange(uint8_t start_hour, uint8_t start_minute,
-                    uint8_t end_hour, uint8_t end_minute);
+  void SetTimeRange(uint8_t start_hour, uint8_t start_minute, uint8_t end_hour,
+                    uint8_t end_minute);
 
  private:
   mutable std::mutex mu_;

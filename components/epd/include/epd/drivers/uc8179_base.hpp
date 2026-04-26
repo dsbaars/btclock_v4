@@ -31,8 +31,8 @@ class Uc8179Base : public IEpdPanel {
   ~Uc8179Base() override;
 
   esp_err_t Init() override;
-  esp_err_t DrawFramebufferStart(const uint8_t* fb,
-                                 RefreshKind kind = RefreshKind::kFull) override;
+  esp_err_t DrawFramebufferStart(
+      const uint8_t* fb, RefreshKind kind = RefreshKind::kFull) override;
   esp_err_t WaitForRefresh(uint32_t timeout_ms = 10'000) override;
   bool IsIdle() const override;
 

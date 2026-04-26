@@ -56,8 +56,7 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
   if (ctx->body == nullptr) {
     // +1 so the parser's trailing NUL always fits without a realloc.
     ctx->body = static_cast<char*>(heap_caps_malloc_prefer(
-        ctx->cap + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
-        MALLOC_CAP_8BIT));
+        ctx->cap + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_8BIT));
     if (ctx->body == nullptr) {
       ctx->alloc_failed = true;
       return ESP_OK;
@@ -71,7 +70,9 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
 }  // namespace
 
 PoolDataSource::PoolDataSource() = default;
-PoolDataSource::~PoolDataSource() { Stop(); }
+PoolDataSource::~PoolDataSource() {
+  Stop();
+}
 
 uint32_t PoolDataSource::poll_interval_ms() const {
   // Mirrors the schema bounds for kPoolPollSec (10..3600 s, default 60).
@@ -89,9 +90,9 @@ esp_err_t PoolDataSource::Start(DataHub& hub) {
   // 8 KB stack: cJSON parsing + esp_http_client + a few hundred bytes
   // of std::string churn fit comfortably. Mirror the old firmware's
   // 6 KB allocation plus headroom for the IDF HTTPS client.
-  const BaseType_t ok = xTaskCreate(&PoolDataSource::TaskTrampoline,
-                                    pool_name(), 8 * 1024, this,
-                                    tskIDLE_PRIORITY + 1, &task_);
+  const BaseType_t ok =
+      xTaskCreate(&PoolDataSource::TaskTrampoline, pool_name(), 8 * 1024, this,
+                  tskIDLE_PRIORITY + 1, &task_);
   return (ok == pdPASS) ? ESP_OK : ESP_FAIL;
 }
 
@@ -144,7 +145,7 @@ void PoolDataSource::PollOnce() {
   cfg.user_data = &ctx;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
   cfg.timeout_ms = 10000;
-  cfg.buffer_size = 2048;       // rx header buffer
+  cfg.buffer_size = 2048;  // rx header buffer
   cfg.buffer_size_tx = 1024;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -172,8 +173,7 @@ void PoolDataSource::PollOnce() {
   }
 
   if (err != ESP_OK) {
-    ESP_LOGW(kTag, "%s: perform failed: %s", pool_name(),
-             esp_err_to_name(err));
+    ESP_LOGW(kTag, "%s: perform failed: %s", pool_name(), esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return;
   }
@@ -217,11 +217,10 @@ void PoolDataSource::PollOnce() {
     return;
   }
 
-  ESP_LOGI(kTag, "%s: hashrate=%s daily_sats=%lld", pool_name(),
-           parsed.hashrate.c_str(),
-           parsed.has_daily_sats
-               ? static_cast<long long>(parsed.daily_sats)
-               : 0LL);
+  ESP_LOGI(
+      kTag, "%s: hashrate=%s daily_sats=%lld", pool_name(),
+      parsed.hashrate.c_str(),
+      parsed.has_daily_sats ? static_cast<long long>(parsed.daily_sats) : 0LL);
 
   if (hub_ == nullptr) return;
   DataSnapshot partial;

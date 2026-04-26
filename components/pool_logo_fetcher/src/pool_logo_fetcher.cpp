@@ -1,9 +1,11 @@
 #include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -19,6 +21,7 @@
 #include "freertos/task.h"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 #include "tls_gate/tls_gate.hpp"
 
 // Forward-declared from main/screens/assets/pool_logos.{hpp,cpp}.
@@ -60,6 +63,17 @@ constexpr const char* kCacheDir = "/lfs/pool_logos";
 constexpr const char* kDefaultLogosUrl =
     "https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main";
 
+// Retry budget for transient fetch failures (DNS / TCP / TLS / OOM /
+// FS write). Fresh-boot races wifi association on Rev B hardware —
+// the first attempt fires before STA has an IP. 5s/10s/20s covers
+// the typical association window without burning the task indefinitely
+// on a server-side 404. An event-driven approach (subscribe to
+// WIFI_EVENT_STA_GOT_IP) would be cleaner but invasive — the fetcher
+// would need to plumb esp_event topics.
+constexpr int kMaxFetchAttempts = 3;
+constexpr std::uint32_t kInitialBackoffMs = 5000;
+constexpr std::uint32_t kMaxBackoffMs = 60000;
+
 // In-flight set keyed by pool name. Plain mutex-guarded set is enough
 // — the contention is lookup-rate (a few per minute), and the entries
 // are short-lived strings.
@@ -70,6 +84,15 @@ std::mutex& InFlightMutex() {
 std::unordered_set<std::string>& InFlightSet() {
   static std::unordered_set<std::string> s;
   return s;
+}
+
+std::mutex& CompleteCbMutex() {
+  static std::mutex m;
+  return m;
+}
+std::function<void(const std::string&)>& CompleteCb() {
+  static std::function<void(const std::string&)> cb;
+  return cb;
 }
 
 bool TryClaimSlot(const std::string& key) {
@@ -83,7 +106,7 @@ void ReleaseSlot(const std::string& key) {
 }
 
 bool EnsureCacheDir() {
-  struct stat st {};
+  struct stat st{};
   if (::stat(kCacheDir, &st) == 0) {
     return S_ISDIR(st.st_mode);
   }
@@ -100,15 +123,18 @@ std::string CachePath(const char* filename) {
 }
 
 bool FileExists(const std::string& path) {
-  struct stat st {};
+  struct stat st{};
   if (::stat(path.c_str(), &st) != 0) return false;
   return S_ISREG(st.st_mode);
 }
 
 std::string LogosBaseUrl() {
   btclock::Prefs settings(btclock::prefs::kSettingsNs);
+  // ReadString consults the schema default AND folds an empty NVS value
+  // back to that default — covers legacy installs / stale PATCHes that
+  // would otherwise leave the fetcher composing "/<file>.bin".
   std::string url =
-      settings.GetString(btclock::prefs::kPoolLogosUrl, kDefaultLogosUrl);
+      btclock::settings::ReadString(settings, btclock::prefs::kPoolLogosUrl);
   // Trim trailing '/' so concatenation doesn't yield "//<file>".
   while (!url.empty() && url.back() == '/') url.pop_back();
   return url;
@@ -141,8 +167,7 @@ esp_err_t HttpEvent(esp_http_client_event_t* evt) {
   }
   if (!ctx->body) {
     ctx->body = static_cast<std::uint8_t*>(heap_caps_malloc_prefer(
-        ctx->cap, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
-        MALLOC_CAP_8BIT));
+        ctx->cap, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT, MALLOC_CAP_8BIT));
     if (!ctx->body) {
       ctx->alloc_failed = true;
       return ESP_OK;
@@ -180,19 +205,36 @@ bool WriteAtomic(const std::string& path, const std::uint8_t* body,
   return true;
 }
 
-esp_err_t DoFetch(const PoolLogoMeta& meta) {
+// Carries both the esp_err_t and a transient flag so the trampoline
+// can decide whether to retry. Transient: network / TLS / DNS / OOM /
+// FS-write hiccups that may resolve on a second attempt. Permanent:
+// bad metadata, server-side 4xx/5xx, response-shape mismatches — no
+// retry will fix these.
+struct FetchResult {
+  esp_err_t err;
+  bool transient;
+};
+
+constexpr FetchResult Permanent(esp_err_t e) {
+  return {e, false};
+}
+constexpr FetchResult Transient(esp_err_t e) {
+  return {e, true};
+}
+
+FetchResult DoFetch(const PoolLogoMeta& meta) {
   const std::size_t stride = static_cast<std::size_t>((meta.width + 7) / 8);
   const std::size_t expected = stride * static_cast<std::size_t>(meta.height);
   if (expected == 0 || expected > 32 * 1024) {
     ESP_LOGW(kTag, "%s: nonsensical expected size %u", meta.key,
              static_cast<unsigned>(expected));
-    return ESP_ERR_INVALID_SIZE;
+    return Permanent(ESP_ERR_INVALID_SIZE);
   }
-  if (!EnsureCacheDir()) return ESP_FAIL;
+  if (!EnsureCacheDir()) return Transient(ESP_FAIL);
 
   const std::string url = LogosBaseUrl() + "/" + meta.filename;
-  ESP_LOGI(kTag, "%s: fetching %s (%u bytes expected)", meta.key,
-           url.c_str(), static_cast<unsigned>(expected));
+  ESP_LOGI(kTag, "%s: fetching %s (%u bytes expected)", meta.key, url.c_str(),
+           static_cast<unsigned>(expected));
 
   FetchCtx ctx;
   // Cap is `expected`. Any extra bytes (HTML 404, redirect body) trip
@@ -214,7 +256,7 @@ esp_err_t DoFetch(const PoolLogoMeta& meta) {
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (!client) {
     ESP_LOGW(kTag, "%s: http_client_init failed", meta.key);
-    return ESP_FAIL;
+    return Transient(ESP_FAIL);
   }
 
   esp_err_t err;
@@ -232,37 +274,42 @@ esp_err_t DoFetch(const PoolLogoMeta& meta) {
 
   if (err != ESP_OK) {
     ESP_LOGW(kTag, "%s: perform failed: %s", meta.key, esp_err_to_name(err));
-    return err;
+    return Transient(err);
   }
   if (status < 200 || status >= 300) {
     ESP_LOGW(kTag, "%s: HTTP %d", meta.key, status);
-    return ESP_FAIL;
+    return Permanent(ESP_FAIL);
   }
   if (ctx.alloc_failed) {
     ESP_LOGW(kTag, "%s: alloc failed", meta.key);
-    return ESP_ERR_NO_MEM;
+    return Transient(ESP_ERR_NO_MEM);
   }
   if (ctx.truncated) {
     ESP_LOGW(kTag, "%s: response exceeded %u bytes", meta.key,
              static_cast<unsigned>(ctx.cap));
-    return ESP_ERR_INVALID_SIZE;
+    return Permanent(ESP_ERR_INVALID_SIZE);
   }
   if (ctx.size != expected) {
     ESP_LOGW(kTag, "%s: size mismatch (got %u expected %u)", meta.key,
-             static_cast<unsigned>(ctx.size),
-             static_cast<unsigned>(expected));
-    return ESP_ERR_INVALID_SIZE;
+             static_cast<unsigned>(ctx.size), static_cast<unsigned>(expected));
+    return Permanent(ESP_ERR_INVALID_SIZE);
   }
   const std::string path = CachePath(meta.filename);
-  if (!WriteAtomic(path, ctx.body, ctx.size)) return ESP_FAIL;
+  if (!WriteAtomic(path, ctx.body, ctx.size)) return Transient(ESP_FAIL);
 
   ESP_LOGI(kTag, "%s: cached %u bytes -> %s", meta.key,
            static_cast<unsigned>(ctx.size), path.c_str());
-  // The next paint will pick this up via LookupResolved -> cache miss
-  // -> fopen. There's nothing to invalidate in the in-memory cache
-  // because the slot starts empty for this pool (we only get here
-  // after FileExists returned false).
-  return ESP_OK;
+  // Notify the renderer so the new logo paints on the next tick
+  // instead of waiting for an unrelated repaint to displace the
+  // stale text-fallback. The callback runs on this fetch task; the
+  // renderer-side hook just queues a MarkDirty.
+  std::function<void(const std::string&)> cb;
+  {
+    std::lock_guard<std::mutex> lk(CompleteCbMutex());
+    cb = CompleteCb();
+  }
+  if (cb) cb(meta.key);
+  return Permanent(ESP_OK);
 }
 
 struct FetchTaskCtx {
@@ -271,16 +318,43 @@ struct FetchTaskCtx {
 
 void FetchTaskTrampoline(void* arg) {
   std::unique_ptr<FetchTaskCtx> ctx(static_cast<FetchTaskCtx*>(arg));
-  if (const PoolLogoMeta* meta = LookupMeta(ctx->pool_name)) {
-    (void)DoFetch(*meta);
-  } else {
+  const PoolLogoMeta* meta = LookupMeta(ctx->pool_name);
+  if (!meta) {
     ESP_LOGW(kTag, "no metadata for '%s'", ctx->pool_name.c_str());
+    ReleaseSlot(ctx->pool_name);
+    vTaskDelete(nullptr);
+    return;
+  }
+  std::uint32_t backoff_ms = kInitialBackoffMs;
+  for (int attempt = 1; attempt <= kMaxFetchAttempts; ++attempt) {
+    const FetchResult res = DoFetch(*meta);
+    if (res.err == ESP_OK) break;
+    if (!res.transient) {
+      ESP_LOGW(kTag, "%s: permanent failure (%s); not retrying", meta->key,
+               esp_err_to_name(res.err));
+      break;
+    }
+    if (attempt == kMaxFetchAttempts) {
+      ESP_LOGW(kTag, "%s: gave up after %d attempts (last: %s)", meta->key,
+               attempt, esp_err_to_name(res.err));
+      break;
+    }
+    ESP_LOGI(kTag, "%s: transient failure (%s); retry %d/%d in %u ms",
+             meta->key, esp_err_to_name(res.err), attempt + 1,
+             kMaxFetchAttempts, static_cast<unsigned>(backoff_ms));
+    vTaskDelay(pdMS_TO_TICKS(backoff_ms));
+    backoff_ms = std::min(backoff_ms * 2, kMaxBackoffMs);
   }
   ReleaseSlot(ctx->pool_name);
   vTaskDelete(nullptr);
 }
 
 }  // namespace
+
+void SetOnFetchComplete(std::function<void(const std::string&)> cb) {
+  std::lock_guard<std::mutex> lk(CompleteCbMutex());
+  CompleteCb() = std::move(cb);
+}
 
 esp_err_t EnqueueFetch(const std::string& pool_name) {
   if (pool_name.empty()) return ESP_ERR_INVALID_ARG;
@@ -300,9 +374,9 @@ esp_err_t EnqueueFetch(const std::string& pool_name) {
   // mbedtls handshake + a small std::string copy. Lower priority
   // than the renderer so a paint isn't preempted mid-frame.
   TaskHandle_t handle = nullptr;
-  const BaseType_t ok = xTaskCreate(&FetchTaskTrampoline, "pool_logo_fetch",
-                                    6 * 1024, ctx.get(),
-                                    tskIDLE_PRIORITY + 1, &handle);
+  const BaseType_t ok =
+      xTaskCreate(&FetchTaskTrampoline, "pool_logo_fetch", 6 * 1024, ctx.get(),
+                  tskIDLE_PRIORITY + 1, &handle);
   if (ok != pdPASS) {
     ReleaseSlot(pool_name);
     return ESP_FAIL;
@@ -317,9 +391,12 @@ esp_err_t FetchNow(const std::string& pool_name) {
   const PoolLogoMeta* meta = LookupMeta(pool_name);
   if (!meta) return ESP_ERR_NOT_FOUND;
   if (!TryClaimSlot(pool_name)) return ESP_ERR_INVALID_STATE;
-  const esp_err_t rc = DoFetch(*meta);
+  // Synchronous: caller is on its own task and may already implement
+  // its own retry semantics, so we fire a single attempt rather than
+  // blocking the caller for up to ~35s of backoff.
+  const FetchResult rc = DoFetch(*meta);
   ReleaseSlot(pool_name);
-  return rc;
+  return rc.err;
 }
 
 int ClearAllCached() {

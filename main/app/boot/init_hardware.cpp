@@ -1,8 +1,6 @@
 #include "app/boot/init_hardware.hpp"
 
 #include "app/app_ctx.hpp"
-#include "io/frontlight_controller.hpp"
-#include "io/light_sensor.hpp"
 #include "board/board.hpp"
 #include "dnd/dnd.hpp"
 #include "driver/gpio.h"
@@ -10,8 +8,11 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/frontlight_controller.hpp"
+#include "io/light_sensor.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 namespace {
@@ -66,8 +67,7 @@ void InitHardware(AppCtx& ctx) {
   ESP_ERROR_CHECK(ctx.mcp->SetDirectionPort(0xFFFF));
   // Buttons on pins 0..3 for every variant so far.
   for (uint8_t p = 0; p < 4; ++p) {
-    ESP_ERROR_CHECK(
-        ctx.mcp->SetDirection(p, Mcp23017::PinMode::kInputPullup));
+    ESP_ERROR_CHECK(ctx.mcp->SetDirection(p, Mcp23017::PinMode::kInputPullup));
   }
   // Rev A/B: RESET on pins 8..14, preload high for a known-good state.
   // V8 has RESET on MCP2, so skip.
@@ -103,7 +103,7 @@ void InitHardware(AppCtx& ctx) {
       const uint32_t lux_threshold = settings.GetU32(
           prefs::kLuxLightToggle, frontlight::kDefaultLuxThreshold);
       const bool off_when_dark =
-          settings.GetBool(prefs::kFlOffWhenDark, true);
+          btclock::settings::ReadBool(settings, prefs::kFlOffWhenDark);
       ctx.frontlight->SetLuxThreshold(lux_threshold);
       ctx.frontlight->SetOffWhenDark(off_when_dark);
       // `luxLightToggle == 0` disables the whole feature in v3.
@@ -113,11 +113,11 @@ void InitHardware(AppCtx& ctx) {
       // sit at its constructor defaults and three user-visible Rev B
       // toggles would be inert (btclock_v4-63p).
       ctx.frontlight->SetAlwaysOn(
-          settings.GetBool(prefs::kFlAlwaysOn, true));
+          btclock::settings::ReadBool(settings, prefs::kFlAlwaysOn));
       ctx.frontlight->SetDisabled(
-          settings.GetBool(prefs::kFlDisable, false));
+          btclock::settings::ReadBool(settings, prefs::kFlDisable));
       ctx.frontlight->SetFlashOnUpdate(
-          settings.GetBool(prefs::kFlFlashOnUpd, true));
+          btclock::settings::ReadBool(settings, prefs::kFlFlashOnUpd));
     }
 
     // Install DND gate before Start() so the boot fade-in is
@@ -132,8 +132,7 @@ void InitHardware(AppCtx& ctx) {
     {
       Prefs settings(prefs::kSettingsNs);
       const uint32_t max_brightness =
-          settings.GetU32(prefs::kFlMaxBrightness,
-                          static_cast<uint32_t>(frontlight::kDefaultMaxDuty));
+          btclock::settings::ReadU32(settings, prefs::kFlMaxBrightness);
       if (max_brightness > 0 && max_brightness <= 0xFFFFu) {
         ctx.frontlight->SetConfiguredBrightness(
             static_cast<uint16_t>(max_brightness));

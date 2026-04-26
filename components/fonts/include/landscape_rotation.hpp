@@ -20,8 +20,7 @@ struct NativeXY {
 // `rot` into native (nx, ny). Caller is responsible for any logical
 // bounds-checking — this transform doesn't validate inputs because it
 // also runs inside fill loops where the caller has already clipped.
-inline constexpr NativeXY RotateLogicalToNative(int lx, int ly,
-                                                int nw, int nh,
+inline constexpr NativeXY RotateLogicalToNative(int lx, int ly, int nw, int nh,
                                                 Rotation rot) {
   // Mirror SetPixelLandscape's switch verbatim. Anything that diverges
   // here would silently mis-paint the frame.

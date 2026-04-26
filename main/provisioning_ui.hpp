@@ -18,11 +18,9 @@
 namespace btclock {
 
 template <size_t N>
-void RenderProvisioningScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296],
-    const AppFonts& fonts,
-    const std::string& ap_ssid,
-    const std::string& ap_pw);
+void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                              uint8_t (&fb_storage)[N][16 * 296],
+                              const AppFonts& fonts, const std::string& ap_ssid,
+                              const std::string& ap_pw);
 
 }  // namespace btclock

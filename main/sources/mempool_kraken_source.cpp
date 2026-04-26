@@ -56,7 +56,9 @@ MempoolKrakenSource::MempoolKrakenSource(std::vector<std::string> currencies,
                                          bool block_fee_dec)
     : currencies_(std::move(currencies)), block_fee_dec_(block_fee_dec) {}
 
-MempoolKrakenSource::~MempoolKrakenSource() { Stop(); }
+MempoolKrakenSource::~MempoolKrakenSource() {
+  Stop();
+}
 
 esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
   hub_ = &hub;
@@ -237,8 +239,7 @@ void MempoolKrakenSource::HandleMempoolFrame(const char* data, size_t len) {
   if (cJSON_IsObject(block)) {
     cJSON* h = cJSON_GetObjectItemCaseSensitive(block, "height");
     if (cJSON_IsNumber(h)) {
-      partial.block_height =
-          static_cast<uint32_t>(h->valuedouble);
+      partial.block_height = static_cast<uint32_t>(h->valuedouble);
     }
   }
   cJSON* blocks = cJSON_GetObjectItemCaseSensitive(root, "blocks");
@@ -247,8 +248,7 @@ void MempoolKrakenSource::HandleMempoolFrame(const char* data, size_t len) {
     if (cJSON_IsObject(first)) {
       cJSON* h = cJSON_GetObjectItemCaseSensitive(first, "height");
       if (cJSON_IsNumber(h) && !partial.block_height) {
-        partial.block_height =
-            static_cast<uint32_t>(h->valuedouble);
+        partial.block_height = static_cast<uint32_t>(h->valuedouble);
       }
     }
   }
@@ -287,9 +287,8 @@ void MempoolKrakenSource::HandleMempoolFrame(const char* data, size_t len) {
     }
   }
 
-  if (hub_ != nullptr &&
-      (partial.block_height || partial.block_fee ||
-       partial.block_fee_precise)) {
+  if (hub_ != nullptr && (partial.block_height || partial.block_fee ||
+                          partial.block_fee_precise)) {
     hub_->Report(partial);
     reported = true;
   }

@@ -52,14 +52,22 @@ inline bool IsPerCurrencyKind(int api_id) {
 // kinds (caller must expand) or unknown ids.
 inline int AgnosticSlotForApiId(int api_id, std::size_t currency_count) {
   switch (api_id) {
-    case slot_map::kApiIdBlockHeight:        return 0;
-    case slot_map::kApiIdClock:              return 1;
-    case slot_map::kApiIdHalving:            return 2;
-    case slot_map::kApiIdBitcoinSupply:      return 3;
-    case slot_map::kApiIdMiningPoolHashrate: return 4;
-    case slot_map::kApiIdMiningPoolEarnings: return 5;
-    case slot_map::kApiIdBitaxeHashrate:     return 6;
-    case slot_map::kApiIdBitaxeBestDiff:     return 7;
+    case slot_map::kApiIdBlockHeight:
+      return 0;
+    case slot_map::kApiIdClock:
+      return 1;
+    case slot_map::kApiIdHalving:
+      return 2;
+    case slot_map::kApiIdBitcoinSupply:
+      return 3;
+    case slot_map::kApiIdMiningPoolHashrate:
+      return 4;
+    case slot_map::kApiIdMiningPoolEarnings:
+      return 5;
+    case slot_map::kApiIdBitaxeHashrate:
+      return 6;
+    case slot_map::kApiIdBitaxeBestDiff:
+      return 7;
     case slot_map::kApiIdBlockFeeRate:
       return currency_count == 0
                  ? -1
@@ -79,13 +87,19 @@ inline void ExpandApiIdInto(int api_id, std::size_t currency_count,
     // Per-currency stride: slot = kAgnosticSlots + 3*k + offset
     std::size_t offset = 0;
     switch (api_id) {
-      case slot_map::kApiIdMoscowTime: offset = 0; break;
-      case slot_map::kApiIdBtcPrice:   offset = 1; break;
-      case slot_map::kApiIdMarketCap:  offset = 2; break;
+      case slot_map::kApiIdMoscowTime:
+        offset = 0;
+        break;
+      case slot_map::kApiIdBtcPrice:
+        offset = 1;
+        break;
+      case slot_map::kApiIdMarketCap:
+        offset = 2;
+        break;
     }
     for (std::size_t k = 0; k < currency_count; ++k) {
-      out.push_back(slot_map::kAgnosticSlots +
-                    slot_map::kPerCurrencySlots * k + offset);
+      out.push_back(slot_map::kAgnosticSlots + slot_map::kPerCurrencySlots * k +
+                    offset);
     }
     return;
   }
@@ -110,21 +124,27 @@ inline std::vector<int> ParseScreenOrderCsv(const std::string& csv) {
     // Trim leading whitespace (defensive — the WebUI emits dense CSV,
     // but a user editing the NVS blob by hand could leave spaces).
     std::size_t start = 0;
-    while (start < item.size() &&
-           (item[start] == ' ' || item[start] == '\t')) {
+    while (start < item.size() && (item[start] == ' ' || item[start] == '\t')) {
       ++start;
     }
     if (start == item.size()) continue;
     bool negative = false;
-    if (item[start] == '-') { negative = true; ++start; }
-    else if (item[start] == '+') { ++start; }
+    if (item[start] == '-') {
+      negative = true;
+      ++start;
+    } else if (item[start] == '+') {
+      ++start;
+    }
     int value = 0;
     bool any_digit = false;
     bool bad_char = false;
     for (std::size_t i = start; i < item.size(); ++i) {
       const char c = item[i];
       if (c == ' ' || c == '\t') break;  // trailing ws ends the number
-      if (c < '0' || c > '9') { bad_char = true; break; }
+      if (c < '0' || c > '9') {
+        bad_char = true;
+        break;
+      }
       value = value * 10 + (c - '0');
       any_digit = true;
     }
@@ -175,12 +195,11 @@ inline std::vector<std::size_t> BuildRotationSequence(
 // Returns the new (slot, index) pair. `direction` is +1 or -1.
 inline std::pair<std::size_t, std::size_t> StepSequence(
     const std::vector<std::size_t>& sequence, std::size_t current_idx,
-    int direction,
-    const std::function<bool(std::size_t)>& skip = nullptr) {
+    int direction, const std::function<bool(std::size_t)>& skip = nullptr) {
   const std::size_t n = sequence.size();
   if (n == 0) return {0, 0};
-  std::size_t idx = (direction >= 0) ? (current_idx + 1) % n
-                                     : (current_idx + n - 1) % n;
+  std::size_t idx =
+      (direction >= 0) ? (current_idx + 1) % n : (current_idx + n - 1) % n;
   for (std::size_t guard = 0; guard < n; ++guard) {
     if (!skip || !skip(sequence[idx])) return {sequence[idx], idx};
     idx = (direction >= 0) ? (idx + 1) % n : (idx + n - 1) % n;

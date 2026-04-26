@@ -1,15 +1,14 @@
 #include "app/screen_manager.hpp"
-#include "app/boot/helpers.hpp"
-#include "app/rotation_plan.hpp"
-#include "app/screen_slot_map.hpp"
 
 #include <cassert>
 #include <cmath>
 #include <ctime>
 #include <utility>
 
+#include "app/boot/helpers.hpp"
+#include "app/rotation_plan.hpp"
+#include "app/screen_slot_map.hpp"
 #include "esp_log.h"
-
 #include "prefs.hpp"
 #include "screens/common.hpp"
 #include "screens/panel_texts.hpp"
@@ -61,17 +60,17 @@ struct RenderPrefs {
 RenderPrefs ReadRenderPrefs() {
   btclock::Prefs prefs(btclock::prefs::kSettingsNs);
   RenderPrefs out;
-  out.use_sats_symbol  = prefs.GetBool(btclock::prefs::kUseSatsSymbol, true);
-  out.use_mscw_time    = prefs.GetBool(btclock::prefs::kUseMscwTime, true);
+  out.use_sats_symbol = prefs.GetBool(btclock::prefs::kUseSatsSymbol, true);
+  out.use_mscw_time = prefs.GetBool(btclock::prefs::kUseMscwTime, true);
   out.use_blk_countdown = prefs.GetBool(btclock::prefs::kUseBlkCountdown, true);
-  out.supply_percent   = prefs.GetBool(btclock::prefs::kSupplyPercent, false);
-  out.mcap_big_char    = prefs.GetBool(btclock::prefs::kMcapBigChar, true);
-  out.block_fee_dec    = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
-  out.suffix_price     = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
-  out.mow_mode         = prefs.GetBool(btclock::prefs::kMowMode, false);
+  out.supply_percent = prefs.GetBool(btclock::prefs::kSupplyPercent, false);
+  out.mcap_big_char = prefs.GetBool(btclock::prefs::kMcapBigChar, true);
+  out.block_fee_dec = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
+  out.suffix_price = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
+  out.mow_mode = prefs.GetBool(btclock::prefs::kMowMode, false);
   out.suffix_share_dot = prefs.GetBool(btclock::prefs::kSuffixShareDot, false);
-  out.hide_lead_zero   = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
-  out.vertical_desc    = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
+  out.hide_lead_zero = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
+  out.vertical_desc = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
   out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
   out.full_refresh_min =
       static_cast<int>(prefs.GetU32(btclock::prefs::kFullRefreshMin, 60));
@@ -80,22 +79,38 @@ RenderPrefs ReadRenderPrefs() {
 
 const char* KindName(ScreenType k) {
   switch (k) {
-    case ScreenType::kBlockHeight:        return "block";
-    case ScreenType::kMoscowTime:         return "moscow";
-    case ScreenType::kBtcPrice:           return "price";
-    case ScreenType::kBlockFeeRate:       return "fee";
-    case ScreenType::kClock:              return "clock";
-    case ScreenType::kHalving:            return "halving";
-    case ScreenType::kBitcoinSupply:      return "supply";
-    case ScreenType::kMarketCap:          return "mcap";
-    case ScreenType::kMiningPoolHashrate: return "poolhash";
-    case ScreenType::kMiningPoolEarnings: return "poolearn";
-    case ScreenType::kBitaxeHashrate:     return "bxhash";
-    case ScreenType::kBitaxeBestDiff:     return "bxdiff";
-    case ScreenType::kCustom:             return "custom";
-    case ScreenType::kDebug:              return "debug";
-    case ScreenType::kNostrZap:           return "zap";
-    case ScreenType::kOtaUpdate:          return "ota";
+    case ScreenType::kBlockHeight:
+      return "block";
+    case ScreenType::kMoscowTime:
+      return "moscow";
+    case ScreenType::kBtcPrice:
+      return "price";
+    case ScreenType::kBlockFeeRate:
+      return "fee";
+    case ScreenType::kClock:
+      return "clock";
+    case ScreenType::kHalving:
+      return "halving";
+    case ScreenType::kBitcoinSupply:
+      return "supply";
+    case ScreenType::kMarketCap:
+      return "mcap";
+    case ScreenType::kMiningPoolHashrate:
+      return "poolhash";
+    case ScreenType::kMiningPoolEarnings:
+      return "poolearn";
+    case ScreenType::kBitaxeHashrate:
+      return "bxhash";
+    case ScreenType::kBitaxeBestDiff:
+      return "bxdiff";
+    case ScreenType::kCustom:
+      return "custom";
+    case ScreenType::kDebug:
+      return "debug";
+    case ScreenType::kNostrZap:
+      return "zap";
+    case ScreenType::kOtaUpdate:
+      return "ota";
   }
   return "?";
 }
@@ -111,22 +126,34 @@ ScreenManager::ScreenManager(int64_t now_ms,
 ScreenType ScreenManager::KindForSlot(size_t slot) const {
   if (slot == slot_count() - 1) return ScreenType::kBlockFeeRate;
   switch (slot) {
-    case 0: return ScreenType::kBlockHeight;
-    case 1: return ScreenType::kClock;
-    case 2: return ScreenType::kHalving;
-    case 3: return ScreenType::kBitcoinSupply;
-    case 4: return ScreenType::kMiningPoolHashrate;
-    case 5: return ScreenType::kMiningPoolEarnings;
-    case 6: return ScreenType::kBitaxeHashrate;
-    case 7: return ScreenType::kBitaxeBestDiff;
-    default: break;
+    case 0:
+      return ScreenType::kBlockHeight;
+    case 1:
+      return ScreenType::kClock;
+    case 2:
+      return ScreenType::kHalving;
+    case 3:
+      return ScreenType::kBitcoinSupply;
+    case 4:
+      return ScreenType::kMiningPoolHashrate;
+    case 5:
+      return ScreenType::kMiningPoolEarnings;
+    case 6:
+      return ScreenType::kBitaxeHashrate;
+    case 7:
+      return ScreenType::kBitaxeBestDiff;
+    default:
+      break;
   }
   // Per-currency stride: 0=moscow, 1=price, 2=mcap.
   const size_t off = (slot - kAgnosticSlots) % kPerCurrencySlots;
   switch (off) {
-    case 0: return ScreenType::kMoscowTime;
-    case 1: return ScreenType::kBtcPrice;
-    case 2: return ScreenType::kMarketCap;
+    case 0:
+      return ScreenType::kMoscowTime;
+    case 1:
+      return ScreenType::kBtcPrice;
+    case 2:
+      return ScreenType::kMarketCap;
   }
   return ScreenType::kBlockHeight;
 }
@@ -222,10 +249,17 @@ void ScreenManager::SetCurrencies(std::vector<std::string> currencies) {
       if (currencies_[i] == ccy_before) {
         std::size_t off = 0;
         switch (kind_before) {
-          case ScreenType::kMoscowTime: off = 0; break;
-          case ScreenType::kBtcPrice:   off = 1; break;
-          case ScreenType::kMarketCap:  off = 2; break;
-          default: break;
+          case ScreenType::kMoscowTime:
+            off = 0;
+            break;
+          case ScreenType::kBtcPrice:
+            off = 1;
+            break;
+          case ScreenType::kMarketCap:
+            off = 2;
+            break;
+          default:
+            break;
         }
         slot_ = kAgnosticSlots + kPerCurrencySlots * i + off;
         found = true;
@@ -305,8 +339,8 @@ bool ScreenManager::SetCurrency(const std::string& ccy, int64_t now_ms) {
   // tested without pulling in ScreenManager's IDF deps.
   for (size_t i = 0; i < currencies_.size(); ++i) {
     if (currencies_[i] == ccy) {
-      const size_t target = slot_map::TransposeSlotToCurrency(
-          slot_, i, currencies_.size());
+      const size_t target =
+          slot_map::TransposeSlotToCurrency(slot_, i, currencies_.size());
       return SetSlot(target, now_ms);
     }
   }
@@ -374,8 +408,8 @@ bool ScreenManager::NextScreen(int64_t now_ms) {
   }
   screen_change_pending_ = true;
   rot_.Restart(now_ms);
-  ESP_LOGI(kTag, "next → slot %zu (%s %s)", slot_,
-           KindName(current_kind()), current_currency().c_str());
+  ESP_LOGI(kTag, "next → slot %zu (%s %s)", slot_, KindName(current_kind()),
+           current_currency().c_str());
   return true;
 }
 
@@ -470,16 +504,15 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
   // bypass the throttle so user input always paints.
   auto price_throttle_blocks = [&]() {
     Prefs throttle_prefs(btclock::prefs::kSettingsNs);
-    const uint32_t min_s = throttle_prefs.GetU32(
-        btclock::prefs::kMinSecPriceUpd, 30);
+    const uint32_t min_s =
+        throttle_prefs.GetU32(btclock::prefs::kMinSecPriceUpd, 30);
     if (min_s == 0) return false;
     const int64_t elapsed_ms = MsNow() - last_price_apply_ms_;
     return elapsed_ms < static_cast<int64_t>(min_s) * 1000;
   };
   switch (current_kind()) {
     case ScreenType::kBlockHeight:
-      return snap.block_height &&
-             *snap.block_height != last_rendered_height_;
+      return snap.block_height && *snap.block_height != last_rendered_height_;
     case ScreenType::kMoscowTime:
     case ScreenType::kBtcPrice: {
       const auto* p = snap.PriceOf(current_currency());
@@ -492,8 +525,10 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
       // on an otherwise-identical value doesn't force a refresh.
       constexpr double kFeeEpsilon = 1e-3;
       double fee = -1.0;
-      if (snap.block_fee_precise) fee = *snap.block_fee_precise;
-      else if (snap.block_fee) fee = static_cast<double>(*snap.block_fee);
+      if (snap.block_fee_precise)
+        fee = *snap.block_fee_precise;
+      else if (snap.block_fee)
+        fee = static_cast<double>(*snap.block_fee);
       if (fee < 0.0) return false;
       return std::fabs(fee - last_rendered_fee_) > kFeeEpsilon;
     }
@@ -503,7 +538,7 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
       time_t t;
       std::time(&t);
       if (t < kMinPlausibleEpoch) return !last_rendered_clock_valid_;
-      struct tm tm_now {};
+      struct tm tm_now{};
       localtime_r(&t, &tm_now);
       return !last_rendered_clock_valid_ ||
              tm_now.tm_min != last_rendered_clock_min_ ||
@@ -513,8 +548,7 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
     }
     case ScreenType::kHalving:
     case ScreenType::kBitcoinSupply:
-      return snap.block_height &&
-             *snap.block_height != last_rendered_height_;
+      return snap.block_height && *snap.block_height != last_rendered_height_;
     case ScreenType::kMarketCap: {
       const auto* p = snap.PriceOf(current_currency());
       if (!p || !snap.block_height) return false;
@@ -586,8 +620,7 @@ bool ScreenManager::ConsumeNewBlock(const DataSnapshot& snap) {
 
 template <size_t N>
 void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb)[N][16 * 296],
-                           const AppFonts& fonts,
+                           uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
                            const DataSnapshot& snap) {
   // OTA overlay: the HTTP worker painted via RenderOtaUpdateScreen and
   // owns the panels until esp_restart. Bail so the main loop can't
@@ -619,9 +652,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   const bool force_full = RefreshPolicy::Decide(
       refresh_state_, now_ms_policy,
       /*is_screen_change=*/screen_change_pending_,
-      /*is_force_full=*/dirty_,
-      rp.refr_scrn_change,
-      rp.full_refresh_min);
+      /*is_force_full=*/dirty_, rp.refr_scrn_change, rp.full_refresh_min);
 
   // Force cell-diff reset on any transition so the renderer repaints
   // the new screen's content. Without this, POST /api/show/screen?s=0
@@ -646,8 +677,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         RenderMoscowTimeScreen(panels, fb, fonts, ccy, *p,
                                force_repaint ? "" : last_rendered_price_,
                                sats_variant_, rp.use_sats_symbol,
-                               rp.use_mscw_time, force_full,
-                               rp.vertical_desc);
+                               rp.use_mscw_time, force_full, rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
       }
@@ -656,9 +686,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       if (const auto* p = snap.PriceOf(ccy)) {
         RenderBtcPriceScreen(panels, fb, fonts, ccy, *p,
                              force_repaint ? "" : last_rendered_price_,
-                             CurrencySymbolUtf8(ccy),
-                             rp.suffix_price, rp.mow_mode,
-                             rp.suffix_share_dot, force_full,
+                             CurrencySymbolUtf8(ccy), rp.suffix_price,
+                             rp.mow_mode, rp.suffix_share_dot, force_full,
                              rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
@@ -685,8 +714,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         fee = -1.0;
       }
       RenderFeeRateScreen(panels, fb, fonts, fee,
-                          force_repaint ? -1.0 : last_rendered_fee_,
-                          force_full, rp.vertical_desc);
+                          force_repaint ? -1.0 : last_rendered_fee_, force_full,
+                          rp.vertical_desc);
       last_rendered_fee_ = fee;
       break;
     }
@@ -694,26 +723,21 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       time_t t;
       std::time(&t);
       const bool valid = (t >= kMinPlausibleEpoch);
-      struct tm tm_now {};
+      struct tm tm_now{};
       if (valid) localtime_r(&t, &tm_now);
-      RenderClockScreen(
-          panels, fb, fonts, valid,
-          valid ? tm_now.tm_hour : 0,
-          valid ? tm_now.tm_min : 0,
-          valid ? tm_now.tm_mday : 0,
-          valid ? tm_now.tm_mon + 1 : 0,
-          force_repaint ? false : last_rendered_clock_valid_,
-          last_rendered_clock_hour_,
-          last_rendered_clock_min_,
-          last_rendered_clock_mday_,
-          last_rendered_clock_mon_,
-          force_full, rp.vertical_desc, rp.hide_lead_zero);
+      RenderClockScreen(panels, fb, fonts, valid, valid ? tm_now.tm_hour : 0,
+                        valid ? tm_now.tm_min : 0, valid ? tm_now.tm_mday : 0,
+                        valid ? tm_now.tm_mon + 1 : 0,
+                        force_repaint ? false : last_rendered_clock_valid_,
+                        last_rendered_clock_hour_, last_rendered_clock_min_,
+                        last_rendered_clock_mday_, last_rendered_clock_mon_,
+                        force_full, rp.vertical_desc, rp.hide_lead_zero);
       last_rendered_clock_valid_ = valid;
       if (valid) {
         last_rendered_clock_hour_ = tm_now.tm_hour;
-        last_rendered_clock_min_  = tm_now.tm_min;
+        last_rendered_clock_min_ = tm_now.tm_min;
         last_rendered_clock_mday_ = tm_now.tm_mday;
-        last_rendered_clock_mon_  = tm_now.tm_mon;
+        last_rendered_clock_mon_ = tm_now.tm_mon;
       }
       break;
     }
@@ -721,8 +745,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       if (snap.block_height) {
         RenderHalvingScreen(panels, fb, fonts, *snap.block_height,
                             force_repaint ? 0 : last_rendered_height_,
-                            rp.use_blk_countdown, force_full,
-                            rp.vertical_desc);
+                            rp.use_blk_countdown, force_full, rp.vertical_desc);
         last_rendered_height_ = *snap.block_height;
       }
       break;
@@ -740,11 +763,11 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       break;
     case ScreenType::kMarketCap:
       if (const auto* p = snap.PriceOf(ccy); p && snap.block_height) {
-        RenderMarketCapScreen(
-            panels, fb, fonts, ccy, *p, *snap.block_height,
-            force_repaint ? "" : last_rendered_cap_price_,
-            force_repaint ? 0 : last_rendered_cap_height_,
-            rp.mcap_big_char, force_full, rp.vertical_desc);
+        RenderMarketCapScreen(panels, fb, fonts, ccy, *p, *snap.block_height,
+                              force_repaint ? "" : last_rendered_cap_price_,
+                              force_repaint ? 0 : last_rendered_cap_height_,
+                              rp.mcap_big_char, rp.suffix_share_dot, force_full,
+                              rp.vertical_desc);
         last_rendered_cap_price_ = *p;
         last_rendered_cap_height_ = *snap.block_height;
         last_price_apply_ms_ = now_ms_policy;
@@ -756,18 +779,18 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       // than whatever stale content was on the panels. Keeps the slot
       // navigable even when the user toggles miningPoolStats off at
       // runtime.
-      const DataSnapshot::PoolStats& prev =
-          force_repaint ? DataSnapshot::PoolStats{}
-                        : last_rendered_pool_hashrate_;
+      const DataSnapshot::PoolStats& prev = force_repaint
+                                                ? DataSnapshot::PoolStats{}
+                                                : last_rendered_pool_hashrate_;
       RenderMiningPoolHashrateScreen(panels, fb, fonts, snap.pool, prev,
                                      force_full, rp.vertical_desc);
       last_rendered_pool_hashrate_ = snap.pool;
       break;
     }
     case ScreenType::kMiningPoolEarnings: {
-      const DataSnapshot::PoolStats& prev =
-          force_repaint ? DataSnapshot::PoolStats{}
-                        : last_rendered_pool_earnings_;
+      const DataSnapshot::PoolStats& prev = force_repaint
+                                                ? DataSnapshot::PoolStats{}
+                                                : last_rendered_pool_earnings_;
       RenderMiningPoolEarningsScreen(panels, fb, fonts, snap.pool, prev,
                                      force_full, rp.vertical_desc);
       last_rendered_pool_earnings_ = snap.pool;
@@ -775,9 +798,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     }
     case ScreenType::kBitaxeHashrate: {
       RenderBitaxeHashrateScreen(
-          panels, fb, fonts, snap.bitaxe.hostname,
-          snap.bitaxe.hashrate_ghs, force_full,
-          force_repaint ? "" : last_rendered_bitaxe_hashrate_,
+          panels, fb, fonts, snap.bitaxe.hostname, snap.bitaxe.hashrate_ghs,
+          force_full, force_repaint ? "" : last_rendered_bitaxe_hashrate_,
           rp.vertical_desc);
       last_rendered_bitaxe_hashrate_ =
           (snap.bitaxe.hostname.empty() || !snap.bitaxe.hashrate_ghs)
@@ -787,9 +809,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     }
     case ScreenType::kBitaxeBestDiff: {
       RenderBitaxeBestDiffScreen(
-          panels, fb, fonts, snap.bitaxe.hostname,
-          snap.bitaxe.best_diff, force_full,
-          force_repaint ? "" : last_rendered_bitaxe_best_diff_,
+          panels, fb, fonts, snap.bitaxe.hostname, snap.bitaxe.best_diff,
+          force_full, force_repaint ? "" : last_rendered_bitaxe_best_diff_,
           rp.vertical_desc);
       last_rendered_bitaxe_best_diff_ =
           (snap.bitaxe.hostname.empty() || !snap.bitaxe.best_diff ||
@@ -819,8 +840,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     }
     case ScreenType::kNostrZap:
       RenderNostrZapScreen(panels, fb, fonts, snap.latest_zap,
-                           rp.use_sats_symbol, sats_variant_,
-                           force_full, rp.vertical_desc);
+                           rp.use_sats_symbol, sats_variant_, force_full,
+                           rp.vertical_desc);
       break;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit at function entry
@@ -862,21 +883,21 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   pti.pool.daily_sats = snap.pool.daily_sats;
   // Decoration flags: read per-render (cheap) so a PATCH lands live.
   pti.halving_as_blocks = rp.use_blk_countdown;
-  pti.supply_big_chars  = rp.mcap_big_char;
-  pti.supply_percent    = rp.supply_percent;
-  pti.mcap_big_chars    = rp.mcap_big_char;
-  pti.use_sats_symbol   = rp.use_sats_symbol;
-  pti.use_mscw_time     = rp.use_mscw_time;
-  pti.suffix_price      = rp.suffix_price;
-  pti.mow_mode          = rp.mow_mode;
-  pti.share_dot         = rp.suffix_share_dot;
-  pti.hide_lead_zero    = rp.hide_lead_zero;
+  pti.supply_big_chars = rp.mcap_big_char;
+  pti.supply_percent = rp.supply_percent;
+  pti.mcap_big_chars = rp.mcap_big_char;
+  pti.use_sats_symbol = rp.use_sats_symbol;
+  pti.use_mscw_time = rp.use_mscw_time;
+  pti.suffix_price = rp.suffix_price;
+  pti.mow_mode = rp.mow_mode;
+  pti.share_dot = rp.suffix_share_dot;
+  pti.hide_lead_zero = rp.hide_lead_zero;
   // Bitaxe mirror fields. pti copies the raw snapshot values so the
   // panel_texts builder formats identically to what the EPD renderer
   // just painted; both share FormatBitaxeHashrate.
-  pti.bitaxe_hostname    = snap.bitaxe.hostname;
+  pti.bitaxe_hostname = snap.bitaxe.hostname;
   pti.bitaxe_hashrate_ghs = snap.bitaxe.hashrate_ghs;
-  pti.bitaxe_best_diff   = snap.bitaxe.best_diff;
+  pti.bitaxe_best_diff = snap.bitaxe.best_diff;
   if (kind == ScreenType::kClock) {
     // Match the renderer's clock-time source: localtime at render.
     // Guards against the unsynced-NTP fallback are done inside
@@ -885,7 +906,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     std::time(&t);
     pti.clock_valid = (t >= kMinPlausibleEpoch);
     if (pti.clock_valid) {
-      struct tm tm_now {};
+      struct tm tm_now{};
       localtime_r(&t, &tm_now);
       pti.hour = tm_now.tm_hour;
       pti.minute = tm_now.tm_min;
@@ -948,8 +969,17 @@ template <size_t N>
 void ScreenManager::RenderDebug(
     std::array<std::unique_ptr<EpdPanel>, N>& panels,
     uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
-    const DebugScreenInfo& info) {
-  RenderDebugScreen(panels, fb, fonts, info);
+    const DebugScreenInfo& info, int64_t now_ms, bool force_full) {
+  // Consult the shared RefreshPolicy so the overlay's auto-refresh
+  // honours the user's fullRefreshMin pref: a full clear lands at most
+  // once per fullRefreshMin minutes, with the 10 s ticks in between
+  // running as silent partial refreshes.
+  const RenderPrefs rp = ReadRenderPrefs();
+  const bool full_refresh = RefreshPolicy::Decide(
+      refresh_state_, now_ms,
+      /*is_screen_change=*/force_full,
+      /*is_force_full=*/force_full, rp.refr_scrn_change, rp.full_refresh_min);
+  RenderDebugScreen(panels, fb, fonts, info, full_refresh);
   // Invalidate per-screen diff state so the slot we return to does a
   // full refresh rather than trying to paint a partial against the
   // debug layout.
@@ -975,9 +1005,9 @@ void ScreenManager::RenderDebug(
 
 template void ScreenManager::RenderDebug<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const DebugScreenInfo&);
+    const AppFonts&, const DebugScreenInfo&, int64_t, bool);
 template void ScreenManager::RenderDebug<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const DebugScreenInfo&);
+    const AppFonts&, const DebugScreenInfo&, int64_t, bool);
 
 }  // namespace btclock

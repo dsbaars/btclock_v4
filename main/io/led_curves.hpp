@@ -19,8 +19,8 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace btclock {
@@ -36,8 +36,8 @@ inline uint8_t Ramp(uint8_t peak, uint32_t tick, uint32_t total_ticks) {
   if (tick >= total_ticks - 1) return peak;
   // Integer scale — avoids FPU and matches the 8-bit NeoPixel colour
   // format naturally.
-  return static_cast<uint8_t>(
-      (static_cast<uint32_t>(peak) * tick) / (total_ticks - 1));
+  return static_cast<uint8_t>((static_cast<uint32_t>(peak) * tick) /
+                              (total_ticks - 1));
 }
 
 // Sine-shaped breath curve. Returns an intensity in [0, peak] following
@@ -66,8 +66,8 @@ size_t FormatHexColor(uint32_t rgb, char* out);
 // setBrightness scaling (linear, not gamma-corrected). Wraps the common
 // "multiply-divide-by-255" pattern so handlers don't repeat it.
 inline uint8_t Scale(uint8_t channel, uint8_t brightness) {
-  return static_cast<uint8_t>(
-      (static_cast<uint16_t>(channel) * brightness) / 255);
+  return static_cast<uint8_t>((static_cast<uint16_t>(channel) * brightness) /
+                              255);
 }
 
 }  // namespace led_curves

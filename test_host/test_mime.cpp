@@ -2,7 +2,6 @@
 // WebUI handler in components/webserver. Pure logic — no ESP-IDF.
 
 #include "doctest.h"
-
 #include "mime.hpp"
 
 using btclock::MimeTypeForPath;

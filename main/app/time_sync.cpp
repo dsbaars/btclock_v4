@@ -11,8 +11,7 @@ namespace {
 constexpr const char* kTag = "sntp";
 
 void OnSync(struct timeval* tv) {
-  ESP_LOGI(kTag, "synced: %lld.%03lds",
-           static_cast<long long>(tv->tv_sec),
+  ESP_LOGI(kTag, "synced: %lld.%03lds", static_cast<long long>(tv->tv_sec),
            static_cast<long>(tv->tv_usec / 1000));
 }
 }  // namespace

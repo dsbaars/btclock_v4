@@ -34,7 +34,6 @@ class ScreenManager;
     ScreenManager& sm,
     std::array<std::unique_ptr<EpdPanel>, btclock::board::kNumPanels>& panels,
     uint8_t (&fb_storage)[btclock::board::kNumPanels][16 * 296],
-    const AppFonts& fonts,
-    DataHub* hub);
+    const AppFonts& fonts, DataHub* hub);
 
 }  // namespace btclock

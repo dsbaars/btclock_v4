@@ -23,8 +23,8 @@
 // builds — it carries LandscapeFb/Rotation + the paint-primitive decls
 // that every renderer uses.
 #ifdef BTCLOCK_WASM_BUILD
-#include "wasm_panel.hpp"
 #include "font.hpp"
+#include "wasm_panel.hpp"
 #else
 #include "epd_ssd1680.hpp"
 #include "font.hpp"
@@ -271,11 +271,9 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
 
 template <std::size_t N>
 void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                     uint8_t (&fb_storage)[N][16 * 296],
-                     const AppFonts& fonts,
+                     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
                      const std::array<PaintSlot, N>& slots,
-                     const std::array<bool, N>& update,
-                     bool full_refresh,
+                     const std::array<bool, N>& update, bool full_refresh,
                      bool vertical_desc = false) {
   const RefreshKind kind =
       full_refresh ? RefreshKind::kFull : RefreshKind::kPartial;

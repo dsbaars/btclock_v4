@@ -35,8 +35,7 @@ std::string FormatBestDiff(double raw) {
       std::string out = buf;
       const auto dot = out.find('.');
       if (dot != std::string::npos && dot + 2 < out.size() &&
-          out[dot + 1] == '0' &&
-          (out[dot + 2] == s.suffix)) {
+          out[dot + 1] == '0' && (out[dot + 2] == s.suffix)) {
         out.erase(dot, 2);
       }
       return out;

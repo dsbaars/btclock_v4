@@ -67,8 +67,7 @@ void Uc8179Base::WaitIdle(uint32_t timeout_ms) {
   // opposite of SSD1680. Mirror GxEPD2's _waitWhileBusy(false) for
   // GDEY075T7: wait for HIGH.
   vTaskDelay(pdMS_TO_TICKS(1));
-  const TickType_t deadline =
-      xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   const TickType_t step = pdMS_TO_TICKS(BusyPollMs());
   while (!cfg_.busy.Read()) {
     if (xTaskGetTickCount() >= deadline) {
@@ -80,7 +79,9 @@ void Uc8179Base::WaitIdle(uint32_t timeout_ms) {
   }
 }
 
-bool Uc8179Base::IsIdle() const { return cfg_.busy.Read(); }
+bool Uc8179Base::IsIdle() const {
+  return cfg_.busy.Read();
+}
 
 esp_err_t Uc8179Base::PowerOn() {
   if (power_is_on_) return ESP_OK;
@@ -110,13 +111,13 @@ esp_err_t Uc8179Base::Init() {
   // Panel setting — KW: 0x3F, KWR: 0x2F, BWROTP: 0x0F, BWOTP: 0x1F.
   // GxEPD2 uses 0x1F (BWOTP).
   const uint8_t panel = 0x1F;
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPanelSetting, &panel, 1),
-                      kTag, "panel");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPanelSetting, &panel, 1), kTag,
+                      "panel");
   // Power setting — same shape as the GxEPD2 reference (internal,
   // VGH/VGL = ±20 V, VDH = 15 V, VDL = -15 V, VDHR = 4.2 V).
   const uint8_t power[5] = {0x07, 0x07, 0x3F, 0x3F, 0x09};
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPowerSetting, power, 5),
-                      kTag, "power");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPowerSetting, power, 5), kTag,
+                      "power");
   // Booster soft-start — enhanced display drive (0x06 command).
   const uint8_t booster[4] = {0x17, 0x17, 0x28, 0x17};
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdBoosterSoftStart, booster, 4),
@@ -124,10 +125,9 @@ esp_err_t Uc8179Base::Init() {
   // Resolution: source = WIDTH, gate = HEIGHT. Pack big-endian per IC.
   const int w = Width();
   const int h = Height();
-  const uint8_t res[4] = {static_cast<uint8_t>(w >> 8),
-                          static_cast<uint8_t>(w & 0xFF),
-                          static_cast<uint8_t>(h >> 8),
-                          static_cast<uint8_t>(h & 0xFF)};
+  const uint8_t res[4] = {
+      static_cast<uint8_t>(w >> 8), static_cast<uint8_t>(w & 0xFF),
+      static_cast<uint8_t>(h >> 8), static_cast<uint8_t>(h & 0xFF)};
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdResolution, res, 4), kTag,
                       "res");
   // Dual-SPI disabled.
@@ -136,8 +136,8 @@ esp_err_t Uc8179Base::Init() {
                       "dspi");
   // VCOM and data interval.
   const uint8_t vcom[2] = {0x29, 0x07};
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdVcomDataInterval, vcom, 2),
-                      kTag, "vcom");
+  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdVcomDataInterval, vcom, 2), kTag,
+                      "vcom");
   // TCON — S2G G2S, 12 (default).
   const uint8_t tcon = 0x22;
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdTconSetting, &tcon, 1), kTag,
@@ -152,7 +152,7 @@ esp_err_t Uc8179Base::Init() {
 }
 
 esp_err_t Uc8179Base::DrawFramebufferStart(const uint8_t* fb,
-                                            RefreshKind kind) {
+                                           RefreshKind kind) {
   // UC8179 refresh: PowerOn, write current (0x13), refresh (0x12).
   // For full refresh GxEPD2 also writes the previous-image RAM
   // (0x10) so the LUT diffs against a known baseline; partial skips

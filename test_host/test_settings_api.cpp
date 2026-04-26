@@ -3,8 +3,6 @@
 // ApplyPatch against an in-memory PrefsReader/Writer fake so the
 // schema round-trip is covered without ESP-IDF.
 
-#include "doctest.h"
-
 #include <algorithm>
 #include <cstring>
 #include <map>
@@ -12,6 +10,7 @@
 #include <vector>
 
 #include "cJSON.h"
+#include "doctest.h"
 #include "settings/api.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
@@ -87,9 +86,10 @@ btclock::settings::DeviceContext DefaultCtx() {
   ctx.available_pools = {"ocean", "braiins"};
   ctx.available_currencies = {"USD", "EUR", "GBP", "JPY", "AUD", "CAD"};
   ctx.screens = {
-      {0, "Block Height"}, {3, "Time"}, {4, "Halving countdown"},
-      {6, "Block Fee Rate"}, {10, "Sats per dollar"}, {20, "Ticker"},
-      {30, "Market Cap"}, {40, "Bitcoin Supply"},
+      {0, "Block Height"},      {3, "Time"},
+      {4, "Halving countdown"}, {6, "Block Fee Rate"},
+      {10, "Sats per dollar"},  {20, "Ticker"},
+      {30, "Market Cap"},       {40, "Bitcoin Supply"},
   };
   return ctx;
 }
@@ -129,8 +129,7 @@ TEST_CASE("GET /api/settings omits lastBuildTime when unknown") {
 
 TEST_CASE("GET /api/settings emits device-context fields") {
   FakePrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
 
   cJSON* hostname = cJSON_GetObjectItemCaseSensitive(root, "hostname");
@@ -154,8 +153,7 @@ TEST_CASE("GET /api/settings emits device-context fields") {
 
 TEST_CASE("GET /api/settings surfaces every schema field") {
   FakePrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
 
   // Every field in the schema table must appear in the response. The
@@ -167,6 +165,13 @@ TEST_CASE("GET /api/settings surfaces every schema field") {
     CAPTURE(key);
     cJSON* item = cJSON_GetObjectItemCaseSensitive(root, key.c_str());
     REQUIRE(item != nullptr);
+    // actCurrencies stores a CSV in NVS but BuildGetResponse emits the
+    // filtered array shape (catalogue-validated) on the wire — schema
+    // kind is kString but the JSON value is an array.
+    if (key == "actCurrencies") {
+      CHECK(cJSON_IsArray(item));
+      continue;
+    }
     switch (f.kind) {
       case btclock::settings::FieldKind::kString:
         CHECK(cJSON_IsString(item));
@@ -189,8 +194,7 @@ TEST_CASE("GET /api/settings redacts httpAuthPass / otaPass") {
   // Even when stored, the raw values must NOT show up in the response.
   prefs.str_["httpAuthPass"] = "topsecret";
   prefs.str_["otaPass"] = "another";
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
 
   // They *are* emitted as raw strings today (matching old firmware's
@@ -208,8 +212,7 @@ TEST_CASE("GET /api/settings redacts httpAuthPass / otaPass") {
 
 TEST_CASE("GET /api/settings emits screens with id/name/enabled/order") {
   FakePrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
   cJSON* screens = cJSON_GetObjectItemCaseSensitive(root, "screens");
   REQUIRE(cJSON_IsArray(screens));
@@ -232,13 +235,12 @@ namespace {
 btclock::settings::DeviceContext CtxWithEarnings() {
   btclock::settings::DeviceContext ctx = DefaultCtx();
   ctx.screens = {
-      {0, "Block Height"},         {3, "Time"},
-      {4, "Halving countdown"},    {6, "Block Fee Rate"},
-      {10, "Sats per dollar"},     {20, "Ticker"},
-      {30, "Market Cap"},          {40, "Bitcoin Supply"},
-      {70, "Mining Pool Hashrate"},
-      {71, "Mining Pool Earnings"},
-      {80, "Bitaxe Hashrate"},     {81, "Bitaxe Best Difficulty"},
+      {0, "Block Height"},          {3, "Time"},
+      {4, "Halving countdown"},     {6, "Block Fee Rate"},
+      {10, "Sats per dollar"},      {20, "Ticker"},
+      {30, "Market Cap"},           {40, "Bitcoin Supply"},
+      {70, "Mining Pool Hashrate"}, {71, "Mining Pool Earnings"},
+      {80, "Bitaxe Hashrate"},      {81, "Bitaxe Best Difficulty"},
   };
   return ctx;
 }
@@ -262,8 +264,7 @@ TEST_CASE("GET /api/settings keeps earnings screen (id 71) by default") {
   FakePrefs prefs;
   // No hidden_screen_ids set — caller decided every catalogue entry is
   // available. 71 must appear.
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, CtxWithEarnings());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, CtxWithEarnings());
   REQUIRE(root != nullptr);
   const auto ids = EmittedScreenIds(root);
   CHECK(std::find(ids.begin(), ids.end(), 71) != ids.end());
@@ -365,7 +366,9 @@ TEST_CASE("GET drops bitaxe screens (80,81) when bitaxeEnabled off") {
   cJSON_Delete(root);
 }
 
-TEST_CASE("GET drops 70/80/81 when both features off (71 stays dropped via mining gate)") {
+TEST_CASE(
+    "GET drops 70/80/81 when both features off (71 stays dropped via mining "
+    "gate)") {
   // Bug repro fixture: stock Rev A boot has both features off and still
   // emits 70, 80, 81 as enabled=false entries. After the fix all three
   // must be gone.
@@ -385,7 +388,8 @@ TEST_CASE("GET drops 70/80/81 when both features off (71 stays dropped via minin
   cJSON_Delete(root);
 }
 
-TEST_CASE("GET keeps id 70 + drops 71 on solo pool (mining on, earnings hidden)") {
+TEST_CASE(
+    "GET keeps id 70 + drops 71 on solo pool (mining on, earnings hidden)") {
   // Combined path: parent feature is on but the active pool doesn't
   // support per-user earnings, so the legacy `hidden_screen_ids` gate
   // alone drops 71 while 70 stays visible.
@@ -402,7 +406,8 @@ TEST_CASE("GET keeps id 70 + drops 71 on solo pool (mining on, earnings hidden)"
   cJSON_Delete(root);
 }
 
-TEST_CASE("GET all four (70,71,80,81) present when both flags on + non-solo pool") {
+TEST_CASE(
+    "GET all four (70,71,80,81) present when both flags on + non-solo pool") {
   FakePrefs prefs;
   btclock::settings::DeviceContext ctx = CtxWithEarnings();
   ctx.mining_pool_stats_enabled = true;
@@ -480,8 +485,7 @@ TEST_CASE("GET /api/settings emits dnd nested object") {
   prefs.u32_["dndEndMin"] = 45;
   prefs.b_["dndEnabled"] = true;
 
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
   cJSON* dnd = cJSON_GetObjectItemCaseSensitive(root, "dnd");
   REQUIRE(cJSON_IsObject(dnd));
@@ -497,7 +501,8 @@ TEST_CASE("GET /api/settings emits dnd nested object") {
 
 TEST_CASE("PATCH malformed JSON returns BadRequest with no NVS writes") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch("{not_json", DefaultCtx(), prefs, prefs);
+  auto res =
+      btclock::settings::ApplyPatch("{not_json", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(res.error == "json");
   CHECK(prefs.str_.empty());
@@ -507,7 +512,8 @@ TEST_CASE("PATCH malformed JSON returns BadRequest with no NVS writes") {
 
 TEST_CASE("PATCH non-object body rejected") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch("[1,2,3]", DefaultCtx(), prefs, prefs);
+  auto res =
+      btclock::settings::ApplyPatch("[1,2,3]", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(res.error == "not_object");
 }
@@ -516,8 +522,8 @@ TEST_CASE("PATCH unknown field silently ignored") {
   FakePrefs prefs;
   // Matches old-firmware behaviour: strSettings/uintSettings/boolSettings
   // only act on keys they recognise; an unknown key is a no-op.
-  auto res = btclock::settings::ApplyPatch(
-      "{\"notAField\":\"hello\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"notAField\":\"hello\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(res.touched_keys.empty());
   CHECK(!res.reboot_required);
@@ -526,8 +532,8 @@ TEST_CASE("PATCH unknown field silently ignored") {
 TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"mcapBigChar\":true,\"stealFocus\":false}",
-      DefaultCtx(), prefs, prefs);
+      "{\"mcapBigChar\":true,\"stealFocus\":false}", DefaultCtx(), prefs,
+      prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(!res.reboot_required);
   CHECK(prefs.b_["mcapBigChar"] == true);
@@ -537,15 +543,15 @@ TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
 TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
   FakePrefs prefs;
   // In-range value accepted.
-  auto ok = btclock::settings::ApplyPatch(
-      "{\"ledBrightness\":128}", DefaultCtx(), prefs, prefs);
+  auto ok = btclock::settings::ApplyPatch("{\"ledBrightness\":128}",
+                                          DefaultCtx(), prefs, prefs);
   CHECK(ok.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.u32_["ledBrightness"] == 128u);
 
   // Out-of-range value rejected (ledBrightness bounded 0..255).
   FakePrefs prefs2;
-  auto bad = btclock::settings::ApplyPatch(
-      "{\"ledBrightness\":9999}", DefaultCtx(), prefs2, prefs2);
+  auto bad = btclock::settings::ApplyPatch("{\"ledBrightness\":9999}",
+                                           DefaultCtx(), prefs2, prefs2);
   CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(bad.error == "range:ledBrightness");
   CHECK(prefs2.u32_.count("ledBrightness") == 0);
@@ -553,9 +559,8 @@ TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
 
 TEST_CASE("PATCH boot-only field triggers rebootRequired") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"hostnamePrefix\":\"newhost\"}",
-      DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"hostnamePrefix\":\"newhost\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(res.reboot_required);
   CHECK(prefs.str_["hostnamePrefix"] == "newhost");
@@ -564,23 +569,24 @@ TEST_CASE("PATCH boot-only field triggers rebootRequired") {
 TEST_CASE("PATCH mixed runtime + boot-only still sets rebootRequired") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"mcapBigChar\":true,\"mdnsEnabled\":false}",
-      DefaultCtx(), prefs, prefs);
+      "{\"mcapBigChar\":true,\"mdnsEnabled\":false}", DefaultCtx(), prefs,
+      prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   // mdnsEnabled is boot-only (starts mDNS responder at boot).
   CHECK(res.reboot_required);
 }
 
-TEST_CASE("Boot-only detection: every flagged key is what old firmware reboots on") {
+TEST_CASE(
+    "Boot-only detection: every flagged key is what old firmware reboots on") {
   // Paranoia guard against drift: the beads issue's acceptance
   // criterion is that WiFi/provisioning-adjacent settings trigger
   // reboot. Check the ones an end-user would expect. `invertedColor`
   // is intentionally absent — bd btclock_v4-5wj flipped it to runtime
   // now that EpdSetGlobalInverted lets the driver swap polarity live.
-  for (const char* k : {"hostnamePrefix", "mdnsEnabled", "otaEnabled",
-                        "httpAuthEnabled", "httpAuthUser", "httpAuthPass",
-                        "otaPass", "fontName",
-                        "mempoolInstance", "dataSource"}) {
+  for (const char* k :
+       {"hostnamePrefix", "mdnsEnabled", "otaEnabled", "httpAuthEnabled",
+        "httpAuthUser", "httpAuthPass", "otaPass", "fontName",
+        "mempoolInstance", "dataSource"}) {
     CAPTURE(k);
     const auto* spec = btclock::settings::FindField(k);
     REQUIRE(spec != nullptr);
@@ -590,8 +596,8 @@ TEST_CASE("Boot-only detection: every flagged key is what old firmware reboots o
 
 TEST_CASE("PATCH timePerScreen converts minutes to seconds") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"timePerScreen\":5}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"timePerScreen\":5}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.u32_["timerSeconds"] == 300u);
 }
@@ -599,8 +605,7 @@ TEST_CASE("PATCH timePerScreen converts minutes to seconds") {
 TEST_CASE("PATCH actCurrencies filters against available list") {
   FakePrefs prefs;
   auto ok = btclock::settings::ApplyPatch(
-      "{\"actCurrencies\":[\"USD\",\"JPY\"]}",
-      DefaultCtx(), prefs, prefs);
+      "{\"actCurrencies\":[\"USD\",\"JPY\"]}", DefaultCtx(), prefs, prefs);
   CHECK(ok.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["actCurrencies"] == "USD,JPY");
 
@@ -609,17 +614,16 @@ TEST_CASE("PATCH actCurrencies filters against available list") {
   // rest of the PATCH. The surviving codes get persisted.
   FakePrefs prefs2;
   auto partial = btclock::settings::ApplyPatch(
-      "{\"actCurrencies\":[\"USD\",\"XYZ\",\"EUR\"]}",
-      DefaultCtx(), prefs2, prefs2);
+      "{\"actCurrencies\":[\"USD\",\"XYZ\",\"EUR\"]}", DefaultCtx(), prefs2,
+      prefs2);
   CHECK(partial.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs2.str_["actCurrencies"] == "USD,EUR");
 
   // Non-string entries still hard-fail — that's a malformed client,
   // not a catalogue-drift case.
   FakePrefs prefs3;
-  auto bad = btclock::settings::ApplyPatch(
-      "{\"actCurrencies\":[\"USD\",42]}",
-      DefaultCtx(), prefs3, prefs3);
+  auto bad = btclock::settings::ApplyPatch("{\"actCurrencies\":[\"USD\",42]}",
+                                           DefaultCtx(), prefs3, prefs3);
   CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(bad.error == "currency:not_string");
 }
@@ -631,8 +635,7 @@ TEST_CASE("GET actCurrencies filters legacy NVS codes not in catalogue") {
   // price websocket can no longer serve.
   FakePrefs prefs;
   prefs.str_["actCurrencies"] = "USD,BRL,EUR,CNY,JPY,AED";
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
 
   cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "actCurrencies");
@@ -730,8 +733,8 @@ TEST_CASE("PATCH dnd hour out of range rejected") {
 
 TEST_CASE("PATCH invertedColor also writes fgColor/bgColor") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"invertedColor\":true}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"invertedColor\":true}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["invertedColor"] == true);
   CHECK(prefs.u32_["fgColor"] == 0xFFFFu);
@@ -745,8 +748,8 @@ TEST_CASE("PATCH invertedColor also writes fgColor/bgColor") {
 TEST_CASE("PATCH txPower 80 resets to default") {
   FakePrefs prefs;
   prefs.i32_["txPower"] = 44;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"txPower\":80}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"txPower\":80}", DefaultCtx(),
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(!prefs.i32_.count("txPower"));
 }
@@ -770,7 +773,11 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // foundrySubacct in favour of overloading the shared miningPoolUser
   // slot (with per-pool secret-suppression) plus the new generic
   // miningPoolWorker secondary slot. Field count 69 -> 67.
-  CHECK(btclock::settings::kFields.size() == 67);
+  // 2026-04-26 schema-default consolidation: actCurrencies + 4 DND time
+  // fields promoted from BuildGetResponse-only special-cases into the
+  // schema so the boot-read sites can derive their defaults from the
+  // single source of truth. Field count 67 -> 72.
+  CHECK(btclock::settings::kFields.size() == 72);
   // Boot-only count: hostnamePrefix, mdnsEnabled, otaEnabled,
   // httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, fontName,
   // mempoolInstance, mempoolSecure, dataSource, ceEndpoint,
@@ -792,8 +799,7 @@ TEST_CASE("Round-trip: GET field count matches what PATCH can write") {
   // the schema table in sync with the GET emitter so no field drifts
   // into read-only by accident.
   FakePrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
   // The GET response should contain strictly more keys than the
   // schema table (device-fact fields like hostname, hwRev, plus
@@ -808,8 +814,8 @@ TEST_CASE("Round-trip: GET field count matches what PATCH can write") {
 
 TEST_CASE("PATCH fontName in catalog is accepted and reboots") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"fontName\":\"oswald\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"fontName\":\"oswald\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["fontName"] == "oswald");
   CHECK(res.reboot_required);  // fontName is boot-only (EPD driver init)
@@ -817,8 +823,8 @@ TEST_CASE("PATCH fontName in catalog is accepted and reboots") {
 
 TEST_CASE("PATCH fontName outside catalog rejected as bad_field") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"fontName\":\"comic_sans\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"fontName\":\"comic_sans\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "fontName:unknown");
   CHECK(prefs.str_.count("fontName") == 0);
@@ -826,8 +832,8 @@ TEST_CASE("PATCH fontName outside catalog rejected as bad_field") {
 
 TEST_CASE("PATCH fontName wrong type rejected as bad_type") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"fontName\":42}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"fontName\":42}", DefaultCtx(),
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "fontName:bad_type");
 }
@@ -836,8 +842,8 @@ TEST_CASE("PATCH fontName wrong type rejected as bad_type") {
 
 TEST_CASE("PATCH miningPoolName in catalog accepted") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"miningPoolName\":\"ocean\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"miningPoolName\":\"ocean\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["miningPoolName"] == "ocean");
   // Not boot-only — pool selector picks up the change on next fetch cycle.
@@ -846,8 +852,8 @@ TEST_CASE("PATCH miningPoolName in catalog accepted") {
 
 TEST_CASE("PATCH miningPoolName unknown pool rejected") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"miningPoolName\":\"nicehash\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"miningPoolName\":\"nicehash\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "miningPoolName:unknown");
 }
@@ -878,11 +884,12 @@ TEST_CASE("PATCH mining-pool bundle writes user + toggles") {
 TEST_CASE("PATCH nostrPubKey 64-char hex accepted, triggers reboot") {
   FakePrefs prefs;
   // 64 lowercase hex characters.
-  const std::string pk = "b5127a08cf33616274800a4387881a9f"
-                         "98e04b9c37116e92de5250498635c422";
+  const std::string pk =
+      "b5127a08cf33616274800a4387881a9f"
+      "98e04b9c37116e92de5250498635c422";
   const std::string body = "{\"nostrPubKey\":\"" + pk + "\"}";
-  auto res = btclock::settings::ApplyPatch(
-      body.c_str(), DefaultCtx(), prefs, prefs);
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrPubKey"] == pk);
   CHECK(res.reboot_required);  // nostrPubKey is boot-only
@@ -890,8 +897,8 @@ TEST_CASE("PATCH nostrPubKey 64-char hex accepted, triggers reboot") {
 
 TEST_CASE("PATCH nostrPubKey wrong length rejected") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"nostrPubKey\":\"abcdef\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"nostrPubKey\":\"abcdef\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "nostrPubKey:bad_length");
 }
@@ -901,8 +908,8 @@ TEST_CASE("PATCH nostrPubKey non-hex rejected") {
   // 64 chars but a 'z' in there.
   const std::string bad = std::string(63, 'a') + "z";
   const std::string body = "{\"nostrPubKey\":\"" + bad + "\"}";
-  auto res = btclock::settings::ApplyPatch(
-      body.c_str(), DefaultCtx(), prefs, prefs);
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "nostrPubKey:bad_hex");
 }
@@ -910,8 +917,8 @@ TEST_CASE("PATCH nostrPubKey non-hex rejected") {
 TEST_CASE("PATCH nostrPubKey empty string clears the field") {
   FakePrefs prefs;
   prefs.str_["nostrPubKey"] = "stale";
-  auto res = btclock::settings::ApplyPatch(
-      "{\"nostrPubKey\":\"\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"nostrPubKey\":\"\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrPubKey"].empty());
 }
@@ -945,8 +952,8 @@ TEST_CASE("PATCH nostrRelay accepts ws:// scheme") {
 TEST_CASE("PATCH nostrRelay empty string clears the field") {
   FakePrefs prefs;
   prefs.str_["nostrRelay"] = "wss://stale.example.com";
-  auto res = btclock::settings::ApplyPatch(
-      "{\"nostrRelay\":\"\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"nostrRelay\":\"\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrRelay"].empty());
 }
@@ -957,9 +964,10 @@ TEST_CASE("PATCH nostrRelay + nostrZapNotify + nostrZapPubkey") {
   const std::string body =
       "{\"nostrRelay\":\"wss://relay.example.com\","
       "\"nostrZapNotify\":true,"
-      "\"nostrZapPubkey\":\"" + pk + "\"}";
-  auto res = btclock::settings::ApplyPatch(
-      body.c_str(), DefaultCtx(), prefs, prefs);
+      "\"nostrZapPubkey\":\"" +
+      pk + "\"}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrRelay"] == "wss://relay.example.com");
   CHECK(prefs.b_["nostrZapNotify"] == true);
@@ -974,8 +982,8 @@ TEST_CASE("PATCH nostrRelay + nostrZapNotify + nostrZapPubkey") {
 
 TEST_CASE("PATCH verticalDesc round-trips without reboot") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"verticalDesc\":true}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"verticalDesc\":true}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["verticalDesc"] == true);
   CHECK(!res.reboot_required);
@@ -984,8 +992,8 @@ TEST_CASE("PATCH verticalDesc round-trips without reboot") {
 TEST_CASE("PATCH flFlashOnZap + ledFlashOnZap runtime bools") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"flFlashOnZap\":true,\"ledFlashOnZap\":false}",
-      DefaultCtx(), prefs, prefs);
+      "{\"flFlashOnZap\":true,\"ledFlashOnZap\":false}", DefaultCtx(), prefs,
+      prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["flFlashOnZap"] == true);
   CHECK(prefs.b_["ledFlashOnZap"] == false);
@@ -994,8 +1002,8 @@ TEST_CASE("PATCH flFlashOnZap + ledFlashOnZap runtime bools") {
 
 TEST_CASE("PATCH verticalDesc wrong type rejected") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"verticalDesc\":\"yes\"}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"verticalDesc\":\"yes\"}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadField);
   CHECK(res.error == "verticalDesc:bad_type");
 }
@@ -1004,8 +1012,8 @@ TEST_CASE("PATCH verticalDesc wrong type rejected") {
 
 TEST_CASE("PATCH wpTimeout accepted, triggers reboot") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"wpTimeout\":120}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"wpTimeout\":120}", DefaultCtx(),
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.u32_["wpTimeout"] == 120u);
   CHECK(res.reboot_required);
@@ -1013,8 +1021,8 @@ TEST_CASE("PATCH wpTimeout accepted, triggers reboot") {
 
 TEST_CASE("PATCH wpTimeout too large rejected") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"wpTimeout\":99999}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"wpTimeout\":99999}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(res.error == "range:wpTimeout");
 }
@@ -1028,14 +1036,14 @@ TEST_CASE("PATCH tzOffset silently ignored, rest of body still lands") {
   auto res = btclock::settings::ApplyPatch(
       "{\"tzOffset\":120,\"mowMode\":true}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(!prefs.i32_.count("gmtOffset"));   // never written
-  CHECK(prefs.b_.at("mowMode") == true);   // sibling key still landed
+  CHECK(!prefs.i32_.count("gmtOffset"));  // never written
+  CHECK(prefs.b_.at("mowMode") == true);  // sibling key still landed
 }
 
 TEST_CASE("PATCH gmtOffset silently ignored (no-op, no error)") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"gmtOffset\":7200}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"gmtOffset\":7200}", DefaultCtx(),
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(!prefs.i32_.count("gmtOffset"));
 }
@@ -1044,15 +1052,15 @@ TEST_CASE("PATCH gmtOffset silently ignored (no-op, no error)") {
 
 TEST_CASE("PATCH dataSource enum range") {
   FakePrefs prefs;
-  auto ok = btclock::settings::ApplyPatch(
-      "{\"dataSource\":2}", DefaultCtx(), prefs, prefs);
+  auto ok = btclock::settings::ApplyPatch("{\"dataSource\":2}", DefaultCtx(),
+                                          prefs, prefs);
   CHECK(ok.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.u8_["dataSource"] == 2u);
   CHECK(ok.reboot_required);  // dataSource is boot-only
 
   FakePrefs prefs2;
-  auto bad = btclock::settings::ApplyPatch(
-      "{\"dataSource\":7}", DefaultCtx(), prefs2, prefs2);
+  auto bad = btclock::settings::ApplyPatch("{\"dataSource\":7}", DefaultCtx(),
+                                           prefs2, prefs2);
   CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
   CHECK(bad.error == "range:dataSource");
 }
@@ -1065,8 +1073,8 @@ TEST_CASE("PATCH fontName with empty catalog accepts anything") {
   // built in control_server passes the renderer-bundled font list.
   FakePrefs prefs;
   btclock::settings::DeviceContext ctx;  // empty catalog
-  auto res = btclock::settings::ApplyPatch(
-      "{\"fontName\":\"whatever\"}", ctx, prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"fontName\":\"whatever\"}", ctx,
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["fontName"] == "whatever");
 }
@@ -1075,11 +1083,10 @@ TEST_CASE("PATCH fontName with empty catalog accepts anything") {
 
 TEST_CASE("GET emits verticalDesc / flFlashOnZap / ledFlashOnZap / wpTimeout") {
   FakePrefs prefs;
-  cJSON* root =
-      btclock::settings::BuildGetResponse(prefs, DefaultCtx());
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root != nullptr);
-  for (const char* k : {"verticalDesc", "flFlashOnZap", "ledFlashOnZap",
-                        "wpTimeout"}) {
+  for (const char* k :
+       {"verticalDesc", "flFlashOnZap", "ledFlashOnZap", "wpTimeout"}) {
     CAPTURE(k);
     cJSON* item = cJSON_GetObjectItemCaseSensitive(root, k);
     REQUIRE(item != nullptr);
@@ -1096,8 +1103,8 @@ TEST_CASE("GET emits verticalDesc / flFlashOnZap / ledFlashOnZap / wpTimeout") {
 TEST_CASE("PATCH blockFlashColor persists uint RGB and reports touched key") {
   FakePrefs prefs;
   // 0xFF8000 == 16'744'448 decimal — the example in the bug brief.
-  auto res = btclock::settings::ApplyPatch(
-      "{\"blockFlashColor\":16744448}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"blockFlashColor\":16744448}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(!res.reboot_required);  // runtime-editable
   // Persisted under the documented key — on-device the init hook
@@ -1108,19 +1115,18 @@ TEST_CASE("PATCH blockFlashColor persists uint RGB and reports touched key") {
   // whether to fire on_block_flash_color_changed -> SetBlockFlashColor.
   const auto& keys = res.touched_keys;
   CHECK(std::find(keys.begin(), keys.end(),
-                  std::string(btclock::prefs::kBlockFlashColor)) !=
-        keys.end());
+                  std::string(btclock::prefs::kBlockFlashColor)) != keys.end());
 }
 
 TEST_CASE("PATCH blockFlashColor clamps to the 24-bit schema bound") {
   FakePrefs prefs;
   // 0x1FF_FFFF exceeds the 0..0xFFFFFF schema max — ApplyPatch must
   // reject rather than silently truncate the alpha byte.
-  auto bad = btclock::settings::ApplyPatch(
-      "{\"blockFlashColor\":33554431}", DefaultCtx(), prefs, prefs);
+  auto bad = btclock::settings::ApplyPatch("{\"blockFlashColor\":33554431}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
-  CHECK(bad.error == std::string("range:") +
-                         std::string(btclock::prefs::kBlockFlashColor));
+  CHECK(bad.error ==
+        std::string("range:") + std::string(btclock::prefs::kBlockFlashColor));
   CHECK(prefs.u32_.count(btclock::prefs::kBlockFlashColor) == 0);
 }
 
@@ -1146,9 +1152,12 @@ GetValue ReadField(cJSON* root, const char* key) {
   cJSON* it = cJSON_GetObjectItemCaseSensitive(root, key);
   if (!it) return out;
   out.found = true;
-  if (cJSON_IsBool(it)) out.b = cJSON_IsTrue(it);
-  else if (cJSON_IsNumber(it)) out.n = it->valuedouble;
-  else if (cJSON_IsString(it)) out.s = it->valuestring ? it->valuestring : "";
+  if (cJSON_IsBool(it))
+    out.b = cJSON_IsTrue(it);
+  else if (cJSON_IsNumber(it))
+    out.n = it->valuedouble;
+  else if (cJSON_IsString(it))
+    out.s = it->valuestring ? it->valuestring : "";
   return out;
 }
 
@@ -1161,38 +1170,22 @@ TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
 
   // Bool defaults — (key, expected).
   const std::pair<const char*, bool> bools[] = {
-      {"bitaxeEnabled", false},
-      {"blockFeeDec", true},
-      {"ceDisableSSL", false},
-      {"disableLeds", false},
-      {"enableDebugLog", false},
-      {"flAlwaysOn", true},
-      {"flDisable", false},
-      {"flFlashOnUpd", true},
-      {"flFlashOnZap", true},
-      {"flOffWhenDark", true},
-      {"httpAuthEnabled", false},
-      {"inverseButtons", false},
-      {"ledFlashOnUpd", false},
-      {"ledFlashOnZap", true},
-      {"ledTestOnPower", true},
-      {"mcapBigChar", true},
-      {"mdnsEnabled", true},
-      {"mempoolSecure", true},
-      {"miningPoolStats", false},
-      {"mowMode", false},
-      {"nostrZapNotify", false},
-      {"otaEnabled", true},
-      {"poolGlobalStats", true},
-      {"refrScrnChange", false},
-      {"scrnRestoreZap", true},
-      {"stealFocus", false},
-      {"suffixPrice", false},
-      {"suffixShareDot", false},
-      {"supplyPercent", false},
-      {"useBlkCountdown", true},
-      {"useMscwTime", true},
-      {"useSatsSymbol", false},
+      {"bitaxeEnabled", false},   {"blockFeeDec", true},
+      {"ceDisableSSL", false},    {"disableLeds", false},
+      {"enableDebugLog", false},  {"flAlwaysOn", true},
+      {"flDisable", false},       {"flFlashOnUpd", true},
+      {"flFlashOnZap", true},     {"flOffWhenDark", true},
+      {"httpAuthEnabled", false}, {"inverseButtons", false},
+      {"ledFlashOnUpd", true},    {"ledFlashOnZap", true},
+      {"ledTestOnPower", true},   {"mcapBigChar", true},
+      {"mdnsEnabled", true},      {"mempoolSecure", true},
+      {"miningPoolStats", false}, {"mowMode", false},
+      {"nostrZapNotify", false},  {"otaEnabled", true},
+      {"poolGlobalStats", true},  {"refrScrnChange", false},
+      {"scrnRestoreZap", true},   {"stealFocus", true},
+      {"suffixPrice", false},     {"suffixShareDot", false},
+      {"supplyPercent", false},   {"useBlkCountdown", true},
+      {"useMscwTime", true},      {"useSatsSymbol", false},
       {"verticalDesc", true},
   };
   for (const auto& [k, v] : bools) {
@@ -1204,14 +1197,10 @@ TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
 
   // Uint defaults — (key, expected).
   const std::pair<const char*, double> uints[] = {
-      {"blockFlashColor", 0xE04300},
-      {"flEffectDelay", 15},
-      {"flMaxBrightness", 2048},
-      {"fullRefreshMin", 60},
-      {"ledBrightness", 128},
-      {"luxLightToggle", 128},
-      {"minSecPriceUpd", 30},
-      {"wifiRebootMin", 10},
+      {"blockFlashColor", 0xE04300}, {"flEffectDelay", 15},
+      {"flMaxBrightness", 2048},     {"fullRefreshMin", 60},
+      {"ledBrightness", 128},        {"luxLightToggle", 128},
+      {"minSecPriceUpd", 30},        {"wifiRebootMin", 10},
       {"wpTimeout", 15 * 60},
   };
   for (const auto& [k, v] : uints) {
@@ -1227,7 +1216,8 @@ TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
       {"ceEndpoint", "ws-staging.btclock.dev"},
       {"fontName", "antonio"},
       {"gitReleaseUrl",
-       "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/latest"},
+       "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/"
+       "latest"},
       {"hostnamePrefix", "btclock"},
       {"httpAuthUser", "btclock"},
       {"localPoolHost", "umbrel.local:2019"},
@@ -1366,7 +1356,8 @@ TEST_CASE("GET screens[] empty screenOrder falls back to catalog order") {
   cJSON_Delete(root);
 }
 
-TEST_CASE("GET screens[] partial screenOrder appends missing in catalog order") {
+TEST_CASE(
+    "GET screens[] partial screenOrder appends missing in catalog order") {
   // Edge case: a malformed/legacy CSV may list only a subset of the
   // catalog. Missing screens MUST still appear (so the user can re-add
   // them via the WebUI) — they trail the persisted list in catalog order.
@@ -1431,8 +1422,7 @@ namespace {
 bool ScreensChangedTriggers(const std::vector<std::string>& touched_keys) {
   for (const auto& k : touched_keys) {
     const bool is_order = (k == btclock::prefs::kScreenOrder);
-    const bool is_visible = (k.size() > 7 &&
-                             k.compare(0, 6, "screen") == 0 &&
+    const bool is_visible = (k.size() > 7 && k.compare(0, 6, "screen") == 0 &&
                              k.compare(k.size() - 7, 7, "Visible") == 0);
     const bool is_currencies = (k == btclock::prefs::kActCurrencies);
     if (is_order || is_visible || is_currencies) return true;
@@ -1468,8 +1458,8 @@ TEST_CASE("PATCH screen<N>Visible fires the rotation-rebuild hook trigger") {
   // the suffix-match "screen*Visible" branch.
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"screens\":[{\"id\":10,\"enabled\":false}]}",
-      DefaultCtx(), prefs, prefs);
+      "{\"screens\":[{\"id\":10,\"enabled\":false}]}", DefaultCtx(), prefs,
+      prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["screen10Visible"] == false);
   CHECK(ScreensChangedTriggers(res.touched_keys));
@@ -1483,21 +1473,21 @@ TEST_CASE("PATCH actCurrencies fires the rotation-rebuild hook trigger") {
   // BuildRotationSequence, and refreshes the v2 WS subscription.
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"actCurrencies\":[\"EUR\",\"USD\"]}",
-      DefaultCtx(), prefs, prefs);
+      "{\"actCurrencies\":[\"EUR\",\"USD\"]}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["actCurrencies"] == "EUR,USD");
   CHECK(ScreensChangedTriggers(res.touched_keys));
 }
 
-TEST_CASE("PATCH unrelated key does NOT fire the rotation-rebuild hook trigger") {
+TEST_CASE(
+    "PATCH unrelated key does NOT fire the rotation-rebuild hook trigger") {
   // Sanity: the predicate must NOT fire for an unrelated PATCH (e.g.
   // ledBrightness). A spurious rebuild would yank the user off their
   // current slot. This test pins the negative case so a future predicate
   // edit (e.g. broadening "screen*" to match more keys) is caught.
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"ledBrightness\":64}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"ledBrightness\":64}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK_FALSE(ScreensChangedTriggers(res.touched_keys));
 }
@@ -1512,8 +1502,7 @@ TEST_CASE("PATCH unrelated key does NOT fire the rotation-rebuild hook trigger")
 
 namespace {
 
-bool BlockFeeDecChangedTrigger(
-    const std::vector<std::string>& touched_keys) {
+bool BlockFeeDecChangedTrigger(const std::vector<std::string>& touched_keys) {
   for (const auto& k : touched_keys) {
     if (k == btclock::prefs::kBlockFeeDec) return true;
   }
@@ -1529,8 +1518,8 @@ TEST_CASE("PATCH blockFeeDec=false fires the fee-stream hook trigger") {
   // lock-step with the pref.
   FakePrefs prefs;
   prefs.b_["blockFeeDec"] = true;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"blockFeeDec\":false}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"blockFeeDec\":false}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["blockFeeDec"] == false);
   CHECK(BlockFeeDecChangedTrigger(res.touched_keys));
@@ -1546,8 +1535,8 @@ TEST_CASE("PATCH blockFeeDec=true fires the fee-stream hook trigger") {
   // calls SetBlockFeeDec which bounces the WS.
   FakePrefs prefs;
   prefs.b_["blockFeeDec"] = false;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"blockFeeDec\":true}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"blockFeeDec\":true}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.b_["blockFeeDec"] == true);
   CHECK(BlockFeeDecChangedTrigger(res.touched_keys));
@@ -1556,8 +1545,8 @@ TEST_CASE("PATCH blockFeeDec=true fires the fee-stream hook trigger") {
 
 TEST_CASE("PATCH unrelated key does NOT fire the fee-stream hook trigger") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"ledBrightness\":64}", DefaultCtx(), prefs, prefs);
+  auto res = btclock::settings::ApplyPatch("{\"ledBrightness\":64}",
+                                           DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK_FALSE(BlockFeeDecChangedTrigger(res.touched_keys));
 }

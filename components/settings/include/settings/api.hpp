@@ -29,7 +29,8 @@ class PrefsReader {
   virtual ~PrefsReader() = default;
   virtual std::string GetString(const char* key,
                                 const char* default_value = "") const = 0;
-  virtual uint32_t GetU32(const char* key, uint32_t default_value = 0) const = 0;
+  virtual uint32_t GetU32(const char* key,
+                          uint32_t default_value = 0) const = 0;
   virtual int32_t GetI32(const char* key, int32_t default_value = 0) const = 0;
   virtual uint8_t GetU8(const char* key, uint8_t default_value = 0) const = 0;
   virtual bool GetBool(const char* key, bool default_value = false) const = 0;
@@ -114,9 +115,9 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx);
 
 // Outcome of ApplyPatch.
 enum class PatchStatus : uint8_t {
-  kOk,              // 200 OK
-  kBadRequest,      // malformed JSON, out-of-range number, missing context
-  kBadField,        // per-field type mismatch or catalog rejection
+  kOk,          // 200 OK
+  kBadRequest,  // malformed JSON, out-of-range number, missing context
+  kBadField,    // per-field type mismatch or catalog rejection
 };
 
 struct PatchResult {

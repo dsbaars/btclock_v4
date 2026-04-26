@@ -8,6 +8,7 @@
 #include "io/led_controller.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 namespace {
@@ -24,8 +25,7 @@ void InitBootLeds() {
   // the status endpoints publish.
   ESP_LOGI(kTag, "psram=%uB heap_internal_free=%uB",
            static_cast<unsigned>(esp_psram_get_size()),
-           static_cast<unsigned>(
-               heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
 
   InitLeds(kNeopixel, kNeopixelCount);
   // LED prefs (brightness, blockFlashColor, disableLeds, ledFlashOnUpd)
@@ -38,7 +38,7 @@ void InitBootLeds() {
   // disabled it. Default true matches v3 DEFAULT_LED_TEST_ON_POWER and
   // the schema default.
   Prefs settings(prefs::kSettingsNs);
-  if (settings.GetBool(prefs::kLedTestOnPower, true)) {
+  if (btclock::settings::ReadBool(settings, prefs::kLedTestOnPower)) {
     PostLedEvent(LedEvent::kSetBoot);
   } else {
     PostLedEvent(LedEvent::kSetIdle);

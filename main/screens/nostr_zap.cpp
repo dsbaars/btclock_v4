@@ -12,8 +12,6 @@
 // the middle blank; longer ones ("1.2M") spill leftward through the
 // blanks.
 
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstddef>
 #include <cstdio>
@@ -22,6 +20,7 @@
 
 #include "mdi_codepoints.hpp"
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -42,9 +41,16 @@ std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
   // small end of each magnitude band.
   double x = static_cast<double>(v);
   const char* suffix;
-  if (v >= 1'000'000'000LL) { x /= 1e9; suffix = "B"; }
-  else if (v >= 1'000'000LL) { x /= 1e6; suffix = "M"; }
-  else { x /= 1e3; suffix = "k"; }
+  if (v >= 1'000'000'000LL) {
+    x /= 1e9;
+    suffix = "B";
+  } else if (v >= 1'000'000LL) {
+    x /= 1e6;
+    suffix = "M";
+  } else {
+    x /= 1e3;
+    suffix = "k";
+  }
   char buf[16];
   if (x >= 10.0) {
     std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
@@ -59,8 +65,7 @@ namespace {
 // Ref chars for the "ZAP" label panel. Matches the uppercase + digit
 // span every other text-label screen renders against, so the ZAP label
 // row baseline visually aligns with MSCW / BTC/SUPPLY / BITAXE.
-constexpr const char* kLabelRef =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+constexpr const char* kLabelRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 // Ref chars for the amount digits — includes the suffix letters so a
 // "21k" / "1.2M" tail shares a baseline with a plain "100".
@@ -74,11 +79,11 @@ constexpr const char* kAmountRef = "0123456789kMB.";
 // to "no room for digits" — caller paints the amount at the rightmost
 // panel and skips the glyph.
 struct ZapLayout {
-  std::size_t zap_slot;       // ZAP label.
-  std::size_t bolt_slot;      // MDI lightning-bolt icon.
-  std::size_t glyph_slot;     // Sats glyph (one before first amount).
-  std::size_t first_amount;   // Leftmost amount-digit slot.
-  std::size_t amount_cells;   // Count of amount cells (= N - first_amount).
+  std::size_t zap_slot;      // ZAP label.
+  std::size_t bolt_slot;     // MDI lightning-bolt icon.
+  std::size_t glyph_slot;    // Sats glyph (one before first amount).
+  std::size_t first_amount;  // Leftmost amount-digit slot.
+  std::size_t amount_cells;  // Count of amount cells (= N - first_amount).
 };
 
 template <std::size_t N>
@@ -106,15 +111,12 @@ ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
 }  // namespace
 
 template <size_t N>
-void RenderNostrZapScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296],
-    const AppFonts& fonts,
-    const DataSnapshot::LatestZap& zap,
-    bool use_sats_symbol,
-    uint8_t sats_variant,
-    bool full_refresh_mode,
-    bool vertical_desc) {
+void RenderNostrZapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                          uint8_t (&fb_storage)[N][16 * 296],
+                          const AppFonts& fonts,
+                          const DataSnapshot::LatestZap& zap,
+                          bool use_sats_symbol, uint8_t sats_variant,
+                          bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Zap layout needs at least 7 panels");
 
   // Budget = tail cells excluding ZAP + bolt. The glyph isn't reserved
@@ -186,13 +188,13 @@ void RenderNostrZapScreen(
                   /*full_refresh=*/full_refresh_mode, vertical_desc);
 }
 
-template void RenderNostrZapScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool,
-    bool);
-template void RenderNostrZapScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool,
-    bool);
+template void RenderNostrZapScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                      uint8_t (&)[7][16 * 296], const AppFonts&,
+                                      const DataSnapshot::LatestZap&, bool,
+                                      uint8_t, bool, bool);
+template void RenderNostrZapScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                      uint8_t (&)[8][16 * 296], const AppFonts&,
+                                      const DataSnapshot::LatestZap&, bool,
+                                      uint8_t, bool, bool);
 
 }  // namespace btclock

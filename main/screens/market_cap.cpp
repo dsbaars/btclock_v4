@@ -1,5 +1,3 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstdio>
 #include <string>
@@ -7,6 +5,7 @@
 #include <vector>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -33,14 +32,12 @@ namespace btclock {
 
 namespace {
 
-// Decide which character a bigChars panel should display at position i
-// within the digit-panel row. The formatted "1.02T" ladder is:
-//   digits_slot = [padding..][<sym>][<num...>][<suffix>]
-// We return the raw char at that slot (space for blanks). Callers that
-// need the currency-glyph panel rendered as a UTF-8 symbol check
-// is_currency_glyph separately.
+// Per-digit-panel cell for the bigChars layout. `text` is a single byte
+// in the no-fold case ("$", "1", ".", "T") or a folded "X." pair when
+// share_dot collapses the dot into its preceding digit. Blank cells use
+// `text=" "` so the diff loop stays uniform with prior behaviour.
 struct MarketCapBigCell {
-  char c;
+  std::string text;
   bool is_currency_glyph;
 };
 
@@ -50,35 +47,63 @@ struct MarketCapBigCell {
 // [1..6] into slots [1..6]. Here kDigitPanels == N - 1 == 6 on a 7-board
 // and 7 on the 8-board — we pad to (1 + kDigitPanels) and skip the first
 // slot (reserved for the MCAP label in slot 0).
+//
+// share_dot widens the formatter budget by one (giving an extra digit of
+// precision) and folds the '.' byte into its preceding cell — same
+// trick as the BTC-price suffix layout. The fold drops the standalone
+// '.' panel; the "X." pair lives in a single cell.
 template <size_t kDigitPanels>
-void LayoutMarketCapBigChars(uint64_t cap, char currency_byte,
+void LayoutMarketCapBigChars(uint64_t cap, char currency_byte, bool share_dot,
                              MarketCapBigCell (&cells)[kDigitPanels]) {
   // num_chars budget leaves room for the '$' prefix and one trailing
   // blank — matches parseMarketCap's (NUM_SCREENS - 2) argument.
+  // share_dot reclaims the trailing-blank cell because the folded "X."
+  // already shaves one cell from the visual width.
   const int num_chars =
-      static_cast<int>((kDigitPanels + 1) - 2);
+      static_cast<int>((kDigitPanels + 1) - (share_dot ? 1 : 2));
   std::string formatted = FormatNumberWithSuffix(cap, num_chars);
-  std::string s = std::string(1, currency_byte) + formatted;
+  std::string raw = std::string(1, currency_byte) + formatted;
+
+  // Build the per-cell vector. Without share_dot this is byte-per-cell
+  // (matches the prior MarketCapBigCell.c semantics). With share_dot
+  // we pack "X." into one cell at the dot's predecessor position.
+  std::vector<std::string> seq;
+  seq.reserve(raw.size());
+  if (share_dot) {
+    const std::size_t dot = raw.find('.');
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+      if (dot != std::string::npos && dot > 0 && i + 1 == dot) {
+        seq.emplace_back(std::string(1, raw[i]) + ".");
+        ++i;  // consume the dot
+      } else {
+        seq.emplace_back(1, raw[i]);
+      }
+    }
+  } else {
+    for (char c : raw) seq.emplace_back(1, c);
+  }
+
   const size_t full_slots = kDigitPanels + 1;
-  if (s.size() < full_slots) {
-    s.insert(s.begin(), full_slots - s.size(), ' ');
-  } else if (s.size() > full_slots) {
+  if (seq.size() < full_slots) {
+    seq.insert(seq.begin(), full_slots - seq.size(), std::string(" "));
+  } else if (seq.size() > full_slots) {
     // Overflow (shouldn't happen at reasonable caps, but guard):
     // keep the tail so the magnitude digits stay visible.
-    s = s.substr(s.size() - full_slots);
+    seq.erase(seq.begin(), seq.begin() + (seq.size() - full_slots));
   }
-  // Find which slot holds the currency glyph so we can render it as a
+  // Find which cell holds the currency glyph so we can render it as a
   // UTF-8 symbol (not the raw byte).
   size_t glyph_slot = std::string::npos;
-  for (size_t i = 0; i < s.size(); ++i) {
-    if (static_cast<unsigned char>(s[i]) == static_cast<unsigned char>(currency_byte)) {
+  for (size_t i = 0; i < seq.size(); ++i) {
+    if (seq[i].size() == 1 && static_cast<unsigned char>(seq[i][0]) ==
+                                  static_cast<unsigned char>(currency_byte)) {
       glyph_slot = i;
       break;
     }
   }
   for (size_t i = 0; i < kDigitPanels; ++i) {
     const size_t src = i + 1;  // slot 0 is reserved for MCAP label
-    cells[i].c = s[src];
+    cells[i].text = seq[src];
     cells[i].is_currency_glyph = (src == glyph_slot);
   }
 }
@@ -86,13 +111,13 @@ void LayoutMarketCapBigChars(uint64_t cap, char currency_byte,
 }  // namespace
 
 template <size_t N>
-void RenderMarketCapScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const std::string& currency, const std::string& price,
-    uint32_t block_height, const std::string& prev_price,
-    uint32_t prev_height, bool big_chars,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderMarketCapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                           uint8_t (&fb_storage)[N][16 * 296],
+                           const AppFonts& fonts, const std::string& currency,
+                           const std::string& price, uint32_t block_height,
+                           const std::string& prev_price, uint32_t prev_height,
+                           bool big_chars, bool share_dot,
+                           bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "market-cap layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -103,9 +128,8 @@ void RenderMarketCapScreen(
   const int32_t new_price = PriceInt(price);
   const int32_t old_price = cell_diff_reset ? -1 : PriceInt(prev_price);
   const uint64_t now_cap =
-      new_price < 0
-          ? 0
-          : MarketCap(static_cast<uint32_t>(new_price), block_height);
+      new_price < 0 ? 0
+                    : MarketCap(static_cast<uint32_t>(new_price), block_height);
   const uint64_t prev_cap =
       cell_diff_reset || old_price < 0
           ? 0
@@ -133,9 +157,11 @@ void RenderMarketCapScreen(
   const std::string ccy_cell = std::string(" ") + currency_byte + " ";
 
   if (big_chars) {
-    LayoutMarketCapBigChars<kDigitPanels>(now_cap, currency_byte, new_cells);
+    LayoutMarketCapBigChars<kDigitPanels>(now_cap, currency_byte, share_dot,
+                                          new_cells);
     if (!cell_diff_reset) {
-      LayoutMarketCapBigChars<kDigitPanels>(prev_cap, currency_byte, old_cells);
+      LayoutMarketCapBigChars<kDigitPanels>(prev_cap, currency_byte, share_dot,
+                                            old_cells);
     }
   } else {
     new_sc_cells = SmallCharsGroups(now_cap, ccy_cell, kDigitPanels);
@@ -149,8 +175,8 @@ void RenderMarketCapScreen(
 
   // Panel 0 — "<CCY>/MCAP" label. Static within a currency across price
   // updates, so only paint on a cell-diff reset or a full EPD refresh.
-  slots[0] = PaintSlot{PaintSlot::kLabelSplit,
-                       currency + std::string("/MCAP"), nullptr, 0, 0};
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit, currency + std::string("/MCAP"),
+                       nullptr, 0, 0};
   update[0] = cell_diff_reset || full_refresh_mode;
 
   // Digit / currency-glyph / 3-digit-group cells. big_chars branch maps
@@ -161,20 +187,18 @@ void RenderMarketCapScreen(
     const size_t panel_idx = 1 + i;
     if (big_chars) {
       const auto& cell = new_cells[i];
-      if (cell.c == ' ') {
+      if (cell.text == " ") {
         slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
       } else if (cell.is_currency_glyph && currency_utf8[0] != '\0') {
         slots[panel_idx] = PaintSlot{PaintSlot::kCurrencyGlyph,
-                                     std::string(currency_utf8),
-                                     nullptr, 0, 0};
+                                     std::string(currency_utf8), nullptr, 0, 0};
       } else {
-        slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                     std::string(1, cell.c),
-                                     nullptr, 0, 0};
+        slots[panel_idx] =
+            PaintSlot{PaintSlot::kDigit, cell.text, nullptr, 0, 0};
       }
       update[panel_idx] =
           cell_diff_reset || full_refresh_mode ||
-          cell.c != old_cells[i].c ||
+          cell.text != old_cells[i].text ||
           cell.is_currency_glyph != old_cells[i].is_currency_glyph;
     } else {
       const auto& cell = new_sc_cells[i];
@@ -185,30 +209,29 @@ void RenderMarketCapScreen(
         // matches the 3-digit groups either side. Piggy-back on
         // kSmallGroup (same font + size).
         slots[panel_idx] = PaintSlot{PaintSlot::kSmallGroup,
-                                     std::string(currency_utf8),
-                                     nullptr, 0, 0};
+                                     std::string(currency_utf8), nullptr, 0, 0};
       } else if (cell == " ") {
         slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
       } else {
         slots[panel_idx] =
             PaintSlot{PaintSlot::kSmallGroup, cell, nullptr, 0, 0};
       }
-      update[panel_idx] = cell_diff_reset || full_refresh_mode ||
-                          cell != old_sc_cells[i];
+      update[panel_idx] =
+          cell_diff_reset || full_refresh_mode || cell != old_sc_cells[i];
     }
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderMarketCapScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    uint32_t, const std::string&, uint32_t, bool, bool, bool);
+    const AppFonts&, const std::string&, const std::string&, uint32_t,
+    const std::string&, uint32_t, bool, bool, bool, bool);
 template void RenderMarketCapScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    uint32_t, const std::string&, uint32_t, bool, bool, bool);
+    const AppFonts&, const std::string&, const std::string&, uint32_t,
+    const std::string&, uint32_t, bool, bool, bool, bool);
 
 }  // namespace btclock

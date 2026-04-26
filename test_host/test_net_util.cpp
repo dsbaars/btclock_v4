@@ -1,9 +1,8 @@
-#include "doctest.h"
-
 #include <cstdint>
 #include <set>
 #include <string>
 
+#include "doctest.h"
 #include "net_util.hpp"
 
 TEST_CASE("FormatApSsid emits BTClock-XXXX from last two MAC bytes") {
@@ -42,8 +41,7 @@ TEST_CASE("GenerateApPassword draws only from the allowed charset") {
       btclock::GenerateApPassword([&] { return counter++; }, 1024);
   const std::set<char> allowed(
       btclock::kApPasswordCharset,
-      btclock::kApPasswordCharset +
-          sizeof(btclock::kApPasswordCharset) - 1);
+      btclock::kApPasswordCharset + sizeof(btclock::kApPasswordCharset) - 1);
   for (char c : pw) {
     CAPTURE(c);
     CHECK(allowed.count(c) == 1);

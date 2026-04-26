@@ -21,8 +21,8 @@ std::string g_mounted_base_path;
 }  // namespace
 
 esp_err_t MountLittleFs(const char* base_path) {
-  const char* path = (base_path && *base_path) ? base_path
-                                                : kLittleFsDefaultBasePath;
+  const char* path =
+      (base_path && *base_path) ? base_path : kLittleFsDefaultBasePath;
 
   if (!g_mounted_base_path.empty()) {
     if (g_mounted_base_path == path) return ESP_OK;
@@ -56,8 +56,7 @@ esp_err_t MountLittleFs(const char* base_path) {
       esp_littlefs_info(kLittleFsPartitionLabel, &total, &used);
   if (info_err == ESP_OK) {
     ESP_LOGI(kTag, "mounted %s at %s: used=%uB total=%uB",
-             kLittleFsPartitionLabel, path,
-             static_cast<unsigned>(used),
+             kLittleFsPartitionLabel, path, static_cast<unsigned>(used),
              static_cast<unsigned>(total));
   } else {
     ESP_LOGW(kTag, "mounted %s at %s; info unavailable: %s",
@@ -97,8 +96,8 @@ size_t GetLittleFsPartitionSize() {
   return p ? p->size : 0;
 }
 
-esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx,
-                          size_t expected_len, size_t* bytes_written) {
+esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx, size_t expected_len,
+                          size_t* bytes_written) {
   if (bytes_written) *bytes_written = 0;
   if (!recv) return ESP_ERR_INVALID_ARG;
 
@@ -132,8 +131,7 @@ esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx,
   // requires both offset and size to be 4 KiB-aligned; all three
   // partition tables (partitions_*mb.csv) size storage on 4 KiB
   // boundaries so this is unconditional.
-  const esp_err_t erase_err =
-      esp_partition_erase_range(part, 0, part->size);
+  const esp_err_t erase_err = esp_partition_erase_range(part, 0, part->size);
   if (erase_err != ESP_OK) {
     ESP_LOGE(kTag, "FlashWebuiImage: erase failed: %s",
              esp_err_to_name(erase_err));
@@ -157,10 +155,11 @@ esp_err_t FlashWebuiImage(WebuiRecvFn recv, void* recv_ctx,
                static_cast<unsigned>(offset));
       return ESP_FAIL;
     }
-    if (n == 0) break;  // Clean EOF — only acceptable when content-length was unknown.
+    if (n == 0)
+      break;  // Clean EOF — only acceptable when content-length was unknown.
 
-    const esp_err_t wr = esp_partition_write(part, offset, buf,
-                                             static_cast<size_t>(n));
+    const esp_err_t wr =
+        esp_partition_write(part, offset, buf, static_cast<size_t>(n));
     if (wr != ESP_OK) {
       ESP_LOGE(kTag, "FlashWebuiImage: write failed at %u: %s",
                static_cast<unsigned>(offset), esp_err_to_name(wr));

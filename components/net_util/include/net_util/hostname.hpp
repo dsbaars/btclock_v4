@@ -34,8 +34,8 @@ inline std::string ComputeHostname(std::string_view prefix,
     clipped.resize(kMaxHostnamePrefixLen);
   }
   char buf[kMaxHostnamePrefixLen + 1 /* dash */ + 6 /* mac */ + 1 /* NUL */];
-  std::snprintf(buf, sizeof(buf), "%s-%02x%02x%02x", clipped.c_str(),
-                mac[3], mac[4], mac[5]);
+  std::snprintf(buf, sizeof(buf), "%s-%02x%02x%02x", clipped.c_str(), mac[3],
+                mac[4], mac[5]);
   return buf;
 }
 

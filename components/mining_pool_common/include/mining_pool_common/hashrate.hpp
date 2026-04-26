@@ -26,14 +26,22 @@ namespace mining_pools {
 // Anything else (including '0') returns 0. Matches old firmware.
 inline int hashrate_multiplier(char unit) {
   switch (unit) {
-    case 'Z': return 21;
-    case 'E': return 18;
-    case 'P': return 15;
-    case 'T': return 12;
-    case 'G': return 9;
-    case 'M': return 6;
-    case 'K': return 3;
-    default:  return 0;
+    case 'Z':
+      return 21;
+    case 'E':
+      return 18;
+    case 'P':
+      return 15;
+    case 'T':
+      return 12;
+    case 'G':
+      return 9;
+    case 'M':
+      return 6;
+    case 'K':
+      return 3;
+    default:
+      return 0;
   }
 }
 

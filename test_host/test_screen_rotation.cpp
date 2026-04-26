@@ -7,9 +7,8 @@
 // so the pause / restart / manual-advance semantics can be pinned
 // here in pure C++.
 
-#include "doctest.h"
-
 #include "app/rotation_timer.hpp"
+#include "doctest.h"
 
 using btclock::RotationTimer;
 

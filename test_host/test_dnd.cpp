@@ -3,9 +3,8 @@
 // lib/btclock/dnd_window.cpp (old firmware) so a schedule that was
 // "active" in production stays "active" after the IDF port.
 
-#include "doctest.h"
-
 #include "dnd/dnd_window.hpp"
+#include "doctest.h"
 
 using btclock::dnd::ComputeDndActive;
 using btclock::dnd::IsTimeInWindow;
@@ -85,7 +84,8 @@ TEST_CASE("Full-day-minus-one window") {
 // ComputeDndActive — precedence of the master flags
 // -------------------------------------------------------------------
 
-TEST_CASE("ComputeDndActive: neither flag set -> inactive regardless of clock") {
+TEST_CASE(
+    "ComputeDndActive: neither flag set -> inactive regardless of clock") {
   // Inside the schedule window but scheduling is off.
   CHECK_FALSE(ComputeDndActive(22, 30, 22, 0, 23, 0, false, false));
   // Outside the window too.
@@ -97,7 +97,8 @@ TEST_CASE("ComputeDndActive: manual override wins over an inactive schedule") {
   CHECK(ComputeDndActive(10, 0, 22, 0, 23, 0, true, false));
 }
 
-TEST_CASE("ComputeDndActive: manual override wins even when schedule disagrees") {
+TEST_CASE(
+    "ComputeDndActive: manual override wins even when schedule disagrees") {
   // Manual on, time_enabled on, clock outside window -> still active.
   CHECK(ComputeDndActive(10, 0, 22, 0, 23, 0, true, true));
 }

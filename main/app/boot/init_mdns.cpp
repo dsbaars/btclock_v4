@@ -14,6 +14,7 @@
 #include "net_util/hostname.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -26,7 +27,7 @@ constexpr const char* kTag = "mdns";
 // reported a name nobody could actually ping.
 std::string BuildHostname() {
   btclock::Prefs p(prefs::kSettingsNs);
-  std::string prefix = p.GetString(prefs::kHostnamePrefix, "btclock");
+  std::string prefix = btclock::settings::ReadString(p, prefs::kHostnamePrefix);
   uint8_t mac[6] = {};
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
   return btclock::net_util::ComputeHostname(prefix, mac);
@@ -41,29 +42,29 @@ std::string BuildHostname() {
 // wouldn't disambiguate).
 const char* BoardTxtValue() {
 #if defined(BTCLOCK_BOARD_REV_A)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   return "REV_A_29";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   return "REV_A_75";
-#  else
+#else
   return "REV_A";
-#  endif
+#endif
 #elif defined(BTCLOCK_BOARD_REV_B)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   return "REV_B_29";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   return "REV_B_75";
-#  else
+#else
   return "REV_B";
-#  endif
+#endif
 #elif defined(BTCLOCK_BOARD_V8)
-#  if defined(BTCLOCK_PANEL_2_9)
+#if defined(BTCLOCK_PANEL_2_9)
   return "V8_29";
-#  elif defined(BTCLOCK_PANEL_7_5)
+#elif defined(BTCLOCK_PANEL_7_5)
   return "V8_75";
-#  else
+#else
   return "V8";
-#  endif
+#endif
 #else
   return "unknown";
 #endif
@@ -79,7 +80,7 @@ void InitMdns(AppCtx& ctx) {
 
   btclock::Prefs p(prefs::kSettingsNs);
   // Default-true to match DEFAULT_MDNS_ENABLED in btclock_v3_fci.
-  if (!p.GetBool(prefs::kMdnsEnabled, true)) {
+  if (!btclock::settings::ReadBool(p, prefs::kMdnsEnabled)) {
     ESP_LOGI(kTag, "mdnsEnabled=false; skipping advertisement");
     return;
   }
@@ -116,12 +117,9 @@ void InitMdns(AppCtx& ctx) {
   const char* board = BoardTxtValue();
 
   const mdns_txt_item_t txt[] = {
-      {"path",    "/"},
-      {"version", "4.0"},
-      {"board",   board},
-      {"model",   "BTClock"},
-      {"rev",     git_rev},
-      {"hw_rev",  board::kHardwareName},
+      {"path", "/"},    {"version", "4.0"},
+      {"board", board}, {"model", "BTClock"},
+      {"rev", git_rev}, {"hw_rev", board::kHardwareName},
   };
   constexpr size_t kTxtCount = sizeof(txt) / sizeof(txt[0]);
 
@@ -130,8 +128,8 @@ void InitMdns(AppCtx& ctx) {
   // becomes configurable.
   constexpr uint16_t kHttpPort = 80;
   if ((err = mdns_service_add(hostname.c_str(), "_http", "_tcp", kHttpPort,
-                              const_cast<mdns_txt_item_t*>(txt),
-                              kTxtCount)) != ESP_OK) {
+                              const_cast<mdns_txt_item_t*>(txt), kTxtCount)) !=
+      ESP_OK) {
     ESP_LOGW(kTag, "mdns_service_add _http failed: %s", esp_err_to_name(err));
     return;
   }
@@ -139,8 +137,8 @@ void InitMdns(AppCtx& ctx) {
   // dedicated tooling can filter our devices without walking every
   // HTTP host on the LAN.
   if ((err = mdns_service_add(hostname.c_str(), "_btclock", "_tcp", kHttpPort,
-                              const_cast<mdns_txt_item_t*>(txt),
-                              kTxtCount)) != ESP_OK) {
+                              const_cast<mdns_txt_item_t*>(txt), kTxtCount)) !=
+      ESP_OK) {
     ESP_LOGW(kTag, "mdns_service_add _btclock failed: %s",
              esp_err_to_name(err));
     // Not fatal — primary _http advert already succeeded.

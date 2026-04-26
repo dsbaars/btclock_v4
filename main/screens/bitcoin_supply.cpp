@@ -1,5 +1,3 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -7,6 +5,7 @@
 #include <utility>
 
 #include "screens/common.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -29,12 +28,12 @@ namespace btclock {
 //                     mirror for /api/status data[].
 
 template <size_t N>
-void RenderBitcoinSupplyScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    uint32_t block_height, uint32_t prev_height,
-    bool big_chars, bool show_percent,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderBitcoinSupplyScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                               uint8_t (&fb_storage)[N][16 * 296],
+                               const AppFonts& fonts, uint32_t block_height,
+                               uint32_t prev_height, bool big_chars,
+                               bool show_percent, bool full_refresh_mode,
+                               bool vertical_desc) {
   static_assert(N >= 7, "supply layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -43,8 +42,7 @@ void RenderBitcoinSupplyScreen(
   const bool cell_diff_reset = (prev_height == 0);
 
   const uint64_t now_supply = SupplyAtBlock(block_height);
-  const uint64_t prev_supply =
-      cell_diff_reset ? 0 : SupplyAtBlock(prev_height);
+  const uint64_t prev_supply = cell_diff_reset ? 0 : SupplyAtBlock(prev_height);
 
   // Per-panel string (one entry per digit panel). Slot 0 = label.
   // Each entry is either:
@@ -54,18 +52,17 @@ void RenderBitcoinSupplyScreen(
   //   - the special "%" marker that paints as a "%" digit on the
   //     trailing panel of the percent mode.
   struct Cell {
-    std::string s;      // "" → don't paint; single char or 3-char group
+    std::string s;  // "" → don't paint; single char or 3-char group
     bool is_percent_label = false;
   };
   Cell new_cells[kDigitPanels];
   Cell old_cells[kDigitPanels];
 
-  auto build_cells = [](uint64_t supply, bool big, bool pct,
-                        Cell* cells) {
+  auto build_cells = [](uint64_t supply, bool big, bool pct, Cell* cells) {
     if (pct) {
       const double frac =
-          std::round((static_cast<double>(supply) / 20999999.9769) *
-                     10000.0) / 100.0;
+          std::round((static_cast<double>(supply) / 20999999.9769) * 10000.0) /
+          100.0;
       char buf[16];
       std::snprintf(buf, sizeof(buf), "%.2f%%", frac);
       std::string s = buf;
@@ -83,7 +80,11 @@ void RenderBitcoinSupplyScreen(
       return;
     }
     if (big) {
-      const int num_chars = static_cast<int>((kDigitPanels + 1) - 2);
+      // Budget = kDigitPanels (= N-1) so the magnitude string fills
+      // every tail cell — keeps the BTC/SUPPLY label in slot 0 and
+      // pushes the precision out by one digit (e.g. "20.02M" on a
+      // 7-panel board) instead of leaving the first tail cell blank.
+      const int num_chars = static_cast<int>(kDigitPanels);
       std::string s = FormatNumberWithSuffix(supply, num_chars);
       const size_t full_slots = kDigitPanels + 1;
       if (s.size() < full_slots) {
@@ -115,8 +116,7 @@ void RenderBitcoinSupplyScreen(
   std::array<bool, N> update{};
 
   // Panel 0 — "BTC/SUPPLY" label. Static after first paint.
-  slots[0] =
-      PaintSlot{PaintSlot::kLabelSplit, "BTC/SUPPLY", nullptr, 0, 0};
+  slots[0] = PaintSlot{PaintSlot::kLabelSplit, "BTC/SUPPLY", nullptr, 0, 0};
   update[0] = cell_diff_reset || full_refresh_mode;
 
   // Digit / group cells. Single-char → kDigit (180 px digit font).
@@ -134,21 +134,20 @@ void RenderBitcoinSupplyScreen(
     } else if (cell.s.size() == 1) {
       // Single char → full-size digit. A ' ' here short-circuits to
       // no-paint in PaintSlotIntoFb (kDigit).
-      slots[panel_idx] =
-          PaintSlot{PaintSlot::kDigit, cell.s, nullptr, 0, 0};
+      slots[panel_idx] = PaintSlot{PaintSlot::kDigit, cell.s, nullptr, 0, 0};
     } else {
       // 3-char group → medium font so "NNN" fits panel-width.
       slots[panel_idx] =
           PaintSlot{PaintSlot::kSmallGroup, cell.s, nullptr, 0, 0};
     }
-    update[panel_idx] = cell_diff_reset || full_refresh_mode ||
-                        new_cells[i].s != old_cells[i].s ||
-                        new_cells[i].is_percent_label !=
-                            old_cells[i].is_percent_label;
+    update[panel_idx] =
+        cell_diff_reset || full_refresh_mode ||
+        new_cells[i].s != old_cells[i].s ||
+        new_cells[i].is_percent_label != old_cells[i].is_percent_label;
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
 template void RenderBitcoinSupplyScreen<7>(

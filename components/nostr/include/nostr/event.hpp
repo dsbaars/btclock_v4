@@ -34,8 +34,8 @@ namespace btclock {
 namespace nostr {
 
 // Event kind constants used by this firmware.
-constexpr uint32_t kKindAppData   = 30078;  // NIP-78 (btclock publisher)
-constexpr uint32_t kKindZapReceipt = 9735;   // NIP-57 zap receipt
+constexpr uint32_t kKindAppData = 30078;    // NIP-78 (btclock publisher)
+constexpr uint32_t kKindZapReceipt = 9735;  // NIP-57 zap receipt
 
 struct Tag {
   // First element is the tag name (e.g. "d", "p", "bolt11"), subsequent

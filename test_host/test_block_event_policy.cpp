@@ -8,11 +8,10 @@
 // call sites — the tests also double-check the constexpr-ness via a
 // static_assert block.
 
-#include "doctest.h"
-
 #include <initializer_list>
 
 #include "app/block_event_policy.hpp"
+#include "doctest.h"
 #include "screens/screen_kind.hpp"
 
 using btclock::BlockEventPolicy;
@@ -21,23 +20,23 @@ using btclock::ZapOverlayPolicy;
 
 // --- BlockEventPolicy::ShouldSteal -----------------------------------
 
-TEST_CASE("ShouldSteal returns false when stealFocus=false regardless of current") {
+TEST_CASE(
+    "ShouldSteal returns false when stealFocus=false regardless of current") {
   // Spot-check every enum value — none should steal when the pref is off.
-  for (auto kind : {
-           ScreenType::kBlockHeight, ScreenType::kMoscowTime,
-           ScreenType::kBtcPrice,    ScreenType::kBlockFeeRate,
-           ScreenType::kClock,       ScreenType::kHalving,
-           ScreenType::kBitcoinSupply, ScreenType::kMarketCap,
-           ScreenType::kMiningPoolHashrate,
-           ScreenType::kMiningPoolEarnings,
-           ScreenType::kBitaxeHashrate, ScreenType::kBitaxeBestDiff,
-           ScreenType::kCustom,      ScreenType::kDebug,
-           ScreenType::kNostrZap}) {
+  for (auto kind :
+       {ScreenType::kBlockHeight, ScreenType::kMoscowTime,
+        ScreenType::kBtcPrice, ScreenType::kBlockFeeRate, ScreenType::kClock,
+        ScreenType::kHalving, ScreenType::kBitcoinSupply,
+        ScreenType::kMarketCap, ScreenType::kMiningPoolHashrate,
+        ScreenType::kMiningPoolEarnings, ScreenType::kBitaxeHashrate,
+        ScreenType::kBitaxeBestDiff, ScreenType::kCustom, ScreenType::kDebug,
+        ScreenType::kNostrZap}) {
     CHECK_FALSE(BlockEventPolicy::ShouldSteal(false, kind));
   }
 }
 
-TEST_CASE("ShouldSteal returns true on a normal data screen when stealFocus=true") {
+TEST_CASE(
+    "ShouldSteal returns true on a normal data screen when stealFocus=true") {
   CHECK(BlockEventPolicy::ShouldSteal(true, ScreenType::kMoscowTime));
   CHECK(BlockEventPolicy::ShouldSteal(true, ScreenType::kBtcPrice));
   CHECK(BlockEventPolicy::ShouldSteal(true, ScreenType::kBlockFeeRate));
@@ -81,8 +80,7 @@ TEST_CASE("ComputeTimeoutMs multiplies timerSeconds into ms") {
 TEST_CASE("ComputeTimeoutMs falls back on non-positive input") {
   // NVS default / unset / user-saved-zero: clamp to documented
   // fallback so the overlay doesn't vanish before the viewer reads it.
-  CHECK(ZapOverlayPolicy::ComputeTimeoutMs(0) ==
-        ZapOverlayPolicy::kFallbackMs);
+  CHECK(ZapOverlayPolicy::ComputeTimeoutMs(0) == ZapOverlayPolicy::kFallbackMs);
   CHECK(ZapOverlayPolicy::ComputeTimeoutMs(-1) ==
         ZapOverlayPolicy::kFallbackMs);
   CHECK(ZapOverlayPolicy::ComputeTimeoutMs(-1'000) ==
@@ -98,12 +96,10 @@ TEST_CASE("ZapOverlayPolicy::kFallbackMs matches the documented 8 s window") {
 // Compile-time assertions keep the helpers usable in constant-expression
 // contexts — the event loop constructs the timeout inline, and the
 // steal check feeds a branch predictor target.
-static_assert(
-    BlockEventPolicy::ShouldSteal(true, ScreenType::kMoscowTime),
-    "ShouldSteal not constexpr-callable");
-static_assert(
-    !BlockEventPolicy::ShouldSteal(true, ScreenType::kBlockHeight),
-    "ShouldSteal must reject kBlockHeight");
+static_assert(BlockEventPolicy::ShouldSteal(true, ScreenType::kMoscowTime),
+              "ShouldSteal not constexpr-callable");
+static_assert(!BlockEventPolicy::ShouldSteal(true, ScreenType::kBlockHeight),
+              "ShouldSteal must reject kBlockHeight");
 static_assert(ZapOverlayPolicy::ComputeTimeoutMs(15) == 15'000,
               "ComputeTimeoutMs not constexpr-callable");
 static_assert(ZapOverlayPolicy::ComputeTimeoutMs(0) ==

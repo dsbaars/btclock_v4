@@ -79,7 +79,9 @@ uint32_t BitaxeSource::poll_interval_ms() const {
   return s * 1000;
 }
 
-BitaxeSource::~BitaxeSource() { Stop(); }
+BitaxeSource::~BitaxeSource() {
+  Stop();
+}
 
 esp_err_t BitaxeSource::Start(DataHub& hub) {
   hub_ = &hub;
@@ -87,9 +89,9 @@ esp_err_t BitaxeSource::Start(DataHub& hub) {
   // 4 KB stack: cJSON + esp_http_client + the tiny response buffer all
   // fit. Lower priority than the WS data sources (tskIDLE_PRIORITY+1)
   // so a slow Bitaxe can't starve the main snapshot pipeline.
-  const BaseType_t ok = xTaskCreate(&BitaxeSource::TaskTrampoline,
-                                     "bitaxe", 4 * 1024, this,
-                                     tskIDLE_PRIORITY + 1, &task_);
+  const BaseType_t ok =
+      xTaskCreate(&BitaxeSource::TaskTrampoline, "bitaxe", 4 * 1024, this,
+                  tskIDLE_PRIORITY + 1, &task_);
   return (ok == pdPASS) ? ESP_OK : ESP_FAIL;
 }
 
@@ -138,7 +140,7 @@ void BitaxeSource::PollOnce() {
   cfg.event_handler = &http_event_handler;
   cfg.user_data = &ctx;
   cfg.timeout_ms = 5000;
-  cfg.buffer_size = 1024;       // rx header buffer
+  cfg.buffer_size = 1024;  // rx header buffer
   cfg.buffer_size_tx = 512;
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -184,8 +186,7 @@ void BitaxeSource::PollOnce() {
 
   ParsedStats parsed;
   if (!Parse(ctx.body, parsed)) {
-    ESP_LOGW(kTag, "parse failed (%u bytes)",
-             static_cast<unsigned>(ctx.size));
+    ESP_LOGW(kTag, "parse failed (%u bytes)", static_cast<unsigned>(ctx.size));
     return;
   }
 
@@ -206,22 +207,19 @@ void BitaxeSource::PollOnce() {
 
 std::unique_ptr<DataSource> MakeBitaxeSource() {
   btclock::Prefs settings(btclock::prefs::kSettingsNs);
-  const bool enabled =
-      settings.GetBool(btclock::prefs::kBitaxeEnabled, false);
+  const bool enabled = settings.GetBool(btclock::prefs::kBitaxeEnabled, false);
   if (!enabled) {
     ESP_LOGI(kTag, "bitaxe disabled (settings/%s=false)",
              btclock::prefs::kBitaxeEnabled);
     return nullptr;
   }
-  std::string host =
-      settings.GetString(btclock::prefs::kBitaxeHostname, "");
+  std::string host = settings.GetString(btclock::prefs::kBitaxeHostname, "");
   if (host.empty()) {
     ESP_LOGW(kTag, "bitaxe enabled but %s is empty; skipping",
              btclock::prefs::kBitaxeHostname);
     return nullptr;
   }
-  ESP_LOGI(kTag, "bitaxe source on http://%s/api/system/info",
-           host.c_str());
+  ESP_LOGI(kTag, "bitaxe source on http://%s/api/system/info", host.c_str());
   return std::make_unique<BitaxeSource>(std::move(host));
 }
 

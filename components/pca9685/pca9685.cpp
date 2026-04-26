@@ -17,7 +17,7 @@ constexpr uint8_t kRegPreScale = 0xFE;
 // MODE1 bits
 constexpr uint8_t kMode1Restart = 0x80;
 constexpr uint8_t kMode1ExtClk = 0x40;
-constexpr uint8_t kMode1Ai = 0x20;      // auto-increment
+constexpr uint8_t kMode1Ai = 0x20;  // auto-increment
 constexpr uint8_t kMode1Sleep = 0x10;
 constexpr uint8_t kMode1AllCall = 0x01;
 // MODE2 bits
@@ -73,8 +73,7 @@ esp_err_t Pca9685::Begin(uint32_t pwm_hz) {
       "mode1 restart");
   ESP_RETURN_ON_ERROR(WriteReg(kRegMode2, kMode2OutDrv), kTag, "mode2");
   ESP_LOGI(kTag, "begin ok pwm_hz=%u prescale=0x%02X",
-           static_cast<unsigned>(pwm_hz),
-           static_cast<unsigned>(prescale_val));
+           static_cast<unsigned>(pwm_hz), static_cast<unsigned>(prescale_val));
   return ESP_OK;
 }
 
@@ -92,8 +91,13 @@ esp_err_t Pca9685::SetDuty(uint8_t channel, uint16_t duty) {
   // ON=0, OFF=duty (when duty==4095 set the full-on bit; 0 → full off)
   uint16_t on = 0;
   uint16_t off = duty;
-  if (duty == 4095) { on = 0x1000; off = 0; }
-  else if (duty == 0) { on = 0; off = 0x1000; }
+  if (duty == 4095) {
+    on = 0x1000;
+    off = 0;
+  } else if (duty == 0) {
+    on = 0;
+    off = 0x1000;
+  }
 
   const uint8_t payload[5] = {
       reg,

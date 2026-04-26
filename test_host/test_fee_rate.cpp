@@ -14,14 +14,13 @@
 //     non-zero fractional part renders as "X.YY"; overflow drops the
 //     fractional tail first, then truncates leading integer digits.
 
-#include "doctest.h"
-
 #include <array>
 #include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
 
+#include "doctest.h"
 #include "screens/fee_rate_layout.hpp"
 
 namespace {
@@ -116,7 +115,8 @@ TEST_CASE("fee=1.5 renders as '1.50'") {
   CHECK(Render(d) == " 1.50");
 }
 
-TEST_CASE("fee=100.5 renders as '100.50' (6-wide; fits V8, overflows 7-panel)") {
+TEST_CASE(
+    "fee=100.5 renders as '100.50' (6-wide; fits V8, overflows 7-panel)") {
   std::array<char, kDigits8> d8;
   btclock::LayoutFeeRate(100.5, d8);
   CHECK(Render(d8) == "100.50");
@@ -181,7 +181,8 @@ TEST_CASE("diff: no change → every slot is false") {
   std::array<char, kDigits7> now, before;
   btclock::LayoutFeeRate(42.0, now);
   btclock::LayoutFeeRate(42.0, before);
-  const auto update = btclock::DiffFeeRateDigits(now, before, /*full=*/false);
+  const auto update =
+      btclock::DiffFeeRateDigits(now, before, /*full_refresh=*/false);
   for (size_t i = 0; i < update.size(); ++i) {
     CAPTURE(i);
     CHECK(update[i] == false);
@@ -192,7 +193,8 @@ TEST_CASE("diff: only changed digit slots flag true (integer case)") {
   std::array<char, kDigits7> now, before;
   btclock::LayoutFeeRate(43.0, now);
   btclock::LayoutFeeRate(42.0, before);
-  const auto update = btclock::DiffFeeRateDigits(now, before, /*full=*/false);
+  const auto update =
+      btclock::DiffFeeRateDigits(now, before, /*full_refresh=*/false);
   for (size_t i = 0; i + 1 < update.size(); ++i) {
     CAPTURE(i);
     CHECK(update[i] == false);
@@ -204,7 +206,8 @@ TEST_CASE("diff: decimal transition 12.75 → 12.76 flags only last slot") {
   std::array<char, kDigits7> now, before;
   btclock::LayoutFeeRate(12.76, now);
   btclock::LayoutFeeRate(12.75, before);
-  const auto update = btclock::DiffFeeRateDigits(now, before, /*full=*/false);
+  const auto update =
+      btclock::DiffFeeRateDigits(now, before, /*full_refresh=*/false);
   CHECK(update[0] == false);
   CHECK(update[1] == false);
   CHECK(update[2] == false);
@@ -217,7 +220,8 @@ TEST_CASE("diff: integer→decimal transition 12 → 12.75 flags all last 3") {
   std::array<char, kDigits7> now, before;
   btclock::LayoutFeeRate(12.75, now);
   btclock::LayoutFeeRate(12.0, before);
-  const auto update = btclock::DiffFeeRateDigits(now, before, /*full=*/false);
+  const auto update =
+      btclock::DiffFeeRateDigits(now, before, /*full_refresh=*/false);
   CHECK(update[0] == true);  // ' ' → '1'
   CHECK(update[1] == true);  // ' ' → '2'
   CHECK(update[2] == true);  // ' ' → '.'
@@ -229,7 +233,8 @@ TEST_CASE("diff: full_refresh=true forces every slot") {
   std::array<char, kDigits7> now, before;
   btclock::LayoutFeeRate(42.0, now);
   btclock::LayoutFeeRate(42.0, before);
-  const auto update = btclock::DiffFeeRateDigits(now, before, /*full=*/true);
+  const auto update =
+      btclock::DiffFeeRateDigits(now, before, /*full_refresh=*/true);
   for (size_t i = 0; i < update.size(); ++i) {
     CAPTURE(i);
     CHECK(update[i] == true);

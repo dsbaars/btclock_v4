@@ -23,17 +23,15 @@
 namespace btclock {
 namespace dnd {
 
-bool IsTimeInWindow(uint8_t hour, uint8_t minute,
-                    uint8_t start_hour, uint8_t start_minute,
-                    uint8_t end_hour, uint8_t end_minute);
+bool IsTimeInWindow(uint8_t hour, uint8_t minute, uint8_t start_hour,
+                    uint8_t start_minute, uint8_t end_hour, uint8_t end_minute);
 
 // Top-level "is DND currently active?" decision that also consults the
 // two master flags. `dnd_enabled` forces DND on regardless of the clock
 // (manual override). `time_enabled` gates the schedule check. Pure.
-bool ComputeDndActive(uint8_t hour_now, uint8_t minute_now,
-                      uint8_t start_hour, uint8_t start_minute,
-                      uint8_t end_hour, uint8_t end_minute,
-                      bool dnd_enabled, bool time_enabled);
+bool ComputeDndActive(uint8_t hour_now, uint8_t minute_now, uint8_t start_hour,
+                      uint8_t start_minute, uint8_t end_hour,
+                      uint8_t end_minute, bool dnd_enabled, bool time_enabled);
 
 }  // namespace dnd
 }  // namespace btclock

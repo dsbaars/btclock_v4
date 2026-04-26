@@ -20,7 +20,6 @@ struct WifiScanEntry {
   bool secured;
 };
 
-
 // Minimal WiFi STA client. Non-blocking Connect; poll state() or call
 // WaitConnected() from the caller. Caller owns reconnection policy via
 // Disconnect + Connect; the class handles transient WiFi disconnect

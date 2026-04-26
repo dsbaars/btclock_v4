@@ -3,14 +3,13 @@
 // setenv wrapper (SetTimezoneByName, InitFromNvs) is NOT tested here —
 // it pulls in the prefs component, which needs nvs_flash.
 
-#include "doctest.h"
-
 #include <string_view>
 
+#include "doctest.h"
 #include "timezone/timezone.hpp"
 
-using btclock::timezone::PosixForIana;
 using btclock::timezone::kTzTable;
+using btclock::timezone::PosixForIana;
 
 TEST_CASE("timezone: well-known IANA zones round-trip to POSIX") {
   // Handpicked zones covering the five major continents + UTC. If the

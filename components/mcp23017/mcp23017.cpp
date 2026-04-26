@@ -58,8 +58,7 @@ esp_err_t Mcp23017::ReadReg16(uint8_t reg, uint16_t* val) {
   uint8_t out[2] = {};
   esp_err_t err = i2c_master_transmit_receive(dev_, &reg, 1, out, 2, 50);
   if (err == ESP_OK) {
-    *val = static_cast<uint16_t>(out[0]) |
-           (static_cast<uint16_t>(out[1]) << 8);
+    *val = static_cast<uint16_t>(out[0]) | (static_cast<uint16_t>(out[1]) << 8);
   }
   return err;
 }
@@ -102,8 +101,10 @@ esp_err_t Mcp23017::WritePort(uint16_t value) {
 esp_err_t Mcp23017::WritePin(uint8_t pin, bool high) {
   Lock lk(mutex_);
   const uint16_t bit = static_cast<uint16_t>(1U << pin);
-  if (high) output_cache_ |= bit;
-  else output_cache_ &= ~bit;
+  if (high)
+    output_cache_ |= bit;
+  else
+    output_cache_ &= ~bit;
   return WriteReg16(kRegGpioA, output_cache_);
 }
 

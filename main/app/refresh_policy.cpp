@@ -2,12 +2,9 @@
 
 namespace btclock {
 
-bool RefreshPolicy::Decide(RefreshPolicyState& state,
-                           int64_t now_ms,
-                           bool is_screen_change,
-                           bool is_force_full,
-                           bool refr_scrn_change,
-                           int full_refresh_min) {
+bool RefreshPolicy::Decide(RefreshPolicyState& state, int64_t now_ms,
+                           bool is_screen_change, bool is_force_full,
+                           bool refr_scrn_change, int full_refresh_min) {
   // Precedence order mirrors the decision tree in the brief:
   //
   //   1. is_force_full — unconditional. Covers first-render
@@ -31,7 +28,8 @@ bool RefreshPolicy::Decide(RefreshPolicyState& state,
     if (refr_scrn_change) {
       full = true;
     } else {
-      const bool never = state.last_full_refresh_ms == RefreshPolicyState::kNever;
+      const bool never =
+          state.last_full_refresh_ms == RefreshPolicyState::kNever;
       // fullRefreshMin<=0 degrades to "always full on screen change"
       // rather than "never full": the old firmware's epd.cpp uses the
       // same minutes-to-ms multiplication which lands on 0 here, and a

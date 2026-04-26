@@ -2,7 +2,7 @@
 //   - ledBrightness  (uint8, 0..255, default 128)
 //   - blockFlashColor (uint32 0xRRGGBB, default 0xE04300)
 //   - disableLeds    (bool, default false)
-//   - ledFlashOnUpd  (bool, default false)
+//   - ledFlashOnUpd  (bool, default true)
 //
 // Production reads them out of the `settings` NVS namespace using the
 // same key strings the WebUI PATCHes (see settings/pref_keys.hpp). The
@@ -28,7 +28,7 @@ struct LedPrefsSnapshot {
   uint8_t brightness = 128;
   uint32_t block_flash_color = 0xE04300;
   bool disabled = false;
-  bool flash_on_update = false;
+  bool flash_on_update = true;
   // True when at least one legacy `led/*` key was promoted into the
   // `settings/*` namespace. The IDF caller commits + (optionally) erases
   // the legacy keys when this is set.

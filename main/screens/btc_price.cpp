@@ -1,5 +1,3 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <cstdlib>
 #include <string>
@@ -7,6 +5,7 @@
 #include "screens/btc_price_suffix_layout.hpp"
 #include "screens/common.hpp"
 #include "screens/price_layout.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -60,13 +59,14 @@ bool ShouldUseSuffixPath(int64_t price_int, bool suffix_price) {
 // previous frame and repaint only the cells that changed.
 
 template <size_t N>
-void RenderBtcPriceScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    const std::string& currency, const std::string& price,
-    const std::string& prev_price, const char* symbol_utf8,
-    bool suffix_price, bool mow_mode, bool share_dot,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderBtcPriceScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                          uint8_t (&fb_storage)[N][16 * 296],
+                          const AppFonts& fonts, const std::string& currency,
+                          const std::string& price,
+                          const std::string& prev_price,
+                          const char* symbol_utf8, bool suffix_price,
+                          bool mow_mode, bool share_dot, bool full_refresh_mode,
+                          bool vertical_desc) {
   static_assert(N >= 7, "Price layout needs at least 7 panels");
   // `cell_diff_reset` forces every cell to repaint (sentinel prev_price);
   // `full_refresh_mode` drives the EPD refresh kind. See screens.hpp.
@@ -93,10 +93,8 @@ void RenderBtcPriceScreen(
   std::string new_label = std::string("BTC/") + currency;
   std::string old_label = new_label;
 
-  auto fill_suffix = [&](uint64_t pi,
-                         std::array<std::string, N>& cells_out,
-                         std::array<bool, N>& sym_out,
-                         std::string& label_out) {
+  auto fill_suffix = [&](uint64_t pi, std::array<std::string, N>& cells_out,
+                         std::array<bool, N>& sym_out, std::string& label_out) {
     std::string lbl;
     auto cells = LayoutBtcPriceSuffixStrings<N>(pi, currency, symbol_utf8,
                                                 mow_mode, share_dot, lbl);
@@ -135,19 +133,18 @@ void RenderBtcPriceScreen(
   const int64_t new_int = ParsePriceInt(price);
   const bool new_suffix = ShouldUseSuffixPath<N>(new_int, suffix_price);
   if (new_suffix) {
-    fill_suffix(static_cast<uint64_t>(new_int < 0 ? 0 : new_int),
-                new_cells, new_is_sym, new_label);
+    fill_suffix(static_cast<uint64_t>(new_int < 0 ? 0 : new_int), new_cells,
+                new_is_sym, new_label);
   } else {
     fill_plain(price, new_cells, new_is_sym);
   }
 
   if (!cell_diff_reset) {
     const int64_t prev_int = ParsePriceInt(prev_price);
-    const bool prev_suffix =
-        ShouldUseSuffixPath<N>(prev_int, suffix_price);
+    const bool prev_suffix = ShouldUseSuffixPath<N>(prev_int, suffix_price);
     if (prev_suffix) {
-      fill_suffix(static_cast<uint64_t>(prev_int < 0 ? 0 : prev_int),
-                  old_cells, old_is_sym, old_label);
+      fill_suffix(static_cast<uint64_t>(prev_int < 0 ? 0 : prev_int), old_cells,
+                  old_is_sym, old_label);
     } else {
       fill_plain(prev_price, old_cells, old_is_sym);
     }
@@ -162,17 +159,15 @@ void RenderBtcPriceScreen(
   if (!new_label.empty()) {
     slots[0] = PaintSlot{PaintSlot::kLabelSplit, new_label, nullptr, 0, 0};
   } else if (new_is_sym[0]) {
-    slots[0] = PaintSlot{PaintSlot::kCurrencyGlyph, new_cells[0],
-                         nullptr, 0, 0};
+    slots[0] =
+        PaintSlot{PaintSlot::kCurrencyGlyph, new_cells[0], nullptr, 0, 0};
   } else if (!new_cells[0].empty()) {
     slots[0] = PaintSlot{PaintSlot::kDigit, new_cells[0], nullptr, 0, 0};
   } else {
     slots[0] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
   }
-  update[0] = cell_diff_reset || full_refresh_mode ||
-              new_label != old_label ||
-              new_cells[0] != old_cells[0] ||
-              new_is_sym[0] != old_is_sym[0];
+  update[0] = cell_diff_reset || full_refresh_mode || new_label != old_label ||
+              new_cells[0] != old_cells[0] || new_is_sym[0] != old_is_sym[0];
 
   // Digit / currency-glyph cells. Blank cells (empty string) stay blank
   // — kBlank on partial refresh is a no-op. Digit cells here are single
@@ -181,30 +176,30 @@ void RenderBtcPriceScreen(
   // through kCurrencyGlyph.
   for (size_t i = 1; i < N; ++i) {
     if (new_is_sym[i]) {
-      slots[i] = PaintSlot{PaintSlot::kCurrencyGlyph, new_cells[i],
-                           nullptr, 0, 0};
+      slots[i] =
+          PaintSlot{PaintSlot::kCurrencyGlyph, new_cells[i], nullptr, 0, 0};
     } else if (new_cells[i].empty()) {
       slots[i] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
     } else {
-      slots[i] = PaintSlot{PaintSlot::kDigit, new_cells[i],
-                           nullptr, 0, 0};
+      slots[i] = PaintSlot{PaintSlot::kDigit, new_cells[i], nullptr, 0, 0};
     }
     update[i] = cell_diff_reset || full_refresh_mode ||
-                new_cells[i] != old_cells[i] ||
-                new_is_sym[i] != old_is_sym[i];
+                new_cells[i] != old_cells[i] || new_is_sym[i] != old_is_sym[i];
   }
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
-template void RenderBtcPriceScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    const std::string&, const char*, bool, bool, bool, bool, bool);
-template void RenderBtcPriceScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const std::string&, const std::string&,
-    const std::string&, const char*, bool, bool, bool, bool, bool);
+template void RenderBtcPriceScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                      uint8_t (&)[7][16 * 296], const AppFonts&,
+                                      const std::string&, const std::string&,
+                                      const std::string&, const char*, bool,
+                                      bool, bool, bool, bool);
+template void RenderBtcPriceScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                      uint8_t (&)[8][16 * 296], const AppFonts&,
+                                      const std::string&, const std::string&,
+                                      const std::string&, const char*, bool,
+                                      bool, bool, bool, bool);
 
 }  // namespace btclock

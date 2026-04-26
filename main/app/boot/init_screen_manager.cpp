@@ -10,15 +10,17 @@
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/rotation_plan.hpp"
-#include "fonts_app.hpp"
-#include "io/mining_pool_selector.hpp"
 #include "app/screen_manager.hpp"
 #include "buttons.hpp"
+#include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "io/mining_pool_selector.hpp"
+#include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 
@@ -34,7 +36,8 @@ void InitScreenManager(AppCtx& ctx) {
   // Antonio via ParseFontFamily.
   {
     Prefs settings(prefs::kSettingsNs);
-    const std::string id = settings.GetString(prefs::kFontName, "antonio");
+    const std::string id =
+        btclock::settings::ReadString(settings, prefs::kFontName);
     ctx.fonts.SetFamily(ParseFontFamily(id));
   }
 
@@ -46,7 +49,7 @@ void InitScreenManager(AppCtx& ctx) {
   {
     Prefs settings(prefs::kSettingsNs);
     const std::string csv =
-        settings.GetString(prefs::kActCurrencies, "USD,EUR,JPY");
+        btclock::settings::ReadString(settings, prefs::kActCurrencies);
     ctx.currencies.clear();
     std::stringstream ss(csv);
     std::string item;
@@ -65,7 +68,7 @@ void InitScreenManager(AppCtx& ctx) {
   {
     Prefs settings(prefs::kSettingsNs);
     const std::string order_csv =
-        settings.GetString(prefs::kScreenOrder, "");
+        btclock::settings::ReadString(settings, prefs::kScreenOrder);
     auto is_enabled = [](int api_id) -> bool {
       Prefs p(prefs::kSettingsNs);
       char vkey[24];
@@ -82,8 +85,8 @@ void InitScreenManager(AppCtx& ctx) {
   // defends against an out-of-range stored value — see fonts_app.hpp.
   {
     Prefs ui_prefs("ui");
-    ctx.sm->SetSatsVariant(ClampSatsVariant(
-        ui_prefs.GetU32("sats_variant", kSatsVariantDefault)));
+    ctx.sm->SetSatsVariant(
+        ClampSatsVariant(ui_prefs.GetU32("sats_variant", kSatsVariantDefault)));
   }
   // Rotation skip hook: honours the pool capability flag so solo pools
   // don't cycle onto the earnings slot even if the user's persisted
@@ -95,9 +98,19 @@ void InitScreenManager(AppCtx& ctx) {
     if (kind != ScreenType::kMiningPoolEarnings) return false;
     Prefs p(prefs::kSettingsNs);
     const std::string name =
-        p.GetString(prefs::kMiningPoolName, "");
+        btclock::settings::ReadString(p, prefs::kMiningPoolName);
     return !mining_pools::PoolSupportsDailyEarnings(name);
   });
+
+  // Force a repaint when a logo fetch lands so the pool screens
+  // displace the text-fallback that was painted while the bytes were
+  // in flight. The fetcher invokes this from its own task; capture
+  // the bare ScreenManager pointer (its lifetime is the app's).
+  ScreenManager* sm_ptr = ctx.sm.get();
+  btclock::pool_logos::SetOnFetchComplete(
+      [sm_ptr](const std::string& /*pool_name*/) {
+        if (sm_ptr) sm_ptr->MarkDirty();
+      });
 }
 
 }  // namespace btclock

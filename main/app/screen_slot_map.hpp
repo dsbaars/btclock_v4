@@ -36,18 +36,18 @@ namespace slot_map {
 // Catalogue ids that match BTCLOCK_SCREEN_KIND_LIST in screens/screen_kind.hpp
 // and main/app/catalogs.hpp. Stable across firmware versions — renumbering
 // would break the persisted `screenOrder` and `screen<id>Visible` NVS keys.
-inline constexpr int kApiIdBlockHeight        = 0;
-inline constexpr int kApiIdClock              = 3;
-inline constexpr int kApiIdHalving            = 4;
-inline constexpr int kApiIdBlockFeeRate       = 6;
-inline constexpr int kApiIdMoscowTime         = 10;
-inline constexpr int kApiIdBtcPrice           = 20;
-inline constexpr int kApiIdMarketCap          = 30;
-inline constexpr int kApiIdBitcoinSupply      = 40;
+inline constexpr int kApiIdBlockHeight = 0;
+inline constexpr int kApiIdClock = 3;
+inline constexpr int kApiIdHalving = 4;
+inline constexpr int kApiIdBlockFeeRate = 6;
+inline constexpr int kApiIdMoscowTime = 10;
+inline constexpr int kApiIdBtcPrice = 20;
+inline constexpr int kApiIdMarketCap = 30;
+inline constexpr int kApiIdBitcoinSupply = 40;
 inline constexpr int kApiIdMiningPoolHashrate = 70;
 inline constexpr int kApiIdMiningPoolEarnings = 71;
-inline constexpr int kApiIdBitaxeHashrate     = 80;
-inline constexpr int kApiIdBitaxeBestDiff     = 81;
+inline constexpr int kApiIdBitaxeHashrate = 80;
+inline constexpr int kApiIdBitaxeBestDiff = 81;
 
 // Currency-agnostic slots before per-currency fan-out:
 //   0=block, 1=clock, 2=halving, 3=supply,
@@ -72,21 +72,33 @@ inline int ApiIdForSlot(std::size_t slot, std::size_t currency_count) {
   if (slot >= total) return -1;
   if (slot == total - 1) return kApiIdBlockFeeRate;
   switch (slot) {
-    case 0: return kApiIdBlockHeight;
-    case 1: return kApiIdClock;
-    case 2: return kApiIdHalving;
-    case 3: return kApiIdBitcoinSupply;
-    case 4: return kApiIdMiningPoolHashrate;
-    case 5: return kApiIdMiningPoolEarnings;
-    case 6: return kApiIdBitaxeHashrate;
-    case 7: return kApiIdBitaxeBestDiff;
-    default: break;
+    case 0:
+      return kApiIdBlockHeight;
+    case 1:
+      return kApiIdClock;
+    case 2:
+      return kApiIdHalving;
+    case 3:
+      return kApiIdBitcoinSupply;
+    case 4:
+      return kApiIdMiningPoolHashrate;
+    case 5:
+      return kApiIdMiningPoolEarnings;
+    case 6:
+      return kApiIdBitaxeHashrate;
+    case 7:
+      return kApiIdBitaxeBestDiff;
+    default:
+      break;
   }
   const std::size_t off = (slot - kAgnosticSlots) % kPerCurrencySlots;
   switch (off) {
-    case 0: return kApiIdMoscowTime;
-    case 1: return kApiIdBtcPrice;
-    case 2: return kApiIdMarketCap;
+    case 0:
+      return kApiIdMoscowTime;
+    case 1:
+      return kApiIdBtcPrice;
+    case 2:
+      return kApiIdMarketCap;
   }
   return -1;
 }
@@ -130,15 +142,24 @@ inline int SlotForApiId(int api_id, std::size_t currency_count,
   }
   const std::size_t total = SlotCount(currency_count);
   switch (api_id) {
-    case kApiIdBlockHeight:        return 0;
-    case kApiIdClock:              return 1;
-    case kApiIdHalving:            return 2;
-    case kApiIdBitcoinSupply:      return 3;
-    case kApiIdMiningPoolHashrate: return 4;
-    case kApiIdMiningPoolEarnings: return 5;
-    case kApiIdBitaxeHashrate:     return 6;
-    case kApiIdBitaxeBestDiff:     return 7;
-    case kApiIdBlockFeeRate:       return static_cast<int>(total - 1);
+    case kApiIdBlockHeight:
+      return 0;
+    case kApiIdClock:
+      return 1;
+    case kApiIdHalving:
+      return 2;
+    case kApiIdBitcoinSupply:
+      return 3;
+    case kApiIdMiningPoolHashrate:
+      return 4;
+    case kApiIdMiningPoolEarnings:
+      return 5;
+    case kApiIdBitaxeHashrate:
+      return 6;
+    case kApiIdBitaxeBestDiff:
+      return 7;
+    case kApiIdBlockFeeRate:
+      return static_cast<int>(total - 1);
     case kApiIdMoscowTime:
       return static_cast<int>(kAgnosticSlots +
                               kPerCurrencySlots * preferred_currency_index);

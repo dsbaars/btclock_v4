@@ -14,8 +14,8 @@ bool EndsWithCi(std::string_view path, std::string_view ext) {
   const size_t off = path.size() - ext.size();
   for (size_t i = 0; i < ext.size(); ++i) {
     const char c = path[off + i];
-    const char lc = static_cast<char>(
-        std::tolower(static_cast<unsigned char>(c)));
+    const char lc =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (lc != ext[i]) return false;
   }
   return true;

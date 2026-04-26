@@ -1,10 +1,9 @@
-#include "screens/screens.hpp"
-
 #include <array>
 #include <string>
 
 #include "screens/common.hpp"
 #include "screens/fee_rate_layout.hpp"
+#include "screens/screens.hpp"
 
 namespace btclock {
 
@@ -42,11 +41,11 @@ constexpr const char* kUnitRef = "Bastv";
 // the digit panels with a glyph change get flagged for repaint.
 
 template <size_t N>
-void RenderFeeRateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
-    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-    double fee_sats_vb, double prev_fee_sats_vb,
-    bool full_refresh_mode, bool vertical_desc) {
+void RenderFeeRateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+                         uint8_t (&fb_storage)[N][16 * 296],
+                         const AppFonts& fonts, double fee_sats_vb,
+                         double prev_fee_sats_vb, bool full_refresh_mode,
+                         bool vertical_desc) {
   static_assert(N >= 7, "fee-rate layout needs at least 7 panels");
   constexpr size_t kDigitPanels = kFeeRateDigitPanels<N>;
   constexpr size_t kUnitPanel = N - 1;
@@ -67,9 +66,8 @@ void RenderFeeRateScreen(
   // DiffFeeRateDigits's `full_refresh` argument forces every digit to
   // repaint when true — feed it the combined cell-diff-reset signal
   // so either a sentinel prev OR an EPD full frame paints everything.
-  const auto digit_update =
-      DiffFeeRateDigits(new_digits, old_digits,
-                        cell_diff_reset || full_refresh_mode);
+  const auto digit_update = DiffFeeRateDigits(
+      new_digits, old_digits, cell_diff_reset || full_refresh_mode);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
@@ -85,8 +83,7 @@ void RenderFeeRateScreen(
   for (size_t i = 0; i < kDigitPanels; ++i) {
     const size_t panel_idx = 1 + i;
     slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                 std::string(1, new_digits[i]),
-                                 nullptr, 0, 0};
+                                 std::string(1, new_digits[i]), nullptr, 0, 0};
     update[panel_idx] = digit_update[i];
   }
 
@@ -97,15 +94,15 @@ void RenderFeeRateScreen(
       PaintSlot{PaintSlot::kLabelSplit, "sat/vB", nullptr, 0, 0, kUnitRef};
   update[kUnitPanel] = cell_diff_reset || full_refresh_mode;
 
-  PaintDataScreen(panels, fb_storage, fonts, slots, update,
-                  full_refresh_mode, vertical_desc);
+  PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
+                  vertical_desc);
 }
 
-template void RenderFeeRateScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, double, double, bool, bool);
-template void RenderFeeRateScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, double, double, bool, bool);
+template void RenderFeeRateScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
+                                     uint8_t (&)[7][16 * 296], const AppFonts&,
+                                     double, double, bool, bool);
+template void RenderFeeRateScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
+                                     uint8_t (&)[8][16 * 296], const AppFonts&,
+                                     double, double, bool, bool);
 
 }  // namespace btclock

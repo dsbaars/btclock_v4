@@ -23,11 +23,11 @@
 #include <cstdint>
 #include <functional>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "io/frontlight_ambient_policy.hpp"
 #include "io/frontlight_fader.hpp"
 #include "io/frontlight_stagger.hpp"
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "pca9685.hpp"
 
 namespace btclock {
@@ -110,7 +110,7 @@ class FrontlightController {
   // Must outlive the controller. The PCA9685's Begin() should already
   // have been called.
   FrontlightController(Pca9685& pca, uint8_t channel_first,
-                        uint8_t channel_count);
+                       uint8_t channel_count);
 
   // Creates the event queue + task. Call once after construction.
   void Start();
@@ -219,7 +219,7 @@ class FrontlightController {
   // Drive one tick of the staggered flash animation. Bypasses the
   // fader so each LED sees its phase-shifted duty directly.
   void WriteStaggeredTick(uint32_t tick, uint16_t max_brightness,
-                           StaggerDirection direction);
+                          StaggerDirection direction);
 
   Pca9685& pca_;
   uint8_t channel_first_;

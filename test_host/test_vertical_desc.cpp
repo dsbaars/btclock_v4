@@ -14,16 +14,17 @@
 // layers split avoids dragging the font stack onto the host target
 // while still pinning both halves of the contract.
 
-#include "doctest.h"
-
 #include <cstddef>
+#include <cstdint>
+
+#include "doctest.h"
 
 namespace {
 
 // Mirror of PaintSlot::Kind's subset we care about here. Matches
 // main/screens/common.hpp — the helper below is a pure port of the
 // one-line selector PaintSlotIntoFb uses.
-enum class SlotKind {
+enum class SlotKind : std::uint8_t {
   kBlank,
   kLabel,
   kLabelSplit,
@@ -52,11 +53,9 @@ struct PanelDims {
 // native width. Everything else keeps the k180 dims.
 PanelDims LogicalDimsAfterVerticalDesc(int native_w, int native_h,
                                        SlotKind kind, bool vertical_desc) {
-  const bool rotate = vertical_desc &&
-                      (kind == SlotKind::kLabel ||
-                       kind == SlotKind::kLabelSplit);
-  return rotate ? PanelDims{native_h, native_w}
-                : PanelDims{native_w, native_h};
+  const bool rotate = vertical_desc && (kind == SlotKind::kLabel ||
+                                        kind == SlotKind::kLabelSplit);
+  return rotate ? PanelDims{native_h, native_w} : PanelDims{native_w, native_h};
 }
 
 // 2.13" panel — the variant wired for the REV_A/REV_B/V8 boards the
@@ -71,11 +70,9 @@ TEST_CASE("vertical_desc=false keeps logical dims at native (k180 path)") {
   // in the switch would flip at least one of them; the label kinds are
   // the important ones (they MUST NOT rotate when the flag is off).
   const SlotKind kinds[] = {
-      SlotKind::kBlank,        SlotKind::kLabel,
-      SlotKind::kLabelSplit,   SlotKind::kDigit,
-      SlotKind::kSmallGroup,   SlotKind::kSatsGlyph,
-      SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,
-      SlotKind::kIconBitmap,
+      SlotKind::kBlank,         SlotKind::kLabel,      SlotKind::kLabelSplit,
+      SlotKind::kDigit,         SlotKind::kSmallGroup, SlotKind::kSatsGlyph,
+      SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,  SlotKind::kIconBitmap,
   };
   for (const auto k : kinds) {
     const auto d = LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, k,
@@ -88,8 +85,8 @@ TEST_CASE("vertical_desc=false keeps logical dims at native (k180 path)") {
 TEST_CASE("vertical_desc=true rotates label slots 90°, leaves other kinds") {
   // Label kinds swap into a 250×122 landscape-long region so the text
   // runs along the panel's long axis.
-  const auto lbl = LogicalDimsAfterVerticalDesc(
-      kNativeW, kNativeH, SlotKind::kLabel, true);
+  const auto lbl =
+      LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, SlotKind::kLabel, true);
   CHECK(lbl.w == kNativeH);
   CHECK(lbl.h == kNativeW);
 
@@ -101,9 +98,8 @@ TEST_CASE("vertical_desc=true rotates label slots 90°, leaves other kinds") {
   // Every non-label kind stays put — the flag must not touch digit /
   // glyph / unit / icon slots.
   const SlotKind leaveAlone[] = {
-      SlotKind::kBlank,        SlotKind::kDigit,
-      SlotKind::kSmallGroup,   SlotKind::kSatsGlyph,
-      SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,
+      SlotKind::kBlank,      SlotKind::kDigit,         SlotKind::kSmallGroup,
+      SlotKind::kSatsGlyph,  SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,
       SlotKind::kIconBitmap,
   };
   for (const auto k : leaveAlone) {
@@ -118,13 +114,13 @@ TEST_CASE("Rotation is reversible — applying the flag twice returns to base") 
   // The rotation is a pure predicate on (kind, flag); toggling the flag
   // back off restores the k180 dims. Guards against accidental mutation
   // of an input LandscapeFb that callers share across panels.
-  auto rotated = LogicalDimsAfterVerticalDesc(
-      kNativeW, kNativeH, SlotKind::kLabel, true);
+  auto rotated =
+      LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, SlotKind::kLabel, true);
   CHECK(rotated.w == kNativeH);
   CHECK(rotated.h == kNativeW);
 
-  auto restored = LogicalDimsAfterVerticalDesc(
-      kNativeW, kNativeH, SlotKind::kLabel, false);
+  auto restored =
+      LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, SlotKind::kLabel, false);
   CHECK(restored.w == kNativeW);
   CHECK(restored.h == kNativeH);
 }

@@ -38,8 +38,7 @@ inline void AttachLightLevelJson(cJSON* root, bool available, float lux) {
   // multiply/round so the 0.1 recip of 10 is representable — rounding
   // in float leaves the result as e.g. 15.8000001907... which cJSON
   // then serialises in full. Matches `lux=%.1f` in the serial log.
-  const double rounded =
-      std::round(static_cast<double>(lux) * 10.0) / 10.0;
+  const double rounded = std::round(static_cast<double>(lux) * 10.0) / 10.0;
   cJSON_AddNumberToObject(root, "lightLevel", rounded);
 }
 

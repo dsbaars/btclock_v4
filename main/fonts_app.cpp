@@ -26,7 +26,8 @@ AppFonts::AppFonts()
       atkinson_(kAtkinsonTtf, kAtkinsonTtfSize),
       atkinson_bold_(kAtkinsonBoldTtf, kAtkinsonBoldTtfSize),
       sats_symbol_(kSatoshiSymbolTtf, kSatoshiSymbolTtfSize),
-      mdi_(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfSize) {}
+      mdi_(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfSize) {
+}
 #else
 namespace {
 size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
@@ -39,11 +40,8 @@ AppFonts::AppFonts()
       oswald_(kOswaldTtf, SizeBetween(kOswaldTtf, kOswaldTtfEnd)),
       oswald_bold_(kOswaldBoldTtf,
                    SizeBetween(kOswaldBoldTtf, kOswaldBoldTtfEnd)),
-      inter_(kInterTtf,
-             SizeBetween(kInterTtf, kInterTtfEnd)),
-      inter_bold_(
-          kInterBoldTtf,
-          SizeBetween(kInterBoldTtf, kInterBoldTtfEnd)),
+      inter_(kInterTtf, SizeBetween(kInterTtf, kInterTtfEnd)),
+      inter_bold_(kInterBoldTtf, SizeBetween(kInterBoldTtf, kInterBoldTtfEnd)),
       source_serif_(kSourceSerifTtf,
                     SizeBetween(kSourceSerifTtf, kSourceSerifTtfEnd)),
       source_serif_bold_(
@@ -65,7 +63,8 @@ AppFonts::AppFonts()
       sats_symbol_(kSatoshiSymbolTtf,
                    SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)),
       mdi_(kMaterialDesignIconsTtf,
-           SizeBetween(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfEnd)) {}
+           SizeBetween(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfEnd)) {
+}
 #endif
 
 FontBundle AppFonts::Bundle(FontFamily f) const {
@@ -82,13 +81,20 @@ FontBundle AppFonts::Bundle(FontFamily f) const {
 
 const Font* AppFonts::SlotToFont(FontSlot s) const {
   switch (s) {
-    case FontSlot::kAntonio:             return &antonio_;
-    case FontSlot::kOswaldRegular:       return &oswald_;
-    case FontSlot::kOswaldBold:          return &oswald_bold_;
-    case FontSlot::kInterRegular:        return &inter_;
-    case FontSlot::kInterBold:           return &inter_bold_;
-    case FontSlot::kSourceSerifRegular:  return &source_serif_;
-    case FontSlot::kSourceSerifBold:     return &source_serif_bold_;
+    case FontSlot::kAntonio:
+      return &antonio_;
+    case FontSlot::kOswaldRegular:
+      return &oswald_;
+    case FontSlot::kOswaldBold:
+      return &oswald_bold_;
+    case FontSlot::kInterRegular:
+      return &inter_;
+    case FontSlot::kInterBold:
+      return &inter_bold_;
+    case FontSlot::kSourceSerifRegular:
+      return &source_serif_;
+    case FontSlot::kSourceSerifBold:
+      return &source_serif_bold_;
     case FontSlot::kMerriweatherRegular:
 #ifdef BTCLOCK_BOARD_REV_A
       // Slot is unreachable on Rev A — ResolveBundleSlots redirects
@@ -103,10 +109,14 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
 #else
       return &merriweather_bold_;
 #endif
-    case FontSlot::kBitterRegular:       return &bitter_;
-    case FontSlot::kBitterBold:          return &bitter_bold_;
-    case FontSlot::kAtkinsonRegular:     return &atkinson_;
-    case FontSlot::kAtkinsonBold:        return &atkinson_bold_;
+    case FontSlot::kBitterRegular:
+      return &bitter_;
+    case FontSlot::kBitterBold:
+      return &bitter_bold_;
+    case FontSlot::kAtkinsonRegular:
+      return &atkinson_;
+    case FontSlot::kAtkinsonBold:
+      return &atkinson_bold_;
   }
   return &atkinson_;
 }
