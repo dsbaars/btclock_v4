@@ -17,25 +17,20 @@ idf_component_register(
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
 
-# Bake the WebUI submodule's `git describe` into a compile definition so
-# /api/settings can return `fsRev` alongside the firmware's `gitRev`.
-# Mirrors how ESP-IDF stamps PROJECT_VER from `git describe`. Falls back
-# to an empty string when `data/` isn't a git tree (CI tarball builds,
-# fresh sparse checkouts), in which case the field is suppressed by the
-# emit-only-if-non-empty rule in settings_api.cpp.
-set(_WEBUI_REV "")
-find_package(Git QUIET)
-if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/data/.git")
-    execute_process(
-        COMMAND "${GIT_EXECUTABLE}" describe --tags --always --dirty
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/data"
-        OUTPUT_VARIABLE _WEBUI_REV
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
-endif()
+# Stamp the firmware's PROJECT_VER as `fsRev` so the WebUI bundle built
+# alongside this firmware reports a matching value to `gitRev`. The
+# previous source (`git describe` of the WebUI submodule) paced
+# independently of the firmware repo, so the two values almost never
+# lined up — every release built in the same CI workflow tripped the
+# SystemInfo mismatch banner. PROJECT_VER is set in the project root
+# CMakeLists from `git describe --tags --always --dirty --match
+# "[0-9]*"` of the firmware repo; sourcing fsRev from the same value
+# means a CI build of firmware + WebUI from one tree always reports
+# fsRev == gitRev. Empty when PROJECT_VER itself is empty (sparse
+# checkout / source tarball), in which case settings_api.cpp's
+# emit-only-if-non-empty rule suppresses the field.
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    WEBUI_FS_REV="${_WEBUI_REV}")
+    WEBUI_FS_REV="${PROJECT_VER}")
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     # Serve portal with Content-Encoding: gzip — ~65 % flash saving vs raw.

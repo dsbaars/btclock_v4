@@ -267,7 +267,7 @@ context.
 | `hostname` | string | Wifi STA | Resolved `<hostnamePrefix>-<mac>` hostname. |
 | `ip` | string | Wifi STA | Current STA IP, empty in AP mode. |
 | `hwRev` | string | compile-time | Human-readable hardware revision (e.g. `"Rev B"`). |
-| `fsRev` | string | compile-time | LittleFS bundle version string. |
+| `fsRev` | string | compile-time | LittleFS bundle version string. Stamped from the firmware's `PROJECT_VER` so a build that produces firmware + WebUI from one tree reports `fsRev == gitRev`. |
 | `gitRev` | string | compile-time | Git SHA of the firmware. Omitted when unknown. |
 | `gitTag` | string | compile-time | Git tag, when the build was tagged. Omitted when empty. |
 | `lastBuildTime` | int | compile-time | Firmware build time as Unix seconds (UTC). Omitted when the compiler emitted an unparseable `__DATE__`. |

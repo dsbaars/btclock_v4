@@ -20,3 +20,6 @@ photos/
 *.db
 .beads-credential-key
 /tools/nvs_gen/out/
+
+# Cloudflare Wrangler local state
+.wrangler/

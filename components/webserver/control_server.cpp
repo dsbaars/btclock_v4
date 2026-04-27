@@ -1814,9 +1814,12 @@ btclock::settings::DeviceContext BuildDeviceContext(
   // firmwareBinaryMap / webuiBinaryMap keys); fall back to the
   // display name only when the call site forgot to populate it.
   ctx.hw_rev = cfg.hw_id.empty() ? cfg.hw_name : cfg.hw_id;
-  // `git describe` of the WebUI submodule (`data/`), baked in by the
-  // webserver component's CMakeLists at configure time. Empty when the
-  // submodule wasn't a git tree at build (sparse checkout / CI tarball);
+  // Mirrors PROJECT_VER (the firmware's `git describe`), baked in by
+  // the webserver component's CMakeLists at configure time. Stamping
+  // the same value ensures a CI build that produces firmware + WebUI
+  // from one tree reports fsRev == gitRev, so the SystemInfo mismatch
+  // banner only fires when the two halves actually diverge. Empty when
+  // PROJECT_VER itself is empty (sparse checkout / source tarball);
   // settings_api.cpp suppresses the field on empty.
 #ifdef WEBUI_FS_REV
   ctx.fs_rev = WEBUI_FS_REV;
