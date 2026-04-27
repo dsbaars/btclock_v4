@@ -1245,7 +1245,7 @@ TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
       {"ceEndpoint", "ws-staging.btclock.dev"},
       {"fontName", "antonio"},
       {"gitReleaseUrl",
-       "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/"
+       "https://git.btclock.dev/api/v1/repos/btclock/btclock_v4/releases/"
        "latest"},
       {"hostnamePrefix", "btclock"},
       {"httpAuthUser", "btclock"},

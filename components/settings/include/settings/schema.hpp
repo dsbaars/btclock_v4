@@ -153,8 +153,11 @@ inline constexpr std::array<FieldSpec, 72> kFields = {{
      2048,
      {}},
     {prefs::kFlOffWhenDark, FieldKind::kBool, false, 0, 0, true, 0, {}},
-    // v3 DEFAULT_FONT_NAME="antonio", DEFAULT_MINUTES_FULL_REFRESH=60,
-    // DEFAULT_GIT_RELEASE_URL=the v3 release feed.
+    // v3 DEFAULT_FONT_NAME="antonio", DEFAULT_MINUTES_FULL_REFRESH=60.
+    // gitReleaseUrl points at the v4 Forgejo release feed; OtaManager
+    // walks `assets[]` and matches `btclock_<variant>_ota.bin` (+
+    // sibling `.sha256`) per the naming scheme published by
+    // .forgejo/workflows/release.yaml.
     {prefs::kFontName, FieldKind::kString, true, 0, 0, false, 0, "antonio"},
     {prefs::kFullRefreshMin,
      FieldKind::kUint,
@@ -165,7 +168,7 @@ inline constexpr std::array<FieldSpec, 72> kFields = {{
      60,
      {}},
     {prefs::kGitReleaseUrl, FieldKind::kString, false, 0, 0, false, 0,
-     "https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/latest"},
+     "https://git.btclock.dev/api/v1/repos/btclock/btclock_v4/releases/latest"},
     // gmtOffset: removed from the schema on 2026-04-24 (bd btclock_v4-9rx).
     // v4 uses POSIX TZ strings via setenv("TZ", ...) + tzset(); the old
     // gmtOffset pref was never read back. Legacy NVS entries stay

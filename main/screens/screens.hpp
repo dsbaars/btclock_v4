@@ -234,13 +234,14 @@ void RenderCustomScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // Always full-refresh — there's no diff state; the caller ensures it
 // only paints on entry / value change.
 struct DebugScreenInfo {
-  std::string ip;            // dotted-quad, or "no link"
-  std::string ssid;          // stored STA ssid, or "" if none
-  uint32_t free_heap = 0;    // bytes, MALLOC_CAP_INTERNAL
-  uint32_t free_psram = 0;   // bytes, MALLOC_CAP_SPIRAM
-  const char* hw_name = "";  // board::kHardwareName
-  const char* built = "";    // __DATE__ from the build
-  uint32_t uptime_s = 0;     // seconds since boot
+  std::string ip;               // dotted-quad, or "no link"
+  std::string ssid;             // stored STA ssid, or "" if none
+  uint32_t free_heap = 0;       // bytes, MALLOC_CAP_INTERNAL
+  uint32_t free_psram = 0;      // bytes, MALLOC_CAP_SPIRAM
+  const char* hw_name = "";     // board::kHardwareName
+  const char* fw_version = "";  // esp_app_get_description()->version
+  const char* built = "";       // __DATE__ from the build
+  uint32_t uptime_s = 0;        // seconds since boot
 };
 // `full_refresh=true` paints with RefreshKind::kFull (clears ghosting,
 // flashes); false uses kPartial (silent, fast — used by the auto-tick

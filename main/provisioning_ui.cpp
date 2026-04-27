@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "board/board.hpp"
+#include "esp_app_desc.h"
 #include "esp_log.h"
 #include "net_util.hpp"
 #include "qrcodegen.h"
@@ -114,10 +115,17 @@ void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   {
     auto lfb = PrepFb(panels, fb_storage, 5);
     ClearFb(lfb, true);
+    // esp_app_desc_t::version is populated from PROJECT_VER, which our
+    // top-level CMakeLists derives from `git describe --tags --always
+    // --dirty --match "v*"`: "vX.Y.Z" on a tagged release, the short
+    // commit hash on a snapshot build, "-dirty" suffix when there are
+    // uncommitted edits at build time.
+    const esp_app_desc_t* app = esp_app_get_description();
+    const char* fw_ver = (app && app->version[0]) ? app->version : "unknown";
     char body[256];
     std::snprintf(body, sizeof(body),
-                  "*HW:*\n%s\n2.13\"\n\n*SW:*\nBTClock v4\n\n*Built:*\n%s",
-                  kHwName, __DATE__);
+                  "*HW:*\n%s\n2.13\"\n\n*SW:*\nBTClock v4\n%s\n\n*Built:*\n%s",
+                  kHwName, fw_ver, __DATE__);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kInfoPx, false);
   }

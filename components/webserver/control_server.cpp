@@ -1810,7 +1810,10 @@ btclock::settings::DeviceContext BuildDeviceContext(
   } else {
     ctx.has_light_level = false;
   }
-  ctx.hw_rev = cfg.hw_name;
+  // Prefer the machine-readable id (matches the WebUI's
+  // firmwareBinaryMap / webuiBinaryMap keys); fall back to the
+  // display name only when the call site forgot to populate it.
+  ctx.hw_rev = cfg.hw_id.empty() ? cfg.hw_name : cfg.hw_id;
   // `git describe` of the WebUI submodule (`data/`), baked in by the
   // webserver component's CMakeLists at configure time. Empty when the
   // submodule wasn't a git tree at build (sparse checkout / CI tarball);

@@ -76,5 +76,16 @@ constexpr const char* kHardwareName = "Rev B 7.5\"";
 constexpr const char* kHardwareName = "Rev B";
 #endif
 
+// Machine-readable identifier emitted as /api/settings.hwRev — see
+// board_rev_a.hpp for the full rationale. Underscore form matches the
+// WebUI's `firmwareBinaryMap` / `webuiBinaryMap` lookup keys.
+#if defined(BTCLOCK_PANEL_2_9)
+constexpr const char* kHardwareId = "REV_B_EPD_2_9";
+#elif defined(BTCLOCK_PANEL_7_5)
+constexpr const char* kHardwareId = "REV_B_EPD_7_5";
+#else
+constexpr const char* kHardwareId = "REV_B_EPD_2_13";
+#endif
+
 }  // namespace board
 }  // namespace btclock

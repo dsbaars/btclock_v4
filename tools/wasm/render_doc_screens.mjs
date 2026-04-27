@@ -276,7 +276,7 @@ function wordmarkPath(cxMm, baselineMm, fontSizeMm) {
 // Build the seven inner-panel <g> elements for the provisioning screen.
 // Each panel is sized to inner-bezel dimensions so the surrounding white
 // rectangle from buildFrameBackgroundSvg shows through as the bezel.
-function buildProvisioningPanels(apSsid, apPw, hwName, builtDate) {
+function buildProvisioningPanels(apSsid, apPw, hwName, builtDate, fwVersion) {
   const n = 7;
   const gutterMm = panelGutterMm(n);
   const innerWMm = PANEL_W_MM - 2 * PANEL_BEZEL_MM;
@@ -361,8 +361,8 @@ function buildProvisioningPanels(apSsid, apPw, hwName, builtDate) {
     ),
     drawCenter(
       panelOriginsMm[5],
-      `*HW:*\n${hwName}\n2.13"\n\n*SW:*\nBTClock v4\n\n*Built:*\n${builtDate}`,
-      { fontSize: 4.0, weight: 400 },
+      `*HW:*\n${hwName}\n2.13"\n\n*SW:*\nBTClock v4\n${fwVersion}\n\n*Built:*\n${builtDate}`,
+      { fontSize: 3.6, weight: 400 },
     ),
     buildPlaceholderQrSvg(panelOriginsMm[6], innerWMm, innerHMm),
   ];
@@ -440,6 +440,10 @@ async function renderProvisioningComposite(outPath, opts) {
   const apPw = opts.apPw ?? "Mq3HpRtV";
   const hwName = opts.hwName ?? "Rev B";
   const builtDate = opts.builtDate ?? "Apr 26 2026";
+  // Tag-shaped placeholder. Real device value is whatever `git
+  // describe --tags --always --dirty --match "v*"` baked into
+  // PROJECT_VER at build time, surfaced via esp_app_desc_t::version.
+  const fwVersion = opts.fwVersion ?? "v0.1.0";
 
   const bgSvg = buildFrameBackgroundSvg(7);
   // Splice the provisioning content in just before the closing </svg> so
@@ -450,6 +454,7 @@ async function renderProvisioningComposite(outPath, opts) {
     apPw,
     hwName,
     builtDate,
+    fwVersion,
   );
   const composedSvg = bgSvg.replace(
     "</svg>",
@@ -507,7 +512,11 @@ const SCREENS = [
   {
     id: "clock",
     title: "Time",
-    skip: true,
+    // 13:37 on 26/4 — the same date string the provisioning render
+    // uses, so the docs telegraph that all the synthetic renders
+    // share a moment in time. hideLeadZero=false to show the full
+    // HH:MM form most users will see.
+    fn: () => mod.renderClockAlphaBuffer(13, 37, 26, 4, false),
   },
   {
     id: "halving_countdown",
@@ -636,6 +645,26 @@ const SCREENS = [
     title: "Nostr zap overlay",
     fn: () => mod.renderNostrZapAlphaBuffer(21000),
   },
+  {
+    id: "debug",
+    title: "Debug overlay",
+    // Realistic snapshot. fwVersion is a tag-shaped string for the
+    // docs render — the on-device value is whatever `git describe
+    // --tags --always --dirty --match "v*"` returned at build time
+    // (e.g. "v0.1.0", "abc1234", or "abc1234-dirty"). hwName here
+    // matches Rev B.
+    fn: () =>
+      mod.renderDebugAlphaBuffer(
+        "192.168.20.97",
+        "home-wifi",
+        135 * 1024,         // 135 KB free internal heap
+        1850 * 1024,        // 1.85 MB free PSRAM
+        "Rev B",
+        "v0.1.0",
+        "Apr 26 2026",
+        7 * 3600 + 42 * 60, // 7h 42m uptime
+      ),
+  },
 ];
 
 const FONTS = [
@@ -698,6 +727,7 @@ async function main() {
       apPw: "Mq3HpRtV",
       hwName: "Rev B",
       builtDate: "Apr 26 2026",
+      fwVersion: "v0.1.0",
     });
     generated.push({
       kind: "screen",

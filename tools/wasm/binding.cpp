@@ -1253,6 +1253,74 @@ val renderNostrZapAlpha(double amount_sats) {
   });
 }
 
+// Clock screen — date/HH:MM. Args are (hour 0..23, minute 0..59,
+// mday 1..31, month 1..12, hide_leading_zero). Always renders as a
+// "valid" frame (no NTP-pending placeholder) so the docs render
+// shows the populated clock face.
+val renderClockAlpha(int hour, int minute, int mday, int month,
+                     bool hide_leading_zero) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderClockScreen<8>(
+          borrowed, As8(ctx), ctx.fonts,
+          /*valid=*/true, hour, minute, mday, month,
+          /*prev_valid=*/false, /*prev_hour=*/0, /*prev_minute=*/0,
+          /*prev_mday=*/0, /*prev_month=*/0,
+          /*full_refresh_mode=*/true, vd, hide_leading_zero);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderClockScreen<7>(
+          borrowed, As7(ctx), ctx.fonts,
+          /*valid=*/true, hour, minute, mday, month,
+          /*prev_valid=*/false, /*prev_hour=*/0, /*prev_minute=*/0,
+          /*prev_mday=*/0, /*prev_month=*/0,
+          /*full_refresh_mode=*/true, vd, hide_leading_zero);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// Debug overlay — IP/SSID/heap/PSRAM/HW+FW+built/uptime. Mirrors the
+// fields the firmware's event_loop populates from runtime state, but
+// every value is caller-supplied so the docs render reflects a
+// realistic snapshot without depending on esp_app_desc / heap_caps.
+val renderDebugAlpha(std::string ip, std::string ssid,
+                     int free_heap_bytes, int free_psram_bytes,
+                     std::string hw_name, std::string fw_version,
+                     std::string built, int uptime_s) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    btclock::DebugScreenInfo info;
+    info.ip = std::move(ip);
+    info.ssid = std::move(ssid);
+    info.free_heap = free_heap_bytes < 0
+                         ? 0u
+                         : static_cast<uint32_t>(free_heap_bytes);
+    info.free_psram = free_psram_bytes < 0
+                          ? 0u
+                          : static_cast<uint32_t>(free_psram_bytes);
+    info.hw_name = hw_name.c_str();
+    info.fw_version = fw_version.c_str();
+    info.built = built.c_str();
+    info.uptime_s = uptime_s < 0 ? 0u : static_cast<uint32_t>(uptime_s);
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderDebugScreen<8>(borrowed, As8(ctx), ctx.fonts, info,
+                                    /*full_refresh=*/true);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderDebugScreen<7>(borrowed, As7(ctx), ctx.fonts, info,
+                                    /*full_refresh=*/true);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
 // is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
 // 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson.
@@ -1379,6 +1447,8 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderBitaxeBestDiffAlphaBuffer",
                        &renderBitaxeBestDiffAlpha);
   emscripten::function("renderNostrZapAlphaBuffer", &renderNostrZapAlpha);
+  emscripten::function("renderClockAlphaBuffer", &renderClockAlpha);
+  emscripten::function("renderDebugAlphaBuffer", &renderDebugAlpha);
   emscripten::function("getCodepointMetrics", &getCodepointMetrics);
 
   emscripten::function("getPanelDimensions", &getPanelDimensions);

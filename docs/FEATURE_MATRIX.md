@@ -43,9 +43,14 @@ since the 2026-04-23 snapshot:
   `rotation_plan::BuildRotationSequence`; WebUI ships a drag-reorder.
 - `POST /upload/firmware` and `POST /api/factory_reset` are no longer
   stubs.
+- `POST /api/firmware/auto_update` now drives a TLS-gated pull from
+  `gitReleaseUrl` (default flipped to the v4 Forgejo release feed),
+  matches `btclock_<variant>_ota.bin` per board × panel, verifies the
+  sibling `.sha256`, and reboots; release pipeline publishes the
+  matching flat assets per variant with shared bins deduped.
 
-DND/scheduling, peripherals, and provisioning are now at full parity
-for the in-scope feature set.
+DND/scheduling, peripherals, OTA, and provisioning are now at full
+parity for the in-scope feature set.
 
 ---
 
@@ -57,15 +62,15 @@ Rough per-category parity (counts full + partial as "done"):
 |---|---:|---:|---:|
 | Display / screens | 15 | 15 | 100% (2 partial: fee-rate decimal/unit glyph, runtime-pushed countdown variant) |
 | Data sources | 12 | 12 | 100% (2 partial: BTClock WS mempool sub-channels, WASM bindings) |
-| HTTP / Control API | 40 | 39 | ~98% |
+| HTTP / Control API | 40 | 40 | 100% |
 | Provisioning / WiFi | 8 | 8 | 100% |
 | LED + light subsystems | 9 | 9 | 100% |
 | DND / scheduling | 4 | 4 | 100% |
-| OTA / updates | 4 | 2 | 50% (1 stubbed: auto-update check; 1 N/A: ArduinoOTA push, replaced by `/upload/firmware`) |
+| OTA / updates | 4 | 3 | 75% (1 N/A: ArduinoOTA push, replaced by `/upload/firmware`) |
 | Peripherals | 6 | 6 | 100% |
 | Persistence (NVS) | 5 | 5 | 100% |
 | Build / board variants | 7 | 6 | ~86% |
-| **Totals** | **110** | **106** | **~96%** |
+| **Totals** | **110** | **108** | **~98%** |
 
 10 of 11 rotation screens render (block, clock, halving, supply,
 moscow, price, mcap, fee-rate, mining-pool hashrate/earnings, Bitaxe
@@ -76,8 +81,11 @@ auto-off, all prefs NVS-backed. Mining-pool stack ships 11 pools
 the on-demand logo fetcher caches into LittleFS, and a pool-selection
 orchestrator boots from the `miningPoolName` pref. Data sources:
 BTClock WSS, mempool+kraken, custom-WS, Nostr (schnorr-verified), Bitaxe
-HTTP, mining-pool HTTPS — all live. Remaining stubs are confined to
-firmware OTA auto-update + a couple of pref-driven sub-behaviours.
+HTTP, mining-pool HTTPS — all live. Pull-OTA is now end-to-end:
+`POST /api/firmware/auto_update` follows `gitReleaseUrl` to the v4
+Forgejo release, picks the `btclock_<variant>_ota.bin` asset that
+matches the running board × panel, verifies SHA-256, and reboots.
+Remaining stubs are limited to a couple of pref-driven sub-behaviours.
 
 ---
 
@@ -172,7 +180,7 @@ follow-up issue.
 | `POST /api/frontlight/brightness` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (validated duty → fade) | — |
 | `POST /upload/firmware` | [ota_routes.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver/ota_routes.cpp) | [control_server.cpp::HandleUploadFirmware](../components/webserver/control_server.cpp) → [components/ota/](../components/ota) | Implemented (streams body to inactive app partition, SHA-256 verify, reboots into new slot; PSRAM buffer; auth-gated) | — |
 | `POST /upload/webui` | ota_routes.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → [`FlashWebuiImage`](../components/btclock_fs/littlefs.cpp) | Implemented (streams blob to `storage` partition, reboots; gated by HTTP Basic auth when `httpAuthEnabled`) | — |
-| `POST /api/firmware/auto_update` | ota_routes.cpp | Stubbed 501 | Stubbed | — |
+| `POST /api/firmware/auto_update` | ota_routes.cpp | [control_server.cpp::HandleFirmwareAutoUpdate](../components/webserver/control_server.cpp) → [ota_manager.cpp::TriggerAutoUpdate](../components/ota/ota_manager.cpp) | Implemented (TLS-gated fetch of `gitReleaseUrl`, walks Forgejo `assets[]` for `btclock_<variant>_ota.bin` + `.sha256`, esp_https_ota stream, partition rehash + match, reboot; status surfaced via `/api/status.isOTAUpdating`) | — |
 | `POST /api/factory_reset` | (WiFiManager reset) | [control_server.cpp::HandleFactoryReset](../components/webserver/control_server.cpp) → [`PerformFactoryReset`](../components/settings/factory_reset.cpp) | Implemented (confirmation-body gated, wipes NVS, reboots to provisioning) | — |
 | `POST /api/action/simulate_zap` | (n/a in v3) | [control_server.cpp::HandleActionSimulateZap](../components/webserver/control_server.cpp) | Implemented (fires the zap pipeline as if a Nostr kind-9735 had arrived; useful for dev / WebUI QA) | — |
 | `POST /api/action/clear_pool_logos` | (n/a in v3) | [control_server.cpp](../components/webserver/control_server.cpp) → wipes `/lfs/pool_logos/` so the on-demand fetcher re-pulls | Implemented | `btclock_v4-5yi` |
@@ -230,7 +238,7 @@ brightness / block-flash colour / disable / flash-on-update.
 |---|---|---|---|---|
 | Web-UI firmware upload (`U_FLASH`) | ota_routes.cpp | [control_server.cpp::HandleUploadFirmware](../components/webserver/control_server.cpp) → [components/ota/](../components/ota) | Implemented (PSRAM-buffered streaming, sequential writes, timeout retry) | — |
 | Web-UI LittleFS upload (`U_SPIFFS`) | ota_routes.cpp | [control_server.cpp::HandleUploadWebui](../components/webserver/control_server.cpp) → [`FlashWebuiImage`](../components/btclock_fs/littlefs.cpp) | Implemented | — |
-| Auto-update check (release feed) | ota_routes.cpp `onAutoUpdateFirmware`, `gitReleaseUrl` | Stubbed 501 | Stubbed | — |
+| Auto-update check (release feed) | ota_routes.cpp `onAutoUpdateFirmware`, `gitReleaseUrl` | [ota_manager.cpp::RunAutoUpdate](../components/ota/ota_manager.cpp) — fetches release JSON via TLS-gated HTTPS, parses Forgejo/GitHub `assets[]` for `<firmware_asset>` + `<firmware_asset>.sha256`, streams via `esp_https_ota`, rehashes the inactive partition and aborts on mismatch, then `esp_restart`. CI publishes per-variant `btclock_<variant>_ota.bin` assets so `MakeOtaConfig()` lookups resolve. | Implemented | — |
 | ArduinoOTA push (PlatformIO → device) | [ota.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/ota/ota.cpp) | — (n/a — push-OTA replaced by `POST /upload/firmware`) | N/A | — |
 
 ## Peripherals

@@ -99,6 +99,7 @@ em++ \
     "${SCREENS_DIR}/moscow_time.cpp" \
     "${SCREENS_DIR}/fee_rate.cpp" \
     "${SCREENS_DIR}/clock.cpp" \
+    "${SCREENS_DIR}/debug.cpp" \
     "${SCREENS_DIR}/halving.cpp" \
     "${SCREENS_DIR}/bitcoin_supply.cpp" \
     "${SCREENS_DIR}/market_cap.cpp" \

@@ -44,5 +44,26 @@ set(SDKCONFIG_DEFAULTS
     "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults"
     "${_VARIANT_DEFAULTS}")
 
+# Bake a git-derived version string into the firmware so esp_app_desc_t
+# `version` is meaningful for both tagged releases and untagged snapshots.
+# Tagged commits surface as e.g. "v0.1.0" (or "v0.1.0-dirty" with local
+# edits); untagged commits fall back to "<short-sha>" via `--always`.
+# IDF picks PROJECT_VER up before project() and embeds it in the app
+# image header — readable on-device via esp_app_get_description() and
+# surfaced through /api/version + the provisioning panel.
+find_package(Git QUIET)
+if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty --match "v*"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+        OUTPUT_VARIABLE _BTCLOCK_GIT_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _BTCLOCK_GIT_VERSION_RC)
+    if(_BTCLOCK_GIT_VERSION_RC EQUAL 0 AND _BTCLOCK_GIT_VERSION)
+        set(PROJECT_VER "${_BTCLOCK_GIT_VERSION}")
+    endif()
+endif()
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(btclock_v4)

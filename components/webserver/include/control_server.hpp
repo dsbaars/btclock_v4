@@ -181,6 +181,12 @@ class ControlServer {
     size_t num_screens = 0;
     // Human-readable hardware label, e.g. "Rev B", "V8".
     std::string hw_name;
+    // Machine-readable hardware identifier emitted as
+    // /api/settings.hwRev — underscore form (e.g. "REV_B_EPD_2_13",
+    // "REV_A_EPD_2_9", "REV_V8_EPD_2_13"). The WebUI keys
+    // `firmwareBinaryMap` / `webuiBinaryMap` off this string; falls
+    // back to hw_name when empty so older callers keep working.
+    std::string hw_id;
     // Optional frontlight hook. Nullptr on boards without a PCA9685
     // backlight (Rev A, V8); /api/frontlight/* then responds 503.
     FrontlightIface* frontlight = nullptr;

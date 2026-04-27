@@ -324,11 +324,11 @@ jobs:
   # ---------------------------------------------------------------
   # 4. Release publication (tag pushes only)
   # ---------------------------------------------------------------
-  # Collects every per-variant artifact, zips them up, and attaches
-  # the zips to a Forgejo release at the pushed tag. On
-  # workflow_dispatch (no tag) we skip the release creation and just
-  # re-publish the umbrella artifact so maintainers can sanity-check
-  # the pipeline without cutting a release.
+  # Collects every per-variant artifact and attaches flat `.bin` +
+  # `.sha256` files to a Forgejo release at the pushed tag. The naming
+  # scheme matches what `MakeOtaConfig()` in init_control_api.cpp
+  # selects, so /api/firmware/auto_update can fetch the right asset
+  # via the gitReleaseUrl pref.
   release:
     runs-on: docker
     container:
@@ -341,7 +341,7 @@ jobs:
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends zip curl jq
+          apt-get install -y --no-install-recommends curl jq coreutils
 
       - uses: https://code.forgejo.org/forgejo/download-artifact@v7
         with:
@@ -349,34 +349,78 @@ jobs:
           merge-multiple: false
           path: incoming
 
-      - name: Package per-variant zips
+      - name: Stage release assets (bin, deduped)
         shell: bash
-        # One zip per variant — Rev A users shouldn't have to sift
-        # through V8 blobs. Tag name (or "snapshot" on dispatch)
-        # replaces the short-sha suffix so downloads are self-
-        # identifying.
+        # Per-variant output: only the firmware app binary truly differs
+        # per variant — rename it to btclock_<variant>_ota.bin so the
+        # on-device auto-update fetcher can find it via the
+        # gitReleaseUrl pref. Everything else (bootloader, partition
+        # table, LittleFS storage image, blank OTA state) is dedup-keyed
+        # by sha256: the first occurrence wins under a stable name
+        # ("<base>_<size>.bin" for the flash-size-keyed images, plain
+        # "<base>.bin" for files that hash identically across all
+        # variants — typically ota_data_initial.bin). sha256 sidecars
+        # use sha256sum's default `<hex>  <name>` line so verifiers
+        # know which file the digest belongs to (the v3 release feed
+        # sometimes shipped just the bare hex).
         run: |
+          set -euo pipefail
           mkdir -p release
-          tag="${GITHUB_REF_NAME:-snapshot}"
+
+          declare -A SIZE_FOR_VARIANT=(
+            [rev-a]=4mb [rev-a-29]=4mb [rev-b]=8mb [v8]=16mb
+          )
+          declare -A SEEN_HASH
+
           for d in incoming/btclock_v4-*; do
             [ -d "$d" ] || continue
             name="$(basename "$d")"
-            # Pattern: btclock_v4-<variant>-<sha>  ->  btclock_v4-<variant>-<tag>
-            # `<variant>` may contain dashes (e.g. rev-a, rev-a-29);
-            # strip only the trailing sha token.
+            # Pattern: btclock_v4-<variant>-<sha>; <variant> may contain
+            # dashes (rev-a, rev-a-29) so strip only the trailing sha.
             variant="${name#btclock_v4-}"
             variant="${variant%-*}"
-            ( cd "$d" && zip -r "../../release/btclock_v4-${variant}-${tag}.zip" . )
+            variant_us="${variant//-/_}"
+            size="${SIZE_FOR_VARIANT[$variant]:-unknown}"
+
+            # 1. Variant-unique app binary.
+            if [ -f "$d/btclock_v4.bin" ]; then
+              cp "$d/btclock_v4.bin" "release/btclock_${variant_us}_ota.bin"
+            fi
+
+            # 2. Shared-by-flash-size or fully-shared support bins,
+            #    sha256-deduped so identical content uploads once.
+            for fname in bootloader partition-table storage ota_data_initial; do
+              src="$d/${fname}.bin"
+              [ -f "$src" ] || continue
+              h=$(sha256sum "$src" | awk '{print $1}')
+              if [ -z "${SEEN_HASH[$h]:-}" ]; then
+                if [ "$fname" = "ota_data_initial" ]; then
+                  out="ota_data_initial.bin"
+                else
+                  out="${fname}_${size}.bin"
+                fi
+                cp "$src" "release/${out}"
+                SEEN_HASH[$h]="$out"
+              fi
+            done
           done
+
+          # sha256 sidecars in the format `<hex>  <name>` so e.g.
+          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works.
+          ( cd release
+            for f in *.bin; do
+              sha256sum "$f" > "${f}.sha256"
+            done
+          )
           ls -la release
 
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: release-${{ github.ref_name }}
-          path: release/*.zip
+          path: release/*
           retention-days: 90
 
-      - name: Create Forgejo release and attach zips
+      - name: Create Forgejo release and attach assets
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         # Forgejo exposes the Gitea-compatible release API. GITHUB_TOKEN
@@ -405,11 +449,11 @@ jobs:
           fi
           echo "release id: $rel_id"
 
-          for f in release/*.zip; do
+          for f in release/*.bin release/*.sha256; do
             [ -f "$f" ] || continue
             echo "uploading $f"
             curl -sSL -X POST -H "$auth" \
-              -H "Content-Type: application/zip" \
+              -H "Content-Type: application/octet-stream" \
               --data-binary @"$f" \
               "${api}/${rel_id}/assets?name=$(basename "$f")"
           done

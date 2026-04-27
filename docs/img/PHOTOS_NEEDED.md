@@ -26,8 +26,8 @@ applicable.
 | `docs/img/photos/rev_b/frontlight_on.jpg` | Rev B | Frontlight at 100% in a dim room | Handbook → Frontlight (Rev B). |
 | `docs/img/photos/rev_b/frontlight_off.jpg` | Rev B | Same scene with frontlight off, ambient lighting only | Handbook → Frontlight (Rev B). |
 | `docs/img/photos/rev_b/leds_block_flash.jpg` | Rev B | LEDs mid-block-flash (orange `#E04300` default) | Handbook → LEDs. |
-| `docs/img/photos/rev_b/clock_screen.jpg` | Rev B | The Time/clock screen displaying real time — synthetic render not available, see `tools/wasm/render_doc_screens.mjs` `clock` skip flag | Handbook → Screen catalogue → Time. |
-| `docs/img/photos/rev_b/debug_overlay.jpg` | Rev B | Debug overlay (button-4 toggle) | Handbook → Debug overlay. |
+| `docs/img/photos/rev_b/clock_screen.jpg` | Rev B | The Time/clock screen displaying real time | Handbook → Screen catalogue → Time. A synthetic render now exists at `docs/img/screens/clock.png` (driven by `mod.renderClockAlphaBuffer`); the real-device photo is still wanted for the e-paper feel. |
+| `docs/img/photos/rev_b/debug_overlay.jpg` | Rev B | Debug overlay (button-4 toggle) | Handbook → Debug overlay. A synthetic render now exists at `docs/img/screens/debug.png` (driven by `mod.renderDebugAlphaBuffer`); the real-device shot would surface the live `*FW:*` git-derived version line on the running board. |
 
 Photos already on disk under `photos/` (taken with the lower-quality
 camera) are usable as a fallback if the better-camera retake is

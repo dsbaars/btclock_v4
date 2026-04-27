@@ -142,6 +142,7 @@ void InitControlApi(AppCtx& ctx) {
     ccfg.currencies = ctx.currencies;
     ccfg.num_screens = board::kNumPanels;
     ccfg.hw_name = board::kHardwareName;
+    ccfg.hw_id = board::kHardwareId;
     // Populates /api/settings `availablePools` so the WebUI dropdown
     // matches the compiled-in pool list. Kept in sync with the factory
     // in mining_pool_selector.cpp.

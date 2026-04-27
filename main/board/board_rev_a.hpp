@@ -80,5 +80,18 @@ constexpr const char* kHardwareName = "Rev A 7.5\"";
 constexpr const char* kHardwareName = "Rev A";
 #endif
 
+// Machine-readable identifier emitted as /api/settings.hwRev. The WebUI
+// maps these to firmware/WebUI binary names in `data/src/lib/util/version.ts`
+// (`firmwareBinaryMap` / `webuiBinaryMap`). Format is
+// `<BOARD>_EPD_<PANEL>` with underscores everywhere; matches what the
+// WebUI's `getFirmwareBinaryName(hwRev)` looks up.
+#if defined(BTCLOCK_PANEL_2_9)
+constexpr const char* kHardwareId = "REV_A_EPD_2_9";
+#elif defined(BTCLOCK_PANEL_7_5)
+constexpr const char* kHardwareId = "REV_A_EPD_7_5";
+#else
+constexpr const char* kHardwareId = "REV_A_EPD_2_13";
+#endif
+
 }  // namespace board
 }  // namespace btclock

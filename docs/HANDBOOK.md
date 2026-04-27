@@ -165,9 +165,13 @@ Deutsch:
 - **Restart / Force full refresh** — soft-reboot, or force a full-EPD
   redraw (clears any ghosting from prior frames). Force-full-refresh
   is also fired automatically every `fullRefreshMin` minutes.
-- **Firmware update** — "Check for update" hits the (currently stubbed
-  on v4) auto-update endpoint; manual upload is via `POST
-  /upload/firmware` — see [Firmware updates](#15-firmware-updates).
+- **Firmware update** — "Check for update" hits `POST
+  /api/firmware/auto_update`, which follows the `gitReleaseUrl` pref
+  (default: the v4 Forgejo release feed) to find the
+  `btclock_<variant>_ota.bin` asset matching this board × panel,
+  verifies the sibling `.sha256`, and reboots into the new partition.
+  Manual upload is via `POST /upload/firmware` — see
+  [Firmware updates](#15-firmware-updates).
 
 ### 4.2 Status card (centre)
 
@@ -473,12 +477,15 @@ Affected by: `stealFocus`, `verticalDesc`.
 
 ### Time
 
-The wall-clock time, rendered with the configured font on the digit
-panels. Shows seconds when the panel layout permits; minutes always
-have leading zeros, hours can drop the leading zero (`hideLeadZero`).
+![Time / clock screen](img/screens/clock.png)
 
-This screen has no off-device WASM binding (no synthetic render is
-generated); a real-device photo is queued in `PHOTOS_NEEDED.md`.
+The wall-clock time, rendered with the configured font on the digit
+panels. The label panel shows the date as `dd/mm` (split-text);
+panels 1..N-1 paint `HH:MM` right-justified with `:` in the slot
+between hours and minutes. Minutes always have leading zeros; hours
+can drop the leading zero (`hideLeadZero`). Until SNTP returns the
+first plausible epoch the digit panels stay blank rather than
+flashing an obviously-wrong epoch.
 
 #### Time zones (`tzString`)
 
@@ -760,9 +767,26 @@ etc.
 
 ### Debug overlay
 
-Toggled by Button-4. Renders heap free, IP, current screen id, build
-SHA, data-source state, and the partial-refresh tick counter. Always a
-full refresh — clears any ghosting accumulated by partial repaints.
+![Debug overlay](img/screens/debug.png)
+
+Toggled by Button-4 (a second press exits back to whatever data
+screen was up). One value per panel:
+
+| Panel | Field | Notes |
+|---|---|---|
+| 0 | `DEBUG` title | auto-fits to the panel width |
+| 1 | `IP:` | dotted-quad of the STA lease, or `-` when offline |
+| 2 | `SSID:` | the joined network's SSID |
+| 3 | `Heap:` | free `MALLOC_CAP_INTERNAL` (KB / MB) |
+| 4 | `PSRAM:` | free `MALLOC_CAP_SPIRAM` |
+| 5 | `HW:` / `FW:` / `Built:` | board variant, firmware version (tag for releases / short SHA for snapshots / `-dirty` suffix on uncommitted builds — see [4.1 Control card](#41-control-card-left) for the same string in the WebUI), and compile date |
+| 6 | `Uptime:` | seconds since boot, formatted `Xd Yh Zm` / `Hh Mm Ss` / `Mm Ss` |
+| 7 (V8 only) | `Exit:` hint | "press button 4 again" |
+
+The overlay paints with `RefreshKind::kFull` on entry (clears any
+ghosting accumulated by partial repaints) and re-paints with
+`RefreshKind::kPartial` once a second so heap/PSRAM/uptime stay
+live without visible flicker.
 
 ### OTA update overlay
 

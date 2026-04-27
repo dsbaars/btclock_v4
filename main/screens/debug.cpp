@@ -112,13 +112,22 @@ void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kBodyPx, false);
   }
-  // Panel 5 — HW variant + firmware build date.
+  // Panel 5 — HW variant + firmware version + build date.
+  // Version comes from DebugScreenInfo::fw_version, populated by the
+  // caller from esp_app_get_description()->version (which in turn is
+  // PROJECT_VER, derived from `git describe --tags --always --dirty
+  // --match "v*"` in the top-level CMakeLists.txt): tag for releases,
+  // short SHA for snapshots, "-dirty" suffix on uncommitted builds.
+  // Threading the value through the struct rather than reaching for
+  // esp_app_desc.h here keeps debug.cpp host-testable / WASM-buildable.
   {
     auto lfb = PrepFb(panels, fb_storage, 5);
     ClearFb(lfb, true);
-    char body[128];
-    std::snprintf(body, sizeof(body), "*HW:*\n%s\n\n*Built:*\n%s", info.hw_name,
-                  info.built);
+    const char* fw_ver =
+        (info.fw_version && info.fw_version[0]) ? info.fw_version : "unknown";
+    char body[160];
+    std::snprintf(body, sizeof(body), "*HW:*\n%s\n\n*FW:*\n%s\n\n*Built:*\n%s",
+                  info.hw_name, fw_ver, info.built);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kBodyPx, false);
   }

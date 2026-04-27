@@ -13,6 +13,7 @@
 #include "buttons.hpp"
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -70,6 +71,10 @@ constexpr const char* kTag = "btclock";
     info.free_psram =
         static_cast<uint32_t>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     info.hw_name = board::kHardwareName;
+    {
+      const esp_app_desc_t* app = esp_app_get_description();
+      info.fw_version = (app && app->version[0]) ? app->version : "unknown";
+    }
     info.built = __DATE__;
     info.uptime_s = static_cast<uint32_t>(now_ms / 1000);
     sm.RenderDebug(panels, fb_storage, fonts, info, now_ms, force_full);

@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-04-27T08:05:37.031Z",
+  "rendered_at": "2026-04-27T15:40:58.936Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -17,6 +17,12 @@
       "id": "block_height",
       "title": "Block height",
       "path": "docs/img/screens/block_height.png"
+    },
+    {
+      "kind": "screen",
+      "id": "clock",
+      "title": "Time",
+      "path": "docs/img/screens/clock.png"
     },
     {
       "kind": "screen",
@@ -131,6 +137,12 @@
       "id": "nostr_zap",
       "title": "Nostr zap overlay",
       "path": "docs/img/screens/nostr_zap.png"
+    },
+    {
+      "kind": "screen",
+      "id": "debug",
+      "title": "Debug overlay",
+      "path": "docs/img/screens/debug.png"
     },
     {
       "kind": "screen",
