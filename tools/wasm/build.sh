@@ -113,6 +113,7 @@ em++ \
     "${TTF_BLOB_CPP}" \
     "${SCRIPT_DIR}/binding.cpp" \
     "${SCRIPT_DIR}/font_wasm_aa.cpp" \
+    "${SCRIPT_DIR}/pool_logos_wasm_stub.cpp" \
     -o "${DIST_DIR}/btclock_datahandler.js" \
     -sMODULARIZE=1 \
     -sEXPORT_ES6=1 \

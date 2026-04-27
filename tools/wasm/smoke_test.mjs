@@ -157,6 +157,52 @@ for (let i = 1; i <= 6; i++) {
         `fractional=${f}`);
 }
 
+// --- Label rotation regression (bd btclock_v4-m67) ---
+//
+// verticalDesc label panels rotate locally to Rotation::k90Cw. Prior
+// to the fix, the AA sidechannel wrote at pre-rotation logical coords
+// — the text ended up clustered in the upper-left quadrant of the
+// 122×250 buffer (and clipped past native_width=122). After the fix
+// `RotateLogicalToUserUpright` moves the alpha into panel-rotated
+// coords, so the label fills the full vertical extent: ink should
+// span the lower half of the panel (y >= H/2) just as much as the
+// upper half. Use the label's full-ink pixel distribution as the
+// signal: count how many full-ink pixels fall in each half-buffer.
+function countFullInkInBand(buf, W, H, y0, y1) {
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = 0; x < W; x++) {
+      if (buf[y * W + x] === 255) n++;
+    }
+  }
+  return n;
+}
+const W = dims.width;
+const H = dims.height;
+const upper = countFullInkInBand(ab[0], W, H, 0, H >> 1);
+const lower = countFullInkInBand(ab[0], W, H, H >> 1, H);
+// Both halves carry one of the BLOCK/HEIGHT lines (split text), so
+// each should hold a meaningful fraction of the total ink.
+check("label panel has ink in upper half (BLOCK)",
+      upper > 200, `upper=${upper}`);
+check("label panel has ink in lower half (HEIGHT) — verticalDesc rotation alive",
+      lower > 200, `lower=${lower}`);
+// Width-axis check: text rotated to read top-to-bottom should occupy
+// the panel's full horizontal extent (any column past native_width=122
+// would silently clip; this asserts no clipping happened).
+let maxXWithInk = 0;
+for (let y = 0; y < H; y++) {
+  for (let x = W - 1; x > maxXWithInk; x--) {
+    if (ab[0][y * W + x] === 255) {
+      maxXWithInk = x;
+      break;
+    }
+  }
+}
+check("label panel ink reaches near the right edge (no rotation clip)",
+      maxXWithInk >= W - 25,
+      `maxXWithInk=${maxXWithInk} of W=${W}`);
+
 // --- preview-only runtime knobs -------------------------------------------
 //
 // Two settings live on the binding to support preview.html's font picker

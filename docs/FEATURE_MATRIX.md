@@ -239,7 +239,7 @@ brightness / block-flash colour / disable / flash-on-update.
 |---|---|---|---|---|
 | MCP23017 expander(s), incl. V8 dual-chip | [shared.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/shared.hpp) `mcp1/mcp2`, epd.cpp | [mcp23017](../components/mcp23017), [board_v8](../main/board/board_v8.hpp) | Implemented | — |
 | Buttons (4 × tactile, click + long-press) | [button_handler.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/buttons/button_handler.cpp) | [buttons](../components/buttons) | Implemented | — |
-| SSD1680 EPDs (2.13" + 2.9", shared SPI bus, shadow-FB partial refresh) | [epd.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/epd/epd.cpp) (GxEPD2 library) | [epd_ssd1680](../components/epd_ssd1680) | Implemented (native driver) | — |
+| SSD1680 EPDs (2.13" + 2.9", shared SPI bus, shadow-FB partial refresh) | [epd.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/epd/epd.cpp) | [epd_ssd1680](../components/epd_ssd1680) | Implemented (native driver) | — |
 | BH1750 ambient-light sensor | BH1750 Arduino lib | [bh1750](../components/bh1750) — feeds frontlight auto-off through `event_loop.cpp` | Implemented | — |
 | PCA9685 frontlight driver | PCA9685 Arduino lib | [pca9685](../components/pca9685) + `frontlight_controller.cpp` (fade + block-flash + zap-flash) | Implemented | — |
 | Inverse-buttons pref (`InverseButtons`) | button_handler.cpp | [main/sources/sources.cpp:189](../main/sources/sources.cpp) reads `kInverseButtons` and swaps button-1↔button-N at post time | Implemented | `btclock_v4-7da` |

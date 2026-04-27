@@ -112,9 +112,12 @@ void ClearFb(LandscapeFb& fb, bool white) {
                   static_cast<size_t>(fb.native_height));
   // Mirror into the WASM AA buffer (if armed). Panel key = native_fb
   // pointer — unique per panel because each panel's LandscapeFb points
-  // into a distinct ctx.fbs[i] slice. Logical orientation; alpha=0 for
-  // a white/no-ink bg, 255 for a black bg.
-  wasm_aa::FillRect(fb.native_fb, 0, 0, LogicalWidth(fb), LogicalHeight(fb),
+  // into a distinct ctx.fbs[i] slice. The buffer is sized to the
+  // panel's NATIVE dimensions (122×250 on a 2.13") regardless of
+  // fb.rotation, so a uniform clear must span those native bounds —
+  // not LogicalWidth/Height, which swap on k90Cw label panels and
+  // would leave half the buffer untouched.
+  wasm_aa::FillRect(fb.native_fb, 0, 0, fb.native_width, fb.native_height,
                     white ? 0 : 255);
 }
 
@@ -135,8 +138,14 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
   // wraps its inner SetPixelLandscape calls in a SetPixelSuppressScope so
   // the raw pre-threshold alpha it already recorded isn't clobbered back
   // to 255 by the post-threshold fill.
+  //
+  // Apply the same logical→user-upright transform as the framebuffer
+  // path so a k90Cw label panel's pixels land at the panel-rotated
+  // coords, not at their pre-rotation logical position (which would
+  // exceed native_width and clip — bd btclock_v4-m67).
   if (!wasm_aa::SetPixelSuppressed()) {
-    wasm_aa::WritePixel(fb.native_fb, lx, ly, white ? 0 : 255,
+    const NativeXY u = RotateLogicalToUserUpright(lx, ly, nw, nh, fb.rotation);
+    wasm_aa::WritePixel(fb.native_fb, u.x, u.y, white ? 0 : 255,
                         /*white_text=*/false);
   }
 
@@ -268,11 +277,19 @@ int DrawTextLandscape(LandscapeFb& fb, int x, int y_baseline, const char* text,
             // (no-op on device). This is what gives the preview canvas
             // smooth edges even though the physical panel still gets
             // the thresholded 1bpp pixel below.
-            wasm_aa::WritePixel(fb.native_fb, top_left_x + dx, top_left_y + dy,
-                                a, white_text);
+            //
+            // Apply the same logical→user-upright transform the
+            // framebuffer write below uses so a k90Cw label panel's
+            // glyph alpha lands at the panel-rotated coords (otherwise
+            // text reads horizontally and clips past native_width — bd
+            // btclock_v4-m67).
+            const int lx = top_left_x + dx;
+            const int ly = top_left_y + dy;
+            const NativeXY u = RotateLogicalToUserUpright(
+                lx, ly, fb.native_width, fb.native_height, fb.rotation);
+            wasm_aa::WritePixel(fb.native_fb, u.x, u.y, a, white_text);
             if (a >= 128) {
-              SetPixelLandscape(fb, top_left_x + dx, top_left_y + dy,
-                                white_text);
+              SetPixelLandscape(fb, lx, ly, white_text);
             }
           }
         }
@@ -510,6 +527,32 @@ void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h, const char* text,
                   const Font& regular, const Font& bold, float pixel_height,
                   bool white_text) {
   const auto lines = ParseMarkdownLines(text);
+
+  // Auto-fit: shrink pixel_height uniformly so the widest line fits in
+  // `panel_w` minus a small side gutter. Without this, a runtime-bound
+  // string like the provisioning panel's "BTClock-XXXX" SSID overflows
+  // the right edge of a 122 px panel at the caller's requested 18 px.
+  // We scale the whole block uniformly rather than per-line so the
+  // bold-header / value visual hierarchy and the line spacing stay
+  // consistent across the block.
+  constexpr int kSidePadding = 4;
+  constexpr float kMinPixelHeight = 8.0f;
+  const int target_w = panel_w - 2 * kSidePadding;
+  if (target_w > 0) {
+    int widest_at_request = 0;
+    for (const auto& line : lines) {
+      if (line.text.empty()) continue;
+      const Font& f = line.is_bold ? bold : regular;
+      const int w =
+          MeasureInkWidth(line.text.c_str(), f, pixel_height, nullptr);
+      if (w > widest_at_request) widest_at_request = w;
+    }
+    if (widest_at_request > target_w) {
+      const float scaled = pixel_height * static_cast<float>(target_w) /
+                           static_cast<float>(widest_at_request);
+      pixel_height = scaled < kMinPixelHeight ? kMinPixelHeight : scaled;
+    }
+  }
 
   // Vertical layout: each line occupies `line_h` px; total height is
   // lines.size() * line_h. Centre the block on the panel.

@@ -1,5 +1,4 @@
 // GDEY0213B74 — 2.13" SSD1680, 122x250 visible (128 addressable wide).
-// Authoritative GxEPD2 reference: src/gdey/GxEPD2_213_GDEY0213B74.cpp.
 
 #pragma once
 

@@ -1,0 +1,62 @@
+name: "Docs site"
+
+# Builds the user-facing MkDocs Material site on every push and PR so
+# the gate catches broken links / missing translations / busted
+# Markdown extensions before they land on docs.btclock.dev. The
+# matching deploy step (rsync to docs.btclock.dev or an
+# artifact-publishing target) lives in release.yaml — this workflow
+# is build-only.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "mkdocs-requirements.txt"
+      - ".forgejo/workflows/docs.yaml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "mkdocs-requirements.txt"
+      - ".forgejo/workflows/docs.yaml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: docker
+    container:
+      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Python 3.12
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3 python3-venv python3-pip ca-certificates
+
+      - name: Install MkDocs Material + plugins
+        shell: bash
+        run: |
+          python3 -m venv .venv-docs
+          .venv-docs/bin/pip install --upgrade pip
+          .venv-docs/bin/pip install -r mkdocs-requirements.txt
+
+      - name: Build static site
+        shell: bash
+        run: .venv-docs/bin/mkdocs build --clean
+
+      - name: Upload site/ as artefact
+        uses: actions/upload-artifact@v3
+        with:
+          name: docs-site
+          path: site
+          retention-days: 14

@@ -1,5 +1,4 @@
 // GDEY029T94 — 2.9" SSD1680, 128x296.
-// Authoritative GxEPD2 reference: src/gdey/GxEPD2_290_GDEY029T94.cpp.
 //
 // Differences from the 2.13" GDEY0213B74:
 //   * Driver output control uses 0x27 0x01 0x00 (HEIGHT-1 = 0x0127)

@@ -14,8 +14,8 @@ namespace epd {
 namespace {
 constexpr const char* kTag = "ssd1680";
 
-// Command map follows the SSD1680 datasheet and GxEPD2's port of the
-// GDEY0213B74 / GDEY029T94 reference drivers.
+// Command map follows the SSD1680 datasheet and the GDEY0213B74 /
+// GDEY029T94 panel datasheets.
 constexpr uint8_t kCmdSwReset = 0x12;
 constexpr uint8_t kCmdDriverOutputCtl = 0x01;
 constexpr uint8_t kCmdDataEntryMode = 0x11;
@@ -66,7 +66,7 @@ uint32_t Ssd1680Base::BusyPollMs() const {
 void Ssd1680Base::WaitIdle(uint32_t timeout_ms) {
   // SSD1680 BUSY goes HIGH within ~1 ms of an activate; if we read
   // immediately we could see "idle" before the chip even starts.
-  // Mirror GxEPD2's _waitWhileBusy delay(1) prelude.
+  // Use a delay(1) prelude to ensure the chip has started the refresh.
   vTaskDelay(pdMS_TO_TICKS(1));
   const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   const TickType_t step = pdMS_TO_TICKS(BusyPollMs());
@@ -92,9 +92,9 @@ esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
     if (xTaskGetTickCount() >= deadline) return ESP_ERR_TIMEOUT;
     vTaskDelay(step);
   }
-  // Conditional power-off mirroring GxEPD2's _Update_Full /
-  // _Update_Part state machine. The 0xF7 full waveform implicitly
-  // disables the analog block as part of the OTP sequence; sending
+  // Conditional power-off based on the last refresh kind. The 0xF7
+  // full waveform implicitly disables the analog block as part of
+  // the OTP sequence; sending
   // 0x83 + activate to an already-off chip wastes the 500 ms BUSY-
   // stuck timeout per panel because the chip can't drive BUSY high
   // without analog. So power off only after a partial refresh.
@@ -120,7 +120,7 @@ esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
 }
 
 esp_err_t Ssd1680Base::WriteDriverOutputControl() {
-  // GxEPD2 GDEY0213B74 uses 0xF9, 0x00, 0x00 (HEIGHT-1 = 250-1).
+  // GDEY0213B74 datasheet specifies 0xF9, 0x00, 0x00 (HEIGHT-1 = 250-1).
   // Emit the same shape parametrised on Height() so the 2.9" override
   // (0x0127 LE) shares the same code path. GDEY029T94 explicitly
   // overrides this method for safety.
@@ -132,11 +132,11 @@ esp_err_t Ssd1680Base::WriteDriverOutputControl() {
 
 esp_err_t Ssd1680Base::SetPartialRamArea(uint16_t x, uint16_t y, uint16_t w,
                                          uint16_t h) {
-  // Mirrors GxEPD2 _setPartialRamArea — entry mode + RAM bounds +
+  // Configures the partial-RAM area — entry mode + RAM bounds +
   // counters in one go. Re-applied per-frame from DrawFramebufferStart
   // because a SPI transaction interrupted mid-byte by a high-priority
-  // task can leave the controller in an unexpected state, and GxEPD2
-  // plays it safe by reinforcing every refresh.
+  // task can leave the controller in an unexpected state; reinforce
+  // on every refresh as a defensive measure.
   auto* bus = cfg_.bus;
   auto& cs = cfg_.cs;
   const uint8_t dem = 0x03;  // x increase, y increase
@@ -235,7 +235,7 @@ esp_err_t Ssd1680Base::Init() {
 
 esp_err_t Ssd1680Base::DrawFramebufferStart(const uint8_t* fb,
                                             RefreshKind kind) {
-  // Faithful port of GxEPD2's partial / full refresh sequences.
+  // SSD1680 partial / full refresh sequences per the datasheet.
   //   * NO custom LUT upload — OTP waveforms keyed by DUC2 do the work.
   //   * Partial writes only 0x24 (BW); for the 2.13" we additionally
   //     prime 0x26 with the previous frame, which the chip otherwise

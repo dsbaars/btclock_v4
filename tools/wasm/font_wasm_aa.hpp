@@ -20,16 +20,25 @@
 // This lets a single render pass fill all N panel alpha buffers
 // cleanly without touching the renderer code.
 //
-// Buffer format: each byte is the *ink coverage* at that logical pixel.
+// Buffer format: each byte is the *ink coverage* at that pixel.
 //    0   — no ink (white)
 //    255 — full ink (black)
 //    1..254 — fractional coverage along a glyph edge.
 //
-// Orientation: LOGICAL coords. The HTML canvas wants the image the way
-// the user sees it on the physical panel, and that's the logical frame
-// (the rotation transform inside SetPixelLandscape produces the native
-// framebuffer bytes; we hook BEFORE that transform, so the alpha buffer
-// is already upright regardless of fb.rotation).
+// Orientation: USER-UPRIGHT coords — the image the way the viewer sees
+// it on the physical panel, regardless of the panel's per-screen
+// `LandscapeFb::rotation`. Buffer dimensions are the panel's NATIVE
+// width × height (e.g. 122×250 on a 2.13"), not the rotation-swapped
+// logical dimensions.
+//
+// The font.cpp call sites apply `RotateLogicalToUserUpright` (in
+// landscape_rotation.hpp) before invoking these primitives, which
+// composes the per-LandscapeFb logical→native transform with the
+// global k180-mounted-panel inverse. For Rotation::k180 (digit panels)
+// that fold to identity — logical coords already match what the user
+// sees. For Rotation::k90Cw (verticalDesc label panels) the transform
+// rotates the alpha 90° CW, matching the label text the framebuffer
+// writes to native bytes.
 //
 // white_text handling: for non-inverted text (white_text=false, the
 // common case — black ink on a white background), glyph alpha

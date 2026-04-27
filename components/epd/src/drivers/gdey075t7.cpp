@@ -8,7 +8,7 @@ namespace epd {
 // All behaviour lives in Uc8179Base. The .hpp specialises Width()
 // (800), Height() (480) and Stride() (100). Future bring-up may
 // need to override Init() / DrawFramebufferStart() if the GDEY075T7
-// silicon needs tweaks beyond the GxEPD2 reference baseline.
+// silicon needs tweaks beyond the UC8179 datasheet baseline.
 
 }  // namespace epd
 }  // namespace btclock

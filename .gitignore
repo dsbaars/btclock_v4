@@ -5,6 +5,10 @@ dependencies.lock
 sdkconfig
 sdkconfig.old
 
+# MkDocs Material doc-site outputs.
+site/
+.venv-docs/
+
 # Claude Code scratch: agent transcripts, per-agent worktrees, memory.
 .claude/
 

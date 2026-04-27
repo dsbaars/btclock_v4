@@ -1,0 +1,12 @@
+# MkDocs Material doc-site dependencies. Pinned to majors so the build
+# is reproducible across CI / contributor laptops; bump as needed.
+#
+#   python3 -m venv .venv-docs
+#   source .venv-docs/bin/activate
+#   pip install -r mkdocs-requirements.txt
+#   mkdocs serve         # local preview at http://127.0.0.1:8000
+#   mkdocs build         # static output in site/
+mkdocs>=1.6,<2
+mkdocs-material>=9.5,<10
+mkdocs-static-i18n>=1.2,<2
+pymdown-extensions>=10.7,<11

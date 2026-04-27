@@ -29,6 +29,7 @@
 // instantiation.
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -45,6 +46,7 @@
 #include "fonts_app.hpp"
 #include "screens/common.hpp"
 #include "screens/fee_rate_layout.hpp"
+#include "screens/screen_math.hpp"
 #include "screens/screens.hpp"
 
 namespace btclock {
@@ -414,7 +416,11 @@ val parseBlockFees(double fee_sats_vb) {
 
 // Halving / market-cap / bitcoin-supply text layouts. The per-digit
 // layout helpers live in screen_math.hpp (FormatDigits64, etc.).
-val parseHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
+// `bigchars` is vestigial — kept for ABI compatibility with the
+// preview.html call site. The halving text path always emits the
+// blocks-remaining digit form; the time-breakdown variant lives in
+// the pixel-mode `renderHalvingCountdownWithFlagsAlpha` binding.
+val parseHalvingCountdown(int block_height, bool /*bigchars_inert*/) {
   std::array<char, 6> d{' ', ' ', ' ', ' ', ' ', ' '};
   if (block_height >= 0) {
     const uint32_t rem = btclock::HalvingCountdown(
@@ -424,8 +430,11 @@ val parseHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
   return DigitsToArray("HAL/VING", d);
 }
 
+// `bigchars` is vestigial — see HANDBOOK § "Market cap": the device's
+// EPD path always paints the big-char form, so the toggle has no
+// effect here either. Kept for preview.html ABI compatibility.
 val parseMarketCap(int block_height, int price_int, std::string currency,
-                   bool /*bigchars_unused*/) {
+                   bool /*bigchars_inert*/) {
   const std::string label = currency + "/MCAP";
   std::array<char, 6> d{' ', ' ', ' ', ' ', ' ', ' '};
   if (block_height >= 0 && price_int >= 0) {
@@ -440,15 +449,36 @@ val parseMarketCap(int block_height, int price_int, std::string currency,
   return DigitsToArray(label.c_str(), d);
 }
 
-val parseBitcoinSupply(int block_height, bool /*bigchars_unused*/,
-                       bool /*percent_unused*/) {
+val parseBitcoinSupply(int block_height, bool big_chars, bool show_percent) {
   std::array<char, 6> d{' ', ' ', ' ', ' ', ' ', ' '};
   if (block_height >= 0) {
     const uint64_t supply = btclock::SupplyAtBlock(
         static_cast<uint32_t>(block_height));
-    char buf[24];
-    btclock::FormatDigits64(supply, buf, 6);
-    for (int i = 0; i < 6; ++i) d[i] = buf[i];
+    if (show_percent) {
+      // Match BuildBitcoinSupply's percent branch: "NN.NN%" right-padded
+      // into the 6 digit slots, with a trailing '%' so the preview's
+      // text mode mirrors what the EPD would paint.
+      const double frac =
+          std::round((static_cast<double>(supply) / 20999999.9769) * 10000.0) /
+          100.0;
+      char buf[16];
+      std::snprintf(buf, sizeof(buf), "%.2f%%", frac);
+      const std::size_t len = std::strlen(buf);
+      const std::size_t pad = len < 6 ? 6 - len : 0;
+      for (std::size_t i = 0; i < 6; ++i) {
+        d[i] = i < pad ? ' ' : buf[i - pad];
+      }
+    } else if (big_chars) {
+      // "NN.NM" / "NNNK" big-chars suffix form, anchored in the digit
+      // budget so the parse* preview matches the EPD render.
+      std::string s = btclock::FormatNumberWithSuffix(supply, 6);
+      if (s.size() < 6) s.insert(s.begin(), 6 - s.size(), ' ');
+      for (std::size_t i = 0; i < 6; ++i) d[i] = s[i];
+    } else {
+      char buf[24];
+      btclock::FormatDigits64(supply, buf, 6);
+      for (int i = 0; i < 6; ++i) d[i] = buf[i];
+    }
   }
   return DigitsToArray("BTC/SUPPLY", d);
 }
@@ -580,7 +610,7 @@ val renderPriceData(int price_int, std::string currency) {
 }
 
 val renderSatsPerCurrency(int price_int, std::string currency,
-                          bool /*with_sats_symbol_unused*/) {
+                          bool with_sats_symbol) {
   auto& ctx = Ctx();
   ClearPanels(ctx.panels_active);
   char price_buf[24];
@@ -591,13 +621,13 @@ val renderSatsPerCurrency(int price_int, std::string currency,
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMoscowTimeScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault, true, true,
+            btclock::kSatsVariantDefault, with_sats_symbol, true,
             /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMoscowTimeScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault, true, true,
+            btclock::kSatsVariantDefault, with_sats_symbol, true,
             /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
@@ -621,7 +651,10 @@ val renderBlockFees(int fee_sats_vb) {
   return FrameBuffersToVal(ctx.panels_active);
 }
 
-val renderHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
+// `bigchars` is vestigial — RenderHalvingScreen has no big-chars
+// toggle. The blocks-vs-time toggle is exposed by the dedicated
+// `renderHalvingCountdownWithFlagsAlpha` binding.
+val renderHalvingCountdown(int block_height, bool /*bigchars_inert*/) {
   auto& ctx = Ctx();
   ClearPanels(ctx.panels_active);
   const uint32_t bh =
@@ -639,8 +672,11 @@ val renderHalvingCountdown(int block_height, bool /*bigchars_unused*/) {
   return FrameBuffersToVal(ctx.panels_active);
 }
 
+// `bigchars` is vestigial — see HANDBOOK § "Market cap": the EPD
+// path always paints the big-char form. The arg stays for ABI
+// compatibility with preview.html.
 val renderMarketCap(int block_height, int price_int, std::string currency,
-                    bool /*bigchars_unused*/) {
+                    bool /*bigchars_inert*/) {
   auto& ctx = Ctx();
   ClearPanels(ctx.panels_active);
   char price_buf[24];
@@ -663,8 +699,7 @@ val renderMarketCap(int block_height, int price_int, std::string currency,
   return FrameBuffersToVal(ctx.panels_active);
 }
 
-val renderBitcoinSupply(int block_height, bool /*bigchars_unused*/,
-                        bool /*percent_unused*/) {
+val renderBitcoinSupply(int block_height, bool big_chars, bool show_percent) {
   auto& ctx = Ctx();
   ClearPanels(ctx.panels_active);
   const uint32_t bh =
@@ -673,13 +708,13 @@ val renderBitcoinSupply(int block_height, bool /*bigchars_unused*/,
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderBitcoinSupplyScreen<7>(pans, fbs, c.fonts, bh, 0,
-                                              true, false,
+                                              big_chars, show_percent,
                                               /*full_refresh_mode=*/true,
                                               vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderBitcoinSupplyScreen<8>(pans, fbs, c.fonts, bh, 0,
-                                              true, false,
+                                              big_chars, show_percent,
                                               /*full_refresh_mode=*/true,
                                               vd);
       });
@@ -878,20 +913,51 @@ val renderPriceDataAlpha(int price_int, std::string currency) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderBtcPriceScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          symbol_utf8, false, false, true, vd);
+          symbol_utf8, false, false, false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderBtcPriceScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          symbol_utf8, false, false, true, vd);
+          symbol_utf8, false, false, false, true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// Same as renderPriceDataAlpha but exposes the `suffixPrice`,
+// `mowMode`, and `suffixShareDot` flags. The plain renderer always
+// passes false; this variant lets the docs renderer demonstrate the
+// k/M-suffix layout, Million-Of-Watoshis layout, and the dot-folding
+// compact form at realistic price values.
+val renderPriceDataWithFlagsAlpha(int price_int, std::string currency,
+                                  bool suffix_price, bool mow_mode,
+                                  bool share_dot) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    char price_buf[24];
+    std::snprintf(price_buf, sizeof(price_buf), "%d",
+                  price_int < 0 ? 0 : price_int);
+    const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderBtcPriceScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
+          symbol_utf8, suffix_price, mow_mode, share_dot, true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderBtcPriceScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
+          symbol_utf8, suffix_price, mow_mode, share_dot, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
 }
 
 val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
-                               bool /*with_sats_symbol_unused*/) {
+                               bool with_sats_symbol) {
   return RunAlphaRender([&]() {
     auto& ctx = Ctx();
     char price_buf[24];
@@ -902,13 +968,41 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, true, true, true, vd);
+          btclock::kSatsVariantDefault, with_sats_symbol, true, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, true, true, true, vd);
+          btclock::kSatsVariantDefault, with_sats_symbol, true, true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// Moscow-time renderer with the `useSatsSymbol` flag exposed. When
+// `use_sats_symbol=false` the sats glyph in the marker cell is
+// suppressed (rendered blank), so the docs can show the impact of
+// the `useSatsSymbol` toggle.
+val renderSatsPerCurrencyWithFlagsAlpha(int price_int, std::string currency,
+                                        bool use_sats_symbol) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    char price_buf[24];
+    std::snprintf(price_buf, sizeof(price_buf), "%d",
+                  price_int < 0 ? 0 : price_int);
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMoscowTimeScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
+          btclock::kSatsVariantDefault, use_sats_symbol, true, true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMoscowTimeScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
+          btclock::kSatsVariantDefault, use_sats_symbol, true, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -934,7 +1028,32 @@ val renderBlockFeesAlpha(int fee_sats_vb) {
   });
 }
 
-val renderHalvingCountdownAlpha(int block_height, bool /*bigchars_unused*/) {
+// Fee renderer that takes a double so the docs can show the
+// `blockFeeDec=true` decimal-form layout (e.g. 4.5 sats/vB rendered
+// as "4.5"). The integer form is what renderBlockFeesAlpha already
+// covers; the decimal form only kicks in when the fractional value
+// fits the digit-cell budget.
+val renderBlockFeesDecimalAlpha(double fee_sats_vb) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    const double fee = fee_sats_vb < 0.0 ? 0.0 : fee_sats_vb;
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderFeeRateScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, fee, -1, true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderFeeRateScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, fee, -1, true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// `bigchars` is vestigial — see renderHalvingCountdown above.
+val renderHalvingCountdownAlpha(int block_height, bool /*bigchars_inert*/) {
   return RunAlphaRender([&]() {
     auto& ctx = Ctx();
     const uint32_t bh =
@@ -954,9 +1073,33 @@ val renderHalvingCountdownAlpha(int block_height, bool /*bigchars_unused*/) {
   });
 }
 
+// Halving countdown with the `useBlkCountdown` flag exposed. When
+// `as_blocks=false` the layout switches from blocks-remaining to
+// time-remaining (years / days / hours / minutes form).
+val renderHalvingCountdownWithFlagsAlpha(int block_height, bool as_blocks) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    const uint32_t bh =
+        block_height < 0 ? 0 : static_cast<uint32_t>(block_height);
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderHalvingScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, bh, 0, as_blocks, true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderHalvingScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, bh, 0, as_blocks, true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// `bigchars` is vestigial — see renderMarketCap above.
 val renderMarketCapAlpha(int block_height, int price_int,
                          std::string currency,
-                         bool /*bigchars_unused*/) {
+                         bool /*bigchars_inert*/) {
   return RunAlphaRender([&]() {
     auto& ctx = Ctx();
     char price_buf[24];
@@ -981,8 +1124,8 @@ val renderMarketCapAlpha(int block_height, int price_int,
   });
 }
 
-val renderBitcoinSupplyAlpha(int block_height, bool /*bigchars_unused*/,
-                             bool /*percent_unused*/) {
+val renderBitcoinSupplyAlpha(int block_height, bool big_chars,
+                             bool show_percent) {
   return RunAlphaRender([&]() {
     auto& ctx = Ctx();
     const uint32_t bh =
@@ -990,13 +1133,15 @@ val renderBitcoinSupplyAlpha(int block_height, bool /*bigchars_unused*/,
     const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
-      btclock::RenderBitcoinSupplyScreen<8>(
-          borrowed, As8(ctx), ctx.fonts, bh, 0, true, false, true, vd);
+      btclock::RenderBitcoinSupplyScreen<8>(borrowed, As8(ctx), ctx.fonts, bh,
+                                            0, big_chars, show_percent, true,
+                                            vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
-      btclock::RenderBitcoinSupplyScreen<7>(
-          borrowed, As7(ctx), ctx.fonts, bh, 0, true, false, true, vd);
+      btclock::RenderBitcoinSupplyScreen<7>(borrowed, As7(ctx), ctx.fonts, bh,
+                                            0, big_chars, show_percent, true,
+                                            vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -1209,8 +1354,16 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderBlockHeightAlphaBuffer",
                        &renderBlockHeightAlpha);
   emscripten::function("renderPriceDataAlphaBuffer", &renderPriceDataAlpha);
+  emscripten::function("renderPriceDataWithFlagsAlphaBuffer",
+                       &renderPriceDataWithFlagsAlpha);
   emscripten::function("renderSatsPerCurrencyAlphaBuffer",
                        &renderSatsPerCurrencyAlpha);
+  emscripten::function("renderSatsPerCurrencyWithFlagsAlphaBuffer",
+                       &renderSatsPerCurrencyWithFlagsAlpha);
+  emscripten::function("renderBlockFeesDecimalAlphaBuffer",
+                       &renderBlockFeesDecimalAlpha);
+  emscripten::function("renderHalvingCountdownWithFlagsAlphaBuffer",
+                       &renderHalvingCountdownWithFlagsAlpha);
   emscripten::function("renderBlockFeesAlphaBuffer", &renderBlockFeesAlpha);
   emscripten::function("renderHalvingCountdownAlphaBuffer",
                        &renderHalvingCountdownAlpha);

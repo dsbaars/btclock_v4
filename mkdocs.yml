@@ -1,0 +1,200 @@
+site_name: BTClock
+site_description: Documentation for the BTClock — open-source ESP-IDF firmware.
+site_url: https://docs.btclock.dev
+site_author: BTClock contributors
+copyright: BTClock contributors — MIT licensed
+
+repo_url: https://git.btclock.dev/btclock/btclock_v4
+repo_name: btclock_v4
+edit_uri: src/branch/main/docs/
+
+# Use the existing /docs tree as the single source of truth — the
+# Markdown files served on the static site are the same ones we ship
+# and reference from CLAUDE.md / READMEs / external links. No copy or
+# symlink shuffle.
+docs_dir: docs
+
+# Internal dev references — kept in the repo (linked from CLAUDE.md and
+# from inside other docs as Forgejo URLs), not shipped on the live
+# user-facing site or in the booklet.
+exclude_docs: |
+  FEATURE_MATRIX.md
+  HARDCODED_AUDIT.md
+
+theme:
+  name: material
+  language: en
+  palette:
+    # Light/dark toggle. Defaults to "auto" (system) on first paint.
+    # Apply the same palette to the auto-detect entry so first paint
+    # doesn't flash Material's default indigo before the user toggles.
+    - media: "(prefers-color-scheme)"
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      # Header uses Material's `black` palette so it reads as a
+      # neutral chrome bar; the BTClock orange stays on the `accent`
+      # role (links, focus rings, the sidebar's active-page rule).
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+    - toc.follow
+    # Fold the per-page TOC into the left nav tree — Material's
+    # default puts it in the right column, but the user wants it on
+    # the left so the page body claims the right side. `toc.integrate`
+    # is the supported toggle for this; the right-hand TOC column
+    # disappears once it's enabled.
+    - toc.integrate
+  icon:
+    repo: fontawesome/brands/git-alt
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/btclock
+      name: BTClock on GitHub
+    - icon: fontawesome/brands/git-alt
+      link: https://git.btclock.dev/btclock
+      name: Forgejo (canonical)
+  generator: false
+  alternate:
+    - name: English
+      link: /
+      lang: en
+    - name: Nederlands
+      link: /nl/
+      lang: nl
+    - name: Deutsch
+      link: /de/
+      lang: de
+    - name: Español
+      link: /es/
+      lang: es
+
+plugins:
+  - search:
+      lang:
+        - en
+        - nl
+        - de
+        - es
+  # mkdocs-static-i18n consumes the `<page>.<lang>.md` suffix files
+  # already in /docs (QUICKSTART.de.md, QUICKSTART.es.md, QUICKSTART.nl.md)
+  # and falls back to the default-language file for any page without a
+  # translation. So pages that are English-only today (HANDBOOK,
+  # SETTINGS, ARCHITECTURE, …) automatically serve the English version
+  # under /nl/, /de/, /es/ until a translator drops in a `.<lang>.md`
+  # sibling.
+  - i18n:
+      docs_structure: suffix
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: nl
+          name: Nederlands
+          build: true
+          nav_translations:
+            Quickstart: Snelstartgids
+            Handbook: Handboek
+            Settings: Instellingen
+            Architecture: Architectuur
+            Build from source: Bouwen vanuit de broncode
+            Mining-pool fields: Mining-pool velden
+            Project story: Projectverhaal
+        - locale: de
+          name: Deutsch
+          build: true
+          nav_translations:
+            Quickstart: Schnellstart
+            Handbook: Handbuch
+            Settings: Einstellungen
+            Architecture: Architektur
+            Build from source: Aus Quellcode bauen
+            Mining-pool fields: Mining-Pool-Felder
+            Project story: Projektgeschichte
+        - locale: es
+          name: Español
+          build: true
+          nav_translations:
+            Quickstart: Guía rápida
+            Handbook: Manual
+            Settings: Configuración
+            Architecture: Arquitectura
+            Build from source: Compilar desde el código
+            Mining-pool fields: Campos de mining-pool
+            Project story: Historia del proyecto
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Permalink
+  - pymdownx.details
+  - pymdownx.superfences:
+      # Render ```mermaid fenced blocks via Material's bundled mermaid.js
+      # loader (no extra plugin needed — the theme ships the helper and
+      # auto-loads mermaid on pages that use it).
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+# Nav mirrors the section grouping users see in /docs. Translations of
+# section labels live in the i18n plugin's `nav_translations` block.
+# `index.md` is a thin landing page; the actual content lives in the
+# per-topic Markdown files which the nav links to directly.
+nav:
+  - Home: index.md
+  - Quickstart: QUICKSTART.md
+  - Handbook: HANDBOOK.md
+  - Settings: SETTINGS.md
+  - Architecture: ARCHITECTURE.md
+  - Build from source: BUILD_FROM_SOURCE.md
+  - Mining-pool fields: WEBUI_MINING_POOL_FIELDS.md
+  - Project story: STORY.md

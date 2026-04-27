@@ -16,10 +16,9 @@ The firmware exposes a single pair of mining-pool credential keys via
 | `miningPoolUser` | string | Primary identifier — payout address, username, worker name, OR API key |
 | `poolWorker` | string | Optional secondary identifier — worker name OR subaccount |
 
-Per-pool fields like `viabtcApiKey`, `foundryApiKey`, `foundrySubacct`
-do **not** exist. Pools that need credentials overload these two slots.
-The firmware reads the right slot internally based on the active
-`miningPoolName`.
+Both slots are shared across every pool. The firmware picks the right
+interpretation based on the active `miningPoolName`; the WebUI re-skins
+the labels to match.
 
 ## Per-pool field semantics
 

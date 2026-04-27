@@ -188,8 +188,21 @@ gcc and clang.
 
 ## Documentation
 
-- [docs/SETTINGS.md](docs/SETTINGS.md) — settings reference
+User-facing:
+
+- [docs/QUICKSTART.md](docs/QUICKSTART.md) — first-boot walkthrough for end users
+  ([nl](docs/QUICKSTART.nl.md) · [es](docs/QUICKSTART.es.md) · [de](docs/QUICKSTART.de.md))
+- [docs/HANDBOOK.md](docs/HANDBOOK.md) — comprehensive user reference (every screen, every setting, every API endpoint)
+- [docs/BUILD_FROM_SOURCE.md](docs/BUILD_FROM_SOURCE.md) — compile yourself on macOS / Linux / Windows
+- Web flasher: https://web-flasher.btclock.dev/
+- Home Assistant integration: https://github.com/dsbaars/homeassistant-btclock
+
+Developer-facing:
+
+- [docs/SETTINGS.md](docs/SETTINGS.md) — settings reference (every NVS key)
 - [docs/WEBUI_MINING_POOL_FIELDS.md](docs/WEBUI_MINING_POOL_FIELDS.md) — mining-pool credential field guide for WebUI authors
 - [docs/HARDCODED_AUDIT.md](docs/HARDCODED_AUDIT.md) — inventory of hardcoded values
 - [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) — parity matrix vs. the Arduino btclock_v3 firmware
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — component-level architecture overview
+- [tools/wasm/README.md](tools/wasm/README.md) — off-device screen renderer + doc-image generator
 - [CLAUDE.md](CLAUDE.md) — agent-facing build/flash/conventions

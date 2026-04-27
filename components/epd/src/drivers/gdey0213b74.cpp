@@ -1,11 +1,10 @@
 #include "epd/drivers/gdey0213b74.hpp"
 
-// All behaviour for this panel lives in Ssd1680Base — the 2.13"
-// reference driver in GxEPD2 (GDEY0213B74.cpp) is what the base
-// class is calibrated against. Width()/Height() in the .hpp are
-// the only specialisations needed; everything else (border 0x05,
-// DUC2 0xF7/0xFC, slow-full path, shadow→0x26 priming, no fast-
-// full) carries through from the base.
+// All behaviour for this panel lives in Ssd1680Base — the GDEY0213B74
+// datasheet is what the base class is calibrated against.
+// Width()/Height() in the .hpp are the only specialisations needed;
+// everything else (border 0x05, DUC2 0xF7/0xFC, slow-full path,
+// shadow→0x26 priming, no fast-full) carries through from the base.
 //
 // Keep this TU around so the link graph has an actual definition
 // to reach (the hpp is header-only otherwise) and so any

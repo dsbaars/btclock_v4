@@ -539,7 +539,7 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       const bool v = cJSON_IsTrue(inv);
       writer.SetBool(prefs::kInvertedColor, v);
       // Match old firmware: white-on-black when inverted, else swap.
-      // Numeric colour codes follow GxEPD_WHITE=0xFFFF / GxEPD_BLACK=0.
+      // Numeric colour codes: WHITE=0xFFFF / BLACK=0.
       writer.SetU32(prefs::kFgColor, v ? 0xFFFFu : 0u);
       writer.SetU32(prefs::kBgColor, v ? 0u : 0xFFFFu);
       result.touched_keys.emplace_back("invertedColor");

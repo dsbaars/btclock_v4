@@ -3,8 +3,7 @@
 // (3-color 7.5") which we don't ship.
 //
 // UNTESTED — reach a working board before relying on this. The
-// implementation follows GxEPD2_750_GDEY075T7.cpp register-for-
-// register but has not been driven against real silicon in this
+// implementation has not been driven against real silicon in this
 // firmware. Differences from the SSD1680 base worth flagging:
 //   * Power management is explicit — 0x04 (power on) / 0x02 (power
 //     off) are real commands, not just "turn on the analog block".

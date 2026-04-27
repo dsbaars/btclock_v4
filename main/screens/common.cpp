@@ -88,8 +88,8 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
   // that's safe because white-fill is rotation-agnostic). For panels
   // already at k180 (REV_B solder orientation) the effective native-
   // relative rotation becomes k90Cw: 180° then rotate another 90° CCW
-  // lands at 90° CW from native, which is what GxEPD's setRotation(1)
-  // produced in v3's splitText verticalDesc branch.
+  // lands at 90° CW from native, which is what v3's splitText
+  // verticalDesc branch produced via setRotation(1).
   //
   // Swapping the rotation also swaps logical width/height — after the
   // flip the label sees a 250×122 region instead of 122×250, so the

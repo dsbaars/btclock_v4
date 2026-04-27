@@ -1,0 +1,190 @@
+{
+  "rendered_at": "2026-04-27T08:05:37.031Z",
+  "px_per_mm": 8,
+  "panel_geometry_mm": {
+    "w": 24,
+    "h": 48,
+    "side_margin": 5
+  },
+  "frame_geometry_mm": {
+    "w": 219.6,
+    "h": 81.25,
+    "r": 2
+  },
+  "items": [
+    {
+      "kind": "screen",
+      "id": "block_height",
+      "title": "Block height",
+      "path": "docs/img/screens/block_height.png"
+    },
+    {
+      "kind": "screen",
+      "id": "halving_countdown",
+      "title": "Halving countdown",
+      "path": "docs/img/screens/halving_countdown.png"
+    },
+    {
+      "kind": "screen",
+      "id": "block_fee_rate",
+      "title": "Block fee rate",
+      "path": "docs/img/screens/block_fee_rate.png"
+    },
+    {
+      "kind": "screen",
+      "id": "moscow_time",
+      "title": "Sats per dollar",
+      "path": "docs/img/screens/moscow_time.png"
+    },
+    {
+      "kind": "screen",
+      "id": "btc_price",
+      "title": "BTC ticker",
+      "path": "docs/img/screens/btc_price.png"
+    },
+    {
+      "kind": "screen",
+      "id": "btc_price_suffix",
+      "title": "BTC ticker (suffix mode)",
+      "path": "docs/img/screens/btc_price_suffix.png"
+    },
+    {
+      "kind": "screen",
+      "id": "btc_price_mow",
+      "title": "BTC ticker (Million-Of-Watoshis)",
+      "path": "docs/img/screens/btc_price_mow.png"
+    },
+    {
+      "kind": "screen",
+      "id": "btc_price_suffix_sharedot",
+      "title": "BTC ticker (suffix + share dot)",
+      "path": "docs/img/screens/btc_price_suffix_sharedot.png"
+    },
+    {
+      "kind": "screen",
+      "id": "block_height_inverted",
+      "title": "Block height (invertedColor=true)",
+      "path": "docs/img/screens/block_height_inverted.png"
+    },
+    {
+      "kind": "screen",
+      "id": "moscow_time_no_sats_symbol",
+      "title": "Sats per dollar (useSatsSymbol=false)",
+      "path": "docs/img/screens/moscow_time_no_sats_symbol.png"
+    },
+    {
+      "kind": "screen",
+      "id": "halving_countdown_time",
+      "title": "Halving countdown (useBlkCountdown=false)",
+      "path": "docs/img/screens/halving_countdown_time.png"
+    },
+    {
+      "kind": "screen",
+      "id": "block_fee_rate_decimal",
+      "title": "Block fee rate (blockFeeDec=true)",
+      "path": "docs/img/screens/block_fee_rate_decimal.png"
+    },
+    {
+      "kind": "screen",
+      "id": "market_cap",
+      "title": "Market cap",
+      "path": "docs/img/screens/market_cap.png"
+    },
+    {
+      "kind": "screen",
+      "id": "bitcoin_supply",
+      "title": "Bitcoin supply",
+      "path": "docs/img/screens/bitcoin_supply.png"
+    },
+    {
+      "kind": "screen",
+      "id": "bitcoin_supply_percent",
+      "title": "Bitcoin supply (percent)",
+      "path": "docs/img/screens/bitcoin_supply_percent.png"
+    },
+    {
+      "kind": "screen",
+      "id": "mining_pool_hashrate",
+      "title": "Mining pool hashrate",
+      "path": "docs/img/screens/mining_pool_hashrate.png"
+    },
+    {
+      "kind": "screen",
+      "id": "mining_pool_earnings",
+      "title": "Mining pool earnings",
+      "path": "docs/img/screens/mining_pool_earnings.png"
+    },
+    {
+      "kind": "screen",
+      "id": "bitaxe_hashrate",
+      "title": "Bitaxe hashrate",
+      "path": "docs/img/screens/bitaxe_hashrate.png"
+    },
+    {
+      "kind": "screen",
+      "id": "bitaxe_best_diff",
+      "title": "Bitaxe best difficulty",
+      "path": "docs/img/screens/bitaxe_best_diff.png"
+    },
+    {
+      "kind": "screen",
+      "id": "nostr_zap",
+      "title": "Nostr zap overlay",
+      "path": "docs/img/screens/nostr_zap.png"
+    },
+    {
+      "kind": "screen",
+      "id": "block_height_horizontal_desc",
+      "title": "Block height (verticalDesc=false)",
+      "path": "docs/img/screens/block_height_horizontal_desc.png"
+    },
+    {
+      "kind": "screen",
+      "id": "provisioning_first_boot",
+      "title": "Provisioning (first boot)",
+      "path": "docs/img/screens/provisioning_first_boot.png"
+    },
+    {
+      "kind": "font",
+      "id": "antonio",
+      "title": "Antonio (default)",
+      "path": "docs/img/fonts/antonio.png"
+    },
+    {
+      "kind": "font",
+      "id": "oswald",
+      "title": "Oswald",
+      "path": "docs/img/fonts/oswald.png"
+    },
+    {
+      "kind": "font",
+      "id": "inter",
+      "title": "Inter",
+      "path": "docs/img/fonts/inter.png"
+    },
+    {
+      "kind": "font",
+      "id": "sourceSerif",
+      "title": "Source Serif",
+      "path": "docs/img/fonts/sourceSerif.png"
+    },
+    {
+      "kind": "font",
+      "id": "merriweather",
+      "title": "Merriweather",
+      "path": "docs/img/fonts/merriweather.png"
+    },
+    {
+      "kind": "font",
+      "id": "bitter",
+      "title": "Bitter",
+      "path": "docs/img/fonts/bitter.png"
+    },
+    {
+      "kind": "font",
+      "id": "atkinson",
+      "title": "Atkinson Hyperlegible",
+      "path": "docs/img/fonts/atkinson.png"
+    }
+  ]
+}

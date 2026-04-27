@@ -1,10 +1,9 @@
 // UC8179 base — UNTESTED. See uc8179_base.hpp for the caveat block.
 //
-// This implements the GxEPD2_750_GDEY075T7 init / refresh sequence
-// register-for-register. None of it has been driven against real
-// silicon in this firmware. The scaffold is here so a follow-up
-// bring-up has somewhere to land its tweaks rather than starting
-// from scratch.
+// This implements the GDEY075T7 init / refresh sequence per the
+// UC8179 datasheet. None of it has been driven against real silicon
+// in this firmware. The scaffold is here so a follow-up bring-up has
+// somewhere to land its tweaks rather than starting from scratch.
 
 #include "epd/drivers/uc8179_base.hpp"
 
@@ -64,8 +63,7 @@ uint32_t Uc8179Base::BusyPollMs() const {
 void Uc8179Base::WaitIdle(uint32_t timeout_ms) {
   // UC8179 BUSY is active LOW during refresh — the chip pulls the
   // line low while busy and releases (HIGH) when idle. This is the
-  // opposite of SSD1680. Mirror GxEPD2's _waitWhileBusy(false) for
-  // GDEY075T7: wait for HIGH.
+  // opposite of SSD1680. Wait for HIGH.
   vTaskDelay(pdMS_TO_TICKS(1));
   const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   const TickType_t step = pdMS_TO_TICKS(BusyPollMs());
@@ -87,7 +85,7 @@ esp_err_t Uc8179Base::PowerOn() {
   if (power_is_on_) return ESP_OK;
   ESP_RETURN_ON_ERROR(cfg_.bus->SendCommand(cfg_.cs, kCmdPowerOn), kTag,
                       "poweron");
-  // GxEPD2 power_on_time = 140 ms; double for safety.
+  // Datasheet power-on settling = 140 ms; double for safety.
   WaitIdle(500);
   power_is_on_ = true;
   return ESP_OK;
@@ -97,24 +95,24 @@ esp_err_t Uc8179Base::PowerOff() {
   if (!power_is_on_) return ESP_OK;
   ESP_RETURN_ON_ERROR(cfg_.bus->SendCommand(cfg_.cs, kCmdPowerOff), kTag,
                       "poweroff");
-  // GxEPD2 power_off_time = 42 ms; round up.
+  // Datasheet power-off settling = 42 ms; round up.
   WaitIdle(200);
   power_is_on_ = false;
   return ESP_OK;
 }
 
 esp_err_t Uc8179Base::Init() {
-  // Mirrors GxEPD2_750_GDEY075T7::_InitDisplay register-for-register.
+  // GDEY075T7 init sequence per the UC8179 datasheet.
   HardReset();
   auto* bus = cfg_.bus;
   auto& cs = cfg_.cs;
   // Panel setting — KW: 0x3F, KWR: 0x2F, BWROTP: 0x0F, BWOTP: 0x1F.
-  // GxEPD2 uses 0x1F (BWOTP).
+  // We use 0x1F (BWOTP, black/white with on-the-fly LUT).
   const uint8_t panel = 0x1F;
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPanelSetting, &panel, 1), kTag,
                       "panel");
-  // Power setting — same shape as the GxEPD2 reference (internal,
-  // VGH/VGL = ±20 V, VDH = 15 V, VDL = -15 V, VDHR = 4.2 V).
+  // Power setting — internal, VGH/VGL = ±20 V, VDH = 15 V,
+  // VDL = -15 V, VDHR = 4.2 V.
   const uint8_t power[5] = {0x07, 0x07, 0x3F, 0x3F, 0x09};
   ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdPowerSetting, power, 5), kTag,
                       "power");
@@ -154,9 +152,9 @@ esp_err_t Uc8179Base::Init() {
 esp_err_t Uc8179Base::DrawFramebufferStart(const uint8_t* fb,
                                            RefreshKind kind) {
   // UC8179 refresh: PowerOn, write current (0x13), refresh (0x12).
-  // For full refresh GxEPD2 also writes the previous-image RAM
-  // (0x10) so the LUT diffs against a known baseline; partial skips
-  // it. Inverted-color is handled the same way as the SSD1680 path
+  // For full refresh we also write the previous-image RAM (0x10) so
+  // the LUT diffs against a known baseline; partial skips it.
+  // Inverted-color is handled the same way as the SSD1680 path
   // — XOR every byte before SPI DMA. Stride is panel-specific (the
   // GDEY075T7 packs 100 bytes per scan-line).
   auto* bus = cfg_.bus;

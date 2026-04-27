@@ -33,12 +33,12 @@ class Ssd1680Base : public IEpdPanel {
   // (RamWidthBytes) — for both shipped 2.13"/2.9" panels this is 16.
   virtual int RamWidthBytes() const { return 16; }
 
-  // Per-driver pieces of _InitDisplay (GxEPD2 reference). The base
-  // runs SW reset, then calls WriteDriverOutputControl + WriteBorder,
-  // then sets up the partial-RAM area for the full panel before
-  // returning. Default border = 0x05 (2.13" GDEY0213B74 reference);
-  // the 2.9" GDEY029T94 reference also uses 0x05, so subclasses
-  // typically only override the driver-output-control bytes.
+  // Per-driver pieces of the init sequence. The base runs SW reset,
+  // then calls WriteDriverOutputControl + WriteBorder, then sets up
+  // the partial-RAM area for the full panel before returning. Default
+  // border = 0x05 (2.13" GDEY0213B74 datasheet); the 2.9" GDEY029T94
+  // also uses 0x05, so subclasses typically only override the driver-
+  // output-control bytes.
   virtual esp_err_t WriteDriverOutputControl();
   virtual uint8_t BorderWaveform() const { return 0x05; }
 
@@ -59,9 +59,9 @@ class Ssd1680Base : public IEpdPanel {
 
   // Whether this driver primes RAM 0x26 with the previous frame
   // before each partial activate. The 2.13" GDEY0213B74 needs this
-  // (the chip doesn't auto-copy 0x24→0x26 after a partial activate
-  // despite GxEPD2 assuming it does); the 2.9" GDEY029T94 reference
-  // doesn't, so the 2.9" driver disables the prime.
+  // (the chip doesn't auto-copy 0x24→0x26 after a partial activate);
+  // the 2.9" GDEY029T94 doesn't, so the 2.9" driver disables the
+  // prime.
   virtual bool PrimePartialPreviousRam() const { return true; }
 
   // Shared helpers.

@@ -13,6 +13,15 @@ plus a handful of special-case keys (`dnd`, `screens`, `actCurrencies`,
 `timePerScreen`, `invertedColor`, `txPower`) handled directly in
 `components/settings/settings_api.cpp::ApplyPatch()`.
 
+The WebUI mirrors `kFields` into a generated TypeScript module via
+`scripts/generate-settings-meta.py` (in the WebUI repo). Whenever a
+field is added, removed, or its `boot_only` flag flips here, run
+`pnpm generate:settings-meta` in the WebUI checkout to regenerate
+`src/lib/types/settings.generated.ts`. A unit test in the WebUI
+(`settings.generated.spec.ts`) cross-checks "(restart required)"
+labels against this metadata so a stale label fails CI before it
+reaches a device.
+
 Defaults in the table below come from `components/settings/include/settings/schema.hpp`'s
 `FieldSpec::default_*` fields, ported from the old firmware's
 `btclock_v3_fci/src/lib/system/defaults.hpp`. A fresh install (NVS wiped,
@@ -32,9 +41,37 @@ or a key never PATCHed) surfaces these values.
 | CSV | emitted as a JSON array, persisted as a comma-joined string | NVS string |
 
 Unknown top-level keys in a PATCH body are silently ignored (matches
-the old firmware). Known keys with the wrong type return 400 with a
-structured `{"error": "<key>:bad_type"}` body. Range-constrained keys
-return 400 with `{"error": "range:<key>"}`.
+the old firmware). Validation failures return `400 Bad Request` with
+a structured `{"error": "<token>"}` body. The WebUI's
+`parseSettingsError` helper splits the token on `:` and uses the left
+half to identify the offending field (so it can pop the relevant
+`CollapseCard` open and scroll the input into view) and the right half
+to localise the reason. The known vocabulary today:
+
+| `error` token | Meaning | Where it fires |
+|---|---|---|
+| `json` | Body is not valid JSON. | Top-level parser. |
+| `not_object` | Body parsed but the root is not a JSON object. | Top-level parser. |
+| `bad body` | `Content-Length: 0` or > 16 KiB. | HTTP wrapper before parse. |
+| `<key>:bad_type` | Known key with the wrong JSON type (e.g. `"true"` for a `bool` field, `"30"` for a `uint`). | Generic `kFields` walk. |
+| `<key>:bad_length` | String exceeds NVS / hardware bound (e.g. miningPoolUser too long). | Per-key validators. |
+| `<key>:bad_hex` | String fails per-key hex validation (e.g. `nostrZapPubkey` not 64 hex chars). | Per-key validators. |
+| `<key>:bad_scheme` | URL string with a forbidden scheme (e.g. `nostrRelay` not `wss://` / `ws://`). | Per-key validators. |
+| `<key>:unknown` | Enum-typed string with an unknown value (`fontName`, `miningPoolName`). | Per-key validators. |
+| `range:<key>` | Numeric or numeric-bounded string out of `[min,max]`. **Note the inverted shape** — the field name is on the right of the colon, not the left. The WebUI's `parseSettingsError` handles both forms. | Generic `kFields` walk for `kUint` / `kUChar`. |
+| `screens:partial_order` | Array contains some entries with `order` and some without. PATCH must be all-or-nothing. | `screens[]` validator. |
+| `screens:bad_entry` | Entry is not a JSON object, or is missing `id`. | `screens[]` validator. |
+| `screens:unknown_id` | `screens[i].id` does not match a defined screen. | `screens[]` validator. |
+| `screens:dup_id` / `screens:dup_order` | Two entries share an `id` or `order` value. | `screens[]` validator. |
+| `screens:order_range` | `order` outside `[0, screens.length)`. | `screens[]` validator. |
+| `screens:incomplete` | Reorder PATCH did not list every defined screen. | `screens[]` validator. |
+| `currency:not_string` | `actCurrencies[]` entry is not a string. | `actCurrencies[]` validator. |
+| `dnd:range` | `startHour`/`startMinute`/`endHour`/`endMinute` outside `[0,23]`/`[0,59]`. | DND nested-object validator. |
+
+The PATCH `200` body is empty when no `boot_only` field was touched,
+or `{"rebootRequired": true}` when at least one was. The WebUI uses
+this to surface a "restart required" banner without firing a reboot
+itself.
 
 ## Grouping rationale
 
@@ -64,7 +101,7 @@ derived keys the WebUI uses to render that section.
 | `blockFeeDec` | bool | `true` | Show decimal sats/vB on the fee-rate screen when the data source reports a precise value. | Honored in `ScreenManager` rendering path. |
 | `suffixPrice` | bool | `false` | Use k/M suffixes on the price screen. | Honored by `ScreenManager::ReadRenderPrefs` and threaded through `RenderBtcPriceScreen` / `BuildBtcPrice`. |
 | `suffixShareDot` | bool | `false` | When `true`, the decimal-point dot shares the digit panel before it instead of taking its own panel — frees one panel for an extra digit before or after the separator. When `false` (default), the dot occupies its own panel. | Honored by `LayoutBtcPriceSuffixStrings` via `ScreenManager::ReadRenderPrefs`. Folds the dot into the preceding digit cell so K/M-suffix layouts get one more digit of width. |
-| `mowMode` | bool | `false` | Million-Of-Watoshis style price formatting. | Honored by `ScreenManager::ReadRenderPrefs` and `LayoutBtcPriceSuffixStrings`. |
+| `mowMode` | bool | `false` | "Mow mode" price formatting — renders the BTC/fiat price in **millions of fiat per BTC** (`$X.XM`) instead of the raw integer. Named after Samson Mow, who popularised quoting Bitcoin in millions. | Honored by `ScreenManager::ReadRenderPrefs` and `LayoutBtcPriceSuffixStrings`. |
 | `hideLeadZero` | bool | `false` | Clock screen: drop the leading zero on single-digit hours ("07:00" → "7:00"). Minute leading zero is always preserved. | Honored by `ComputeClockLayout` via `ScreenManager::ReadRenderPrefs`. Applied live: `on_settings_patched` calls `ScreenManager::MarkDirty`. NVS key truncated to `hideLeadZero` (15-char cap; JSON key matches). |
 
 Display-related special keys:
@@ -154,7 +191,7 @@ nested `dnd` block).
 |---|---|---|---|---|
 | `tzString` | string (IANA) | `"Europe/Amsterdam"` | IANA zone name (e.g. `"Europe/Amsterdam"`). | Live: PATCH triggers `timezone::SetTimezoneByName` which calls `setenv("TZ", ...) + tzset()`. |
 
-Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-04-24 (bd `btclock_v4-9rx`). v4 drives the clock from POSIX TZ strings via `setenv("TZ", ...) + tzset()`, and the old offset pref was never read back. Legacy clients that still send `gmtOffset` / `tzOffset` get a silent no-op (the rest of the PATCH body still applies).
+Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed in v4. The firmware drives the clock from POSIX TZ strings via `setenv("TZ", ...) + tzset()`, and the old offset pref was never read back. Legacy clients that still send `gmtOffset` / `tzOffset` get a silent no-op (the rest of the PATCH body still applies).
 
 ---
 
@@ -219,23 +256,6 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed on 2026-0
 
 ---
 
-## Uncategorised
-
-The following schema keys don't slot neatly into the groups above, or
-are primarily internal:
-
-| Key | Type | Default | Notes |
-|---|---|---|---|
-| `currentScreen` | uint | `0` | Last-displayed screen id. Restored on boot. |
-| `timerSeconds` | uint | `1800` | Auto-rotate period (seconds). Written indirectly via `timePerScreen`. |
-| `timerActive` | bool | `true` | Rotation timer running flag. |
-| `fgColor` / `bgColor` | uint | `0xFFFF` / `0x0000` | Side-written by `invertedColor` PATCH. |
-| `wifiConfigured` | bool | `false` | Provisioning-flow internal. |
-| `actCurrencies` | string (CSV) | `"USD,EUR,JPY"` | Persisted shape; GET/PATCH use array shape. |
-| `screenOrder` | string (CSV) | `""` | Persisted shape; GET/PATCH use `screens[].order`. |
-
----
-
 ## Read-only fields (GET only — not PATCH-settable)
 
 These appear in the `GET /api/settings` response but are not writable
@@ -275,101 +295,18 @@ the WebUI calls alongside `/api/settings`:
 
 ---
 
-## Bug-flagged settings at a glance
+## Honoured-status guarantee
 
-The following keys are accepted by PATCH and persisted to NVS but are
-**not yet honored** by the v4 firmware as of the commit pinned at the
-top of this file. Other agents are fixing these in parallel.
+Every schema key listed above has a read site outside
+`components/settings/` — i.e. PATCHing it actually changes device
+behaviour, not just NVS contents. The "Notes" column on each row
+points to the consumer (`ScreenManager::ReadRenderPrefs`,
+`on_frontlight_changed`, `init_hardware.cpp`, etc.) so the wiring is
+auditable from this page.
 
-(empty as of 2026-04-26 — `poolLogosUrl` was wired up by the runtime
-logo fetcher delivered in `f9048e9`, which closed out bd
-`btclock_v4-5yi`. Every schema key now has a read site outside
-`components/settings/`.)
+Two exceptions, intentional and documented in their rows:
 
-bd `btclock_v4-7da` cleared the last seven honestly-dead keys on
-2026-04-26: `wpTimeout`, `ledTestOnPower`, `inverseButtons`,
-`enableDebugLog`, `minSecPriceUpd`, `suffixShareDot`, plus a `txPower`
-boot re-read. The keys previously listed here as bug-flagged but
-actually wired — `mdnsEnabled`, all `fl*`, `luxLightToggle`,
-`suffixPrice`, `mowMode`, `refrScrnChange`, `fullRefreshMin`,
-`stealFocus` — were removed at the same time after a triage pass
-found their read sites.
-
-"Not yet honored" here means `grep` across `components/` and `main/`
-surfaces no read site outside `components/settings/` itself. The PATCH
-round-trips cleanly; the effect is simply absent.
-
----
-
-## Defaults audit (v3 parity)
-
-Defaults below were sourced from
-`btclock_v3_fci/src/lib/system/defaults.hpp` on 2026-04-24 and wired
-through `FieldSpec::default_*` in `schema.hpp`. Each row shows the
-v3 macro value, the v4 value *before* this sweep (mostly 0 / "" / false
-because the schema carried no defaults), and the v4 value *after*. Rows
-where v4 already matched v3 are omitted.
-
-| Key | v3 | v4 before | v4 after |
-|---|---|---|---|
-| `bitaxeHostname` | `"bitaxe1"` | `""` | `"bitaxe1"` |
-| `blockFeeDec` | `true` | `false` | `true` |
-| `blockFlashColor` | `0xE04300` | `0` | `0xE04300` |
-| `ceEndpoint` | `"ws-staging.btclock.dev"` | `""` | `"ws-staging.btclock.dev"` |
-| `flAlwaysOn` | `true` | `false` | `true` |
-| `flEffectDelay` | `15` | `0` | `15` |
-| `flFlashOnUpd` | `true` | `false` | `true` |
-| `flFlashOnZap` | `true` | `false` | `true` |
-| `flMaxBrightness` | `2048` | `0` | `2048` |
-| `flOffWhenDark` | `true` | `false` | `true` |
-| `fontName` | `"antonio"` | `""` | `"antonio"` |
-| `fullRefreshMin` | `60` | `0` | `60` |
-| `gitReleaseUrl` | `"https://git.btclock.dev/api/v1/repos/btclock/btclock_v3/releases/latest"` | `""` | same as v3 |
-| `hostnamePrefix` | `"btclock"` | `""` | `"btclock"` |
-| `httpAuthUser` | `"btclock"` | `""` | `"btclock"` |
-| `ledBrightness` | `128` | `0` | `128` |
-| `ledFlashOnZap` | `true` | `false` | `true` |
-| `ledTestOnPower` | `true` | `false` | `true` |
-| `localPoolHost` | `"umbrel.local:2019"` | `""` | `"umbrel.local:2019"` |
-| `luxLightToggle` | `128` | `0` | `128` |
-| `mcapBigChar` | `true` | `false` | `true` |
-| `mdnsEnabled` | `true` | `false` | `true` |
-| `mempoolInstance` | `"mempool.space"` | `""` | `"mempool.space"` |
-| `mempoolSecure` | `true` | `false` | `true` |
-| `minSecPriceUpd` | `30` | `0` | `30` |
-| `miningPoolName` | `"ocean"` | `""` | `"noderunners"` (v4 deliberately diverges from v3 — paired with `poolGlobalStats=true` for credentialless first-boot UX) |
-| `poolGlobalStats` | `false` | `false` | `true` (v4 deliberately diverges from v3 — paired with `miningPoolName="noderunners"`) |
-| `miningPoolUser` | `"38Qkkei3…TFy"` | `""` | `"38Qkkei3…TFy"` |
-| `nostrPubKey` | `"6423171…6288"` | `""` | `"6423171…6288"` |
-| `nostrRelay` | `"wss://relay.primal.net"` | `""` | `"wss://relay.primal.net"` |
-| `nostrZapPubkey` | `"b5127a0…c422"` | `""` | `"b5127a0…c422"` |
-| `otaEnabled` | `true` | `false` | `true` |
-| `poolLogosUrl` | `"https://git.btclock.dev/btclock/mining-pool-logos/raw/branch/main"` | `""` | same as v3 |
-| `scrnRestoreZap` | `true` | `false` | `true` |
-| `tzString` | `"Europe/Amsterdam"` | `""` | `"Europe/Amsterdam"` |
-| `useBlkCountdown` | `true` | `false` | `true` |
-| `useMscwTime` | `true` | `false` | `true` |
-| `verticalDesc` | `true` | `false` | `true` |
-| `wpTimeout` | `15*60` (900 s) | `0` | `900` |
-
-Drift found and corrected during this sweep:
-
-- Every `bool` field that v3 defaulted to `true` was defaulting to `false`
-  in v4 — the previous EmitField used a hardcoded zero-default regardless
-  of the key.
-- Same for every `uint` that v3 gave a non-zero initial value
-  (`ledBrightness`, `blockFlashColor`, `fullRefreshMin`, `minSecPriceUpd`,
-  `wpTimeout`, `flMaxBrightness`, `flEffectDelay`, `luxLightToggle`).
-- Every string key that had a non-empty v3 default was reporting `""`.
-
-Deliberate exclusions:
-
-- `httpAuthPass` / `otaPass` keep an empty-string default in the GET
-  surface because v3 also zeroed these in `settings.cpp` (the raw
-  password must never ship to the client). The presence indicator is
-  `httpAuthPassSet` / `otaPassSet`.
-- `gmtOffset` removed entirely (bd `btclock_v4-9rx`) — see the Time
-  zone section above.
-- `wifiRebootMin` is v4-only (no v3 parallel); the default `10`
-  carries over from the Arduino `checkWiFiConnection()` ten-minute
-  fallback cadence.
+- `httpAuthPass` / `otaPass` — secrets are never echoed; presence is
+  surfaced via the `…Set` companion booleans.
+- `wifiConfigured` — internal provisioning-flow flag, set by the AP
+  flow rather than by user PATCH.
