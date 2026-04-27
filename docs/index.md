@@ -2,7 +2,7 @@
 
 A Bitcoin block-height-and-price companion device. Open hardware, open
 firmware, open data feeds. This site is the **user-facing**
-documentation for the BTClock v4 firmware (ESP-IDF v6.0); developer
+documentation for the BTClock v4 firmware (ESP-IDF v6.0.1); developer
 references live alongside the code in the [Forgejo repository][repo].
 
 [repo]: https://git.btclock.dev/btclock/btclock_v4

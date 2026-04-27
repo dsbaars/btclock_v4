@@ -76,7 +76,7 @@ jobs:
   webui_and_lfs:
     runs-on: docker
     container:
-      image: espressif/idf:release-v6.0
+      image: espressif/idf:v6.0.1
     needs: host_tests
     steps:
       - name: Install Node.js (for JS-based Forgejo actions)
@@ -160,7 +160,7 @@ jobs:
   firmware:
     runs-on: docker
     container:
-      image: espressif/idf:release-v6.0
+      image: espressif/idf:v6.0.1
     needs: webui_and_lfs
     permissions:
       contents: write

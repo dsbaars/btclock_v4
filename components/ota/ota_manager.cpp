@@ -22,7 +22,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mbedtls/md.h"
-#include "tls_gate/tls_gate.hpp"
 
 namespace btclock {
 namespace {
@@ -73,24 +72,37 @@ esp_err_t HttpGetString(const std::string& url, size_t cap, std::string* out) {
   cfg.event_handler = &FetchEventHandler;
   cfg.user_data = &ctx;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
-  cfg.timeout_ms = 15000;
-  // GitHub's release JSON is served via asset redirects; follow them.
+  // Per-recv socket timeout. Auto-update is rare and the user is
+  // watching, so a short bound that fails fast and surfaces the
+  // problem is better than a long bound that masks it.
+  cfg.timeout_ms = 10000;
+  // Forgejo redirects asset downloads to a CDN; follow them.
   cfg.disable_auto_redirect = false;
   cfg.max_redirection_count = 5;
+  // Skip TLS session caching — auto-update is one-shot and we'd
+  // rather take the handshake hit than carry session state across
+  // boots / sleep transitions.
+  cfg.is_async = false;
 
+  ESP_LOGW(kTag, "http GET begin: %s", url.c_str());
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
-  if (!client) return ESP_FAIL;
-
-  esp_err_t err;
-  int status = 0;
-  {
-    // Hold the TLS gate only around perform — matches the pattern in
-    // mining_pool_common so two concurrent OTAs / pool polls don't
-    // both allocate TLS IN buffers at once.
-    std::lock_guard<std::mutex> lk(btclock::tls_gate::mutex());
-    err = esp_http_client_perform(client);
-    status = esp_http_client_get_status_code(client);
+  if (!client) {
+    ESP_LOGE(kTag, "esp_http_client_init failed");
+    return ESP_FAIL;
   }
+
+  // No TLS gate around perform here. The gate exists to cap
+  // peak-mbedtls-IN-buffer count under handshake-storm conditions
+  // (mining-pool pollers + nostr WS + bitaxe HTTPS overlapping at
+  // boot). Auto-update is operator-triggered, runs at most once,
+  // and the user is actively waiting — taking the gate would let
+  // an in-flight pool poll block this call indefinitely with no
+  // visible progress (observed in practice: a 90 s silent hang).
+  // The single extra ~16 KB transient mbedtls IN buffer here is
+  // acceptable for an admin action.
+  const esp_err_t err = esp_http_client_perform(client);
+  const int status = esp_http_client_get_status_code(client);
+
   if (err != ESP_OK) {
     ESP_LOGW(kTag, "http GET %s failed: %s", url.c_str(), esp_err_to_name(err));
     esp_http_client_cleanup(client);
@@ -108,6 +120,8 @@ esp_err_t HttpGetString(const std::string& url, size_t cap, std::string* out) {
     return ESP_FAIL;
   }
 
+  ESP_LOGW(kTag, "http GET ok: %s status=%d bytes=%u", url.c_str(), status,
+           static_cast<unsigned>(ctx.body.size()));
   *out = std::move(ctx.body);
   return ESP_OK;
 }
@@ -282,6 +296,8 @@ void OtaManager::RunAutoUpdate() {
     ESP_LOGE(kTag, "release manifest fetch failed");
     return;
   }
+  ESP_LOGW(kTag, "release manifest fetched: %u bytes",
+           static_cast<unsigned>(release_body.size()));
 
   ReleaseInfo info = ParseReleaseJson(release_body, cfg_.firmware_asset);
   if (info.file_url.empty() || info.checksum_url.empty()) {
@@ -289,6 +305,8 @@ void OtaManager::RunAutoUpdate() {
              cfg_.firmware_asset.c_str());
     return;
   }
+  ESP_LOGW(kTag, "asset urls resolved: file=%s checksum=%s",
+           info.file_url.c_str(), info.checksum_url.c_str());
 
   std::string sha_body;
   if (HttpGetString(info.checksum_url, 1024, &sha_body) != ESP_OK) {
@@ -299,6 +317,27 @@ void OtaManager::RunAutoUpdate() {
   if (!ExtractSha256Hex(sha_body, &expected_hex)) {
     ESP_LOGE(kTag, "checksum parse failed");
     return;
+  }
+  ESP_LOGW(kTag, "expected sha256: %s", expected_hex.c_str());
+
+  // Drive the same UX surface the push-OTA path already uses: paint
+  // the "UPDATE!" overlay on the EPDs, latch the rotation timer, and
+  // start the LED progress bar. The pre-flash hook also quiesces every
+  // data source (BTClock WS, mempool/Kraken, Nostr, mining-pool, bitaxe)
+  // so their TLS / recv buffers come back to the heap before the OTA
+  // download competes for it.
+  OtaProgress prog;
+  prog.written = 0;
+  prog.total = 0;  // unknown until esp_https_ota_get_image_size returns
+  prog.phase = OtaProgress::Phase::kStarting;
+  EmitProgress(prog);
+  {
+    PreFlashHook hook;
+    {
+      std::lock_guard<std::mutex> lk(cb_mu_);
+      hook = pre_flash_hook_;
+    }
+    if (hook) hook();
   }
 
   esp_http_client_config_t http_cfg = {};
@@ -314,25 +353,54 @@ void OtaManager::RunAutoUpdate() {
   esp_err_t rc = esp_https_ota_begin(&ota_cfg, &handle);
   if (rc != ESP_OK) {
     ESP_LOGE(kTag, "esp_https_ota_begin: %s", esp_err_to_name(rc));
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
 
+  // image_size is the Content-Length the HTTPS server reported; valid
+  // only AFTER the first esp_https_ota_perform() returns a non-zero
+  // get_image_len_read. For a Forgejo asset this comes from the
+  // upstream proxy and matches the eventual download exactly.
+  const int total_bytes = esp_https_ota_get_image_size(handle);
+  if (total_bytes > 0) {
+    prog.total = static_cast<size_t>(total_bytes);
+  }
+  ESP_LOGW(kTag, "esp_https_ota begin ok: total=%d bytes", total_bytes);
+  prog.phase = OtaProgress::Phase::kWriting;
+  EmitProgress(prog);
+
   // Drive the state machine manually so the task can yield between
   // chunks; esp_https_ota_perform returns ESP_ERR_HTTPS_OTA_IN_PROGRESS
-  // while there's more body to read.
+  // while there's more body to read. Throttle progress emission to
+  // every kProgressStepBytes (~16 KiB) so the LED bar advances multiple
+  // times during a 1.5 MiB image without spamming the LED queue.
+  constexpr size_t kProgressStepBytes = 16 * 1024;
+  size_t next_progress = kProgressStepBytes;
   while ((rc = esp_https_ota_perform(handle)) ==
          ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+    const int read = esp_https_ota_get_image_len_read(handle);
+    if (read > 0 && static_cast<size_t>(read) >= next_progress) {
+      prog.written = static_cast<size_t>(read);
+      prog.phase = OtaProgress::Phase::kWriting;
+      EmitProgress(prog);
+      next_progress = static_cast<size_t>(read) + kProgressStepBytes;
+    }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
   if (rc != ESP_OK) {
     ESP_LOGE(kTag, "esp_https_ota_perform: %s", esp_err_to_name(rc));
     esp_https_ota_abort(handle);
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
 
   if (!esp_https_ota_is_complete_data_received(handle)) {
     ESP_LOGE(kTag, "incomplete image body");
     esp_https_ota_abort(handle);
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
 
@@ -342,6 +410,10 @@ void OtaManager::RunAutoUpdate() {
   // Read back and hash. Comparing against the declared expected_hex
   // here means esp_https_ota_finish (which flips the boot partition)
   // only runs on a match.
+  prog.written = (image_len > 0) ? static_cast<size_t>(image_len) : 0;
+  prog.phase = OtaProgress::Phase::kVerifying;
+  EmitProgress(prog);
+
   std::string actual_hex;
   bool hash_ok =
       target && image_len > 0 &&
@@ -349,20 +421,28 @@ void OtaManager::RunAutoUpdate() {
   if (!hash_ok) {
     ESP_LOGE(kTag, "partition rehash failed");
     esp_https_ota_abort(handle);
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
   if (actual_hex != expected_hex) {
     ESP_LOGE(kTag, "sha256 mismatch: expected=%s actual=%s",
              expected_hex.c_str(), actual_hex.c_str());
     esp_https_ota_abort(handle);
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
 
   rc = esp_https_ota_finish(handle);
   if (rc != ESP_OK) {
     ESP_LOGE(kTag, "esp_https_ota_finish: %s", esp_err_to_name(rc));
+    prog.phase = OtaProgress::Phase::kFailed;
+    EmitProgress(prog);
     return;
   }
+  prog.phase = OtaProgress::Phase::kRebooting;
+  EmitProgress(prog);
 
   ESP_LOGW(kTag, "auto-update ok: bytes=%d; rebooting in 1s", image_len);
   // Short pause so the triggering /api/firmware/auto_update response

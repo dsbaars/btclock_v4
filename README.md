@@ -36,7 +36,7 @@ idf.py -B build-rev-b    -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONF
 idf.py -B build-v8       -D BTCLOCK_BOARD=V8    -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-v8/sdkconfig       build
 ```
 
-Required toolchain: ESP-IDF v6.0 (v5.5.4 still works as a fallback).
+Required toolchain: ESP-IDF v6.0.1 (v5.5.4 still works as a fallback).
 
 ## Flash
 
@@ -184,8 +184,9 @@ gcc and clang.
 - `lint.yaml` — clang-format check (gating) + clang-tidy (advisory).
 - `release.yaml` — tag-triggered (`v*`); gates on host tests, builds the
   WebUI once, packs per-size LittleFS images, then matrix-builds firmware
-  for `rev-a`, `rev-a-29`, `rev-b`, `v8` and attaches per-variant zips
-  to the Forgejo release. CI currently pins `espressif/idf:v6.0`.
+  for `rev-a`, `rev-a-29`, `rev-b`, `v8` and attaches the flat per-variant
+  `btclock_<variant>_ota.bin` (+ `.sha256`) and shared support binaries
+  to the Forgejo release. CI currently pins `espressif/idf:v6.0.1`.
 
 ## Documentation
 
