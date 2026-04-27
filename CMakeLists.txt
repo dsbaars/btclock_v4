@@ -46,15 +46,19 @@ set(SDKCONFIG_DEFAULTS
 
 # Bake a git-derived version string into the firmware so esp_app_desc_t
 # `version` is meaningful for both tagged releases and untagged snapshots.
-# Tagged commits surface as e.g. "v0.1.0" (or "v0.1.0-dirty" with local
-# edits); untagged commits fall back to "<short-sha>" via `--always`.
-# IDF picks PROJECT_VER up before project() and embeds it in the app
-# image header — readable on-device via esp_app_get_description() and
-# surfaced through /api/version + the provisioning panel.
+# Tagged commits surface as e.g. "4.0.0-beta.1" (or "4.0.0-beta.1-dirty"
+# with local edits); untagged commits fall back to "<short-sha>" via
+# `--always`. The match pattern `[0-9]*` is semver-shaped (no `v`
+# prefix) — same convention `.forgejo/workflows/release.yaml` keys
+# its tag trigger off of. IDF picks PROJECT_VER up before project()
+# and embeds it in the app image header — readable on-device via
+# esp_app_get_description() and surfaced through /api/version,
+# /api/settings.gitRev, the mDNS TXT record, and the provisioning +
+# debug panels.
 find_package(Git QUIET)
 if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/.git")
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty --match "v*"
+        COMMAND ${GIT_EXECUTABLE} describe --tags --always --dirty --match "[0-9]*"
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE _BTCLOCK_GIT_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE

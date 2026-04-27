@@ -117,7 +117,7 @@ void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     ClearFb(lfb, true);
     // esp_app_desc_t::version is populated from PROJECT_VER, which our
     // top-level CMakeLists derives from `git describe --tags --always
-    // --dirty --match "v*"`: "vX.Y.Z" on a tagged release, the short
+    // --dirty --match "[0-9]*"`: "X.Y.Z" on a tagged release, the short
     // commit hash on a snapshot build, "-dirty" suffix when there are
     // uncommitted edits at build time.
     const esp_app_desc_t* app = esp_app_get_description();

@@ -24,6 +24,7 @@
 #include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -522,9 +523,22 @@ void InitControlApi(AppCtx& ctx) {
         break;
       case OtaProgress::Phase::kFailed:
         // Clear the bar so a failed attempt leaves the strip dark,
-        // then let the caller fall back to the normal resting state
-        // via kSetIdle on the next interaction.
+        // then schedule a reboot. The pre_flash_hook (fired before
+        // esp_https_ota_begin) already latched ScreenManager into
+        // OTA mode (panels frozen on "UPDATE!") and stopped every
+        // data source — there's no symmetric on-failure path to
+        // reverse those, and without a reboot the device stays
+        // wedged showing the overlay forever. push-OTA failures
+        // implicitly recover because the HTTP request returns to
+        // the user and they retry; auto-update runs in a background
+        // task with no caller waiting, so the only sane recovery is
+        // to reboot. ~2 s of delay lets the ESP_LOGE failure line
+        // flush over the USB-JTAG console first so the cause is
+        // still in the buffer when the operator attaches a monitor.
         ShowOtaProgressLedCount(0);
+        ESP_LOGW("ota-ux", "auto-update failed; rebooting in 2s");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
         break;
     }
   });

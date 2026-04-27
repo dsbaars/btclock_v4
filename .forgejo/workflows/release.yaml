@@ -21,7 +21,13 @@ name: "Release pipeline"
 on:
   push:
     tags:
-      - "v*"
+      # Semver-shaped tags only — `4.0.0`, `4.1.0-beta.2`, etc. The
+      # bare-digit prefix (no `v`) matches the convention the project
+      # ships releases under and what `git describe --match "[0-9]*"`
+      # surfaces as PROJECT_VER. Tags that don't start with a digit
+      # (e.g. `nightly`, `snapshot`) intentionally don't trigger this
+      # heavy release pipeline.
+      - "[0-9]*"
   workflow_dispatch:
 
 jobs:

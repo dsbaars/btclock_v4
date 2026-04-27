@@ -116,7 +116,7 @@ void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   // Version comes from DebugScreenInfo::fw_version, populated by the
   // caller from esp_app_get_description()->version (which in turn is
   // PROJECT_VER, derived from `git describe --tags --always --dirty
-  // --match "v*"` in the top-level CMakeLists.txt): tag for releases,
+  // --match "[0-9]*"` in the top-level CMakeLists.txt): tag for releases,
   // short SHA for snapshots, "-dirty" suffix on uncommitted builds.
   // Threading the value through the struct rather than reaching for
   // esp_app_desc.h here keeps debug.cpp host-testable / WASM-buildable.
