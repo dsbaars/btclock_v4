@@ -139,11 +139,12 @@ hoe elk scherm eruit ziet.
 - De volledige referentie — elk scherm, elke instelling, elk
   API-endpoint — staat in [`HANDBOOK.md`](HANDBOOK.md).
 - Een community-integratie voor Home Assistant staat op
-  https://github.com/dsbaars/homeassistant-btclock — entities voor
-  elk dataschermen en services voor scherm-push en led-besturing.
+  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock)
+  — entities voor elk datascherm en services voor scherm-push en
+  led-besturing.
 - Een browser-gebaseerde ESP-S3-flasher (geen toolchain nodig, alleen
-  Chrome) staat op https://web-flasher.btclock.dev/ — de makkelijkste
-  manier om een nieuwe printplaat te flashen of een kapotte firmware
-  te herstellen.
+  Chrome) staat op [web-flasher.btclock.dev](https://web-flasher.btclock.dev/)
+  — de makkelijkste manier om een nieuwe printplaat te flashen of een
+  kapotte firmware te herstellen.
 - Wil je zelf firmware bouwen? Zie
   [`BUILD_FROM_SOURCE.md`](BUILD_FROM_SOURCE.md).

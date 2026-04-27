@@ -149,11 +149,12 @@ wie jeder Bildschirm aussieht.
 - Die vollständige Referenz — jeder Bildschirm, jede Einstellung,
   jeder API-Endpunkt — steht in [`HANDBOOK.md`](HANDBOOK.md).
 - Eine Community-Integration für Home Assistant gibt es unter
-  https://github.com/dsbaars/homeassistant-btclock — Entities für
-  jeden Daten-Bildschirm und Services für Text-Push und LED-Steuerung.
+  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock)
+  — Entities für jeden Daten-Bildschirm und Services für Text-Push
+  und LED-Steuerung.
 - Ein browserbasierter ESP-S3-Flasher (keine Toolchain, nur Chrome)
-  läuft unter https://web-flasher.btclock.dev/ — der einfachste Weg,
-  eine frische Platine zu flashen oder eine kaputte Firmware zu
-  retten.
+  läuft unter [web-flasher.btclock.dev](https://web-flasher.btclock.dev/)
+  — der einfachste Weg, eine frische Platine zu flashen oder eine
+  kaputte Firmware zu retten.
 - Willst du die Firmware selbst bauen? Siehe
   [`BUILD_FROM_SOURCE.md`](BUILD_FROM_SOURCE.md).
