@@ -227,13 +227,14 @@ function buildFrameBackgroundSvg(nPanels, opts = {}) {
 
   ${panels}
   ${/* Wordmark — measured against the JLCPCB 2D viewer. The italic
-       silkscreen sits roughly centred in the strip below the panel
-       cutouts: top of capital letters ≈ 6.9 mm below the panel
-       bottom edge, baseline ≈ 5.15 mm above the PCB bottom edge,
-       cap height ≈ 7.5 mm. Earlier renders had the baseline 2 mm
-       above the PCB bottom (too low) and cap height 6.5 mm (too
-       small). */ ''}
-  ${wordmarkPath(FRAME_W_MM / 2, FRAME_H_MM - 5.15, 7.5)}
+       silkscreen sits HIGH in the strip below the panel cutouts,
+       hugging the panel-bottom edge with most of the empty space
+       below the baseline: top of caps ≈ 1.75 mm below panel bottom,
+       baseline ≈ 7.375 mm above the PCB bottom edge, cap height
+       ≈ 7.5 mm. Earlier renders had the baseline 5.15 mm above the
+       bottom (visually centred in the strip — too low vs. the real
+       silkscreen) and before that 2 mm with cap height 6.5 mm. */ ''}
+  ${wordmarkPath(FRAME_W_MM / 2, FRAME_H_MM - 7.375, 7.5)}
 
   ${screws}
 </svg>`;
