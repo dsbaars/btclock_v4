@@ -45,4 +45,4 @@ set(SDKCONFIG_DEFAULTS
     "${_VARIANT_DEFAULTS}")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(btclock_idf_proto)
+project(btclock_v4)

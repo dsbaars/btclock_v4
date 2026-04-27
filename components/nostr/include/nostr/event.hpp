@@ -16,13 +16,10 @@
 // We model the event object as a plain struct of fields we actually
 // consume; unknown fields are silently dropped. Tags are stored as a
 // vector of string-vectors — the first element is the tag name, the rest
-// are values per NIP-01. No schnorr signature verification is performed
-// here: we listen over TLS to a trusted relay and accept whatever it
-// delivers. Signature verification would need to vendor
-// `bitcoin-core/secp256k1` built with schnorrsig support; see
-// components/nostr/src/parser.cpp for the invariants a future verifier
-// must maintain (id = sha256(serialized tuple), sig valid against
-// pubkey).
+// are values per NIP-01. Signature integrity is enforced one layer up
+// at the data-source seam (`nostr/event_verify.hpp` — schnorr verify
+// over the recomputed canonical id), so consumers that read this
+// struct can treat the fields as authentic.
 
 #pragma once
 
@@ -58,7 +55,8 @@ struct Event {
   uint32_t kind = 0;
   std::vector<Tag> tags;
   std::string content;
-  std::string sig;  // hex, 128 chars; unverified (see header comment)
+  std::string
+      sig;  // hex, 128 chars; verified by VerifyEvent (event_verify.hpp)
 
   // Find the first tag whose name matches `name`; returns nullptr if
   // absent. NIP-01 allows multiple tags with the same name — callers

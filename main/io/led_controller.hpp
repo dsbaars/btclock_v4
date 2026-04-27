@@ -27,6 +27,10 @@
 //   kWifiWaitForConfig  twin-blue flash (AP mode)
 //   kBootFailed         solid red (boot sanity failure)
 //   kPowerTest          rainbow scan then clear
+//   kTimerPause         head→tail amber decel sweep, then red brake-light
+//                       hold at the tail — rotation paused
+//   kTimerResume        red handbrake hold at the head, then head→tail
+//                       green accel sweep — rotation resumed
 //
 // Global toggles (NVS namespace `"settings"`, same keys the WebUI
 // PATCHes through /api/settings — see settings/pref_keys.hpp):
@@ -64,6 +68,8 @@ enum class LedEffect : uint8_t {
   kWifiWaitForConfig,
   kBootFailed,
   kPowerTest,
+  kTimerPause,
+  kTimerResume,
 };
 
 // Snapshot of current prefs + per-pixel colour mirror, returned to the

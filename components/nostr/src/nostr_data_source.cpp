@@ -5,6 +5,7 @@
 #include "data_core/hub.hpp"
 #include "data_core/snapshot.hpp"
 #include "esp_log.h"
+#include "nostr/event_verify.hpp"
 #include "nostr/parser.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
@@ -59,9 +60,16 @@ esp_err_t NostrDataSource::Stop() {
 }
 
 void NostrDataSource::OnEvent(const std::string& /*sid*/, const Event& ev) {
-  // TODO(nostr-sig): schnorr signature verification happens here once
-  // we vendor secp256k1 with --enable-module-schnorrsig. Until then we
-  // trust the WSS-to-relay channel (listen-only, per issue -0wm).
+  // Reject anything that doesn't carry a valid BIP-340 schnorr signature
+  // over the canonical id. WSS-to-relay TLS only proves we're talking
+  // to the configured relay, not that the publisher actually signed
+  // the event we just received.
+  const auto vr = VerifyEvent(ev);
+  if (vr != EventVerifyResult::kOk) {
+    ESP_LOGW(kTag, "drop unverified event id=%.16s vr=%u", ev.id.c_str(),
+             static_cast<unsigned>(vr));
+    return;
+  }
 
   // We subscribe with kinds=[30078] so the relay should not send other
   // kinds, but the filter is the relay's contract, not ours — guard.

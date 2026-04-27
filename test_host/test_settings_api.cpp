@@ -559,21 +559,47 @@ TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
 
 TEST_CASE("PATCH boot-only field triggers rebootRequired") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch("{\"hostnamePrefix\":\"newhost\"}",
+  // otaPass is one of the remaining boot_only string fields (the OTA
+  // password is captured by ArduinoOTA::setPassword at boot only).
+  auto res = btclock::settings::ApplyPatch("{\"otaPass\":\"newsecret\"}",
                                            DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(res.reboot_required);
-  CHECK(prefs.str_["hostnamePrefix"] == "newhost");
+  CHECK(prefs.str_["otaPass"] == "newsecret");
 }
 
 TEST_CASE("PATCH mixed runtime + boot-only still sets rebootRequired") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
-      "{\"mcapBigChar\":true,\"mdnsEnabled\":false}", DefaultCtx(), prefs,
+      "{\"mcapBigChar\":true,\"otaEnabled\":false}", DefaultCtx(), prefs,
       prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  // mdnsEnabled is boot-only (starts mDNS responder at boot).
+  // otaEnabled is boot-only (ArduinoOTA::begin runs once at setup).
   CHECK(res.reboot_required);
+}
+
+TEST_CASE(
+    "PATCH hostnamePrefix is live (mDNS re-publishes via on_mdns_changed)") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"hostnamePrefix\":\"newhost\"}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  // bd btclock_v4-9ut flipped this to runtime — the control server
+  // now wires on_mdns_changed which calls ReinitMdns to re-publish
+  // under the freshly-persisted prefix.
+  CHECK_FALSE(res.reboot_required);
+  CHECK(prefs.str_["hostnamePrefix"] == "newhost");
+}
+
+TEST_CASE("PATCH mdnsEnabled is live (advert toggles via on_mdns_changed)") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"mdnsEnabled\":false}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  // bd btclock_v4-9ut: ReinitMdns frees the existing responder when
+  // the user disables mdns, no reboot needed.
+  CHECK_FALSE(res.reboot_required);
+  CHECK(prefs.u32_["mdnsEnabled"] == 0u);
 }
 
 TEST_CASE(
@@ -583,10 +609,12 @@ TEST_CASE(
   // reboot. Check the ones an end-user would expect. `invertedColor`
   // is intentionally absent — bd btclock_v4-5wj flipped it to runtime
   // now that EpdSetGlobalInverted lets the driver swap polarity live.
+  // `hostnamePrefix` and `mdnsEnabled` are also absent — bd
+  // btclock_v4-9ut wired on_mdns_changed so the advert re-publishes
+  // live without a reboot.
   for (const char* k :
-       {"hostnamePrefix", "mdnsEnabled", "otaEnabled", "httpAuthEnabled",
-        "httpAuthUser", "httpAuthPass", "otaPass", "fontName",
-        "mempoolInstance", "dataSource"}) {
+       {"otaEnabled", "httpAuthEnabled", "httpAuthUser", "httpAuthPass",
+        "otaPass", "fontName", "mempoolInstance", "dataSource"}) {
     CAPTURE(k);
     const auto* spec = btclock::settings::FindField(k);
     REQUIRE(spec != nullptr);
@@ -778,12 +806,13 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // schema so the boot-read sites can derive their defaults from the
   // single source of truth. Field count 67 -> 72.
   CHECK(btclock::settings::kFields.size() == 72);
-  // Boot-only count: hostnamePrefix, mdnsEnabled, otaEnabled,
-  // httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, fontName,
-  // mempoolInstance, mempoolSecure, dataSource, ceEndpoint,
-  // ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
-  // enableDebugLog, wpTimeout = 18.
-  CHECK(btclock::settings::BootOnlyCount() == 18);
+  // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
+  // httpAuthPass, otaPass, fontName, mempoolInstance, mempoolSecure,
+  // dataSource, ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey,
+  // nostrRelay, enableDebugLog, wpTimeout = 16. hostnamePrefix and
+  // mdnsEnabled used to be in this set; bd btclock_v4-9ut flipped them
+  // to runtime via on_mdns_changed.
+  CHECK(btclock::settings::BootOnlyCount() == 16);
 }
 
 TEST_CASE("NVS key length guard: every field key fits NVS's 15-char limit") {
@@ -1130,7 +1159,7 @@ TEST_CASE("PATCH blockFlashColor clamps to the 24-bit schema bound") {
   CHECK(prefs.u32_.count(btclock::prefs::kBlockFlashColor) == 0);
 }
 
-// -- Defaults sweep (ported from btclock_v3_fci defaults.hpp) --------
+// -- Defaults sweep (ported from the v3 firmware's defaults.hpp) -----
 //
 // A fresh install (no NVS entries touched) must surface the v3 default
 // values rather than zero/empty. Pins every non-trivial default so a
@@ -1163,7 +1192,7 @@ GetValue ReadField(cJSON* root, const char* key) {
 
 }  // namespace
 
-TEST_CASE("GET defaults match btclock_v3_fci for a fresh install") {
+TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
   FakePrefs prefs;  // zero stored values
   cJSON* root = btclock::settings::BuildGetResponse(prefs, DefaultCtx());
   REQUIRE(root);
@@ -1454,8 +1483,8 @@ TEST_CASE("PATCH screenOrder fires the rotation-rebuild hook trigger") {
 }
 
 TEST_CASE("PATCH screen<N>Visible fires the rotation-rebuild hook trigger") {
-  // Pins the existing b38ddce behaviour so a future refactor can't drop
-  // the suffix-match "screen*Visible" branch.
+  // Pins the existing screen<N>Visible PATCH behaviour so a future
+  // refactor can't drop the suffix-match "screen*Visible" branch.
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
       "{\"screens\":[{\"id\":10,\"enabled\":false}]}", DefaultCtx(), prefs,

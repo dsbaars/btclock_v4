@@ -202,7 +202,7 @@ idf.py -B build-v8       -D BTCLOCK_BOARD=V8    -D BTCLOCK_PANEL=2_13 \
 Outputs land in the matching `build-*/` directory. The two artifacts
 that matter are:
 
-- `build-<variant>/btclock_idf_proto.bin` — the firmware app image.
+- `build-<variant>/btclock_v4.bin` — the firmware app image.
 - `build-<variant>/storage.bin` — the LittleFS WebUI image (rebuilt by
   step 8 below; not produced by `idf.py build`).
 
@@ -317,7 +317,7 @@ Once the device is on Wi-Fi, the OTA path needs no USB cable:
 ```bash
 # Firmware:
 curl -X POST -H 'Content-Type: application/octet-stream' \
-  --data-binary @build-rev-b/btclock_idf_proto.bin \
+  --data-binary @build-rev-b/btclock_v4.bin \
   http://btclock-xxxxxx.local/upload/firmware
 
 # WebUI:

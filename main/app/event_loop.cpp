@@ -161,6 +161,8 @@ constexpr const char* kTag = "btclock";
           // Pause / resume auto-rotate. The current slot stays up.
           sm.TogglePaused();
           ESP_LOGI(kTag, "button: pause=%d", sm.IsPaused() ? 1 : 0);
+          PostLedEffect(sm.IsPaused() ? LedEffect::kTimerPause
+                                      : LedEffect::kTimerResume);
           break;
         case ButtonId::k1:
           // Next screen — same as auto-rotate step, Restart() resets

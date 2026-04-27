@@ -1,5 +1,6 @@
 #include "app/boot/init_mdns.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -20,6 +21,13 @@
 namespace btclock {
 namespace {
 constexpr const char* kTag = "mdns";
+
+// Tracks whether mdns_init() succeeded previously, so ReinitMdns knows to
+// call mdns_free() before re-publishing. Without this guard the second
+// call leaks the responder task and the new advert silently fails. The
+// boot-time entry leaves it false on early-return paths (AP mode, pref
+// disabled) so a later PATCH still takes the cold-init branch.
+std::atomic<bool> g_mdns_started{false};
 
 // Build the hostname advertised over mDNS. Delegates to the shared
 // helper in components/net_util so the /api/settings emitter and this
@@ -70,16 +78,15 @@ const char* BoardTxtValue() {
 #endif
 }
 
-}  // namespace
-
-void InitMdns(AppCtx& ctx) {
-  // SoftAP (provisioning) mode owns the captive-portal DNS hijack on
-  // 53/udp and the WebUI runs locally — there's no LAN to advertise
-  // into and starting mDNS would stall on netif discovery.
-  if (!ctx.wifi || ctx.wifi->is_ap_mode()) return;
-
+// Spin up the responder + register both service adverts. Reads
+// `mdnsEnabled` / `hostnamePrefix` fresh from NVS so a PATCH-driven
+// re-init picks up whatever the settings handler just persisted.
+// Marks `g_mdns_started` true on success so the next call knows to free
+// the previous responder first. Logs-and-returns on failure — a stale
+// advert is preferable to crashing boot or the httpd worker.
+void StartMdnsAdvertisement() {
   btclock::Prefs p(prefs::kSettingsNs);
-  // Default-true to match DEFAULT_MDNS_ENABLED in btclock_v3_fci.
+  // Default-true to match DEFAULT_MDNS_ENABLED in the v3 firmware.
   if (!btclock::settings::ReadBool(p, prefs::kMdnsEnabled)) {
     ESP_LOGI(kTag, "mdnsEnabled=false; skipping advertisement");
     return;
@@ -98,6 +105,7 @@ void InitMdns(AppCtx& ctx) {
   if ((err = mdns_hostname_set(hostname.c_str())) != ESP_OK) {
     ESP_LOGW(kTag, "mdns_hostname_set('%s') failed: %s", hostname.c_str(),
              esp_err_to_name(err));
+    mdns_free();
     return;
   }
   // Instance name is the human-readable string shown in Bonjour
@@ -108,7 +116,7 @@ void InitMdns(AppCtx& ctx) {
     // Non-fatal — continue with service registration.
   }
 
-  // Compose TXT records. Kept compatible with btclock_v3_fci's shape
+  // Compose TXT records. Kept compatible with the v3 firmware's shape
   // (model/version/rev/hw_rev) and extended with the v4-era keys
   // (path/board) called out in the task brief.
   const char* git_rev = "";
@@ -123,7 +131,7 @@ void InitMdns(AppCtx& ctx) {
   };
   constexpr size_t kTxtCount = sizeof(txt) / sizeof(txt[0]);
 
-  // http._tcp matches btclock_v3_fci. The webserver listens on port 80
+  // http._tcp matches the v3 firmware. The webserver listens on port 80
   // (esp_http_server default) — keep that literal until the port
   // becomes configurable.
   constexpr uint16_t kHttpPort = 80;
@@ -131,6 +139,7 @@ void InitMdns(AppCtx& ctx) {
                               const_cast<mdns_txt_item_t*>(txt), kTxtCount)) !=
       ESP_OK) {
     ESP_LOGW(kTag, "mdns_service_add _http failed: %s", esp_err_to_name(err));
+    mdns_free();
     return;
   }
   // Parallel advert under a BTClock-specific service type so
@@ -144,10 +153,31 @@ void InitMdns(AppCtx& ctx) {
     // Not fatal — primary _http advert already succeeded.
   }
 
+  g_mdns_started.store(true, std::memory_order_release);
   ESP_LOGI(kTag, "advertising %s.local board=%s", hostname.c_str(), board);
-  // TODO: react to PATCH /api/settings changing mdnsEnabled / hostnamePrefix
-  // live. Right now those keys are flagged boot_only in schema.hpp, so a
-  // reboot picks up the new value.
+}
+
+}  // namespace
+
+void InitMdns(AppCtx& ctx) {
+  // SoftAP (provisioning) mode owns the captive-portal DNS hijack on
+  // 53/udp and the WebUI runs locally — there's no LAN to advertise
+  // into and starting mDNS would stall on netif discovery.
+  if (!ctx.wifi || ctx.wifi->is_ap_mode()) return;
+  StartMdnsAdvertisement();
+}
+
+void ReinitMdns() {
+  // PATCH /api/settings on `mdnsEnabled` / `hostnamePrefix` lands here.
+  // Tear down any previous responder first — IDF's mdns lib refuses a
+  // second mdns_init without an intervening mdns_free, and the previous
+  // advert would otherwise keep serving the stale hostname / TXT set
+  // alongside the new one. Safe to call when nothing was started yet
+  // (the AP-mode and disabled-pref boot paths leave the flag false).
+  if (g_mdns_started.exchange(false, std::memory_order_acq_rel)) {
+    mdns_free();
+  }
+  StartMdnsAdvertisement();
 }
 
 }  // namespace btclock

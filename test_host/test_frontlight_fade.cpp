@@ -1,7 +1,7 @@
 // Host tests for the frontlight fader interpolator.
 //
 // Only pure-logic cases — FrontlightFader has no FreeRTOS / ESP-IDF
-// dependency so we include + link it directly. See btclock_v3_fci-7ma.
+// dependency so we include + link it directly.
 
 #include <cstdint>
 

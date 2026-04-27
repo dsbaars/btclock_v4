@@ -305,14 +305,14 @@ jobs:
         run: |
           out="dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}"
           mkdir -p "$out"
-          cp "${{ matrix.sdkconfig_dir }}/btclock_idf_proto.bin"              "$out/"
+          cp "${{ matrix.sdkconfig_dir }}/btclock_v4.bin"                     "$out/"
           cp "${{ matrix.sdkconfig_dir }}/bootloader/bootloader.bin"          "$out/"
           cp "${{ matrix.sdkconfig_dir }}/partition_table/partition-table.bin" "$out/"
           cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
           cp "${{ matrix.sdkconfig_dir }}/flash_args"                         "$out/" || true
           cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
           # SHA-256 of the app binary for OTA integrity checks.
-          ( cd "$out" && sha256sum btclock_idf_proto.bin > btclock_idf_proto.bin.sha256 )
+          ( cd "$out" && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 )
 
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:

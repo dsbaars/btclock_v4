@@ -317,7 +317,8 @@ ignored. Restart required after changes.
 - **Source** — which feed the BTClock listens to:
   - `0` BTClock WS (default, `wss://ws.btclock.dev`),
   - `1` mempool.space + Kraken (independent block + price WSS clients),
-  - `2` Nostr (data-only, listen-only).
+  - `2` Nostr (data-only; every kind 30078 + zap receipt is BIP-340
+    schnorr-verified before it touches the snapshot).
 - **mempool.space instance** — host of the mempool.space deployment for
   source `1` (default `mempool.space`; flip secure if you self-host
   over plain `ws://`).
@@ -385,7 +386,7 @@ See [Nostr zap setup](#9-nostr-zap-setup).
   rejected (locks itself out).
 - **Enable OTA** — gate the firmware-upload path. Independent password
   for OTA pushes.
-- **Auto-update URL** — the GitHub releases endpoint the (currently
+- **Auto-update URL** — the releases endpoint the (currently
   stubbed) auto-update path would pull from.
 
 #### Diagnostics
@@ -866,9 +867,12 @@ the zap listener lives independently:
 | `nostrZapPubkey` | Pubkey whose zaps trigger the overlay. |
 | `scrnRestoreZap` | After the zap overlay times out, restore the previous screen. |
 
-The on-device listener does NOT cryptographically verify event
-signatures today — it trusts the relay. If your threat model requires
-signature verification, terminate the WSS at a relay you control.
+Every incoming event — both kind 30078 (NIP-78 data) and kind 9735
+(zap receipt) — is BIP-340 schnorr-verified against the recomputed
+canonical id before any side effect (LED flash, overlay, snapshot
+update). The verifier is the vendored libsecp256k1 in
+`components/secp256k1/`; relay-forged frames are dropped with a
+`drop unverified ...` warn log.
 
 For a dev-mode test of the zap pipeline without a real relay event:
 
@@ -1093,7 +1097,7 @@ bottom (visible in the [Control card screenshot above](#41-control-card-left)).
 1. Open the WebUI, scroll to **Firmware update** at the bottom of the
    Control card.
 2. Click **Choose File** under **Firmware file**, pick the
-   `btclock_idf_proto.bin` from the release ZIP for your variant
+   `btclock_v4.bin` from the release ZIP for your variant
    (Rev A / Rev B / V8).
 3. Click **Update firmware**. A progress overlay paints on the panels
    while the upload runs (~15 s for ~1.5 MiB), and the device
@@ -1109,7 +1113,7 @@ Headless equivalent:
 
 ```bash
 curl -X POST -H 'Content-Type: application/octet-stream' \
-  --data-binary @btclock_idf_proto.bin \
+  --data-binary @btclock_v4.bin \
   http://btclock-xxxxxx.local/upload/firmware
 # WebUI bundle uses /upload/webui with the same body shape.
 ```

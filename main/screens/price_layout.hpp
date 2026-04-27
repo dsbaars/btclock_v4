@@ -9,7 +9,7 @@
 // the Arduino firmware always passed an integer price into parsePriceData
 // — sub-dollar / sub-$100k decimal precision was only reachable via
 // `useSuffixFormat` (which packs "78.6K" through `formatNumberWithSuffix`).
-// The issue tracked here (btclock_v3_fci-lx0.12) adds native decimal
+// The work tracked here adds native decimal
 // precision to the non-suffix path so altcoin-like prices don't round to
 // "$0" or display as "$1" for a $1.23 asset. The dedicated `.` panel
 // mirrors the old firmware's `shareDot=false` suffix layout, so WebUI and
@@ -108,7 +108,7 @@ inline bool LayoutBtcPrice(double price, bool use_symbol,
   // V8 (8-panel → 7 digit slots) mirrors the old firmware's integer-
   // only 8-panel behaviour (`parsePriceData` with useSuffixFormat=false,
   // shareDot=false): 7 integer digits + optional currency glyph. The
-  // sub-dollar decimal precision work (btclock_v3_fci-lx0.12) applies
+  // sub-dollar decimal precision work applies
   // to the 7-panel Rev A/B boards where 6 slots can't hold the glyph +
   // integer alone. On V8 there's room for the glyph *and* the full
   // integer, so emitting a '.' + '0' tail as this code did previously

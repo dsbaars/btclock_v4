@@ -4,7 +4,7 @@
 // the header is header-only and doesn't include any ESP-IDF APIs, so
 // we can include it directly without the framebuffer / EPD dependency.
 //
-// Coverage focus (btclock_v3_fci-lx0.12):
+// Coverage focus:
 //   - Sub-$100k prices get 1 decimal place where the digit + '.' fits.
 //   - Sub-$100  prices get 2 decimal places.
 //   - Sub-$1    prices get 3 decimal places (the whole reason this

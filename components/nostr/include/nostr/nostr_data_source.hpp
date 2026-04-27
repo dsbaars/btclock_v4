@@ -10,10 +10,11 @@
 //                    snapshot.block_fee_precise = stod(content)
 //   d=price:<CCY>  → snapshot.prices[<CCY>] = content  (string)
 //
-// This file only owns the DataSource plumbing — relay socket, manager,
-// and sub-id. The parse logic is intentionally left as a TODO callback
-// stub until the full decoder lands. Wiring is correct today; the
-// hub just receives empty partials.
+// This file owns the DataSource plumbing — relay socket, manager, and
+// sub-id. Every incoming kind 30078 event is BIP-340 schnorr-verified
+// against the recomputed canonical id (see `nostr/event_verify.hpp`)
+// before the d-tag dispatch runs, so a hostile relay cannot poison
+// the snapshot.
 
 #pragma once
 

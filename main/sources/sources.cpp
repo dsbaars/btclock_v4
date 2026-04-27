@@ -42,12 +42,12 @@ void MaybeAddNostrSource(AppCtx& ctx) {
   settings::NvsPrefs settings_prefs(prefs::kSettingsNs);
   const auto cfg = settings::ReadNostrSourceConfig(settings_prefs);
   // Reject bare hostnames / https:// values up front. The PATCH path
-  // gained scheme validation in 5d382c1 but devices flashed before that
-  // can carry a stale schemeless `nostrRelay` in NVS. Constructing
-  // NostrDataSource with such a URL would fail at Start() with
-  // "Invalid uri", and the StartAll() aggregate used to abort the boot
-  // (Rev B reboot loop). Keep the source out of the hub entirely so
-  // the rest of the data pipeline (block/price feeds) still comes up.
+  // validates the scheme on the way in, but devices flashed before
+  // that gate can carry a stale schemeless `nostrRelay` in NVS.
+  // Constructing NostrDataSource with such a URL would fail at Start()
+  // with "Invalid uri", and the StartAll() aggregate used to abort the
+  // boot (Rev B reboot loop). Keep the source out of the hub entirely
+  // so the rest of the data pipeline (block/price feeds) still comes up.
   const bool relay_scheme_ok = cfg.relay_url.rfind("wss://", 0) == 0 ||
                                cfg.relay_url.rfind("ws://", 0) == 0;
   if (cfg.enabled && !cfg.relay_url.empty() && !cfg.author_pubkey_hex.empty() &&

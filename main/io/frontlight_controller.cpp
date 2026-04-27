@@ -214,7 +214,7 @@ void FrontlightController::TaskTrampoline(void* arg) {
 
 void FrontlightController::TaskLoop() {
   // Pulse state machine — two-phase staggered animation, mirroring v3
-  // `LedHandler::frontlightFlash` (btclock_v3_fci:
+  // `LedHandler::frontlightFlash` (the v3 firmware's
   // src/lib/drivers/leds/led_handler.cpp:515-527). Direction sequence:
   //
   //   if pre-flash was on : kOut  (dim cascade) -> hold -> kIn  (restore)

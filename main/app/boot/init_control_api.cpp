@@ -10,6 +10,7 @@
 #include "app/boot/adapters.hpp"
 #include "app/boot/factory_reset.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/boot/init_mdns.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
 #include "app/rotation_plan.hpp"
@@ -368,6 +369,21 @@ void InitControlApi(AppCtx& ctx) {
     // skipped — the schema returns rebootRequired for those.
     // bd btclock_v4-aw5 / btclock_v4-q1l.
     ccfg.on_nostr_changed = [ctx_ptr] { RefreshZapListenerSettings(*ctx_ptr); };
+    // mdnsEnabled / hostnamePrefix PATCH hook — re-publish the mDNS
+    // advert so the device responds under its new name (or stops
+    // responding when the user toggles mdns off) without a reboot.
+    // ReinitMdns owns the teardown + re-init dance; this lambda only
+    // exists so the webserver component doesn't have to depend on
+    // main/app/boot. Runs on the httpd worker, same as the other
+    // on_*_changed hooks. bd btclock_v4-9ut.
+    ccfg.on_mdns_changed = [] { ReinitMdns(); };
+    // WebUI pause / resume buttons play the same NeoPixel sweep effect
+    // the physical pause button already triggers, so users get the same
+    // visual confirmation regardless of which surface they used.
+    ccfg.on_rotation_paused_changed = [](bool now_paused) {
+      PostLedEffect(now_paused ? LedEffect::kTimerPause
+                               : LedEffect::kTimerResume);
+    };
     // POST /api/action/simulate_zap — drives the same code path the
     // real zap listener uses (DataSnapshot patch + pending flag +
     // task notify) but skips the LED / frontlight / nostrZapNotify

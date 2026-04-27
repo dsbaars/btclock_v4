@@ -47,10 +47,8 @@ void InitStorage(AppCtx& /*ctx*/) {
   // timestamps, and any future scheduling code all rely on it being
   // set; if the stored value is missing or unknown we fall back to
   // UTC and log the reason. setenv/tzset don't need the network.
-  //
-  // TODO(beads): wire /api/settings write-back so the WebUI can
-  // change the zone at runtime — that lives in the jwz epic, not
-  // here. This call only restores whatever's already in NVS.
+  // Live PATCHes via /api/settings re-apply through `on_tz_changed`
+  // in init_control_api.cpp.
   timezone::InitFromNvs();
 
   // LittleFS is used for the future static-WebUI bundle and OTA-webui

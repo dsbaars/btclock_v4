@@ -101,10 +101,10 @@ void InitZapListener(AppCtx& ctx) {
   ctx.zap_screen_auto_restore.store(zap_cfg.zap_screen_auto_restore);
 
   // Reject bare-hostname / https:// `nostrRelay` values that survive
-  // from before the PATCH-side scheme guard (5d382c1). RelayClient
-  // would otherwise log "Invalid uri" on Start() and the listener
-  // would silently never connect — keep it inert so the boot path
-  // still log-explains why.
+  // from before the PATCH-side scheme guard. RelayClient would
+  // otherwise log "Invalid uri" on Start() and the listener would
+  // silently never connect — keep it inert so the boot path still
+  // log-explains why.
   const bool relay_scheme_ok = zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
                                zap_cfg.relay_url.rfind("ws://", 0) == 0;
   if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() &&

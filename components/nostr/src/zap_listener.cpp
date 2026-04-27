@@ -4,10 +4,15 @@
 #include <ctime>
 #include <utility>
 
+#include "esp_log.h"
+#include "nostr/event_verify.hpp"
 #include "nostr/parser.hpp"
 
 namespace btclock {
 namespace nostr {
+namespace {
+constexpr const char* kTag = "nostr-zap";
+}  // namespace
 
 ZapListener::ZapListener(SubscriptionManager& subs, std::string sub_id,
                          std::string recipient_pubkey_hex)
@@ -56,6 +61,15 @@ void ZapListener::Stop() {
 
 void ZapListener::Handle(const std::string& /*sid*/, const Event& ev) {
   if (ev.kind != kKindZapReceipt) return;
+  // Schnorr-verify before any side effect (LED, overlay, snapshot).
+  // A hostile relay that wants to flash the device with bogus zaps
+  // can no longer do so by forging a receipt over the trusted WSS.
+  const auto vr = VerifyEvent(ev);
+  if (vr != EventVerifyResult::kOk) {
+    ESP_LOGW(kTag, "drop unverified zap id=%.16s vr=%u", ev.id.c_str(),
+             static_cast<unsigned>(vr));
+    return;
+  }
   // Drop zero-sat receipts before they reach the callback so the LED
   // flash, screen overlay, and LatestZap snapshot update all stay
   // suppressed. Relays occasionally forward NIP-57 receipts with a

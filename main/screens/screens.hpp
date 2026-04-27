@@ -46,7 +46,7 @@ namespace btclock {
 // Panel 0 = "BLOCK/HEIGHT" split-text label, panels 1..N-1 = one digit.
 // `vertical_desc=true` rotates the label panel 90° CCW so the text reads
 // along the longer physical edge of the panel (ports the v3 verticalDesc
-// pref — see btclock_v3_fci/src/lib/drivers/epd/epd.cpp splitText).
+// pref — see the v3 firmware's src/lib/drivers/epd/epd.cpp splitText).
 template <size_t N>
 void RenderBlockHeightScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                              uint8_t (&fb_storage)[N][16 * 296],
@@ -160,8 +160,8 @@ void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 //   show_percent=true  → "93.48" spread over 5 panels + " % " trailing
 //   show_percent=false, big_chars=true  → "19.9M" one char per panel
 //   show_percent=false, big_chars=false → plain integer digits (legacy,
-//     silently truncates on real mainnet — see btclock_v3_fci-33e for
-//     the small-char 3-digit-group port).
+//     silently truncates on real mainnet — the small-char 3-digit-
+//     group port is open scope).
 // `prev_height == 0` forces a full refresh; the digit diff handles the
 // low-frequency change rate.
 template <size_t N>
@@ -338,8 +338,7 @@ void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // `parseMarketCap(..., bigChars)`:
 //   big_chars=true  → "<sym><N.NN>T/B/M" one char per panel (e.g. "$1.02T")
 //   big_chars=false → plain integer digits (legacy, silently truncates
-//     for real mainnet; small-char 3-digit-group deferred via
-//     btclock_v3_fci-33e).
+//     for real mainnet; small-char 3-digit-group deferred).
 // `share_dot` (big_chars only) widens the digit budget by one and packs
 // the '.' into its preceding cell — same fold the BTC-price suffix layout
 // uses. Mirrored by panel_texts BuildMarketCap so /api/status agrees.

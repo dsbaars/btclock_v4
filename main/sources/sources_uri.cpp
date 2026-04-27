@@ -15,7 +15,7 @@ constexpr const char* kDefaultBtclockUri = "wss://ws.btclock.dev/api/v2/ws";
 std::string BuildBtclockSourceUri(std::uint8_t data_source,
                                   const std::string& endpoint,
                                   bool disable_ssl) {
-  // dataSource enum mirrors btclock_v3_fci/src/lib/system/defaults.hpp:
+  // dataSource enum mirrors the v3 firmware's src/lib/system/defaults.hpp:
   //   0 = BTCLOCK_SOURCE (the public ws.btclock.dev v2 feed)
   //   1 = mempool+kraken (separate source — see mempool_kraken_source.cpp;
   //       WireDataSources doesn't consult this helper for ds=1)

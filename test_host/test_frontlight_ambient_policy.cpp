@@ -1,6 +1,6 @@
 // Host tests for FrontlightAmbientPolicy — the pure-logic state
 // machine behind the ambient auto-on / auto-off + flOffWhenDark +
-// user-off latch. See btclock_v3_fci main.cpp:31-47 for the v3 path
+// user-off latch. See the v3 firmware's main.cpp:31-47 for the v3 path
 // we mirror (without hysteresis, without a user-off latch).
 
 #include <initializer_list>

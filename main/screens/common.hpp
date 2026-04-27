@@ -83,7 +83,7 @@ struct DigitLayout {
 // On overflow (> 6 digits), leading digits are truncated and no symbol.
 // Divergence vs. old firmware: old parseSatsPerCurrency drops the
 // SATS/MSCW label on 7-digit sats (price < ~$100) and fills all 7
-// panels. Not fixed here — tracked in btclock_v3_fci-f7y.
+// panels. Not fixed here.
 DigitLayout ComputeMoscowLayout(int32_t sats, bool use_symbol);
 
 // Templated variant used by the V8 8-panel layout (Bug 3). The 6-slot
@@ -265,7 +265,7 @@ struct PaintSlot {
 // the caller's orientation (on device that's k180, so the effective
 // native-relative rotation becomes k90Cw). Other slot kinds ignore the
 // flag. Ports the v3 `splitText`'s `preferences.getBool("verticalDesc")`
-// branch (see btclock_v3_fci/src/lib/drivers/epd/epd.cpp).
+// branch (see the v3 firmware's src/lib/drivers/epd/epd.cpp).
 void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                      const PaintSlot& slot, bool vertical_desc = false);
 

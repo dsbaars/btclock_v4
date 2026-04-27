@@ -1,12 +1,11 @@
 # Hardcoded values audit
 
 Snapshot date: 2026-04-26
-Branch / commit: `95b3257`
 
 ## Methodology
 
 A finding is in scope when **(a)** the value is a literal in v4 source, AND
-**(b)** v3 (`btclock_v3_fci/`) exposed it as a settings field or the v4
+**(b)** the v3 firmware exposed it as a settings field or the v4
 settings schema (`components/settings/include/settings/schema.hpp`)
 already declares a pref key for it that no production code path
 consumes. Out of scope: panel byte layouts, GPIO assignments, font

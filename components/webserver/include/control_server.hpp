@@ -348,6 +348,24 @@ class ControlServer {
     std::function<bool()> blocks_connected;
     std::function<bool()> v2_connected;
 
+    // Fires when PATCH /api/settings touches `mdnsEnabled` or
+    // `hostnamePrefix`. The callback is expected to tear down the
+    // existing mDNS advert and re-publish under the freshly-persisted
+    // values so the device shows up under its new name (or disappears,
+    // when `mdnsEnabled` flips to false) without a reboot. Without this
+    // hook the schema would mark the keys boot_only and the WebUI would
+    // surface a "restart required" banner. Nullable: a null callback
+    // defers all mDNS changes to reboot. bd btclock_v4-9ut.
+    std::function<void()> on_mdns_changed;
+
+    // Fires when the rotation timer's paused state actually changes via
+    // `/api/action/pause` or `/api/action/timer_restart`. Lets the LED
+    // controller play the same sweep effect the physical button already
+    // triggers, so visual feedback is consistent across both control
+    // surfaces. No-ops are filtered (a second "pause" while already
+    // paused does not refire). Nullable.
+    std::function<void(bool now_paused)> on_rotation_paused_changed;
+
     // Fires when PATCH /api/settings touches a runtime-editable nostr
     // key (`nostrZapPubkey`, `nostrZapNotify`, `ledFlashOnZap`,
     // `flFlashOnZap`, `scrnRestoreZap`). The callback is expected to

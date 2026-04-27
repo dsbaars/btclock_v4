@@ -246,8 +246,8 @@ pyftsubset SatoshiSymbol_source.woff2 \
     --flavor= \
     --output-file=SatoshiSymbol.ttf
 
-# then apply the U+E007 padding patch (see commit history /
-# beads btclock_v3_fci-891 for the fontTools script)
+# then apply the U+E007 padding patch (see commit history for the
+# fontTools script)
 ```
 
 License: see upstream Font Awesome 5.15.4 kit — icon-origin

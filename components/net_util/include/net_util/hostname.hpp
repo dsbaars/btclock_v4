@@ -4,7 +4,7 @@
 // linking esp_mac — callers read the MAC themselves and hand in six bytes.
 //
 // Shape: "<prefix>-<mac[3]><mac[4]><mac[5]>" (6 lowercase hex chars).
-// This matches btclock_v3_fci's getMyHostname(), which is the string v3
+// This matches the v3 firmware's getMyHostname(), which is the string v3
 // users already have bookmarked and what the WebUI mDNS scan helper looks
 // for. Historically v4's /api/settings emitted a 4-char suffix instead —
 // a drift that made the WebUI report a name nobody could actually ping.

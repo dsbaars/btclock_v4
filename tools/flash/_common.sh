@@ -132,6 +132,6 @@ build_and_flash() {
   host="$(resolve_host "${mdns_name}" "${fallback_ip}")"
   echo "==> target: ${host}"
 
-  ota_flash "${host}" "${REPO_ROOT}/${build_dir}/btclock_idf_proto.bin"
+  ota_flash "${host}" "${REPO_ROOT}/${build_dir}/btclock_v4.bin"
   wait_for_reboot "${host}"
 }

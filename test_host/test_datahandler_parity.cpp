@@ -11,11 +11,9 @@
 // binding — that'd require a WASM build) and arrange the output in the
 // same 7-slot shape old tests assert against.
 //
-// See the parent beads issue (btclock_v3_fci-hti) for the parity audit
-// and the deferred-modes issue (btclock_v3_fci-33e) for the bigChars /
-// suffix / MOW / percentage modes that aren't yet implemented in the
-// IDF port; tests for those are skipped with SUBCASE-less no-ops and a
-// link to the issue.
+// The deferred bigChars / suffix / MOW / percentage modes aren't yet
+// implemented in the IDF port; tests for those are skipped with
+// SUBCASE-less no-ops.
 
 #include <array>
 #include <cmath>
@@ -626,8 +624,8 @@ TEST_CASE("parsePriceData — PriceOf100kusd ('$100000' overflows label)") {
 //
 // These cover the old firmware's text-layout shapes. The IDF port's
 // live BtcPrice screen renderer still paints plain integer digit cells;
-// exposing the suffix/MOW layouts on-device is the open scope of
-// btclock_v3_fci-33e. The layouts themselves are pure string logic
+// exposing the suffix/MOW layouts on-device is open scope. The
+// layouts themselves are pure string logic
 // though, and the old-firmware Unity tests assert against that exact
 // output — so we port the helpers here and verify byte-parity now,
 // independent of whether the renderer has opted into them yet.
@@ -742,8 +740,8 @@ TEST_CASE("parseMarketCap — Mcap1TrillionUsdSmallChars") {
 TEST_CASE("parseMarketCap — Mcap1TrillionEur (bigChars suffix)") {
   // Port uses the old-firmware byte-code glyph ('[' for EUR) because
   // the parity test layer mirrors that encoding. On-device the IDF
-  // port would emit "€" — see btclock_v3_fci-33e for the renderer-
-  // side UTF-8 work, which is independent of this text-layout parity.
+  // port would emit "€"; the renderer-side UTF-8 work is independent
+  // of this text-layout parity.
   const auto out = RenderMarketCapBigChars(831000, 52000, kCurEUR);
   CHECK(out[0] == "EUR/MCAP");
   CHECK(out[7 - 6][0] == kCurEUR);

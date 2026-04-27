@@ -1,4 +1,4 @@
-// GENERATED FROM btclock_v3_fci/src/icons/icons.cpp
+// GENERATED FROM the v3 firmware's src/icons/icons.cpp
 // (symbol: epd_icons_bitaxe_logo, 88x220). Hand-edited only to match
 // the new C++ namespace + typing — the byte values themselves are a
 // direct copy. Semantics: 0 bit = ink (black pixel), 1 bit = background

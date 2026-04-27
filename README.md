@@ -13,8 +13,9 @@ Three hardware variants share one codebase:
 | Rev B   | 8 MB  | 2 MB  | 2.13"         | BH1750 ambient sensor, frontlight   |
 | V8      | 16 MB | 8 MB  | 2.13"         | 8 panels                            |
 
-Extracted from `btclock_v3_fci/idf_cpp_proto/`; Arduino-era history
-lives in the [old repo](https://git.btclock.dev/btclock/btclock_v3).
+Arduino-era history lives in the
+[old repo](https://git.btclock.dev/btclock/btclock_v3); v4 was a
+clean ESP-IDF C++ rewrite of that codebase.
 
 ## Build
 
@@ -56,7 +57,7 @@ running firmware:
 
 ```bash
 curl -X POST -H "Content-Type: application/octet-stream" \
-  --data-binary @build-rev-b/btclock_idf_proto.bin \
+  --data-binary @build-rev-b/btclock_v4.bin \
   http://<IP>/upload/firmware
 ```
 

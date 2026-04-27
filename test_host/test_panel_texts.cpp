@@ -204,7 +204,7 @@ TEST_CASE("panel_texts — market cap uses currency in label") {
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "USD/MCAP");
   // Cap = 100k × SupplyAtBlock(840000) ≈ 1.97T. BigChars suffix layout
-  // (see btclock_v3_fci-0v9) places the USD glyph prefix "$" in slot 1,
+  // places the USD glyph prefix "$" in slot 1,
   // an optional padding space in intermediate slots, and the suffix
   // char (K/M/B/T) in the last slot. Slot 1 always carries the currency
   // glyph.
@@ -410,7 +410,7 @@ TEST_CASE("panel_texts — BTC price overflow drops symbol") {
   }
 }
 
-// btclock_v3_fci-lx0.12 coverage: BuildBtcPrice routes through the same
+// Sub-dollar decimal coverage: BuildBtcPrice routes through the same
 // LayoutBtcPrice helper as the on-panel renderer, so the WebUI /api/status
 // data[] reflects the sub-dollar decimal layout the EPD paints.
 

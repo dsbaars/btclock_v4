@@ -1,6 +1,6 @@
 # BTClock v4 architecture (UML)
 
-Diagrams render natively on Forgejo / GitHub via Mermaid. Each section
+Diagrams render natively on Forgejo via Mermaid. Each section
 maps to a real subsystem: file paths in the captions are the source of
 truth — if a diagram drifts from the code, trust the code.
 

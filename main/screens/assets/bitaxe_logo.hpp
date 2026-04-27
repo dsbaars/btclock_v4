@@ -1,7 +1,7 @@
 // Bitaxe logo bitmap.
 //
-// Single 1-bpp MSB-first bitmap vendored from the old btclock_v3_fci
-// firmware (src/icons/icons.cpp, `epd_icons_bitaxe_logo`, 88×220). The
+// Single 1-bpp MSB-first bitmap vendored from the v3 firmware
+// (src/icons/icons.cpp, `epd_icons_bitaxe_logo`, 88×220). The
 // bitaxe screens paint this on panel 0 instead of a "BIT" / "AXE" text
 // split — matches the miner's visual identity and frees panel 1 for an
 // extra digit slot.

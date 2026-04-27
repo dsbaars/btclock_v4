@@ -48,11 +48,13 @@ class ButtonReader {
   // Spawns the background polling task. Safe to call once.
   esp_err_t Start();
 
-  // Reverse the logical button index posted to the queue, so a press on
-  // physical pin `i` is delivered as `ButtonId(kNumButtons - 1 - i)`.
-  // Honours the `inverseButtons` user pref. Read once at boot — caller
-  // sets this before Start(); a live PATCH requires a reboot to take
-  // effect, matching the SETTINGS.md row.
+  // Default mapping is physical pin `i` → `ButtonId(kNumButtons - 1 - i)`
+  // so the leftmost physical button (GPA0) is button 1 in the user-facing
+  // numbering. SetInverted(true) flips the mapping back to the raw `i`
+  // ordering for users running with the enclosure upside-down. Honours
+  // the `inverseButtons` user pref. Read once at boot — caller sets this
+  // before Start(); a live PATCH requires a reboot to take effect,
+  // matching the SETTINGS.md row.
   void SetInverted(bool inverted) { inverted_ = inverted; }
 
   // Install a one-shot callback fired when all four MCP1 buttons

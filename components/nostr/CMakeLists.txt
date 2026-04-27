@@ -5,8 +5,9 @@ idf_component_register(
         "src/relay_client.cpp"
         "src/subscription_manager.cpp"
         "src/zap_listener.cpp"
+        "src/event_verify.cpp"
         "src/nostr_data_source.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES esp_websocket_client esp-tls data_core cjson
+    REQUIRES esp_websocket_client esp-tls data_core cjson secp256k1
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

@@ -16,12 +16,9 @@
 //   * Partition is located by label ("storage"); see
 //     `partitions_*.csv` at repo root.
 //
-// TODO(btclock_v3_fci-bq0): `GetLittleFsUsage` is the hook the
-// `/api/system_status` endpoint should use to fill in `fsUsedBytes` and
-// `fsTotalBytes`. That endpoint lives in `components/webserver/
-// control_server.cpp` on `worktree-agent-aa1d0cd8` — not on this
-// branch. Once the control-server work merges, replace the zero
-// placeholders there with a call to this function.
+// `GetLittleFsUsage` is the hook the `/api/system_status` endpoint
+// uses to fill in `fsUsedBytes` and `fsTotalBytes` (see
+// components/webserver/control_server.cpp).
 
 #include <cstddef>
 

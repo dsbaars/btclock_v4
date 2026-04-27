@@ -6,7 +6,7 @@
 // because the two hardware subsystems are unrelated: NeoPixel WS2812
 // strip vs. 12-bit PWM on the I2C expander.
 //
-// Effects in scope (beads btclock_v3_fci-7ma):
+// Effects in scope:
 //   - smooth fade between any two brightness targets
 //   - "block-flash" pulse: fade-up -> hold -> fade-down
 //   - "zap-flash" pulse: same shape, longer hold (matches old firmware
@@ -15,8 +15,8 @@
 //
 // NOT in scope here: /api/frontlight/* HTTP wiring (lives on a separate
 // branch and will call the C++ API surface at the bottom of this file
-// when the branches merge), NeoPixel effects (see btclock_v3_fci-fxh),
-// NVS persistence of brightness/threshold prefs (see btclock_v3_fci-jwz).
+// when the branches merge), NeoPixel effects, NVS persistence of
+// brightness/threshold prefs.
 
 #pragma once
 
@@ -37,7 +37,7 @@ namespace btclock {
 // Values match the old Arduino firmware's defaults in
 // src/lib/system/defaults.hpp + src/lib/drivers/leds/led_handler.cpp
 // so Rev-B hardware behaves the same after the IDF port. Until NVS
-// settings land (see btclock_v3_fci-jwz), the controller reads these
+// settings land, the controller reads these
 // at construction and exposes runtime setters for threshold + enable.
 namespace frontlight {
 

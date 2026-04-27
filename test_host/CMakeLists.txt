@@ -44,6 +44,17 @@ endif()
 set_source_files_properties(vendor/cJSON.c PROPERTIES
     COMPILE_FLAGS "-w")
 
+# Vendored libsecp256k1 — same suppression rationale as cJSON. Defines
+# match the firmware build (components/secp256k1/CMakeLists.txt) so the
+# host verifier hashes-and-verifies identically to on-target.
+set_source_files_properties(
+    ../components/secp256k1/src/secp256k1.c
+    ../components/secp256k1/src/precomputed_ecmult.c
+    ../components/secp256k1/src/precomputed_ecmult_gen.c
+    PROPERTIES
+    COMPILE_FLAGS "-w"
+    COMPILE_DEFINITIONS "ENABLE_MODULE_EXTRAKEYS=1;ENABLE_MODULE_SCHNORRSIG=1;ECMULT_WINDOW_SIZE=4")
+
 add_executable(btclock_host_tests
     main.cpp
     test_control_validators.cpp
@@ -59,6 +70,7 @@ add_executable(btclock_host_tests
     test_btclock_data_parse.cpp
     test_btclock_subscribe.cpp
     test_nostr_parse.cpp
+    test_nostr_verify.cpp
     test_tls_gate.cpp
     test_mining_pool_braiins.cpp
     test_mining_pool_ocean.cpp
@@ -120,6 +132,10 @@ add_executable(btclock_host_tests
     ../components/bitaxe/src/bitaxe_parser.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
+    ../components/nostr/src/event_verify.cpp
+    ../components/secp256k1/src/secp256k1.c
+    ../components/secp256k1/src/precomputed_ecmult.c
+    ../components/secp256k1/src/precomputed_ecmult_gen.c
     ../components/webserver/mime.cpp
     ../components/webserver/show_text_parse.cpp
     ../components/webserver/url_decode.cpp
@@ -139,6 +155,8 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_data/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/nostr/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/secp256k1/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/secp256k1/src
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/tls_gate/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/net_util/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_common/include

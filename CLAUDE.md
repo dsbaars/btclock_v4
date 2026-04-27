@@ -1,11 +1,10 @@
 # Project Instructions for AI Agents
 
-This is **btclock_v4** — an ESP-IDF v6.0 C++ firmware for BTClock. The
-project was extracted from `btclock_v3_fci/idf_cpp_proto/` on YYYY-MM-DD;
-see the old repo at https://git.btclock.dev/btclock/btclock_v3 for
-Arduino-era history and the original port's day-1 commits. The codebase
-was ported from v5.5 to v6.0 in commits `aba83af` + `520a371`; build
-under v5.5.4 still works as a fallback but v6.0 is the supported toolchain.
+This is **btclock_v4** — an ESP-IDF v6.0 C++ firmware for BTClock.
+See the old repo at https://git.btclock.dev/btclock/btclock_v3 for
+Arduino-era history. The codebase has since been ported from
+ESP-IDF v5.5 to v6.0; build under v5.5.4 still works as a fallback
+but v6.0 is the supported toolchain.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker
@@ -166,13 +165,13 @@ If esptool reports "Failed to connect":
 3. If there's no physical access to press BOOT+RESET, use OTA:
    ```bash
    curl -v -X POST -H "Content-Type: application/octet-stream" \
-     --data-binary @build-rev-b/btclock_idf_proto.bin \
+     --data-binary @build-rev-b/btclock_v4.bin \
      http://<IP>/upload/firmware
    ```
    Device reboots onto the new partition; typical upload ~15 s for
    1.5 MiB. OTA respects `httpAuthEnabled` — include `-u user:pass`
-   when auth is on. The OTA path was fixed in `2aafc59` (timeout
-   retry, PSRAM buffer, sequential writes).
+   when auth is on. The OTA path is hardened with timeout retries,
+   a PSRAM buffer, and sequential writes.
 
 ## LittleFS WebUI image
 

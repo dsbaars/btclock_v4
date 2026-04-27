@@ -92,6 +92,23 @@ void Unpack(uint32_t rgb, uint8_t* r, uint8_t* g, uint8_t* b) {
   *b = static_cast<uint8_t>(rgb & 0xFFu);
 }
 
+// Hardware orientation: the WS2812B chain is wired so that the user-
+// facing leftmost LED is the physical tail of the strip. Every pixel
+// write goes through PhysIdx() so the rest of the controller (and the
+// /api/lights mirror) can think in visual indices, where 0 is the
+// leftmost LED and `g_count-1` is the rightmost.
+inline uint32_t PhysIdx(uint32_t logical) {
+  return g_count - 1 - logical;
+}
+
+// Single point of contact with led_strip_set_pixel — applies the
+// hardware-orientation mapping above. All other paint helpers route
+// through here.
+void WritePixel(led_strip_handle_t strip, uint32_t idx, uint8_t r, uint8_t g,
+                uint8_t b) {
+  led_strip_set_pixel(strip, PhysIdx(idx), r, g, b);
+}
+
 // Apply the master brightness, then push one pixel to the strip.
 void PushPixel(led_strip_handle_t strip, uint32_t idx, uint32_t rgb,
                uint8_t brightness) {
@@ -100,7 +117,7 @@ void PushPixel(led_strip_handle_t strip, uint32_t idx, uint32_t rgb,
   r = led_curves::Scale(r, brightness);
   g = led_curves::Scale(g, brightness);
   b = led_curves::Scale(b, brightness);
-  led_strip_set_pixel(strip, idx, r, g, b);
+  WritePixel(strip, idx, r, g, b);
 }
 
 // Paint + latch a uniform colour across the strip. Always honours the
@@ -123,7 +140,7 @@ void PaintResting(led_strip_handle_t strip, uint8_t brightness) {
 
 void PaintAllOff(led_strip_handle_t strip) {
   for (uint32_t i = 0; i < g_count; ++i) {
-    led_strip_set_pixel(strip, i, 0, 0, 0);
+    WritePixel(strip, i, 0, 0, 0);
   }
   led_strip_refresh(strip);
 }
@@ -297,6 +314,63 @@ void PlayWifiConnecting(led_strip_handle_t strip) {
     led_strip_refresh(strip);
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+  PaintAllOff(strip);
+}
+
+// Single-pixel head→tail sweep with a linear per-step delay ramp.
+// Does NOT clear when finished — leaves the last lit pixel held so
+// callers can append a brake-light / handbrake frame on either end.
+// `start_ms` is the delay AFTER the first frame; `end_ms` is the
+// delay after the last frame.
+void PlaySweepNoClear(led_strip_handle_t strip, uint32_t rgb, int start_ms,
+                      int end_ms) {
+  if (g_count == 0) return;
+  const uint32_t n = g_count;
+  const uint8_t bright = CurrentBrightness();
+  for (uint32_t step = 0; step < n; ++step) {
+    for (uint32_t j = 0; j < n; ++j) {
+      PushPixel(strip, j, j == step ? rgb : 0, bright);
+    }
+    led_strip_refresh(strip);
+    // Linear ramp from start_ms (step 0) to end_ms (step n-1).
+    const int d = (n == 1) ? start_ms
+                           : start_ms + (end_ms - start_ms) *
+                                            static_cast<int>(step) /
+                                            static_cast<int>(n - 1);
+    vTaskDelay(pdMS_TO_TICKS(d));
+  }
+}
+
+// Paint a single pixel of `rgb` at index `idx`, every other pixel off,
+// hold for `hold_ms`. Used as the red anchor frames either side of the
+// timer-pause / timer-resume sweeps.
+void HoldSingle(led_strip_handle_t strip, uint32_t idx, uint32_t rgb,
+                int hold_ms) {
+  const uint8_t bright = CurrentBrightness();
+  for (uint32_t j = 0; j < g_count; ++j) {
+    PushPixel(strip, j, j == idx ? rgb : 0, bright);
+  }
+  led_strip_refresh(strip);
+  vTaskDelay(pdMS_TO_TICKS(hold_ms));
+}
+
+// Pause: head→tail amber sweep that decelerates (~80 ms → ~300 ms per
+// step), ending at the tail with a red "brake light" hold before
+// fading off. Reads as a vehicle rolling to a stop.
+void PlayTimerPause(led_strip_handle_t strip) {
+  if (g_count == 0) return;
+  PlaySweepNoClear(strip, PackRgb(255, 120, 0), 80, 300);
+  HoldSingle(strip, g_count - 1, PackRgb(255, 0, 0), 500);
+  PaintAllOff(strip);
+}
+
+// Resume: red "handbrake released" hold at the head, then a head→tail
+// green sweep that accelerates (~300 ms → ~80 ms per step). Same
+// direction as the pause sweep so the two read as braking + departing.
+void PlayTimerResume(led_strip_handle_t strip) {
+  if (g_count == 0) return;
+  HoldSingle(strip, 0, PackRgb(255, 0, 0), 500);
+  PlaySweepNoClear(strip, PackRgb(0, 200, 0), 300, 80);
   PaintAllOff(strip);
 }
 
@@ -491,6 +565,18 @@ void Task(void* arg) {
 
         case LedEffect::kPowerTest:
           PlayPowerTest(strip);
+          mode = Mode::kIdle;
+          PaintResting(strip, bright);
+          break;
+
+        case LedEffect::kTimerPause:
+          PlayTimerPause(strip);
+          mode = Mode::kIdle;
+          PaintResting(strip, bright);
+          break;
+
+        case LedEffect::kTimerResume:
+          PlayTimerResume(strip);
           mode = Mode::kIdle;
           PaintResting(strip, bright);
           break;
@@ -700,7 +786,7 @@ void ShowOtaProgressLedCount(int lit_count) {
     if (static_cast<int>(i) < clamped) {
       PushPixel(g_strip, i, green, bright);
     } else {
-      led_strip_set_pixel(g_strip, i, 0, 0, 0);
+      WritePixel(g_strip, i, 0, 0, 0);
     }
   }
   led_strip_refresh(g_strip);
@@ -725,7 +811,7 @@ void PlayOtaCompletionBlink(int times, int d_ms) {
     led_strip_refresh(g_strip);
     vTaskDelay(pdMS_TO_TICKS(d_ms));
     for (uint32_t i = 0; i < g_count; ++i) {
-      led_strip_set_pixel(g_strip, i, 0, 0, 0);
+      WritePixel(g_strip, i, 0, 0, 0);
     }
     led_strip_refresh(g_strip);
     vTaskDelay(pdMS_TO_TICKS(d_ms));

@@ -4,10 +4,10 @@
 // `#p` tag matching the recipient pubkey, extracts the amount (msat)
 // and bolt11 from each EVENT, and fires a user-supplied callback.
 //
-// No invoice parsing, no signature verification (see parser.hpp for the
-// rationale). The caller decides what to do with the event — typically
-// a LedEvent::kZapFlash plus optional on-screen amount, once that
-// screen lands.
+// Schnorr-verifies every kind 9735 event via VerifyEvent before
+// firing the callback (relays are not trusted). No invoice parsing —
+// the caller decides what to do with the verified event, typically a
+// LedEvent::kZapFlash plus optional on-screen amount.
 
 #pragma once
 

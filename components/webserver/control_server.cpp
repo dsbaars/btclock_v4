@@ -359,7 +359,7 @@ esp_err_t ControlServer::Start() {
   // Handler cap must cover every reg() in this function + the /* catch-all,
   // with headroom for planned additions (OTA, DND, pause/restart). Overflow
   // silently drops the trailing registrations, including /*, which breaks
-  // static serving — see btclock_v3_fci-g9k.
+  // static serving.
   cfg.max_uri_handlers = 48;
   cfg.uri_match_fn = httpd_uri_match_wildcard;
   cfg.stack_size = 8192;
@@ -424,11 +424,6 @@ esp_err_t ControlServer::Start() {
       ESP_LOGW(kTag, "sse RegisterRoute failed: %s", esp_err_to_name(sse_err));
     }
   }
-  // TODO(btclock_v3_fci-equ): `GET /` static-file serve from LittleFS.
-  // Tracked separately; the upload path above lands bytes on flash,
-  // but until the static server lands the WebUI has no way to serve
-  // those bytes to a browser.
-
   // CORS preflights. Browsers send OPTIONS before any non-simple
   // cross-origin request (Content-Type: application/json qualifies).
   reg("/api/*", HTTP_OPTIONS, TrampolineOptions);
@@ -2092,6 +2087,22 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     }
   }
 
+  // mdnsEnabled / hostnamePrefix: tear down + re-publish the mDNS
+  // advert so the device responds under its new name (or disappears
+  // when `mdnsEnabled` flips false) without a reboot. Without this
+  // hook init_mdns ran exactly once at boot and a runtime PATCH wrote
+  // NVS but the responder kept serving the stale hostname / TXT set.
+  // bd btclock_v4-9ut.
+  if (cfg_.on_mdns_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kMdnsEnabled ||
+          k == btclock::prefs::kHostnamePrefix) {
+        cfg_.on_mdns_changed();
+        break;
+      }
+    }
+  }
+
   // Runtime-editable nostr keys: rebuild the zap listener so the new
   // pubkey / gate values take effect without a reboot. nostrRelay and
   // nostrPubKey are boot_only in the schema and trigger the generic
@@ -2185,7 +2196,11 @@ esp_err_t ControlServer::HandleActionPause(httpd_req_t* req) {
     httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "no timer");
     return ESP_FAIL;
   }
+  const bool was_paused = cfg_.timer->IsPaused();
   cfg_.timer->SetPaused(true);
+  if (!was_paused && cfg_.on_rotation_paused_changed) {
+    cfg_.on_rotation_paused_changed(true);
+  }
   BroadcastStatus();
   return SendEmptyOk(req);
 }
@@ -2200,8 +2215,12 @@ esp_err_t ControlServer::HandleActionTimerRestart(httpd_req_t* req) {
   // which has the effect of resuming a paused run AND zeroing the
   // deadline so the next rotation is a full period away. Mirror that:
   // unpause first, then reset the deadline.
+  const bool was_paused = cfg_.timer->IsPaused();
   cfg_.timer->SetPaused(false);
   cfg_.timer->Restart();
+  if (was_paused && cfg_.on_rotation_paused_changed) {
+    cfg_.on_rotation_paused_changed(false);
+  }
   BroadcastStatus();
   return SendEmptyOk(req);
 }

@@ -47,7 +47,7 @@ struct RenderPrefs {
   bool hide_lead_zero;
   // verticalDesc: rotate label panels 90° CCW so "BLOCK/HEIGHT" etc.
   // read along the panel's long axis. Ports v3's verticalDesc pref
-  // (see btclock_v3_fci/src/lib/drivers/epd/epd.cpp splitText).
+  // (see the v3 firmware's src/lib/drivers/epd/epd.cpp splitText).
   bool vertical_desc;
   // Refresh-policy inputs. refr_scrn_change forces full on every nav;
   // full_refresh_min is the ghost-clear cadence in minutes. Defaults

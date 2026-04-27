@@ -76,12 +76,9 @@ theme:
 
 extra:
   social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/btclock
-      name: BTClock on GitHub
     - icon: fontawesome/brands/git-alt
       link: https://git.btclock.dev/btclock
-      name: Forgejo (canonical)
+      name: BTClock on Forgejo
   generator: false
   alternate:
     - name: English

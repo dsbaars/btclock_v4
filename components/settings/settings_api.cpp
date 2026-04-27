@@ -46,7 +46,7 @@ void AddI64(cJSON* obj, const char* key, int64_t val) {
 
 // Emit the value of a schema field into the GET response. Only called
 // for keys the schema table knows about. Defaults come from the schema
-// entry (ported from btclock_v3_fci defaults.hpp) so a fresh install
+// entry (ported from the v3 firmware's defaults.hpp) so a fresh install
 // returns the old firmware's values rather than zero/empty.
 void EmitField(cJSON* root, const FieldSpec& f, const PrefsReader& prefs) {
   const char* k = f.key.data();  // string_view is NUL-terminated (points at

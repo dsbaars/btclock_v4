@@ -24,8 +24,8 @@ reaches a device.
 
 Defaults in the table below come from `components/settings/include/settings/schema.hpp`'s
 `FieldSpec::default_*` fields, ported from the old firmware's
-`btclock_v3_fci/src/lib/system/defaults.hpp`. A fresh install (NVS wiped,
-or a key never PATCHed) surfaces these values.
+`src/lib/system/defaults.hpp`. A fresh install (NVS wiped, or a key
+never PATCHed) surfaces these values.
 
 ## JSON type mapping
 
@@ -120,8 +120,8 @@ Display-related special keys:
 
 | Key | Type | Default | Description | Notes |
 |---|---|---|---|---|
-| `hostnamePrefix` | string | `"btclock"` | Hostname prefix used for mDNS + DHCP. The MAC suffix is appended. | Reboot required. |
-| `mdnsEnabled` | bool | `true` | Advertise `_http._tcp` and `_btclock._tcp` over mDNS. | Reboot required. Honored in `main/app/mdns_service.cpp`. |
+| `hostnamePrefix` | string | `"btclock"` | Hostname prefix used for mDNS + DHCP. The MAC suffix is appended. | Live for mDNS via `on_mdns_changed` (calls `ReinitMdns` to free + re-publish under the new name). DHCP keeps the previous lease until the next renewal. |
+| `mdnsEnabled` | bool | `true` | Advertise `_http._tcp` and `_btclock._tcp` over mDNS. | Live via `on_mdns_changed` — toggling false frees the responder, true re-publishes. Honored in `main/app/boot/init_mdns.cpp`. |
 | `wifiRebootMin` | uint | `10` | Minutes of continuous STA disconnect before a soft reboot. `0` disables. | Range 0..120. Live — the wifi_guard tick re-reads on every fire. |
 | `wpTimeout` | uint | `900` (15 min) | WiFiManager captive-portal timeout (seconds). | Range 0..3600. Reboot required. After this many seconds in AP-provisioning mode the device reboots so the next boot retries STA — gated on `wifiConfigured` being true (set once the user submits creds), so a never-provisioned device sits in the portal indefinitely. |
 | `txPower` | int | device default | WiFi TX power in quarter-dBm. `-1..78` valid; `80` is a sentinel that clears the override. | Live. Applied via `esp_wifi_set_max_tx_power`. Re-applied at boot in `init_network.cpp` between `esp_wifi_start` and `Connect`, mirroring the same `IsValidWifiTxPower` range gate. Queried back on `/api/status` via `esp_wifi_get_max_tx_power`. |

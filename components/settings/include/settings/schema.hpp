@@ -61,10 +61,12 @@ struct FieldSpec {
 //
 // boot_only classification matches old-firmware reality as of the port
 // date:
-//   - WiFi/network identity fields (hostnamePrefix, mdnsEnabled,
-//     httpAuthEnabled, httpAuthUser, httpAuthPass, otaPass, otaEnabled)
-//     require reboot — they drive services started exactly once in
-//     setupWifi() / setupWebserver() / ArduinoOTA.begin().
+//   - WiFi/network identity fields (httpAuthEnabled, httpAuthUser,
+//     httpAuthPass, otaPass, otaEnabled) require reboot — they drive
+//     services started exactly once in setupWifi() / setupWebserver()
+//     / ArduinoOTA.begin(). hostnamePrefix and mdnsEnabled used to be
+//     in this set but bd btclock_v4-9ut wired on_mdns_changed so the
+//     advertisement re-publishes live.
 //   - Data-source fields (dataSource, mempoolInstance, mempoolSecure,
 //     ceEndpoint, ceDisableSSL, localPoolHost) reboot because the
 //     old firmware tears down the WS client and setupDataSource()
@@ -78,7 +80,7 @@ struct FieldSpec {
 // Range bounds only where the old firmware enforced them or where a
 // bad value crashes hardware (brightness > 8-bit, hour > 23, etc.).
 //
-// Defaults track btclock_v3_fci/src/lib/system/defaults.hpp so a fresh
+// Defaults track the v3 firmware's src/lib/system/defaults.hpp so a fresh
 // install returns the same values the Arduino firmware did. Where v3
 // had no default at all (plain preferences.getXxx(key) with the C++
 // zero-init fallback), the spec entry leaves the default_* fields at
@@ -179,7 +181,13 @@ inline constexpr std::array<FieldSpec, 72> kFields = {{
     // DEFAULT_HTTP_AUTH_USERNAME="btclock". httpAuthPass default is "" in
     // the GET emitter because v3 explicitly never shipped the raw password
     // — httpAuthPassSet reports presence instead.
-    {prefs::kHostnamePrefix, FieldKind::kString, true, 0, 0, false, 0,
+    // hostnamePrefix: runtime — PATCH fires on_mdns_changed in the
+    // control server, which calls ReinitMdns to tear down the existing
+    // advert (mdns_free) and re-publish under the freshly-computed
+    // "<prefix>-<mac>.local" hostname. DHCP keeps the previous lease
+    // until the next renewal, so the old name lingers there for ~1 h —
+    // mdns is the only path that updates immediately.
+    {prefs::kHostnamePrefix, FieldKind::kString, false, 0, 0, false, 0,
      "btclock"},
     {prefs::kHttpAuthEnabled, FieldKind::kBool, true, 0, 0, false, 0, {}},
     {prefs::kHttpAuthPass, FieldKind::kString, true, 0, 0, false, 0, {}},
@@ -210,7 +218,10 @@ inline constexpr std::array<FieldSpec, 72> kFields = {{
     // DEFAULT_MEMPOOL_INSTANCE="mempool.space", DEFAULT_MEMPOOL_SECURE=true,
     // DEFAULT_SECONDS_BETWEEN_PRICE_UPDATE=30.
     {prefs::kMcapBigChar, FieldKind::kBool, false, 0, 0, true, 0, {}},
-    {prefs::kMdnsEnabled, FieldKind::kBool, true, 0, 0, true, 0, {}},
+    // mdnsEnabled: runtime — PATCH fires on_mdns_changed which either
+    // re-runs the advertisement (true) or tears it down via mdns_free
+    // (false). Default true matches v3 DEFAULT_MDNS_ENABLED.
+    {prefs::kMdnsEnabled, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kMempoolInstance, FieldKind::kString, true, 0, 0, false, 0,
      "mempool.space"},
     {prefs::kMempoolSecure, FieldKind::kBool, true, 0, 0, true, 0, {}},

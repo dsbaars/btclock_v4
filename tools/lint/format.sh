@@ -28,6 +28,7 @@ find_sources() {
     -not -path '*/build*/*' \
     -not -path '*/managed_components/*' \
     -not -path '*/vendor/*' \
+    -not -path 'components/secp256k1/*' \
     -print0
 }
 

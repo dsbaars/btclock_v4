@@ -2,7 +2,7 @@
 //
 // Proves the blockfee2 2-decimal frame round-trips exactly through our
 // extraction helpers, which is the critical invariant for the new
-// DataSource path (issue btclock_v3_fci-znf).
+// DataSource path.
 
 #include <cstdint>
 #include <string>

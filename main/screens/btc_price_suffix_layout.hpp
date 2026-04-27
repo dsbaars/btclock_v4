@@ -1,7 +1,7 @@
 // Pure-logic layout helper for the BTC-price suffix / MOW modes.
 //
 // Ports v3 parsePriceData's useSuffixFormat + mowMode branches from
-// btclock_v3_fci lib/btclock/data_handler.cpp. Kept in its own header
+// the v3 firmware's lib/btclock/data_handler.cpp. Kept in its own header
 // (vs. living in price_layout.hpp) so the renderer and panel_texts
 // mirror share one implementation without touching the existing v4
 // sub-dollar decimal-precision path.

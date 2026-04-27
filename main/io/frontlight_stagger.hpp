@@ -3,7 +3,7 @@
 //
 // Mirrors the v3 Arduino firmware's `LedHandler::frontlightFadeInAll` /
 // `frontlightFadeOutAll` staggered path
-// (btclock_v3_fci: src/lib/drivers/leds/led_handler.cpp:573-646) and
+// (the v3 firmware's src/lib/drivers/leds/led_handler.cpp:573-646) and
 // is called by FrontlightController's pulse state machine.
 //
 // Why a helper: the controller's state machine lives inside a FreeRTOS

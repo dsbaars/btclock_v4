@@ -6,9 +6,10 @@
 // that want it via `REQUIRES cjson` in CMake.
 //
 // Scope limits (documented in parser.hpp): no \u escape decoding, no
-// deep recursion (we only walk one level of tag arrays), no signature
-// verification. This is sufficient for the kind 30078 + kind 9735
-// frames we consume.
+// deep recursion (we only walk one level of tag arrays). Signature
+// verification is layered on top by nostr/event_verify.hpp. This
+// parser is sufficient for the kind 30078 + kind 9735 frames we
+// consume.
 
 #include "nostr/parser.hpp"
 
