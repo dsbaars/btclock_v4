@@ -55,7 +55,10 @@ jobs:
         run: .venv-docs/bin/mkdocs build --clean
 
       - name: Upload site/ as artefact
-        uses: actions/upload-artifact@v3
+        # Forgejo's runner is GHES-incompatible for actions/upload-artifact
+        # (the @actions/artifact v2 protocol). Use the Forgejo fork — same
+        # one host_tests.yaml + release.yaml pin.
+        uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: docs-site
           path: site
