@@ -11,12 +11,16 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "data_core/source.hpp"
 #include "esp_err.h"
 #include "esp_websocket_client.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/timers.h"
 
 namespace btclock {
 
@@ -64,6 +68,31 @@ class BtclockDataSource : public DataSource {
   void HandleBinaryFrame(const uint8_t* data, size_t len);
   void SendSubscriptions();
 
+  // Stale-block watchdog. The websocket's own keepalive (ping/pong +
+  // linear reconnect) catches a TCP-level failure within ~35 s, but
+  // there's a class of "WS thinks it's healthy, server stopped
+  // forwarding blockheight updates" failures that the keepalive misses
+  // entirely (relay-side subscription dropped, NAT rebind on the AP,
+  // server-side WS write blocked). The watchdog is the safety net for
+  // those: every ~5 min we check how long since the snapshot's
+  // blockheight last *changed*; if it's been longer than the configured
+  // stale window (60 min today) we GET /api/lastblock over HTTP and,
+  // when the upstream tip disagrees with our cached value, force a
+  // close+reconnect on the WS so SendSubscriptions() replays.
+  static void WatchdogTrampoline(TimerHandle_t timer);
+  void OnWatchdogTick();
+  // Probes `/api/lastblock`; returns true and sets `out` on HTTP 2xx
+  // with a parseable integer body, false otherwise. False means
+  // "couldn't probe" — the watchdog treats that as graceful and tries
+  // again on the next tick, deliberately *not* triggering a reconnect.
+  bool FetchUpstreamHeight(uint32_t& out) const;
+  // Closes the underlying WS so the esp_websocket_client built-in
+  // reconnect kicks in. We deliberately don't Stop()+Start() here —
+  // close-only preserves event-handler registration, lets the
+  // CONNECTED handler replay subscriptions on its own, and avoids
+  // racing the watchdog timer's lifecycle against the client handle.
+  void ForceReconnect();
+
   std::string uri_;
   std::vector<std::string> currencies_;
   // Mirrors the `blockFeeDec` pref. Subscribe path picks "blockfee2"
@@ -73,6 +102,15 @@ class BtclockDataSource : public DataSource {
   bool block_fee_dec_ = true;
   DataHub* hub_ = nullptr;  // set in Start(); nulled in Stop()
   esp_websocket_client_handle_t client_ = nullptr;
+
+  // Watchdog state. `last_height_` tracks the most recent value we
+  // accepted off the wire; we only bump `last_change_tick_` when the
+  // value actually *changes*, so a relay re-broadcasting the current
+  // tip can't fool the staleness check. Ticks come from
+  // xTaskGetTickCount(); zero is treated as "no sample yet".
+  TimerHandle_t watchdog_timer_ = nullptr;
+  std::atomic<uint32_t> last_height_{0};
+  std::atomic<TickType_t> last_change_tick_{0};
 };
 
 }  // namespace btclock

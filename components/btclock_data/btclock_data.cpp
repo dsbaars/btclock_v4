@@ -1,19 +1,63 @@
 #include "btclock_data.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
 #include "ArduinoJson.h"
+#include "btclock_lastblock_uri.hpp"
 #include "btclock_subscribe.hpp"
 #include "data_core/hub.hpp"
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
+#include "esp_http_client.h"
 #include "esp_log.h"
 
 namespace btclock {
 namespace {
 constexpr const char* kTag = "btclock-data";
+
+// Watchdog cadence and threshold.
+//
+// Tick every 5 min so a recovery from a relay outage typically lands
+// inside one block-interval window even when the staleness threshold
+// itself is long. The threshold is 60 min — block intervals are
+// exponentially distributed so ~3 % of natural intervals exceed 60 min
+// even on a perfectly healthy connection. That's fine: when we fire on
+// a healthy gap, the HTTP probe sees the same height as the snapshot
+// and we don't reconnect.
+constexpr uint32_t kWatchdogTickMs = 5 * 60 * 1000;
+constexpr uint32_t kStaleThresholdMs = 60 * 60 * 1000;
+
+// /api/lastblock returns the integer height as plain text (e.g.
+// "947195\n"). 32 bytes is generous headroom; if the body grows past
+// that the server changed shape and we should refuse to parse rather
+// than reconnect on garbage.
+constexpr std::size_t kLastblockMaxBytes = 32;
+
+struct LastblockFetchCtx {
+  char buf[kLastblockMaxBytes + 1] = {};
+  std::size_t size = 0;
+  bool truncated = false;
+};
+
+esp_err_t LastblockHttpEvent(esp_http_client_event_t* evt) {
+  if (evt->event_id != HTTP_EVENT_ON_DATA) return ESP_OK;
+  auto* ctx = static_cast<LastblockFetchCtx*>(evt->user_data);
+  if (ctx == nullptr || evt->data == nullptr || evt->data_len <= 0) {
+    return ESP_OK;
+  }
+  const std::size_t incoming = static_cast<std::size_t>(evt->data_len);
+  if (ctx->size + incoming > kLastblockMaxBytes) {
+    ctx->truncated = true;
+    return ESP_OK;
+  }
+  std::memcpy(ctx->buf + ctx->size, evt->data, incoming);
+  ctx->size += incoming;
+  return ESP_OK;
+}
 }  // namespace
 
 BtclockDataSource::BtclockDataSource(const char* uri,
@@ -52,7 +96,28 @@ esp_err_t BtclockDataSource::Start(DataHub& hub) {
   // grepping the serial console can spot both ws clients with the same
   // pattern.
   ESP_LOGI(kTag, "connecting: %s", uri_.c_str());
-  return esp_websocket_client_start(client_);
+  const esp_err_t start_err = esp_websocket_client_start(client_);
+  if (start_err != ESP_OK) return start_err;
+
+  // Reset watchdog state on (re)start so we don't fire immediately on
+  // a fresh connect — give the WS a fair window to deliver a tip
+  // before the timer counts that delivery as "stale". last_height_ is
+  // intentionally NOT cleared: a Stop()+Start() bounce (currency or
+  // fee change) shouldn't lose the cached height the renderers are
+  // painting from.
+  last_change_tick_.store(xTaskGetTickCount(), std::memory_order_release);
+  if (watchdog_timer_ == nullptr) {
+    watchdog_timer_ = xTimerCreate("btclock-wd", pdMS_TO_TICKS(kWatchdogTickMs),
+                                   pdTRUE /* auto-reload */, this,
+                                   &BtclockDataSource::WatchdogTrampoline);
+    if (watchdog_timer_ == nullptr) {
+      ESP_LOGW(kTag, "watchdog timer create failed; staleness recovery off");
+    }
+  }
+  if (watchdog_timer_ != nullptr) {
+    xTimerStart(watchdog_timer_, 0);
+  }
+  return ESP_OK;
 }
 
 void BtclockDataSource::SetCurrencies(std::vector<std::string> currencies) {
@@ -83,6 +148,15 @@ void BtclockDataSource::SetBlockFeeDec(bool block_fee_dec) {
 }
 
 esp_err_t BtclockDataSource::Stop() {
+  // Tear the watchdog down before the WS so a late-firing tick can't
+  // race a half-destroyed client handle. Stop() is idempotent — a
+  // SetCurrencies()/SetBlockFeeDec() bounce reaches Stop() then Start()
+  // back-to-back and recreates the timer fresh.
+  if (watchdog_timer_ != nullptr) {
+    xTimerStop(watchdog_timer_, 0);
+    xTimerDelete(watchdog_timer_, 0);
+    watchdog_timer_ = nullptr;
+  }
   if (client_ == nullptr) {
     hub_ = nullptr;
     return ESP_OK;
@@ -183,7 +257,16 @@ void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {
   DataSnapshot partial;
 
   if (doc["blockheight"].is<uint32_t>()) {
-    partial.block_height = doc["blockheight"].as<uint32_t>();
+    const uint32_t h = doc["blockheight"].as<uint32_t>();
+    partial.block_height = h;
+    // Watchdog: only reset the staleness clock when the height
+    // *changes*. Relays do re-broadcast the current tip on subscribe
+    // and occasionally as a keepalive, and we don't want those to mask
+    // a stalled subscription stream.
+    const uint32_t prev = last_height_.exchange(h, std::memory_order_acq_rel);
+    if (prev != h) {
+      last_change_tick_.store(xTaskGetTickCount(), std::memory_order_release);
+    }
   }
   // Fee-stream gating: only honour the topic we actually subscribed
   // to for the current `blockFeeDec` setting. This is defensive — a
@@ -224,6 +307,98 @@ void BtclockDataSource::HandleBinaryFrame(const uint8_t* data, size_t len) {
   }
 
   if (hub_) hub_->Report(partial);
+}
+
+void BtclockDataSource::WatchdogTrampoline(TimerHandle_t timer) {
+  auto* self = static_cast<BtclockDataSource*>(pvTimerGetTimerID(timer));
+  if (self != nullptr) self->OnWatchdogTick();
+}
+
+void BtclockDataSource::OnWatchdogTick() {
+  // The timer task has a small stack; keep this short and avoid heavy
+  // logging. esp_http_client itself runs on the timer task, so the
+  // fetch is synchronous here.
+  if (client_ == nullptr) return;
+  const TickType_t now = xTaskGetTickCount();
+  const TickType_t since_tick =
+      last_change_tick_.load(std::memory_order_acquire);
+  if (since_tick == 0) return;  // no sample yet; nothing to compare
+  const uint32_t since_ms = (now - since_tick) * portTICK_PERIOD_MS;
+  if (since_ms < kStaleThresholdMs) return;
+
+  uint32_t upstream = 0;
+  if (!FetchUpstreamHeight(upstream)) {
+    // Graceful: HTTP failure is not a reconnect signal. Could be DNS,
+    // a captive portal, transient TLS failure, or the custom endpoint
+    // not exposing /api/lastblock. Try again on the next tick.
+    ESP_LOGW(kTag, "watchdog: lastblock probe failed; deferring reconnect");
+    return;
+  }
+
+  const uint32_t cached = last_height_.load(std::memory_order_acquire);
+  if (cached == upstream) {
+    // Healthy gap: the network really hadn't produced a block in 60+
+    // min. Reset the clock so we don't re-probe every tick until the
+    // next block lands.
+    ESP_LOGI(kTag, "watchdog: %u min idle but tip matches upstream (%u); ok",
+             static_cast<unsigned>(since_ms / 60000),
+             static_cast<unsigned>(upstream));
+    last_change_tick_.store(now, std::memory_order_release);
+    return;
+  }
+
+  ESP_LOGW(kTag,
+           "watchdog: stale (%u min idle, cached=%u upstream=%u); reconnecting",
+           static_cast<unsigned>(since_ms / 60000),
+           static_cast<unsigned>(cached), static_cast<unsigned>(upstream));
+  ForceReconnect();
+  // Reset the clock around the reconnect so the next tick gives the
+  // fresh session a full window before re-evaluating.
+  last_change_tick_.store(xTaskGetTickCount(), std::memory_order_release);
+}
+
+bool BtclockDataSource::FetchUpstreamHeight(uint32_t& out) const {
+  const std::string url = BuildLastblockUri(uri_);
+  if (url.empty()) return false;
+
+  LastblockFetchCtx ctx;
+  esp_http_client_config_t cfg = {};
+  cfg.url = url.c_str();
+  cfg.event_handler = &LastblockHttpEvent;
+  cfg.user_data = &ctx;
+  cfg.timeout_ms = 8000;
+  cfg.buffer_size = 1024;
+  cfg.buffer_size_tx = 512;
+  cfg.crt_bundle_attach = esp_crt_bundle_attach;
+
+  esp_http_client_handle_t client = esp_http_client_init(&cfg);
+  if (client == nullptr) return false;
+
+  bool ok = false;
+  do {
+    if (esp_http_client_perform(client) != ESP_OK) break;
+    const int status = esp_http_client_get_status_code(client);
+    if (status < 200 || status >= 300) break;
+    if (ctx.truncated || ctx.size == 0) break;
+    ctx.buf[ctx.size] = '\0';
+    char* end = nullptr;
+    const long parsed = std::strtol(ctx.buf, &end, 10);
+    if (end == ctx.buf || parsed <= 0) break;
+    out = static_cast<uint32_t>(parsed);
+    ok = true;
+  } while (false);
+
+  esp_http_client_cleanup(client);
+  return ok;
+}
+
+void BtclockDataSource::ForceReconnect() {
+  if (client_ == nullptr) return;
+  // close() is the lighter sibling of stop()/destroy(): it tears down
+  // the TCP/TLS layer but keeps the client object and event handlers
+  // intact, so the built-in linear backoff fires CONNECTED again ~5 s
+  // later and SendSubscriptions() replays automatically.
+  esp_websocket_client_close(client_, pdMS_TO_TICKS(2000));
 }
 
 }  // namespace btclock

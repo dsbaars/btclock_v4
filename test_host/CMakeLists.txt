@@ -119,6 +119,8 @@ add_executable(btclock_host_tests
     test_block_event_policy.cpp
     test_vertical_desc.cpp
     test_sources_uri.cpp
+    test_btclock_lastblock_uri.cpp
+    ../components/btclock_data/btclock_lastblock_uri.cpp
     ../main/sources/sources_uri.cpp
     ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
