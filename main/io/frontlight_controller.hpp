@@ -89,10 +89,11 @@ constexpr uint32_t kZapFlashHoldMs = 250;
 // on the fade-in half, index N-1 lags; reversed on the fade-out half).
 // See io/frontlight_stagger.hpp for the pure math.
 enum class FrontlightEvent : uint8_t {
-  kOn,             // user-on: clears user-off latch, fades to configured
-  kOff,            // user-off: sets user-off latch, fades to 0
-  kAmbientOn,      // ambient-loop on: no-op if user-off latch is set
-  kAmbientOff,     // ambient-loop off: fades to 0, does NOT set user-off latch
+  kOn,          // user-on: clears user-off latch, fades to configured
+  kOff,         // user-off: sets user-off latch, fades to 0
+  kAmbientOn,   // ambient-loop on: no-op if user-off latch is set
+  kAmbientOff,  // ambient-loop off: fades to 0, does NOT set user-off latch
+  kDarkOff,     // off-when-dark off: like kAmbientOff but bypasses flAlwaysOn
   kSetBrightness,  // fade to payload brightness, also updates configured value
   kBlockFlash,     // pulse up -> hold -> return to previous state
   kZapFlash,       // same shape, longer hold
@@ -168,10 +169,13 @@ class FrontlightController {
   void SetDisabled(bool disabled) { disabled_ = disabled; }
   bool disabled() const { return disabled_; }
 
-  // `flAlwaysOn` — pin the backlight on regardless of ambient/dim
-  // logic. When true, kAmbientOff is dropped in Post() so the BH1750
-  // loop and the off-when-dark branch can't fade the panel out. Has no
-  // effect when disabled() is also true (disable wins).
+  // `flAlwaysOn` — pin the backlight on regardless of the regular
+  // ambient threshold. When true, kAmbientOff is dropped in Post() so
+  // the BH1750 loop can't fade the panel out at high lux. The
+  // off-when-dark feature is a more specific user override and is
+  // routed via kDarkOff, which is NOT gated here — a user who enables
+  // both flAlwaysOn and flOffWhenDark expects the dark-mode branch to
+  // win in pitch black. Disabled() still wins over both.
   void SetAlwaysOn(bool always_on) { always_on_ = always_on; }
   bool always_on() const { return always_on_; }
 

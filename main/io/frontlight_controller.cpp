@@ -72,10 +72,12 @@ void FrontlightController::Post(FrontlightCommand cmd) {
     }
     return;
   }
-  // flAlwaysOn — drop ambient-off events so the dim/sleep ambient
-  // loop and the off-when-dark branch can't fade the panel out.
-  // User-initiated kOff still goes through (the user-off latch
-  // remains authoritative).
+  // flAlwaysOn — drop the regular ambient-off event so the BH1750
+  // loop's high-lux branch can't fade the panel out. kDarkOff is
+  // intentionally NOT gated here: off-when-dark is a more specific
+  // user override and wins over always_on in pitch black. User-
+  // initiated kOff still goes through (the user-off latch remains
+  // authoritative).
   if (always_on_ && cmd.event == FrontlightEvent::kAmbientOff) {
     return;
   }
@@ -169,7 +171,13 @@ void FrontlightController::OnAmbientLux(float lux) {
       Post({FrontlightEvent::kAmbientOn, 0});
       return;
     case FrontlightAmbientAction::kOff:
-      Post({FrontlightEvent::kAmbientOff, 0});
+      // Distinguish dark-driven off from threshold-driven off so the
+      // flAlwaysOn gate in Post() only swallows the latter. After
+      // Evaluate(), is_dark() is true iff the kOff came from the
+      // off-when-dark branch (the policy sets dark_ before returning).
+      Post({policy_.is_dark() ? FrontlightEvent::kDarkOff
+                              : FrontlightEvent::kAmbientOff,
+            0});
       return;
   }
 }
@@ -325,6 +333,7 @@ void FrontlightController::TaskLoop() {
           fader_.SetTarget(configured_brightness_);
           break;
         case FrontlightEvent::kAmbientOff:
+        case FrontlightEvent::kDarkOff:
           logical_on_ = false;
           cancel_pulse();
           fader_.SetTarget(0);

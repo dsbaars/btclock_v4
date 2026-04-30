@@ -181,6 +181,19 @@ TEST_CASE("Bug 1 + Bug 2: user-off + dark room stays off with no churn") {
   CHECK(p.is_dark());
 }
 
+TEST_CASE("threshold-driven kOff leaves is_dark() false (controller routing)") {
+  // The controller routes ambient kOff to either kAmbientOff (gated
+  // by flAlwaysOn) or kDarkOff (bypasses flAlwaysOn) based on
+  // is_dark() after Evaluate(). Pin the contract: a high-lux kOff
+  // with off_when_dark enabled still reports is_dark()==false so the
+  // controller treats it as the regular threshold path.
+  FrontlightAmbientPolicy p;
+  p.SetConfig(MakeCfg(128, /*off_when_dark=*/true));
+  p.NoteOutputOn();
+  CHECK(p.Evaluate(500.0f) == FrontlightAmbientAction::kOff);
+  CHECK(p.is_dark() == false);
+}
+
 TEST_CASE("Equal-to-threshold is a no-op (no flap at the exact boundary)") {
   FrontlightAmbientPolicy p;
   p.SetConfig(MakeCfg(128, false));
