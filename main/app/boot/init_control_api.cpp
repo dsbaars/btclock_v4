@@ -53,54 +53,22 @@ constexpr const char* kTag = "btclock";
 
 // OTA asset naming mirrors the Arduino release workflow:
 //   btclock_<board>[_<panel>]_ota.bin  / btclock_<board>[_<panel>]_webui.bin
-// Board and panel slugs compose independently. The panel suffix is
-// elided when the panel is the default (2.13") so the common case
-// stays plain `btclock_rev_a_ota.bin` / `btclock_rev_b_ota.bin` / etc.
-// — this matches the Arduino-era release artifact names. Untested
-// non-default panels (e.g. rev_b_75) get an explicit suffix.
+// Both slugs come from the top-level CMakeLists.txt as compile defs:
+// BTCLOCK_BOARD_SLUG is the lowercase board name ("rev_a" / "rev_b" /
+// "v8"), BTCLOCK_PANEL_ASSET_SUFFIX is "" for the default 2.13" panel
+// and "_29" / "_75" for the non-default geometries. Adjacent string
+// literals are concatenated by the preprocessor, so the synthesis is a
+// pure compile-time fold — no #if cross-product, no runtime branching,
+// no "unknown variant" branch to forget.
 OtaManager::Config MakeOtaConfig() {
   settings::NvsPrefs ota_prefs(prefs::kSettingsNs);
   OtaManager::Config ocfg;
   ocfg.release_url =
       btclock::settings::ReadString(ota_prefs, prefs::kGitReleaseUrl);
-#if defined(BTCLOCK_BOARD_REV_A)
-#if defined(BTCLOCK_PANEL_2_9)
-  ocfg.firmware_asset = "btclock_rev_a_29_ota.bin";
-  ocfg.webui_asset = "btclock_rev_a_29_webui.bin";
-#elif defined(BTCLOCK_PANEL_7_5)
-  ocfg.firmware_asset = "btclock_rev_a_75_ota.bin";
-  ocfg.webui_asset = "btclock_rev_a_75_webui.bin";
-#else
-  ocfg.firmware_asset = "btclock_rev_a_ota.bin";
-  ocfg.webui_asset = "btclock_rev_a_webui.bin";
-#endif
-#elif defined(BTCLOCK_BOARD_REV_B)
-#if defined(BTCLOCK_PANEL_2_9)
-  ocfg.firmware_asset = "btclock_rev_b_29_ota.bin";
-  ocfg.webui_asset = "btclock_rev_b_29_webui.bin";
-#elif defined(BTCLOCK_PANEL_7_5)
-  ocfg.firmware_asset = "btclock_rev_b_75_ota.bin";
-  ocfg.webui_asset = "btclock_rev_b_75_webui.bin";
-#else
-  ocfg.firmware_asset = "btclock_rev_b_ota.bin";
-  ocfg.webui_asset = "btclock_rev_b_webui.bin";
-#endif
-#elif defined(BTCLOCK_BOARD_V8)
-#if defined(BTCLOCK_PANEL_2_9)
-  ocfg.firmware_asset = "btclock_v8_29_ota.bin";
-  ocfg.webui_asset = "btclock_v8_29_webui.bin";
-#elif defined(BTCLOCK_PANEL_7_5)
-  ocfg.firmware_asset = "btclock_v8_75_ota.bin";
-  ocfg.webui_asset = "btclock_v8_75_webui.bin";
-#else
-  ocfg.firmware_asset = "btclock_v8_ota.bin";
-  ocfg.webui_asset = "btclock_v8_webui.bin";
-#endif
-#else
-  // TODO: fill in exact filename once a release ships for this variant.
-  ocfg.firmware_asset = "btclock_unknown_ota.bin";
-  ocfg.webui_asset = "btclock_unknown_webui.bin";
-#endif
+  ocfg.firmware_asset =
+      "btclock_" BTCLOCK_BOARD_SLUG BTCLOCK_PANEL_ASSET_SUFFIX "_ota.bin";
+  ocfg.webui_asset =
+      "btclock_" BTCLOCK_BOARD_SLUG BTCLOCK_PANEL_ASSET_SUFFIX "_webui.bin";
   return ocfg;
 }
 

@@ -39,6 +39,22 @@ add_compile_definitions(BTCLOCK_PANEL_${BTCLOCK_PANEL}=1)
 # is the project-wide emit.
 add_compile_definitions(BTCLOCK_BOARD_${BTCLOCK_BOARD}=1)
 
+# String slugs used by init_control_api.cpp to synthesise OTA asset
+# names (`btclock_<board>[_<panel>]_ota.bin` /
+# `..._webui.bin`) without a #if pyramid. The suffix is empty for the
+# default 2.13" panel so the common case stays plain
+# `btclock_rev_b_ota.bin`; explicit suffixes only appear on non-default
+# panels. Adding a new panel here is a one-line edit instead of a
+# board × panel matrix expansion in init_control_api.cpp.
+add_compile_definitions(BTCLOCK_BOARD_SLUG="${_BTCLOCK_BOARD_LC}")
+if(BTCLOCK_PANEL STREQUAL "2_13")
+    add_compile_definitions(BTCLOCK_PANEL_ASSET_SUFFIX="")
+elseif(BTCLOCK_PANEL STREQUAL "2_9")
+    add_compile_definitions(BTCLOCK_PANEL_ASSET_SUFFIX="_29")
+elseif(BTCLOCK_PANEL STREQUAL "7_5")
+    add_compile_definitions(BTCLOCK_PANEL_ASSET_SUFFIX="_75")
+endif()
+
 # Base defaults first, per-variant overrides on top (later files win).
 set(SDKCONFIG_DEFAULTS
     "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults"
