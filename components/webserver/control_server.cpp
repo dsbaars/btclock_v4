@@ -2097,6 +2097,20 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     }
   }
 
+  // satsVariant: rebind the renderer's glyph index live. Schema
+  // already range-clamped 0..15; cast is safe because GetU32 is
+  // guaranteed to return a value within the kUint default for the
+  // key, but ClampSatsVariant on the read side belt-and-braces it.
+  if (cfg_.on_sats_variant_changed) {
+    for (const auto& k : result.touched_keys) {
+      if (k == btclock::prefs::kSatsVariant) {
+        const uint32_t v = prefs.GetU32(btclock::prefs::kSatsVariant, 7);
+        cfg_.on_sats_variant_changed(static_cast<uint8_t>(v & 0x0Fu));
+        break;
+      }
+    }
+  }
+
   // blockFlashColor: mirror the new value into the LED controller so
   // the next block flash uses the user-chosen colour without a reboot.
   // Both the LED controller and the settings layer now read the same

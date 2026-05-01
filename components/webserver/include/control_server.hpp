@@ -259,6 +259,13 @@ class ControlServer {
     // firmware did before this hook existed.
     std::function<void(const std::string&)> on_font_changed;
 
+    // Fires when PATCH /api/settings writes `satsVariant`. Receives the
+    // new uint8 (already range-checked 0..15 by the schema validator)
+    // and is expected to call ScreenManager::SetSatsVariant() +
+    // MarkDirty() so the next render of moscow_time / nostr_zap paints
+    // with the new glyph. Nullable — defers to reboot when unwired.
+    std::function<void(uint8_t)> on_sats_variant_changed;
+
     // Fires on POST /api/factory_reset after the confirmation gate has
     // accepted the body. The callback is expected to render a
     // "RESETTING" splash on the EPDs and then call

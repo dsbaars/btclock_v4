@@ -92,14 +92,33 @@ void InitScreenManager(AppCtx& ctx) {
         order_csv, is_enabled, ctx.currencies.size()));
   }
 
-  // Sats-symbol glyph index (0..15) lives in the "ui" namespace so it
-  // can sit alongside future user-facing display prefs (color, layout)
-  // rather than cohabiting with network / Nostr creds. ClampSatsVariant
-  // defends against an out-of-range stored value — see fonts_app.hpp.
+  // Sats-symbol glyph index (0..15) — index into the 16 glyphs at
+  // U+E000..U+E00F of the SatoshiSymbol font. Now lives in the
+  // "settings" NVS namespace under `satsVariant` (camelCase, matches
+  // the schema convention) so PATCH /api/settings can change it
+  // live. Legacy fallback: devices that wrote the value under the
+  // pre-schema "ui"/"sats_variant" key still pick it up — first-boot
+  // schema default would otherwise revert their pick to 7 silently.
+  // ClampSatsVariant guards both reads against an out-of-range
+  // stored value (see main/fonts_app.hpp).
   {
-    Prefs ui_prefs("ui");
-    ctx.sm->SetSatsVariant(
-        ClampSatsVariant(ui_prefs.GetU32("sats_variant", kSatsVariantDefault)));
+    Prefs settings(prefs::kSettingsNs);
+    const uint32_t schema_default = static_cast<uint32_t>(
+        btclock::settings::DefaultIntFor(prefs::kSatsVariant));
+    // Sentinel-on-absent: if "settings"/satsVariant is unset, fall
+    // back to the legacy "ui"/sats_variant value (which itself defaults
+    // to schema_default if absent).
+    const uint32_t kSentinel = UINT32_MAX;
+    const uint32_t from_settings =
+        settings.GetU32(prefs::kSatsVariant, kSentinel);
+    uint32_t resolved = schema_default;
+    if (from_settings != kSentinel) {
+      resolved = from_settings;
+    } else {
+      Prefs legacy("ui");
+      resolved = legacy.GetU32("sats_variant", schema_default);
+    }
+    ctx.sm->SetSatsVariant(ClampSatsVariant(resolved));
   }
   // Rotation skip hook: honours the pool capability flag so solo pools
   // don't cycle onto the earnings slot even if the user's persisted

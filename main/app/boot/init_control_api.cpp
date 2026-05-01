@@ -155,6 +155,18 @@ void InitControlApi(AppCtx& ctx) {
       if (ctx_ptr->sm) ctx_ptr->sm->MarkDirty();
       if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
+    // satsVariant PATCH hook — rebind ScreenManager's glyph index so
+    // the next render of moscow_time / nostr_zap paints with the new
+    // codepoint. ClampSatsVariant guards against an out-of-range
+    // store; the schema already 0..15-clamps via FieldSpec range, so
+    // this is belt-and-braces against future bypass paths.
+    ccfg.on_sats_variant_changed = [ctx_ptr](uint8_t v) {
+      if (ctx_ptr->sm) {
+        ctx_ptr->sm->SetSatsVariant(ClampSatsVariant(v));
+        ctx_ptr->sm->MarkDirty();
+      }
+      if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
+    };
     // blockFlashColor PATCH hook — push the new colour into the LED
     // controller's runtime cache so the next block flash uses the
     // user-chosen colour without reboot. SetBlockFlashColor also

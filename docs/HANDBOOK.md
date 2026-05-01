@@ -617,7 +617,31 @@ is identical. Turn it off if you don't want the custom glyph or if
 your audience reads the screen at a glance and the `=` symbol is
 adding noise.
 
-Affected by: `useMscwTime`, `useSatsSymbol`, active currency, `fontName`.
+#### Sats-symbol variants (`satsVariant`)
+
+The SatoshiSymbol font ships **16 glyph variants** at codepoints
+`U+E000`..`U+E00F`. The `satsVariant` setting (uint, 0..15, default
+7) picks which one renders on the moscow-time screen and the
+nostr-zap overlay when `useSatsSymbol` is on:
+
+![All 16 sats-symbol variants in a 4×4 contact sheet](img/fonts/sats_variants.png)
+
+PATCH the value live — no reboot needed:
+
+```bash
+curl -X PATCH -H 'Content-Type: application/json' \
+  -d '{"satsVariant":5}' http://btclock-xxxxxx.local/api/settings
+```
+
+The runtime hook calls `ScreenManager::SetSatsVariant` + `MarkDirty()`
+so the next render of moscow-time or nostr-zap paints the new glyph.
+Out-of-range values are rejected at PATCH time (the schema declares
+`min=0, max=15`).
+
+Regenerate the contact sheet from the embedded TTF with
+[`tools/fonts/render_sats_variants.py`](../tools/fonts/render_sats_variants.py).
+
+Affected by: `useMscwTime`, `useSatsSymbol`, `satsVariant`, active currency, `fontName`.
 
 ### BTC ticker
 

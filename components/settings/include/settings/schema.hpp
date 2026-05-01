@@ -86,7 +86,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 72> kFields = {{
+inline constexpr std::array<FieldSpec, 73> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -287,6 +287,15 @@ inline constexpr std::array<FieldSpec, 72> kFields = {{
     // to the block-height screen on a new block — matches what most
     // users expect from the "steal on new block" toggle.
     {prefs::kRefrScrnChange, FieldKind::kBool, false, 0, 0, false, 0, {}},
+    // satsVariant: index into the 16 glyphs at U+E000..U+E00F in the
+    // SatoshiSymbol font. Default 7 = the production glyph that shipped
+    // before the variant pref existed. Runtime — the on_sats_variant_changed
+    // hook in main pushes the new value into ScreenManager and marks the
+    // screen dirty, so the next render paints with the new glyph without
+    // a reboot. Bounds 0..15 reject anything outside the valid codepoint
+    // range; ClampSatsVariant in main/fonts_app.hpp is the read-side
+    // belt-and-braces guard against legacy NVS values.
+    {prefs::kSatsVariant, FieldKind::kUint, false, 0, 15, false, 7, {}},
     {prefs::kScrnRestoreZap, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kStealFocus, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kSuffixPrice, FieldKind::kBool, false, 0, 0, false, 0, {}},

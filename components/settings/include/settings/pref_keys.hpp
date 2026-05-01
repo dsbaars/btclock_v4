@@ -102,6 +102,11 @@ inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
 inline constexpr const char* kPoolLogosUrl = "poolLogosUrl";
 inline constexpr const char* kPoolPollSec = "poolPollSec";
 inline constexpr const char* kRefrScrnChange = "refrScrnChange";
+// Sats-symbol variant (0..15) — index into the 16 glyphs at U+E000..U+E00F
+// of the SatoshiSymbol font. Default 7 matches the production glyph that
+// shipped before the variant pref existed. PATCH-able via /api/settings;
+// runtime hook live-updates the renderer without a reboot.
+inline constexpr const char* kSatsVariant = "satsVariant";
 inline constexpr const char* kScreenOrder = "screenOrder";
 inline constexpr const char* kScrnRestoreZap = "scrnRestoreZap";
 inline constexpr const char* kStealFocus = "stealFocus";
@@ -207,6 +212,7 @@ BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);
 BTCLOCK_PREF_KEY_ASSERT(kPoolLogosUrl);
 BTCLOCK_PREF_KEY_ASSERT(kPoolPollSec);
 BTCLOCK_PREF_KEY_ASSERT(kRefrScrnChange);
+BTCLOCK_PREF_KEY_ASSERT(kSatsVariant);
 BTCLOCK_PREF_KEY_ASSERT(kScreenOrder);
 BTCLOCK_PREF_KEY_ASSERT(kScrnRestoreZap);
 BTCLOCK_PREF_KEY_ASSERT(kStealFocus);

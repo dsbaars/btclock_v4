@@ -805,7 +805,11 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // fields promoted from BuildGetResponse-only special-cases into the
   // schema so the boot-read sites can derive their defaults from the
   // single source of truth. Field count 67 -> 72.
-  CHECK(btclock::settings::kFields.size() == 72);
+  // 2026-05-02: satsVariant added (uint, range 0..15, default 7) so the
+  // 16 sats-symbol glyphs at U+E000..U+E00F are PATCH-able live via
+  // /api/settings; field count 72 -> 73, boot-only unchanged (runtime
+  // hook re-binds the renderer immediately).
+  CHECK(btclock::settings::kFields.size() == 73);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, fontName, mempoolInstance, mempoolSecure,
   // dataSource, ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey,
@@ -1660,4 +1664,48 @@ TEST_CASE("PATCH accepts kString with high-bit UTF-8 bytes (non-ASCII)") {
       "{\"hostnamePrefix\":\"caf\xc3\xa9\"}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["hostnamePrefix"] == "caf\xc3\xa9");
+}
+
+// --- satsVariant range validation -----------------------------------
+//
+// satsVariant is a uint indexing into U+E000..U+E00F of the
+// SatoshiSymbol font (16 glyphs). Schema declares range 0..15; the
+// runtime hook in main pushes the value into ScreenManager so the
+// next render of moscow_time / nostr_zap paints with the new glyph.
+
+TEST_CASE("PATCH satsVariant accepts in-range values 0..15") {
+  for (int v : {0, 1, 7, 14, 15}) {
+    FakePrefs prefs;
+    const std::string body = "{\"satsVariant\":" + std::to_string(v) + "}";
+    auto res =
+        btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+    CAPTURE(v);
+    CHECK(res.status == btclock::settings::PatchStatus::kOk);
+    CHECK(prefs.u32_["satsVariant"] == static_cast<uint32_t>(v));
+  }
+}
+
+TEST_CASE("PATCH satsVariant rejects 16 (one past max)") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"satsVariant\":16}", DefaultCtx(),
+                                           prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
+  CHECK(res.error == "range:satsVariant");
+  CHECK(prefs.u32_.count("satsVariant") == 0);
+}
+
+TEST_CASE("PATCH satsVariant rejects negative values") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"satsVariant\":-1}", DefaultCtx(),
+                                           prefs, prefs);
+  // Negative kUint values are rejected at type-check before the range
+  // branch — kUint sees v->valuedouble < 0 and returns false.
+  CHECK(res.status != btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.u32_.count("satsVariant") == 0);
+}
+
+TEST_CASE("PATCH satsVariant default in schema is 7") {
+  // Pin the documented default — the production glyph that shipped
+  // before the variant pref existed.
+  CHECK(btclock::settings::DefaultIntFor(btclock::prefs::kSatsVariant) == 7);
 }
