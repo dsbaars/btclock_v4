@@ -215,11 +215,13 @@ jobs:
       # ccache shrinks cache-miss rebuilds (sdkconfig touched but
       # source unchanged) from ~10 min/variant to a link + a few
       # recompiles. ESP-IDF picks it up via IDF_CCACHE_ENABLE=1 below.
-      - name: Install ccache
+      # jq is installed alongside so the manifest-fragment step below
+      # can shell out to it for safe JSON construction.
+      - name: Install ccache + jq
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ccache
+          apt-get install -y --no-install-recommends ccache jq
 
       - uses: actions/checkout@v6
         with:
@@ -319,6 +321,55 @@ jobs:
           cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
           # SHA-256 of the app binary for OTA integrity checks.
           ( cd "$out" && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 )
+
+      - name: Generate variant manifest fragment
+        shell: bash
+        # Identity record for this variant artifact bundle. Packed as
+        # JSON so a downstream tool (release job, OTA fetcher, support
+        # script) can match a binary against the exact build inputs
+        # without booting the device. Each release bundles every
+        # fragment into a top-level manifest.json (release job below).
+        env:
+          IDF_PATH: /opt/esp/idf
+        run: |
+          set -euo pipefail
+          out="dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}"
+          # WebUI submodule SHA — pinned by .gitmodules to the WebUI
+          # repo's commit. Fall back to "" rather than failing the build
+          # if the submodule wasn't checked out (matches the workflow's
+          # `submodules: recursive` so this should always succeed).
+          webui_sha="$(git -C data rev-parse HEAD 2>/dev/null || echo '')"
+          firmware_sha="$(git rev-parse HEAD)"
+          firmware_version="$(git describe --tags --always --dirty --match '[0-9]*' 2>/dev/null || git rev-parse --short HEAD)"
+          # idf.py --version emits e.g. "ESP-IDF v6.0.1" — keep the
+          # whole line, the consumer can parse if it cares about the
+          # version number alone.
+          . "$IDF_PATH/export.sh" >/dev/null
+          idf_version="$(idf.py --version 2>&1 | tail -n1)"
+          fw_sha256="$(awk '{print $1}' "$out/btclock_v4.bin.sha256")"
+          storage_sha256="$(sha256sum "$out/storage.bin" | awk '{print $1}')"
+          jq -n \
+            --arg variant         '${{ matrix.variant_label }}' \
+            --arg board           '${{ matrix.btclock_board }}' \
+            --arg panel           '${{ matrix.btclock_panel }}' \
+            --arg flash_label     '${{ matrix.lfs_size_label }}' \
+            --arg storage_offset  '${{ matrix.partition_offset }}' \
+            --arg firmware_sha    "$firmware_sha" \
+            --arg firmware_version "$firmware_version" \
+            --arg webui_sha       "$webui_sha" \
+            --arg idf_version     "$idf_version" \
+            --arg fw_sha256       "$fw_sha256" \
+            --arg storage_sha256  "$storage_sha256" \
+            --arg built_at        "$(date -u +%FT%TZ)" \
+            '{variant: $variant, board: $board, panel: $panel,
+              flash_label: $flash_label, storage_offset: $storage_offset,
+              firmware_sha: $firmware_sha,
+              firmware_version: $firmware_version,
+              webui_sha: $webui_sha, idf_version: $idf_version,
+              firmware_sha256: $fw_sha256,
+              storage_sha256: $storage_sha256, built_at: $built_at}' \
+            > "$out/manifest-fragment.json"
+          cat "$out/manifest-fragment.json"
 
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
@@ -420,6 +471,45 @@ jobs:
           )
           ls -la release
 
+      - name: Generate combined release manifest
+        shell: bash
+        # Top-level manifest.json: tag-level metadata + the list of
+        # per-variant fragments. Lets a downstream tool pull a single
+        # JSON to learn which assets exist, which board/panel they're
+        # for, what SHAs they were built from, and which IDF version
+        # produced them — without having to reverse-engineer it from
+        # the asset filenames.
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          # Collect every variant fragment from the per-variant artifact
+          # bundles. Order is whatever the glob produces; consumers
+          # should key by `.variants[].variant` rather than position.
+          fragments=()
+          for d in incoming/btclock_v4-*; do
+            f="$d/manifest-fragment.json"
+            [ -f "$f" ] && fragments+=("$f")
+          done
+          if [ ${#fragments[@]} -eq 0 ]; then
+            echo "no manifest fragments found — firmware job didn't emit them?" >&2
+            exit 1
+          fi
+          jq -n \
+            --arg release_tag "$TAG" \
+            --arg repository "$REPO" \
+            --arg server_url "$SERVER" \
+            --arg generated_at "$(date -u +%FT%TZ)" \
+            --argjson variants "$(jq -s '.' "${fragments[@]}")" \
+            '{release_tag: $release_tag, repository: $repository,
+              server_url: $server_url, generated_at: $generated_at,
+              variants: $variants}' \
+            > release/manifest.json
+          ( cd release && sha256sum manifest.json > manifest.json.sha256 )
+          cat release/manifest.json
+
       - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
         with:
           name: release-${{ github.ref_name }}
@@ -455,7 +545,7 @@ jobs:
           fi
           echo "release id: $rel_id"
 
-          for f in release/*.bin release/*.sha256; do
+          for f in release/*.bin release/*.sha256 release/manifest.json; do
             [ -f "$f" ] || continue
             echo "uploading $f"
             curl -sSL -X POST -H "$auth" \
