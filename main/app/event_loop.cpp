@@ -1,6 +1,7 @@
 #include "app/event_loop.hpp"
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -8,8 +9,10 @@
 #include "app/block_event_policy.hpp"
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_control_api.hpp"
+#include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "board/board.hpp"
+#include "btclock_data.hpp"
 #include "buttons.hpp"
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
@@ -144,6 +147,51 @@ constexpr const char* kTag = "btclock";
             sm.SetCustomCells(std::move(cells), MsNow());
             re_render = true;
           }
+          break;
+        }
+        case Kind::kRebuildScreens: {
+          // Settings PATCH that changed actCurrencies / screenOrder /
+          // screen<id>Visible. Re-read NVS here (main task) so all
+          // ScreenManager + BtclockDataSource mutations stay
+          // single-threaded — see init_control_api.cpp's
+          // on_screens_changed for why this is deferred.
+          Prefs settings(prefs::kSettingsNs);
+          const std::string order_csv =
+              btclock::settings::ReadString(settings, prefs::kScreenOrder);
+          const std::string ccy_csv =
+              btclock::settings::ReadString(settings, prefs::kActCurrencies);
+          std::vector<std::string> new_currencies;
+          {
+            std::stringstream ss(ccy_csv);
+            std::string item;
+            while (std::getline(ss, item, ',')) {
+              if (!item.empty()) new_currencies.push_back(item);
+            }
+            if (new_currencies.empty()) new_currencies.push_back("USD");
+          }
+          // SetCurrencies first — slot_count depends on the new currency
+          // count, so the rotation sequence must reflect the new size.
+          sm.SetCurrencies(new_currencies);
+          ctx.currencies = new_currencies;
+          // Mirror to the control-server snapshot so /api/show/currency
+          // recognises newly-added codes. Same task as the HTTP handlers
+          // that read it (httpd worker thread vs main is irrelevant —
+          // the read path takes its own lock for `status_`; `cfg_` is
+          // updated atomically here and reads of cfg_.currencies are
+          // tolerant of stale-but-consistent reads).
+          if (ctrl) ctrl->SetCurrencies(new_currencies);
+          auto is_enabled = [](int api_id) -> bool {
+            Prefs p(prefs::kSettingsNs);
+            char vkey[24];
+            std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
+            return p.GetBool(vkey, true);
+          };
+          sm.SetRotationSequence(rotation_plan::BuildRotationSequence(
+              order_csv, is_enabled, sm.currencies().size()));
+          // Refresh v2 WS subscriptions so price frames flow for newly-
+          // added codes. Stop+Start forces a fresh subscribe set.
+          if (ctx.btclock_ws) ctx.btclock_ws->SetCurrencies(new_currencies);
+          re_render = true;
           break;
         }
       }

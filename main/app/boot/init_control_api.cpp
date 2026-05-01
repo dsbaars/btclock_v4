@@ -241,50 +241,23 @@ void InitControlApi(AppCtx& ctx) {
     // PATCH. The sequence is otherwise built once at boot
     // (init_screen_manager.cpp) and runtime PATCHes wrote NVS but left the
     // live traversal stale, so the user had to reboot to see a reorder or
-    // a currency-list change take effect. Mirrors the boot-time builder:
-    // same `screenOrder` CSV + `screen<id>Visible` closure +
-    // `actCurrencies` CSV. SetCurrencies first (slot_count depends on
-    // currency count, so the new sequence must reflect the new count),
-    // then SetRotationSequence to install the rebuilt plan. The data
-    // source's currency subscription is refreshed in lock-step so price
-    // ticks for newly-added codes start flowing without a reboot.
-    BtclockDataSource* data_src = ctx_ptr->btclock_ws;
-    ccfg.on_screens_changed = [ctx_ptr, sm_ptr, main_task_for_hooks, data_src] {
-      if (!sm_ptr) return;
-      Prefs settings(prefs::kSettingsNs);
-      const std::string order_csv =
-          btclock::settings::ReadString(settings, prefs::kScreenOrder);
-      const std::string ccy_csv =
-          btclock::settings::ReadString(settings, prefs::kActCurrencies);
-      std::vector<std::string> new_currencies;
-      {
-        std::stringstream ss(ccy_csv);
-        std::string item;
-        while (std::getline(ss, item, ',')) {
-          if (!item.empty()) new_currencies.push_back(item);
-        }
-        if (new_currencies.empty()) new_currencies.push_back("USD");
-      }
-      sm_ptr->SetCurrencies(new_currencies);
-      ctx_ptr->currencies = new_currencies;
-      // The control server snapshot also needs the fresh list so
-      // /api/show/currency stops 404'ing newly-added codes — the cfg
-      // copy is otherwise a one-shot from boot.
-      if (ctx_ptr->ctrl) ctx_ptr->ctrl->SetCurrencies(new_currencies);
-      auto is_enabled = [](int api_id) -> bool {
-        Prefs p(prefs::kSettingsNs);
-        char vkey[24];
-        std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
-        return p.GetBool(vkey, true);
-      };
-      sm_ptr->SetRotationSequence(rotation_plan::BuildRotationSequence(
-          order_csv, is_enabled, sm_ptr->currencies().size()));
-      // Refresh the v2 WS subscriptions so price frames start flowing
-      // for codes the user just added. Stop+Start forces a fresh
-      // subscribe set (additive `subscribe` frames alone wouldn't drop
-      // a removed code's stream). The reconnect is ~5 s; mostly harmless
-      // because the cached snapshot keeps the screens populated.
-      if (data_src) data_src->SetCurrencies(new_currencies);
+    // a currency-list change take effect.
+    //
+    // Crucially this hook fires on the HTTP task, but ScreenManager and
+    // BtclockDataSource are owned by the main task (Render holds a
+    // reference into ScreenManager::currencies_ for the duration of a
+    // frame; mutating that vector mid-render dangles the ref and crashes
+    // — observed once on Rev B as a heap-corruption abort with sz read
+    // as a DRAM ptr). Defer to main via the existing ControlCommand
+    // queue: the main loop drains kRebuildScreens, re-reads NVS, and
+    // applies the new currency list + rotation plan + WS subscriptions
+    // in main-task context.
+    ccfg.on_screens_changed = [ctx_ptr, main_task_for_hooks] {
+      if (!ctx_ptr || !ctx_ptr->ctrl) return;
+      ControlCommand cmd{ControlCommand::Kind::kRebuildScreens};
+      ctx_ptr->ctrl->PostCommand(cmd);
+      // Wake the main task so it drains the queue without waiting for
+      // the 1 s heartbeat tick.
       if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };
     // Mirror freshly-PATCHed DND fields into the singleton so the LED

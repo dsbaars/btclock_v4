@@ -159,6 +159,14 @@ struct ControlCommand {
     // this kind. If two requests race, the later payload wins — matches
     // the old EPDManager::setContent which overwrites unconditionally.
     kShowCustom,
+    // Settings PATCH that affects the screen rotation plan landed
+    // (actCurrencies / screenOrder / screen<id>Visible). The HTTP task
+    // posts this; the main task drains it and re-applies the plan to
+    // ScreenManager + BtclockDataSource by re-reading NVS. Keeps all
+    // ScreenManager mutations single-threaded — the closure used to
+    // mutate currencies_ directly from the HTTP task and dangling-
+    // referenced an in-flight Render's `current_currency()` ref.
+    kRebuildScreens,
   };
   Kind kind;
   int32_t arg_i = 0;
@@ -449,6 +457,13 @@ class ControlServer {
   // calls this once per event-loop iteration.
   bool TryPopCommand(ControlCommand* out);
 
+  // Push a command onto the main-task queue. Used by HTTP handlers
+  // internally and by settings hooks (init_control_api.cpp) so cross-
+  // task mutations of ScreenManager / data sources stay on the main
+  // task. Returns false if the queue was full; caller may retry or
+  // drop. Safe to call from any task.
+  bool PostCommand(const ControlCommand& cmd);
+
   // Consume the most-recently-posted custom-cells payload that goes
   // with a `kShowCustom` command. Returns true iff a payload was
   // waiting; `*out` gets one string per panel (caller-sized view of the
@@ -576,7 +591,6 @@ class ControlServer {
   esp_err_t HandleCoredumpDelete(httpd_req_t* req);
   esp_err_t HandleStatic(httpd_req_t* req);
 
-  bool PostCommand(const ControlCommand& cmd);
   static void ApplyCors(httpd_req_t* req);
 
   // Render the current /api/status JSON as a string. Single source of
