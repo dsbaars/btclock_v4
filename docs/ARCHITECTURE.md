@@ -850,6 +850,41 @@ stateDiagram-v2
 
 ---
 
+## 16. Flash partition layout
+
+The three [`partitions_*.csv`](../) files (`partitions_4mb.csv`,
+`partitions_8mb.csv`, `partitions_16mb.csv`) carve flash into the
+same six regions across every variant — only the sizes differ. NVS
+sits at the conventional `0x9000` offset; both OTA app slots are
+64 KiB-aligned so MMU-page mapping is clean; LittleFS holds the WebUI
+bundle; the coredump partition catches panic backtraces. On Rev A the
+coredump partition exists but capture is disabled at the sdkconfig
+level (`CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=n` in
+[`sdkconfig.defaults.rev_a`](../sdkconfig.defaults.rev_a)) — the 4 MB
+flash leaves the app partition with only ~3% headroom and the
+~14 KiB capture path eats most of it. Rev B and V8 keep capture on
+and serve the dump over `GET /api/coredump`.
+
+| Partition | Type / subtype | Rev A (4 MB) | Rev B (8 MB) | V8 (16 MB) | Notes |
+|---|---|---|---|---|---|
+| `nvs` | data / nvs | `0x9000`, 20 KiB | `0x9000`, 20 KiB | `0x9000`, 20 KiB | Settings + WiFi creds + Nostr keys + LED prefs |
+| `otadata` | data / ota | `0xe000`, 8 KiB | `0xe000`, 8 KiB | `0xe000`, 8 KiB | Boot-slot pointer for `app_update` |
+| `app0` | app / ota_0 | `0x10000`, 1.6875 MiB | `0x10000`, 3.4375 MiB | `0x10000`, 6.9375 MiB | Active firmware (per OTA) |
+| `app1` | app / ota_1 | `0x1C0000`, 1.6875 MiB | `0x380000`, 3.4375 MiB | `0x700000`, 6.9375 MiB | OTA staging slot |
+| `storage` | data / littlefs | `0x370000`, 412 KiB | `0x6F0000`, 820 KiB | `0xDF0000`, 2 MiB | WebUI bundle + per-pool logo cache |
+| `coredump` | data / coredump | `0x3D7000`, 64 KiB (unused) | `0x7BD000`, 64 KiB | `0xFF0000`, 64 KiB | ELF panic dump; pull via `GET /api/coredump`, clear via `DELETE /api/coredump` |
+| _unused tail_ | — | `0x3E7000`, ~100 KiB | `0x7CD000`, ~200 KiB | — | Reserved for future partition growth without re-flashing the table |
+
+Flash sizes are 4 MiB on Rev A (Lolin S3 Mini, no PSRAM constraint
+beyond the chip's 2 MiB), 8 MiB on Rev B (ESP32-S3-WROOM-1-N8R2,
+2 MiB PSRAM), and 16 MiB on V8 (8 MiB PSRAM). The OTA-able image
+(`btclock_v4.bin`) lives in whichever app slot `otadata` points to;
+`/upload/firmware` and the auto-update path
+([components/ota/](../components/ota/)) write to the inactive slot,
+flip `otadata`, and reboot.
+
+---
+
 ## File index
 
 - Boot: [main/main.cpp](../main/main.cpp), [main/app/boot/](../main/app/boot/)
