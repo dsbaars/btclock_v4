@@ -167,6 +167,11 @@ struct ControlCommand {
     // mutate currencies_ directly from the HTTP task and dangling-
     // referenced an in-flight Render's `current_currency()` ref.
     kRebuildScreens,
+    // blockFeeDec PATCH landed. arg_i carries the new bool (0/1).
+    // Routed through main for the same reason as kRebuildScreens —
+    // BtclockDataSource::SetBlockFeeDec does WS Stop+Start, which is
+    // a cross-task subsystem teardown best owned by the main task.
+    kSetBlockFeeDec,
   };
   Kind kind;
   int32_t arg_i = 0;

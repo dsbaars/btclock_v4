@@ -180,9 +180,16 @@ void InitControlApi(AppCtx& ctx) {
     // (2-decimal) live. Stop+Start on the underlying WS so the relay
     // drops the previous topic; without that the client double-receives
     // and HandleBinaryFrame would pick whichever frame raced last.
-    BtclockDataSource* ws_for_fee_dec = ctx_ptr->btclock_ws;
-    ccfg.on_block_fee_dec_changed = [ws_for_fee_dec](bool v) {
-      if (ws_for_fee_dec) ws_for_fee_dec->SetBlockFeeDec(v);
+    //
+    // Defer to main via the ControlCommand queue (mirrors
+    // kRebuildScreens — same rationale, BtclockDataSource ownership
+    // belongs to the main task). bd btclock_v4-22e.
+    ccfg.on_block_fee_dec_changed = [ctx_ptr, main_task_for_hooks](bool v) {
+      if (!ctx_ptr || !ctx_ptr->ctrl) return;
+      ControlCommand cmd{ControlCommand::Kind::kSetBlockFeeDec};
+      cmd.arg_i = v ? 1 : 0;
+      ctx_ptr->ctrl->PostCommand(cmd);
+      if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };
     // ledBrightness / disableLeds / ledFlashOnUpd PATCH hooks — same
     // shape as blockFlashColor. Without these, PATCH would update the

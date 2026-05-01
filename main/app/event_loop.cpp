@@ -149,6 +149,14 @@ constexpr const char* kTag = "btclock";
           }
           break;
         }
+        case Kind::kSetBlockFeeDec: {
+          // Mirror of kRebuildScreens for the blockFeeDec PATCH path.
+          // BtclockDataSource::SetBlockFeeDec does Stop+Start on the
+          // WS client; owning that on the main task keeps the data-
+          // source lifecycle single-threaded.
+          if (ctx.btclock_ws) ctx.btclock_ws->SetBlockFeeDec(ccmd.arg_i != 0);
+          break;
+        }
         case Kind::kRebuildScreens: {
           // Settings PATCH that changed actCurrencies / screenOrder /
           // screen<id>Visible. Re-read NVS here (main task) so all
