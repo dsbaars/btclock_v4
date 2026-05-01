@@ -115,9 +115,16 @@ esp_err_t SseServer::HandleEvents(httpd_req_t* req) {
 
   // Spin up the heartbeat task on first connect. Subsequent connects
   // reuse the existing task — it walks `clients_` under the mutex.
+  // Heartbeat is non-load-bearing — broadcast still works without it,
+  // clients just won't get keep-alive pings. Log on failure so the
+  // dropped task is visible in the field, and leave heartbeat_task_
+  // nullptr so the next connect retries the spawn.
   if (heartbeat_task_ == nullptr) {
-    xTaskCreate(&SseServer::HeartbeatTaskTrampoline, "sse_hb", 3072, this,
-                tskIDLE_PRIORITY + 1, &heartbeat_task_);
+    if (xTaskCreate(&SseServer::HeartbeatTaskTrampoline, "sse_hb", 3072, this,
+                    tskIDLE_PRIORITY + 1, &heartbeat_task_) != pdPASS) {
+      ESP_LOGE(kTag, "heartbeat xTaskCreate failed; SSE keep-alive disabled");
+      heartbeat_task_ = nullptr;
+    }
   }
 
   ESP_LOGI(kTag, "client connected, total=%u",

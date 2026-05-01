@@ -92,7 +92,13 @@ esp_err_t BitaxeSource::Start(DataHub& hub) {
   const BaseType_t ok =
       xTaskCreate(&BitaxeSource::TaskTrampoline, "bitaxe", 4 * 1024, this,
                   tskIDLE_PRIORITY + 1, &task_);
-  return (ok == pdPASS) ? ESP_OK : ESP_FAIL;
+  if (ok != pdPASS) {
+    ESP_LOGE(kTag, "xTaskCreate failed; Bitaxe source disabled");
+    task_ = nullptr;
+    hub_ = nullptr;
+    return ESP_FAIL;
+  }
+  return ESP_OK;
 }
 
 esp_err_t BitaxeSource::Stop() {

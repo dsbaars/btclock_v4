@@ -1,7 +1,5 @@
 #include "io/frontlight_controller.hpp"
 
-#include <cassert>
-
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
@@ -42,13 +40,27 @@ void FrontlightController::Start() {
   // Queue depth 8: matches led_controller; deeper buffering is
   // unnecessary because events are coarse (on/off/flash) and duplicates
   // collapse harmlessly in the fader's target.
+  //
+  // On heap exhaustion either step can fail. Production sdkconfig has
+  // assertions silenced, so we must check explicitly: if the queue or
+  // the task can't be created, leave queue_ as nullptr — Post() already
+  // short-circuits on that, so the controller degrades to a no-op
+  // instead of spawning a task that would xQueueReceive(nullptr).
   queue_ = xQueueCreate(8, sizeof(FrontlightCommand));
-  assert(queue_ != nullptr);
+  if (queue_ == nullptr) {
+    ESP_LOGE(kTag, "xQueueCreate failed; frontlight disabled");
+    return;
+  }
   // Boot state: outputs disabled, fader at 0. kOn from main.cpp ramps
   // us up to the configured brightness.
   WriteAllChannels(0);
-  xTaskCreate(&FrontlightController::TaskTrampoline, "frontlight", 3072, this,
-              tskIDLE_PRIORITY + 1, nullptr);
+  if (xTaskCreate(&FrontlightController::TaskTrampoline, "frontlight", 3072,
+                  this, tskIDLE_PRIORITY + 1, nullptr) != pdPASS) {
+    ESP_LOGE(kTag, "xTaskCreate failed; frontlight disabled");
+    vQueueDelete(queue_);
+    queue_ = nullptr;
+    return;
+  }
   ESP_LOGI(kTag, "init: ch=[%u..%u] max_duty=%u",
            static_cast<unsigned>(channel_first_),
            static_cast<unsigned>(channel_first_ + channel_count_ - 1),

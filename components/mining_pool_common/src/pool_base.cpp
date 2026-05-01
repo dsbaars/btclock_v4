@@ -93,7 +93,13 @@ esp_err_t PoolDataSource::Start(DataHub& hub) {
   const BaseType_t ok =
       xTaskCreate(&PoolDataSource::TaskTrampoline, pool_name(), 8 * 1024, this,
                   tskIDLE_PRIORITY + 1, &task_);
-  return (ok == pdPASS) ? ESP_OK : ESP_FAIL;
+  if (ok != pdPASS) {
+    ESP_LOGE(kTag, "%s: xTaskCreate failed; pool source disabled", pool_name());
+    task_ = nullptr;
+    hub_ = nullptr;
+    return ESP_FAIL;
+  }
+  return ESP_OK;
 }
 
 esp_err_t PoolDataSource::Stop() {

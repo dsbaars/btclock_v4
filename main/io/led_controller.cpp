@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cstring>
 #include <functional>
 #include <mutex>
@@ -630,11 +629,25 @@ void InitLeds(gpio_num_t pin, uint32_t count) {
     g_state.pixel_count = count;
   }
   LoadPrefs();
+  // Production sdkconfig silences asserts, so check explicitly. If the
+  // queue or the task can't be created (heap exhaustion), leave g_queue
+  // null — PostLedEffect already short-circuits on that, so the LED
+  // subsystem degrades to a no-op rather than spawning a task that
+  // would xQueueReceive(nullptr).
   g_queue = xQueueCreate(8, sizeof(LedEffect));
-  assert(g_queue != nullptr);
+  if (g_queue == nullptr) {
+    ESP_LOGE(kTag, "xQueueCreate failed; LEDs disabled");
+    return;
+  }
   led_strip_handle_t strip = InitStrip(pin, count);
   g_strip = strip;
-  xTaskCreate(Task, "leds", 4096, strip, tskIDLE_PRIORITY + 1, nullptr);
+  if (xTaskCreate(Task, "leds", 4096, strip, tskIDLE_PRIORITY + 1, nullptr) !=
+      pdPASS) {
+    ESP_LOGE(kTag, "xTaskCreate failed; LEDs disabled");
+    vQueueDelete(g_queue);
+    g_queue = nullptr;
+    return;
+  }
   LedState s;
   {
     std::lock_guard<std::mutex> lk(g_state_mu);

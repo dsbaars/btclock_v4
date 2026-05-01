@@ -1,6 +1,5 @@
 #include "app/boot/init_screen_manager.hpp"
 
-#include <cassert>
 #include <cstdio>
 #include <memory>
 #include <sstream>
@@ -12,6 +11,8 @@
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "buttons.hpp"
+#include "esp_log.h"
+#include "esp_system.h"
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -23,11 +24,23 @@
 #include "settings/schema.hpp"
 
 namespace btclock {
+namespace {
+constexpr const char* kTag = "screen_mgr_init";
+}  // namespace
 
 void InitScreenManager(AppCtx& ctx) {
   ctx.main_task = xTaskGetCurrentTaskHandle();
   ctx.button_q = xQueueCreate(8, sizeof(ButtonInput));
-  assert(ctx.button_q != nullptr);
+  // Production sdkconfig silences asserts, so check explicitly. The
+  // button queue is load-bearing — every screen consumer reads it — so
+  // failure here means the device is non-functional. Reboot rather
+  // than silently spawning consumers that would xQueueReceive(nullptr);
+  // a persistent OOM surfaces as a visible boot loop.
+  if (ctx.button_q == nullptr) {
+    ESP_LOGE(kTag, "xQueueCreate failed for button queue; rebooting");
+    vTaskDelay(pdMS_TO_TICKS(100));  // give the log line time to flush
+    esp_restart();
+  }
 
   // Bind the font-role accessors to the NVS-selected family before the
   // first render so screens that already use fonts.digit()/label()/etc.

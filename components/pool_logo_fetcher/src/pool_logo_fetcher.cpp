@@ -378,6 +378,8 @@ esp_err_t EnqueueFetch(const std::string& pool_name) {
       xTaskCreate(&FetchTaskTrampoline, "pool_logo_fetch", 6 * 1024, ctx.get(),
                   tskIDLE_PRIORITY + 1, &handle);
   if (ok != pdPASS) {
+    ESP_LOGE(kTag, "xTaskCreate failed for '%s'; logo fetch skipped",
+             pool_name.c_str());
     ReleaseSlot(pool_name);
     return ESP_FAIL;
   }
