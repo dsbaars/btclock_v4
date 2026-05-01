@@ -46,8 +46,23 @@ CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
 
 # GDB stub costs ~6 KiB of flash and we have no in-field debugger.
-# Panic handler still reboots; coredump-to-flash is already off.
+# Panic handler still reboots; field crashes are captured via the
+# coredump partition below and pulled off the device with
+# `GET /api/coredump`.
 CONFIG_ESP_GDBSTUB_ENABLED=n
+
+# Capture panic backtraces to the `coredump` partition (carved into
+# all three partitions_*.csv at offset = end_of_storage). Without this
+# a Rev B in the field that panics loses the backtrace forever — the
+# WARN-level serial console only catches it if a developer happens to
+# be tailing USB at the moment of the crash. ELF format lets us decode
+# with `espcoredump.py info_corefile`; CRC32 matches the partition's
+# default checksum. 32 tasks is generous (BTClock runs ~12) and keeps
+# the dump well under the 64 KiB partition.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+CONFIG_ESP_COREDUMP_CHECKSUM_CRC32=y
+CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=32
 
 # IPv6 unused: btclock only talks to IPv4 endpoints (ws.btclock.dev,
 # relay.primal.net, mempool.space, pool APIs) and mDNS works over

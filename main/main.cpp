@@ -31,6 +31,8 @@
 #include "app/boot/init_screen_manager.hpp"
 #include "app/boot/init_storage.hpp"
 #include "app/event_loop.hpp"
+#include "esp_core_dump.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -46,6 +48,21 @@ extern "C" void app_main() {
   // 20 keeps WiFi (23) and esp_timer (22) ahead of us so RF + tick
   // servicing aren't starved.
   vTaskPrioritySet(nullptr, 20);
+
+  // Coredump partition is registered before any subsystem can panic so
+  // a crash during boot is still captured. esp_core_dump_init() is
+  // idempotent and cheap; the log line surfaces a stale dump from the
+  // previous session so a field user can be told to GET /api/coredump
+  // before the next crash overwrites it.
+  esp_core_dump_init();
+  if (esp_core_dump_image_check() == ESP_OK) {
+    size_t addr = 0;
+    size_t size = 0;
+    if (esp_core_dump_image_get(&addr, &size) == ESP_OK) {
+      ESP_LOGE("boot", "coredump from previous run present (%u bytes)",
+               static_cast<unsigned>(size));
+    }
+  }
 
   btclock::InitBootLeds();
 

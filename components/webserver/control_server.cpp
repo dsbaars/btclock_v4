@@ -19,10 +19,12 @@
 #include "control_validators.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_app_desc.h"
+#include "esp_core_dump.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_psram.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -339,7 +341,7 @@ void ControlServer::ApplyCors(httpd_req_t* req) {
   // Tightening this belongs in the same follow-up that adds HTTP Basic auth.
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Methods",
-                     "GET, POST, PATCH, OPTIONS");
+                     "GET, POST, PATCH, DELETE, OPTIONS");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Headers",
                      "Content-Type, Authorization");
 }
@@ -413,6 +415,8 @@ esp_err_t ControlServer::Start() {
   reg("/api/firmware/auto_update", HTTP_POST, TrampolineFirmwareAutoUpdate);
   reg("/upload/firmware", HTTP_POST, TrampolineUploadFirmware);
   reg("/api/factory_reset", HTTP_POST, TrampolineFactoryReset);
+  reg("/api/coredump", HTTP_GET, TrampolineCoredumpGet);
+  reg("/api/coredump", HTTP_DELETE, TrampolineCoredumpDelete);
 
   // Long-lived SSE stream for the WebUI's live-refresh. Registered
   // via SseServer::RegisterRoute so the handler owns its own client
@@ -566,6 +570,12 @@ esp_err_t ControlServer::TrampolineUploadFirmware(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineFactoryReset(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleFactoryReset(req);
+}
+esp_err_t ControlServer::TrampolineCoredumpGet(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleCoredumpGet(req);
+}
+esp_err_t ControlServer::TrampolineCoredumpDelete(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleCoredumpDelete(req);
 }
 
 esp_err_t ControlServer::TrampolineStatic(httpd_req_t* req) {
@@ -872,6 +882,88 @@ esp_err_t ControlServer::HandleFactoryReset(httpd_req_t* req) {
   // The callback doesn't return — PerformFactoryReset() is [[noreturn]].
   // Ret statement is here just to keep the control-flow analyser happy.
   return ESP_OK;
+}
+
+// --- /api/coredump GET + DELETE ------------------------------------
+// Pull the panic backtrace from the previous run off the device. ELF
+// stream so the client can pipe straight into espcoredump.py:
+//   curl http://<ip>/api/coredump > dump.elf
+//   espcoredump.py info_corefile -c dump.elf build-rev-b/btclock_v4.elf
+// 404 when the partition is empty (the common case — most boots are
+// clean). DELETE clears the partition so the next panic isn't ignored
+// because a stale dump is occupying the slot. esp_core_dump_image_get
+// returns the ELF region inside the partition; we read it directly via
+// esp_partition_read so the response stays a contiguous byte stream
+// rather than building it in heap.
+esp_err_t ControlServer::HandleCoredumpGet(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+
+  size_t addr = 0;
+  size_t size = 0;
+  if (esp_core_dump_image_check() != ESP_OK ||
+      esp_core_dump_image_get(&addr, &size) != ESP_OK || size == 0) {
+    httpd_resp_set_status(req, "404 Not Found");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"no coredump present\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+
+  const esp_partition_t* part = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, nullptr);
+  if (!part) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "coredump partition missing");
+    return ESP_FAIL;
+  }
+
+  httpd_resp_set_type(req, "application/octet-stream");
+  httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  httpd_resp_set_hdr(req, "Content-Disposition",
+                     "attachment; filename=\"coredump.elf\"");
+
+  // 1536 B chunks match the static-file streamer above — same stack
+  // budget on the httpd worker. Offset returned by image_get is
+  // partition-absolute; subtract part->address to get the partition-
+  // relative offset esp_partition_read expects.
+  constexpr size_t kChunk = 1536;
+  uint8_t buf[kChunk];
+  size_t remaining = size;
+  size_t offset = addr - part->address;
+  while (remaining > 0) {
+    const size_t n = remaining < kChunk ? remaining : kChunk;
+    const esp_err_t rc = esp_partition_read(part, offset, buf, n);
+    if (rc != ESP_OK) {
+      ESP_LOGE(kTag, "coredump partition_read failed: %s", esp_err_to_name(rc));
+      return ESP_FAIL;
+    }
+    if (httpd_resp_send_chunk(req, reinterpret_cast<const char*>(buf), n) !=
+        ESP_OK) {
+      // Client gone — return ESP_FAIL so esp_http_server skips its own
+      // response.
+      return ESP_FAIL;
+    }
+    offset += n;
+    remaining -= n;
+  }
+  return httpd_resp_send_chunk(req, nullptr, 0);
+}
+
+esp_err_t ControlServer::HandleCoredumpDelete(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  const esp_err_t rc = esp_core_dump_image_erase();
+  // ESP_ERR_NOT_FOUND means the partition was already empty — treat as
+  // idempotent success so the WebUI's "Clear" button doesn't error on
+  // the first click after a clean boot.
+  if (rc != ESP_OK && rc != ESP_ERR_NOT_FOUND) {
+    ESP_LOGE(kTag, "coredump erase failed: %s", esp_err_to_name(rc));
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "erase failed");
+    return ESP_FAIL;
+  }
+  httpd_resp_set_status(req, "204 No Content");
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  return httpd_resp_send(req, nullptr, 0);
 }
 
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {

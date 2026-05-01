@@ -63,6 +63,24 @@ curl -X POST -H "Content-Type: application/octet-stream" \
 
 OTA respects `httpAuthEnabled` — pass `-u user:pass` when auth is on.
 
+## Crash diagnostics (coredump)
+
+Rev B and V8 capture panic backtraces to a dedicated coredump partition
+(64 KiB at the end of flash). When a crash happens, the next boot logs
+`coredump from previous run present (N bytes)`. Pull it off the device
+as an ELF and decode with `espcoredump.py`:
+
+```bash
+curl -o dump.elf http://<IP>/api/coredump        # 404 if no dump
+espcoredump.py info_corefile -c dump.elf build-rev-b/btclock_v4.elf
+curl -X DELETE http://<IP>/api/coredump          # clear after decode
+```
+
+Both endpoints respect `httpAuthEnabled` — add `-u user:pass` when auth
+is on. Rev A disables coredump capture (the 4 MB flash leaves no
+headroom in the app partition); panics on Rev A still print to serial
+but aren't persisted across reboots.
+
 ## WebUI (LittleFS image)
 
 The WebUI ships as a separate LittleFS partition. Source assets live

@@ -2,3 +2,13 @@
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_4mb.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions_4mb.csv"
+
+# Coredump capture is on by default in sdkconfig.defaults — disable it on
+# Rev A. The 4 MB flash leaves the app partition with ~50 KiB headroom and
+# espcoredump's capture path eats ~14 KiB of that. Rev B and V8 have
+# multiple MiB of slack so they keep the feature; Rev A panics still
+# print to serial like before. The /api/coredump endpoint correctly
+# returns 404 on Rev A because esp_core_dump_image_check fails when
+# capture is disabled, so the WebUI can stay one-size-fits-all.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=n
+CONFIG_ESP_COREDUMP_DATA_FORMAT_NONE=y
