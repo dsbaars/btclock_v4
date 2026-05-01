@@ -172,6 +172,16 @@ struct ControlCommand {
     // BtclockDataSource::SetBlockFeeDec does WS Stop+Start, which is
     // a cross-task subsystem teardown best owned by the main task.
     kSetBlockFeeDec,
+    // fontName PATCH landed. Main task re-reads NVS and rebinds
+    // AppFonts roles, making the four-pointer swap atomic with
+    // respect to any in-flight Render. Cosmetic-only fix
+    // (mid-frame ptr races on ESP32-S3 are torn-write-free) but
+    // keeps every cross-task settings application on one path.
+    kSetFont,
+    // tzString PATCH landed. Main task re-reads NVS and calls
+    // setenv("TZ",...) + tzset() so libc tz globals don't race
+    // localtime_r reads from the render path.
+    kSetTimezone,
   };
   Kind kind;
   int32_t arg_i = 0;

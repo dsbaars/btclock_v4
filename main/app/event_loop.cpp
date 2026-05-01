@@ -20,6 +20,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -32,6 +33,7 @@
 #include "screens/screens.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
+#include "timezone/timezone.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -155,6 +157,30 @@ constexpr const char* kTag = "btclock";
           // WS client; owning that on the main task keeps the data-
           // source lifecycle single-threaded.
           if (ctx.btclock_ws) ctx.btclock_ws->SetBlockFeeDec(ccmd.arg_i != 0);
+          break;
+        }
+        case Kind::kSetFont: {
+          // Re-read fontName from NVS and rebind AppFonts roles on the
+          // main task so the four-pointer swap can't tear a render
+          // frame across two families.
+          Prefs settings(prefs::kSettingsNs);
+          const std::string id =
+              btclock::settings::ReadString(settings, prefs::kFontName);
+          ctx.fonts.SetFamily(ParseFontFamily(id));
+          sm.MarkDirty();
+          re_render = true;
+          break;
+        }
+        case Kind::kSetTimezone: {
+          // Re-read tzString from NVS and apply via setenv+tzset on the
+          // main task. localtime_r reads tz globals from the same task
+          // each Render; deferring here closes the libc-internal race.
+          Prefs settings(prefs::kSettingsNs);
+          const std::string zone =
+              btclock::settings::ReadString(settings, prefs::kTzString);
+          if (!zone.empty()) (void)timezone::SetTimezoneByName(zone.c_str());
+          sm.MarkDirty();
+          re_render = true;
           break;
         }
         case Kind::kRebuildScreens: {

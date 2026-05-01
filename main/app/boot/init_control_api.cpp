@@ -126,9 +126,16 @@ void InitControlApi(AppCtx& ctx) {
     // follows the new zone without reboot. Old firmware applied the zone
     // inline inside the PATCH handler; we keep the split so the webserver
     // component stays independent of the timezone component.
-    ccfg.on_tz_changed = [](const std::string& zone) {
+    //
+    // Deferred to main via the ControlCommand queue so tzset() can't
+    // race localtime_r() on the render path (picolibc has no internal
+    // lock between them). bd btclock_v4-flb.
+    ccfg.on_tz_changed = [ctx_ptr](const std::string& zone) {
+      if (!ctx_ptr || !ctx_ptr->ctrl) return;
       if (zone.empty()) return;
-      (void)timezone::SetTimezoneByName(zone.c_str());
+      ControlCommand cmd{ControlCommand::Kind::kSetTimezone};
+      ctx_ptr->ctrl->PostCommand(cmd);
+      if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
     // invertedColor PATCH hook — flip the EPD polarity flag + mark the
     // screen dirty + kick the main task so the next frame paints a
@@ -148,11 +155,15 @@ void InitControlApi(AppCtx& ctx) {
     };
     // fontName PATCH hook — rebind the AppFonts role accessors and mark
     // the screen dirty so the next render paints with the new family.
-    // AppFonts lives on the stack-owned AppCtx; capture by ctx_ptr so
-    // the lambda's lifetime matches the ControlServer's.
+    // Deferred to main via the ControlCommand queue so the four-pointer
+    // role swap inside AppFonts::SetFamily is atomic with respect to
+    // any in-flight Render (avoids a single-frame mixed-family glyph
+    // mismatch). bd btclock_v4-5az.
     ccfg.on_font_changed = [ctx_ptr](const std::string& id) {
-      ctx_ptr->fonts.SetFamily(ParseFontFamily(id));
-      if (ctx_ptr->sm) ctx_ptr->sm->MarkDirty();
+      (void)id;  // re-read from NVS in the main-task drain
+      if (!ctx_ptr || !ctx_ptr->ctrl) return;
+      ControlCommand cmd{ControlCommand::Kind::kSetFont};
+      ctx_ptr->ctrl->PostCommand(cmd);
       if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
     // satsVariant PATCH hook — rebind ScreenManager's glyph index so
