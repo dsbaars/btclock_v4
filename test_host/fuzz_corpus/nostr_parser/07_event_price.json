@@ -1,0 +1,1 @@
+["EVENT","sub1",{"id":"abc","pubkey":"deadbeef","created_at":1745323200,"kind":30078,"tags":[["d","price:USD"],["source","priceAggregate"],["block","870123"]],"content":"64321.50","sig":"00"}]

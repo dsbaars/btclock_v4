@@ -190,3 +190,55 @@ target_compile_definitions(btclock_host_tests PRIVATE
 
 enable_testing()
 add_test(NAME btclock_host_tests COMMAND btclock_host_tests)
+
+# --- libFuzzer harness for the Nostr parser --------------------------
+# Optional fuzz target. Off by default so `cmake -S test_host -B
+# build-host` keeps producing the doctest binary unchanged. Turning
+# this on requires a clang toolchain — libFuzzer is clang-only — and
+# adds a separate executable that loops `LLVMFuzzerTestOneInput`.
+#
+#   cmake -S test_host -B build-fuzz -DBTCLOCK_FUZZ=ON \
+#         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+#   cmake --build build-fuzz
+#   # Run with a workdir that's NOT the seed dir — libFuzzer writes
+#   # every interesting discovery into the FIRST corpus dir on the
+#   # command line, so pointing it at the version-controlled seed dir
+#   # would pollute the tree with thousands of hash-named files.
+#   mkdir -p build-fuzz/corpus
+#   ./build-fuzz/nostr_parser_fuzzer build-fuzz/corpus \
+#       test_host/fuzz_corpus/nostr_parser/ \
+#       -max_total_time=300
+#
+# (Apple clang ships without libFuzzer; on macOS use Homebrew LLVM —
+# CC=/opt/homebrew/opt/llvm/bin/clang.)
+#
+# Sanitizers (-fsanitize=fuzzer,address,undefined) are baked into the
+# fuzzer target only, so the regular host-test build stays free of
+# sanitizer overhead. ASan + UBSan together catch the practical bug
+# classes a hand-rolled JSON walker is prone to: OOB reads on truncated
+# escapes, signed overflow on number parsing, use-after-free on string
+# returns. A run that exits 0 after `-max_total_time` means "no findings
+# in this many seconds"; any crash leaves a `crash-<sha>` reproducer in
+# CWD that gets seeded into the corpus on next run.
+option(BTCLOCK_FUZZ "Build libFuzzer harness for the Nostr parser (clang only)" OFF)
+if(BTCLOCK_FUZZ)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+       AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+        message(FATAL_ERROR
+            "BTCLOCK_FUZZ=ON requires clang/clang++ "
+            "(libFuzzer is not implemented in gcc).")
+    endif()
+    add_executable(nostr_parser_fuzzer
+        fuzz_nostr_parser.cpp
+        ../components/nostr/src/parser.cpp
+    )
+    target_include_directories(nostr_parser_fuzzer PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/nostr/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_core/include
+    )
+    target_compile_options(nostr_parser_fuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer
+        -O1 -g)
+    target_link_options(nostr_parser_fuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+endif()
