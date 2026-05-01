@@ -68,6 +68,17 @@ to localise the reason. The known vocabulary today:
 | `currency:not_string` | `actCurrencies[]` entry is not a string. | `actCurrencies[]` validator. |
 | `dnd:range` | `startHour`/`startMinute`/`endHour`/`endMinute` outside `[0,23]`/`[0,59]`. | DND nested-object validator. |
 
+Every `kString` field is additionally subject to two generic checks
+applied before the per-key validators above (commit `0ab174e`):
+
+- **Length cap** — values longer than 256 bytes are rejected. Per-field
+  tighter caps can be set via `FieldSpec.max_value`; the 256-byte
+  default kicks in when none is specified. Longer-than-cap PATCHes
+  surface as `<key>:bad_type`.
+- **Control-byte rejection** — bytes < `0x20` or `== 0x7F` are
+  refused. UTF-8 high-bit sequences (e.g. `é`) pass through. Also
+  surfaces as `<key>:bad_type`.
+
 The PATCH `200` body is empty when no `boot_only` field was touched,
 or `{"rebootRequired": true}` when at least one was. The WebUI uses
 this to surface a "restart required" banner without firing a reboot

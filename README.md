@@ -164,6 +164,31 @@ ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=print_stacktrace=1 \
 macOS ASan does not implement leak detection — drop `detect_leaks=1`
 locally on macOS; CI runs Linux where leaks are flagged.
 
+## Fuzzing
+
+libFuzzer harnesses cover the hand-rolled parsers most exposed to
+external bytes — the NIP-01 envelope parser
+(`components/nostr/src/parser.cpp`) and the HTTP query-string decoder
+(`components/webserver/url_decode.cpp`). Off by default; clang-only.
+Apple clang ships without libFuzzer, so on macOS use Homebrew LLVM:
+
+```bash
+cmake -S test_host -B build-fuzz -DBTCLOCK_FUZZ=ON \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+  -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++
+cmake --build build-fuzz
+mkdir -p build-fuzz/url_decode_workdir
+./build-fuzz/url_decode_fuzzer build-fuzz/url_decode_workdir \
+  test_host/fuzz_corpus/url_decode/ -max_total_time=300
+```
+
+Run with a workdir that is **not** the seed-corpus directory —
+libFuzzer auto-saves discoveries into the first positional arg, and
+pointing it at the version-controlled seed dir would pollute the
+tree with thousands of hash-named files. Replace `url_decode_fuzzer`
++ `url_decode/` with `nostr_parser_fuzzer` + `nostr_parser/` to fuzz
+the Nostr parser instead.
+
 ## Coverage
 
 Optional gcov instrumentation produces an HTML coverage report. CI
@@ -200,11 +225,14 @@ gcc and clang.
   PR; also runs an ASan + UBSan build (gating) and a gcov coverage
   build (informational, uploads HTML report as an artifact).
 - `lint.yaml` — clang-format check (gating) + clang-tidy (advisory).
-- `release.yaml` — tag-triggered (`v*`); gates on host tests, builds the
-  WebUI once, packs per-size LittleFS images, then matrix-builds firmware
-  for `rev-a`, `rev-a-29`, `rev-b`, `v8` and attaches the flat per-variant
-  `btclock_<variant>_ota.bin` (+ `.sha256`) and shared support binaries
-  to the Forgejo release. CI currently pins `espressif/idf:v6.0.1`.
+- `release.yaml` — tag-triggered (`[0-9]*`); gates on host tests,
+  builds the WebUI once, packs per-size LittleFS images, then
+  matrix-builds firmware for `rev-a`, `rev-a-29`, `rev-b`, `v8` and
+  attaches the flat per-variant `btclock_<variant>_ota.bin`
+  (+ `.sha256`), shared support binaries, and a top-level
+  `manifest.json` (per-variant board / panel / firmware SHA / WebUI
+  submodule SHA / IDF version / sha256s) to the Forgejo release. CI
+  currently pins `espressif/idf:v6.0.1`.
 
 ## Documentation
 

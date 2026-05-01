@@ -202,7 +202,10 @@ Deutsch:
   deliberate OTA reboot as a crash.
 - **Sensors** — memory free, WiFi signal strength (linear -100 dBm
   → 0 %, -50 dBm → 100 %, clamped outside), ambient lux (Rev B
-  only), uptime.
+  only), uptime, **queue drops** (per-task event-send failure
+  counters: `buttons` / `led` / `frontlight`; monotonic since boot;
+  growing values point to a wedged consumer task — `frontlight`
+  always reads 0 on Rev A, which has no frontlight hardware).
 - **BTClock data-source connection** — green when the configured data
   source has produced a fresh tick recently.
 - **LED indicators** — read-only colour swatches that mirror the live
@@ -1061,6 +1064,14 @@ curl -X PATCH -H 'Content-Type: application/json' \
 
 # Live SSE event stream (status, screen rotations, lights, DND, …)
 curl -N http://btclock-xxxxxx.local/events
+
+# Pull the panic backtrace from the previous run (Rev B / V8 only;
+# 404 if there isn't one). Decodes with espcoredump.py:
+curl -o dump.elf http://btclock-xxxxxx.local/api/coredump
+espcoredump.py info_corefile -c dump.elf build-rev-b/btclock_v4.elf
+
+# Clear the coredump partition once you've decoded it
+curl -X DELETE http://btclock-xxxxxx.local/api/coredump
 ```
 
 When `httpAuthEnabled=true` add `-u user:pass` to every `/api/*` call.
