@@ -306,10 +306,40 @@ namespace {
 // if the JSON value's type didn't match. Caller is expected to decide
 // whether a type mismatch is "silently ignored" (matches old firmware
 // — unknown/mistyped keys are skipped rather than rejected).
+// Generic upper bound on PATCH-accepted string values. Defense against a
+// caller (compromised WebUI, manual curl, attacker on LAN) that PATCHes
+// a multi-KB blob into a string field — the value would otherwise be
+// committed to NVS and on next boot reach the renderer / mDNS /
+// websocket subscriber unbounded. 256 bytes covers every realistic
+// user-facing field (longest legitimate value is a payout-address
+// `miningPoolUser` at ~90 chars; URLs cap around 128). Per-field
+// overrides via FieldSpec.max_value get a chance first; this is the
+// fallback for fields the schema didn't pin.
+constexpr std::size_t kDefaultStringMaxLen = 256;
+
+// Reject bytes that would render as garbage glyphs or break wire
+// formatters. NUL is impossible (cJSON-decoded strings are NUL-
+// terminated), but other C0 controls (0x01..0x1F) and DEL (0x7F) appear
+// when a binary blob slips through Content-Type sniffing or when NVS
+// gets bit-flipped. High bits (0x80..0xFF) ARE allowed — UTF-8 codepoints
+// for non-ASCII characters use them and the renderer falls back to a
+// glyph-not-found symbol per byte rather than crashing.
+bool HasControlBytes(const char* s) {
+  for (; *s; ++s) {
+    const unsigned char c = static_cast<unsigned char>(*s);
+    if (c < 0x20 || c == 0x7F) return true;
+  }
+  return false;
+}
+
 bool ApplyScalar(const FieldSpec& f, const cJSON* v, PrefsWriter& writer) {
   switch (f.kind) {
     case FieldKind::kString: {
       if (!cJSON_IsString(v) || !v->valuestring) return false;
+      const std::size_t cap =
+          f.max_value > 0 ? f.max_value : kDefaultStringMaxLen;
+      if (std::strlen(v->valuestring) > cap) return false;
+      if (HasControlBytes(v->valuestring)) return false;
       writer.SetString(f.key.data(), v->valuestring);
       return true;
     }

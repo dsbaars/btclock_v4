@@ -1601,3 +1601,63 @@ TEST_CASE("BuildRotationSequence expands per-currency screens for new count") {
       "20", [](int) { return true; }, 3);
   CHECK(seq3.size() == 3u);
 }
+
+// --- String length / charset hardening (bd btclock_v4-25q) -----------
+//
+// PATCH writes go to NVS and on next boot reach the renderer / mDNS /
+// websocket subscriber. Without a length cap an attacker (or a buggy
+// WebUI release) could PATCH a multi-KB blob into a kString field; a
+// control-character byte would render as a glyph-not-found symbol per
+// byte across every panel. The defense is at write time: ApplyScalar
+// rejects oversized values and any payload containing C0 controls / DEL.
+
+TEST_CASE("PATCH rejects kString value over the 256-byte default cap") {
+  FakePrefs prefs;
+  std::string oversized(257, 'x');
+  const std::string body = "{\"hostnamePrefix\":\"" + oversized + "\"}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "hostnamePrefix:bad_type");
+  // NVS must be untouched — the validator has to reject before SetString.
+  CHECK(prefs.str_.count("hostnamePrefix") == 0);
+}
+
+TEST_CASE("PATCH accepts kString value at exactly the 256-byte default cap") {
+  FakePrefs prefs;
+  const std::string at_limit(256, 'a');
+  const std::string body = "{\"hostnamePrefix\":\"" + at_limit + "\"}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["hostnamePrefix"] == at_limit);
+}
+
+TEST_CASE("PATCH rejects kString containing C0 control characters") {
+  FakePrefs prefs;
+  // Embed a literal newline (\n = 0x0A) — the JSON spec allows it as an
+  // escape, and cJSON decodes it into the actual byte.
+  auto res = btclock::settings::ApplyPatch(
+      "{\"hostnamePrefix\":\"hello\\nworld\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "hostnamePrefix:bad_type");
+  CHECK(prefs.str_.count("hostnamePrefix") == 0);
+}
+
+TEST_CASE("PATCH rejects kString with DEL (0x7F) byte") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"hostnamePrefix\":\"good\\u007fbad\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(prefs.str_.count("hostnamePrefix") == 0);
+}
+
+TEST_CASE("PATCH accepts kString with high-bit UTF-8 bytes (non-ASCII)") {
+  FakePrefs prefs;
+  // "café" — 'é' is 0xC3 0xA9 in UTF-8. High bits are allowed; the
+  // renderer's font-fallback path handles glyph absence per character.
+  auto res = btclock::settings::ApplyPatch(
+      "{\"hostnamePrefix\":\"caf\xc3\xa9\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["hostnamePrefix"] == "caf\xc3\xa9");
+}
