@@ -109,7 +109,16 @@ std::string FormatNumberWithSuffix(uint64_t num, int num_characters,
   }
 
   int len;
-  std::string mow_as_string = std::to_string(num_d);
+  // gcc 15's libstdc++ implements std::to_string(double) on top of
+  // std::to_chars<double>, which drags ~122 KiB of Ryu/Grisu rodata
+  // tables into the link. We only need a fixed-format decimal string
+  // here (the slicing below truncates at dot+N). Match what gcc 14's
+  // to_string(double) emitted internally — vsnprintf("%.6f", v) — so
+  // the visible output stays consistent with the firmware shipped
+  // before the toolchain bump.
+  char mow_buf[32];
+  std::snprintf(mow_buf, sizeof(mow_buf), "%.6f", num_d);
+  std::string mow_as_string = mow_buf;
   if (mow_mode) {
     // MOW truncates (never rounds) to preserve the at-time value.
     const std::size_t dot = mow_as_string.find('.');
