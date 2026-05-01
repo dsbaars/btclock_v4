@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "queue_metrics.hpp"
 
 namespace btclock {
 namespace {
@@ -13,6 +14,15 @@ constexpr const char* kTag = "frontlight";
 
 int64_t MsNow() {
   return esp_timer_get_time() / 1000;
+}
+
+// Send-or-record helper. Every queue send below is non-blocking (we'd
+// rather drop than stall the caller — see Post()'s WHY); a wedged
+// task is then visible via /api/system_status's queueDrops field.
+void SendOrDrop(QueueHandle_t q, const FrontlightCommand& cmd) {
+  if (xQueueSend(q, &cmd, 0) != pdTRUE) {
+    queue_metrics::RecordDrop(queue_metrics::Queue::kFrontlight);
+  }
 }
 
 }  // namespace
@@ -77,10 +87,10 @@ void FrontlightController::Post(FrontlightCommand cmd) {
   // disable lifts the ambient loop can resume on the next sample.
   if (disabled_) {
     if (cmd.event == FrontlightEvent::kOff) {
-      xQueueSend(queue_, &cmd, 0);
+      SendOrDrop(queue_, cmd);
     } else {
       const FrontlightCommand off{FrontlightEvent::kAmbientOff, 0};
-      xQueueSend(queue_, &off, 0);
+      SendOrDrop(queue_, off);
     }
     return;
   }
@@ -113,14 +123,14 @@ void FrontlightController::Post(FrontlightCommand cmd) {
     // the user-off latch, so when DND lifts the ambient loop can
     // resume control on the next lux sample.
     if (cmd.event == FrontlightEvent::kOff) {
-      xQueueSend(queue_, &cmd, 0);
+      SendOrDrop(queue_, cmd);
     } else {
       const FrontlightCommand off{FrontlightEvent::kAmbientOff, 0};
-      xQueueSend(queue_, &off, 0);
+      SendOrDrop(queue_, off);
     }
     return;
   }
-  xQueueSend(queue_, &cmd, 0);
+  SendOrDrop(queue_, cmd);
 }
 
 // --- Runtime config forwarders ---------------------------------------

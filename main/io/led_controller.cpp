@@ -16,6 +16,7 @@
 #include "io/led_prefs.hpp"
 #include "led_strip.h"
 #include "prefs.hpp"
+#include "queue_metrics.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 
@@ -670,7 +671,9 @@ void PostLedEffect(LedEffect ev) {
   // by a burst while DND is armed. kSetIdle is always allowed so the
   // strip can be forcibly cleared / repainted.
   if (ev != LedEffect::kSetIdle && DndSuppressed()) return;
-  xQueueSend(g_queue, &ev, 0);
+  if (xQueueSend(g_queue, &ev, 0) != pdTRUE) {
+    queue_metrics::RecordDrop(queue_metrics::Queue::kLed);
+  }
 }
 
 // --- State + prefs accessors (called from HTTP task) ---------------

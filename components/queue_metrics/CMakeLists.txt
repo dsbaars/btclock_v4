@@ -1,6 +1,6 @@
 idf_component_register(
-    SRCS "buttons.cpp"
+    SRCS "src/queue_metrics.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES mcp23017 queue_metrics
 )
+
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

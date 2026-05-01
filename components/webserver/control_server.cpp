@@ -38,6 +38,7 @@
 #include "ota_manager.hpp"
 #include "ota_upload_bounds.hpp"
 #include "pool_logo_fetcher/pool_logo_fetcher.hpp"
+#include "queue_metrics.hpp"
 #include "settings/api.hpp"
 #include "settings/build_time.hpp"
 #include "settings/nvs_store.hpp"
@@ -799,6 +800,23 @@ esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
   int8_t tx = 0;
   esp_wifi_get_max_tx_power(&tx);
   cJSON_AddNumberToObject(root, "txPower", tx);
+
+  // Per-queue drop counters. Monotonic since boot. Non-zero values
+  // indicate a wedged consumer (or a sustained burst that exceeded
+  // the queue depth) — useful for triaging "buttons feel
+  // unresponsive" / "frontlight stuck" reports without serial access.
+  cJSON* drops = cJSON_AddObjectToObject(root, "queueDrops");
+  if (drops) {
+    cJSON_AddNumberToObject(drops, "buttons",
+                            static_cast<double>(queue_metrics::GetDrops(
+                                queue_metrics::Queue::kButtons)));
+    cJSON_AddNumberToObject(drops, "led",
+                            static_cast<double>(queue_metrics::GetDrops(
+                                queue_metrics::Queue::kLed)));
+    cJSON_AddNumberToObject(drops, "frontlight",
+                            static_cast<double>(queue_metrics::GetDrops(
+                                queue_metrics::Queue::kFrontlight)));
+  }
 
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);

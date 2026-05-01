@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "queue_metrics.hpp"
 
 namespace btclock {
 namespace {
@@ -121,8 +122,12 @@ void ButtonReader::Run() {
             const ButtonInput ev{static_cast<ButtonId>(logical),
                                  ButtonEvent::kClick};
             // Non-blocking: we'd rather drop an event than stall the
-            // poll loop and push all other buttons off-schedule.
-            (void)xQueueSend(queue_, &ev, 0);
+            // poll loop and push all other buttons off-schedule. Bump
+            // the drop counter so a wedged consumer is visible via
+            // /api/system_status.
+            if (xQueueSend(queue_, &ev, 0) != pdTRUE) {
+              queue_metrics::RecordDrop(queue_metrics::Queue::kButtons);
+            }
           }
           s.press_ticks = 0;
         }
@@ -139,7 +144,9 @@ void ButtonReader::Run() {
           const uint8_t logical = inverted_ ? i : (kNumButtons - 1 - i);
           const ButtonInput ev{static_cast<ButtonId>(logical),
                                ButtonEvent::kLongPress};
-          (void)xQueueSend(queue_, &ev, 0);
+          if (xQueueSend(queue_, &ev, 0) != pdTRUE) {
+            queue_metrics::RecordDrop(queue_metrics::Queue::kButtons);
+          }
         }
       }
     }
