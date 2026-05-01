@@ -220,7 +220,7 @@ add_test(NAME btclock_host_tests COMMAND btclock_host_tests)
 # returns. A run that exits 0 after `-max_total_time` means "no findings
 # in this many seconds"; any crash leaves a `crash-<sha>` reproducer in
 # CWD that gets seeded into the corpus on next run.
-option(BTCLOCK_FUZZ "Build libFuzzer harness for the Nostr parser (clang only)" OFF)
+option(BTCLOCK_FUZZ "Build libFuzzer harnesses (clang only)" OFF)
 if(BTCLOCK_FUZZ)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
        AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
@@ -228,6 +228,13 @@ if(BTCLOCK_FUZZ)
             "BTCLOCK_FUZZ=ON requires clang/clang++ "
             "(libFuzzer is not implemented in gcc).")
     endif()
+
+    # Helper macro: every harness wants the same sanitizer + libFuzzer
+    # link flags, so factor them out to keep the per-target stanzas
+    # to just sources + includes.
+    set(_FUZZ_OPTS -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer
+                   -O1 -g)
+
     add_executable(nostr_parser_fuzzer
         fuzz_nostr_parser.cpp
         ../components/nostr/src/parser.cpp
@@ -236,9 +243,21 @@ if(BTCLOCK_FUZZ)
         ${CMAKE_CURRENT_SOURCE_DIR}/../components/nostr/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../components/data_core/include
     )
-    target_compile_options(nostr_parser_fuzzer PRIVATE
-        -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer
-        -O1 -g)
+    target_compile_options(nostr_parser_fuzzer PRIVATE ${_FUZZ_OPTS})
     target_link_options(nostr_parser_fuzzer PRIVATE
+        -fsanitize=fuzzer,address,undefined)
+
+    # url_decode covers the in-place query-string decoder hit by every
+    # HTTP request that takes a `?key=value` parameter. Tiny TU, big
+    # blast radius — bug here = potential OOB read on every endpoint.
+    add_executable(url_decode_fuzzer
+        fuzz_url_decode.cpp
+        ../components/webserver/url_decode.cpp
+    )
+    target_include_directories(url_decode_fuzzer PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../components/webserver/include
+    )
+    target_compile_options(url_decode_fuzzer PRIVATE ${_FUZZ_OPTS})
+    target_link_options(url_decode_fuzzer PRIVATE
         -fsanitize=fuzzer,address,undefined)
 endif()
