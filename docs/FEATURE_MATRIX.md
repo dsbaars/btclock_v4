@@ -4,7 +4,7 @@ Tracks every user-visible feature of the upstream Arduino/PlatformIO firmware
 (`src/`) against BTClock v4. Use this as the single checklist when deciding
 what to port next.
 
-_Last updated: **2026-04-26**. This doc is hand-maintained — keep in sync when
+_Last updated: **2026-05-02**. This doc is hand-maintained — keep in sync when
 features land._
 
 **Status tokens**
@@ -16,12 +16,36 @@ features land._
 - Missing — no code exists yet.
 - N/A — intentionally dropped (note why).
 
-**State (2026-04-26):**
+**State (2026-05-02):**
 
-Host tests: 729/729 passing (11 114 assertions). REV_A/REV_B/V8 all
+Host tests: 763/763 passing (11 256 assertions). REV_A/REV_B/V8 all
 build clean on ESP-IDF v6.0.1 and both wired boards (Rev A + Rev B) have
-been flashed + photographed against the latest cycle. Big landings
-since the 2026-04-23 snapshot:
+been flashed + photographed against the 4.0.0-beta.6 tag. Big landings
+since the 2026-04-26 snapshot:
+
+- All settings PATCHes that touch main-task-owned state now go through
+  the ControlCommand queue (`kRebuildScreens`, `kSetBlockFeeDec`,
+  `kSetFont`, `kSetTimezone`). Closed a Rev B heap-corruption crash
+  where `actCurrencies` PATCH dangling-referenced an in-flight Render's
+  `current_currency()`.
+- `satsVariant` shipped end-to-end: schema field (`uint 0..15`), live
+  PATCH hook, 16-glyph contact sheet under
+  [docs/img/fonts/sats_variants.png](img/fonts/sats_variants.png), and
+  a visual picker in the WebUI Settings page.
+- Rotation cursor persists across reboots: `current_slot` is written
+  into a new `rt` NVS namespace on every change, restored on boot,
+  and falls back to `rotation_sequence_[0]` when the saved slot is no
+  longer in the active plan. Previously the device always booted on
+  block-height regardless of `screenOrder`.
+- WebUI Settings page split the rotation list into per-screen and
+  per-currency sections, with a sticky save/cancel action bar.
+- libFuzzer harnesses landed for `components/webserver/url_decode`
+  and `components/nostr/parser` (clang-only, opt-in via
+  `-DBTCLOCK_FUZZ=ON`).
+- CI host-test pipeline gained ccache + Ninja so unchanged-source
+  pushes drop from ~18 min to ~1 min on the sanitize job.
+
+Earlier (since the 2026-04-23 snapshot):
 
 - Mining-pool stack went from "ported, no orchestrator" to live: pool
   selector + WSS-driven catalog, on-demand HTTPS logo fetcher
@@ -60,7 +84,7 @@ Rough per-category parity (counts full + partial as "done"):
 
 | Category | Rows | Done | Parity |
 |---|---:|---:|---:|
-| Display / screens | 15 | 15 | 100% (2 partial: fee-rate decimal/unit glyph, runtime-pushed countdown variant) |
+| Display / screens | 16 | 16 | 100% (2 partial: fee-rate decimal/unit glyph, runtime-pushed countdown variant) |
 | Data sources | 12 | 12 | 100% (2 partial: BTClock WS mempool sub-channels, WASM bindings) |
 | HTTP / Control API | 40 | 40 | 100% |
 | Provisioning / WiFi | 8 | 8 | 100% |
@@ -68,9 +92,9 @@ Rough per-category parity (counts full + partial as "done"):
 | DND / scheduling | 4 | 4 | 100% |
 | OTA / updates | 4 | 3 | 75% (1 N/A: ArduinoOTA push, replaced by `/upload/firmware`) |
 | Peripherals | 6 | 6 | 100% |
-| Persistence (NVS) | 5 | 5 | 100% |
+| Persistence (NVS) | 6 | 6 | 100% |
 | Build / board variants | 7 | 6 | ~86% |
-| **Totals** | **110** | **108** | **~98%** |
+| **Totals** | **112** | **110** | **~98%** |
 
 10 of 11 rotation screens render (block, clock, halving, supply,
 moscow, price, mcap, fee-rate, mining-pool hashrate/earnings, Bitaxe
@@ -100,6 +124,7 @@ Renderers under [`main/screens/`](../main/screens).
 |---|---|---|---|---|
 | Block height (`SCREEN_BLOCK_HEIGHT`) | [screen_handler.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/ui/screen_handler.cpp) | [block_height.cpp](../main/screens/block_height.cpp) | Implemented | — |
 | Sats per currency (`SCREEN_SATS_PER_CURRENCY`, Moscow-time) | screen_handler.cpp | [moscow_time.cpp](../main/screens/moscow_time.cpp) | Implemented (USD + EUR/GBP/JPY) | — |
+| Sats-symbol variant picker (`satsVariant`) | (n/a in v3 — single hardcoded glyph) | Schema field (uint 0..15) + `ScreenManager::SetSatsVariant` runtime hook + WebUI Settings visual picker; renders one of 16 glyphs at U+E000..U+E00F of the SatoshiSymbol font on the moscow-time and nostr-zap screens. Live PATCH via `/api/settings`; contact sheet at [docs/img/fonts/sats_variants.png](img/fonts/sats_variants.png) | Implemented (superset) | — |
 | BTC ticker (`SCREEN_BTC_TICKER`) | screen_handler.cpp | [btc_price.cpp](../main/screens/btc_price.cpp) | Implemented (multi-currency) | — |
 | Time / clock (`SCREEN_TIME`) | screen_handler.cpp | [clock.cpp](../main/screens/clock.cpp) | Implemented (blocks-mode) | — |
 | Halving countdown (`SCREEN_HALVING_COUNTDOWN`) | screen_handler.cpp | [halving.cpp](../main/screens/halving.cpp) | Implemented (blocks-mode + years/days/hours/mins time-mode via `as_blocks` flag) | — |
@@ -109,7 +134,7 @@ Renderers under [`main/screens/`](../main/screens).
 | Mining pool hashrate / earnings (`SCREEN_MINING_POOL_STATS_*`) | screen_handler.cpp | [mining_pool.cpp](../main/screens/mining_pool.cpp) | Implemented (11 pools selectable via `miningPoolName` pref + on-demand LittleFS-cached logo fetcher) | `btclock_v4-5yi` |
 | Bitaxe hashrate / best difficulty (`SCREEN_BITAXE_*`) | screen_handler.cpp | [bitaxe.cpp](../main/screens/bitaxe.cpp) | Implemented (HTTP poll + tail-aware unit glyph) | — |
 | Runtime-pushed custom / text / countdown (`SCREEN_CUSTOM`, `SCREEN_COUNTDOWN`) | screen_handler.cpp, actions.cpp `/api/show/text` | [show_custom.cpp](../main/screens/show_custom.cpp) — /api/show/text + /api/show/custom wired; SCREEN_COUNTDOWN still missing | Partial (countdown variant pending) | — |
-| User-configurable rotation order | [config.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/config.cpp) `rebuildScreenMappings`, default `DEFAULT_SCREEN_ORDER` | [rotation_plan.hpp](../main/app/rotation_plan.hpp) + `screen_manager.cpp` reads `screenOrder` CSV at boot; WebUI submodule ships drag-reorder UI | Implemented | — |
+| User-configurable rotation order | [config.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/config.cpp) `rebuildScreenMappings`, default `DEFAULT_SCREEN_ORDER` | [rotation_plan.hpp](../main/app/rotation_plan.hpp) + `screen_manager.cpp` reads `screenOrder` CSV at boot; WebUI submodule ships drag-reorder UI split into per-screen + per-currency lists with a sticky save-cancel action bar | Implemented | — |
 | Steal focus on new block (auto-flip to block screen) | `DEFAULT_STEAL_FOCUS`, ScreenHandler | [block_event_policy.hpp](../main/app/block_event_policy.hpp) + `screen_manager.cpp` flips to `kBlockHeight` on `ConsumeNewBlock` when `stealFocus` is set; respects override screens | Implemented | — |
 | Full periodic refresh (EPD ghost clear) | `DEFAULT_MINUTES_FULL_REFRESH` | [refresh_policy.hpp](../main/app/refresh_policy.hpp) honoured by `screen_manager.cpp`; respects `refrScrnChange` + `fullRefreshMin` | Implemented | — |
 | Screen visibility toggles | settings.cpp per-screen flags | [settings_api.cpp](../components/settings/settings_api.cpp) — PATCH `screens[].enabled` writes `screen<ID>Visible` NVS flags | Implemented (WebUI-level; runtime consumers pick up on next mapping rebuild) | — |
@@ -257,10 +282,11 @@ brightness / block-flash colour / disable / flash-on-update.
 | Feature | Old firmware | BTClock v4 | Status | Tracking |
 |---|---|---|---|---|
 | NVS wrapper | Arduino `Preferences` | [prefs](../components/prefs) | Implemented | — |
-| `PrefKeys::*` catalog (~80 keys, see [pref_keys.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/pref_keys.hpp)) | pref_keys.hpp | [components/settings/include/settings/pref_keys.hpp](../components/settings/include/settings/pref_keys.hpp) — 76 keys under namespace `settings`, 15-char limit statically enforced | Implemented | — |
+| `PrefKeys::*` catalog (~80 keys, see [pref_keys.hpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/system/pref_keys.hpp)) | pref_keys.hpp | [components/settings/include/settings/pref_keys.hpp](../components/settings/include/settings/pref_keys.hpp) — 77 keys under namespace `settings` (+ `kLastSlot` under the new `rt` namespace), 15-char limit statically enforced via `BTCLOCK_PREF_KEY_ASSERT` | Implemented | — |
 | Settings schema + PATCH validation | settings.cpp `onApiSettingsPatch` | [settings_api.cpp](../components/settings/settings_api.cpp) — typed field table, boot-only classification, range + enum validation | Implemented | — |
 | Screen-order NVS + catalog merge | config.cpp `rebuildScreenMappings`, `DEFAULT_SCREEN_ORDER` | [rotation_plan.hpp](../main/app/rotation_plan.hpp) parses `screenOrder` CSV + merges with `screen<id>Visible` toggles + the active-currency catalog; consumed at boot by `screen_manager.cpp` | Implemented | — |
 | Factory-reset / "erase settings" flow | WiFiManager reset path | [factory_reset.cpp](../components/settings/factory_reset.cpp) — `PerformFactoryReset()` wipes NVS + reboots; reachable via `POST /api/factory_reset` (confirmation-gated) | Implemented | — |
+| Last-shown rotation slot resumes across reboots | (n/a in v3 — always booted on slot 0) | New `rt` NVS namespace (kept off `kSettingsNs`), key `kLastSlot`; written by `PublishStatus` on every slot change, read by `init_screen_manager.cpp` after `SetRotationSequence`, restored via `SetSlot` if still valid; falls back to `rotation_sequence_[0]` when not (e.g. screenOrder change between reboots) | Implemented (superset) | — |
 
 ## Build / board variants
 
