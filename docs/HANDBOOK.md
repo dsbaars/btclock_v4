@@ -626,7 +626,11 @@ nostr-zap overlay when `useSatsSymbol` is on:
 
 ![All 16 sats-symbol variants in a 4×4 contact sheet](img/fonts/sats_variants.png)
 
-PATCH the value live — no reboot needed:
+The WebUI exposes a visual picker on the Settings page — each of the
+16 glyphs is rendered inline so you can click the one you want
+without consulting the contact sheet. The selected index PATCHes
+through `/api/settings` automatically. To set the value from the
+command line:
 
 ```bash
 curl -X PATCH -H 'Content-Type: application/json' \
