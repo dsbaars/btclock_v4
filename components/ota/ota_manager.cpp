@@ -256,9 +256,14 @@ esp_err_t OtaManager::Init(const Config& cfg) {
 }
 
 esp_err_t OtaManager::TriggerAutoUpdate() {
-  if (cfg_.release_url.empty() || cfg_.firmware_asset.empty()) {
+  // Resolve release_url here so a misconfigured settings PATCH yields
+  // an immediate INVALID_ARG response rather than a vacuous task spawn.
+  // RunAutoUpdate re-reads it; the value is small and the call is
+  // dominated by the NVS roundtrip, which is cheap.
+  const std::string url = cfg_.release_url ? cfg_.release_url() : std::string();
+  if (url.empty() || cfg_.firmware_asset.empty()) {
     ESP_LOGW(kTag, "auto-update not configured (release_url=%zu asset=%zu)",
-             cfg_.release_url.size(), cfg_.firmware_asset.size());
+             url.size(), cfg_.firmware_asset.size());
     return ESP_ERR_INVALID_ARG;
   }
   bool expected = false;
@@ -281,8 +286,15 @@ void OtaManager::AutoUpdateTaskTrampoline(void* arg) {
 }
 
 void OtaManager::RunAutoUpdate() {
-  ESP_LOGW(kTag, "auto-update starting: url=%s asset=%s",
-           cfg_.release_url.c_str(), cfg_.firmware_asset.c_str());
+  // Read the URL fresh — TriggerAutoUpdate already validated that the
+  // functor is bound and resolves non-empty, but a settings PATCH
+  // racing the task spawn could land between the two reads. Use the
+  // resolved string locally so HttpGetString sees a stable value even
+  // if the functor mutates again.
+  const std::string release_url =
+      cfg_.release_url ? cfg_.release_url() : std::string();
+  ESP_LOGW(kTag, "auto-update starting: url=%s asset=%s", release_url.c_str(),
+           cfg_.firmware_asset.c_str());
 
   // Reset the is_updating flag on every exit path.
   struct Guard {
@@ -290,9 +302,13 @@ void OtaManager::RunAutoUpdate() {
     ~Guard() { self->is_updating_.store(false); }
   } guard{this};
 
+  if (release_url.empty()) {
+    ESP_LOGE(kTag, "release_url resolved empty at run time");
+    return;
+  }
+
   std::string release_body;
-  if (HttpGetString(cfg_.release_url, kReleaseJsonCap, &release_body) !=
-      ESP_OK) {
+  if (HttpGetString(release_url, kReleaseJsonCap, &release_body) != ESP_OK) {
     ESP_LOGE(kTag, "release manifest fetch failed");
     return;
   }

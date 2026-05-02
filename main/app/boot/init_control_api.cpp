@@ -61,10 +61,14 @@ constexpr const char* kTag = "btclock";
 // pure compile-time fold — no #if cross-product, no runtime branching,
 // no "unknown variant" branch to forget.
 OtaManager::Config MakeOtaConfig() {
-  settings::NvsPrefs ota_prefs(prefs::kSettingsNs);
   OtaManager::Config ocfg;
-  ocfg.release_url =
-      btclock::settings::ReadString(ota_prefs, prefs::kGitReleaseUrl);
+  // Read-through closure: each TriggerAutoUpdate / RunAutoUpdate
+  // invocation pulls the live `gitReleaseUrl` from NVS, so a settings
+  // PATCH takes effect on the very next attempt without a reboot.
+  ocfg.release_url = []() {
+    settings::NvsPrefs prefs(prefs::kSettingsNs);
+    return btclock::settings::ReadString(prefs, prefs::kGitReleaseUrl);
+  };
   ocfg.firmware_asset =
       "btclock_" BTCLOCK_BOARD_SLUG BTCLOCK_PANEL_ASSET_SUFFIX "_ota.bin";
   ocfg.webui_asset =

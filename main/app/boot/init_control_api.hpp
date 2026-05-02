@@ -9,8 +9,9 @@
 //
 // After the server is up, re-hooks DataHub::SetOnUpdate so fresh
 // snapshots fan out to SSE subscribers as well as waking the main
-// task. Also kicks the OtaManager (reads the release URL from NVS
-// so PATCH /api/settings gitReleaseUrl takes effect on next boot).
+// task. Also kicks the OtaManager with a read-through closure for
+// the release URL, so PATCH /api/settings gitReleaseUrl takes effect
+// on the next pull-OTA attempt without a reboot.
 //
 // No-op in AP mode — the provisioning portal owns its own httpd.
 

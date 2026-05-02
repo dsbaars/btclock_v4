@@ -56,9 +56,16 @@ class OtaManager {
   using PreFlashHook = std::function<void()>;
 
   struct Config {
-    // GitHub-style releases JSON (with `assets[]` containing
-    // `browser_download_url`). Empty disables pull-OTA.
-    std::string release_url;
+    // Resolves to a GitHub-style releases JSON URL (with `assets[]`
+    // containing `browser_download_url`). Invoked once per
+    // TriggerAutoUpdate call and once at the top of RunAutoUpdate so a
+    // settings PATCH that rewrites `gitReleaseUrl` takes effect on the
+    // next attempt without a reboot. A null pointer or a callback that
+    // returns an empty string disables pull-OTA. Plain function pointer
+    // (not std::function) to avoid the type-erasure code-size hit;
+    // captureless lambdas decay to it automatically.
+    using ReleaseUrlFn = std::string (*)();
+    ReleaseUrlFn release_url = nullptr;
     // Firmware asset filename to match inside the releases JSON, e.g.
     // "btclock_rev_b_ota.bin". A sibling asset named
     // `<firmware_asset>.sha256` is also looked up for verification.
@@ -82,8 +89,9 @@ class OtaManager {
 
   // Spawns a one-shot background task that drives the full pull-OTA
   // flow. Returns immediately. If another update is in progress
-  // returns ESP_ERR_INVALID_STATE. Config must have a non-empty
-  // release_url and firmware_asset or this returns ESP_ERR_INVALID_ARG.
+  // returns ESP_ERR_INVALID_STATE. Returns ESP_ERR_INVALID_ARG when
+  // firmware_asset is empty or release_url() resolves to an empty
+  // string.
   esp_err_t TriggerAutoUpdate();
 
   // Push-OTA body handler. Streams `expected_bytes` from `recv(ctx, …)`
