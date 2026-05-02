@@ -33,7 +33,7 @@ behaviour.
 - [7. Mining-pool guide](#7-mining-pool-guide)
 - [8. Bitaxe integration](#8-bitaxe-integration)
 - [9. Nostr zap setup](#9-nostr-zap-setup)
-- [10. LEDs & frontlight](#10-leds--frontlight)
+- [10. LEDs & frontlight](#10-leds-frontlight)
 - [11. Do Not Disturb](#11-do-not-disturb)
 - [12. HTTP API quick reference](#12-http-api-quick-reference)
 - [13. Home Assistant integration](#13-home-assistant-integration)

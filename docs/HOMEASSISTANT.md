@@ -66,7 +66,7 @@ option does.
 **LEDs 1-4** expose each NeoPixel as a separate colour entity, so an
 automation can paint individual pixels — e.g. red on a stalled price
 feed. Background on the LED strip lives under
-[LEDs & frontlight](HANDBOOK.md#10-leds--frontlight); the device also
+[LEDs & frontlight](HANDBOOK.md#10-leds-frontlight); the device also
 plays its own indicator patterns for boot / WiFi / data-feed faults
 which are catalogued under
 [LED status effects](HANDBOOK.md#led-status-effects).
@@ -108,7 +108,7 @@ Settings-card entities and lifecycle actions.
 
 **LED brightness** is the global LED-strip brightness slider — the
 same control found in the WebUI's
-[Light & LEDs section](HANDBOOK.md#light--leds).
+[Light & LEDs section](HANDBOOK.md#light-leds).
 
 **Firmware** is Home Assistant's standard Update entity. It checks for
 new releases once a day and surfaces a one-click install — covered in
