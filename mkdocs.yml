@@ -194,4 +194,5 @@ nav:
   - Architecture: ARCHITECTURE.md
   - Build from source: BUILD_FROM_SOURCE.md
   - Mining-pool fields: WEBUI_MINING_POOL_FIELDS.md
+  - Home Assistant: HOMEASSISTANT.md
   - Project story: STORY.md

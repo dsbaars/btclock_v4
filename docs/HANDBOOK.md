@@ -1106,22 +1106,25 @@ When `httpAuthEnabled=true` add `-u user:pass` to every `/api/*` call.
 
 ## 13. Home Assistant integration
 
-A community-maintained custom integration is published at
-[github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock).
-Install via HACS
-("Custom repositories" → add the URL → integration), then add the
-BTClock through Settings → Devices & Services → Add integration → BTClock.
+A custom Home Assistant integration (maintained alongside the firmware,
+same author) ships every `/api/settings` entity — mining-pool / font /
+currency selectors, Bitaxe & DND switches, LED + frontlight controls,
+firmware Update entity, and more — as Home Assistant devices. The full
+walkthrough (install, configuration flow, per-section entity catalogue
+with screenshots, firmware update flow, services, and auth/discovery
+details) lives in [`HOMEASSISTANT.md`](HOMEASSISTANT.md).
 
-Provides:
+Quick start:
 
-- Sensors for every data screen (block height, fee rate, price per
-  active currency, halving countdown, mining pool hashrate, etc.).
-- Switches for DND, screen pause, frontlight (Rev B).
-- Services to push text, jump screens, and trigger LED actions.
+1. HACS → Custom repositories → add
+   [git.btclock.dev/btclock/homeassistant-btclock](https://git.btclock.dev/btclock/homeassistant-btclock)
+   as an Integration → install → restart HA.
+2. Settings → Devices & Services → the BTClock should already appear
+   under **Discovered** (mDNS auto-detect on `_http._tcp.local.`); if
+   not, **Add integration → BTClock** and enter the device's IP.
 
-Authentication piggy-backs on `httpAuthEnabled`. mDNS auto-discovery
-is supported when both the BTClock and the HA host are on the same
-multicast domain.
+The integration auto-detects firmware variant (legacy ≤3.3, v3.4, v4)
+and gates the v4-only entities accordingly.
 
 ## 14. Web flasher
 
