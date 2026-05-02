@@ -10,6 +10,13 @@
 // of LED_FLASH_* / LED_EFFECT_* in src/ for the provenance):
 //
 //   kSetBoot            rainbow palette cycle, drawn until another event
+//                       (kept for completeness; production path uses
+//                        kPowerTest for a one-shot rainbow at boot)
+//   kSetProvisioning    soft cyan breathe, drawn until another event;
+//                       posted from DispatchBootPath when the device
+//                       enters SoftAP / captive-portal mode so the
+//                       LEDs match the on-panel "connect to provisioning
+//                       wifi" instructions
 //   kSetIdle            LEDs off (restore state)
 //   kBlockFlash         block-flash pulse, `blockFlashCol` vs dim
 //   kIdentify           rapid multicolour flash, fires on /api/identify
@@ -51,6 +58,7 @@ namespace btclock {
 
 enum class LedEffect : uint8_t {
   kSetBoot = 0,
+  kSetProvisioning,
   kSetIdle,
   kBlockFlash,
   kIdentify,

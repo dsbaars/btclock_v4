@@ -2,6 +2,7 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/init_zap_listener.hpp"
+#include "io/led_controller.hpp"
 #include "provisioning_ui.hpp"
 #include "sources/sources.hpp"
 #include "wifi.hpp"
@@ -12,6 +13,12 @@ void DispatchBootPath(AppCtx& ctx) {
   if (ctx.wifi->is_ap_mode()) {
     RenderProvisioningScreen(ctx.panels, AppCtx::fb_storage(), ctx.fonts,
                              ctx.ap_ssid, ctx.ap_pw);
+    // Hand the LEDs off to the provisioning breathe so the strip stops
+    // doing the boot rainbow and starts pulsing cyan in sync with the
+    // on-panel "connect to provisioning wifi" instructions. Queued
+    // behind the boot kPowerTest one-shot, so the rainbow runs to
+    // completion first.
+    PostLedEffect(LedEffect::kSetProvisioning);
     return;
   }
   WireDataSources(ctx);

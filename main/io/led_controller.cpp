@@ -393,10 +393,10 @@ void PlayPowerTest(led_strip_handle_t strip) {
 void Task(void* arg) {
   auto* strip = static_cast<led_strip_handle_t>(arg);
 
-  // Modes where the idle ticks do something (boot palette, boot-failed
-  // solid); everything else is a one-shot we play inline and return to
-  // idle immediately.
-  enum class Mode : uint8_t { kBoot, kIdle, kBootFailed };
+  // Modes where the idle ticks do something (boot palette, provisioning
+  // breathe, boot-failed solid); everything else is a one-shot we play
+  // inline and return to idle immediately.
+  enum class Mode : uint8_t { kBoot, kProvisioning, kIdle, kBootFailed };
   Mode mode = Mode::kBoot;
   size_t frame = 0;
 
@@ -405,6 +405,12 @@ void Task(void* arg) {
     switch (mode) {
       case Mode::kBoot:
         wait = pdMS_TO_TICKS(250);
+        break;
+      case Mode::kProvisioning:
+        // ~50 ms tick × 60 frames per breath cycle ≈ 3 s up + 3 s down,
+        // gentle enough that the LEDs read as "alive, waiting" rather
+        // than alarmed.
+        wait = pdMS_TO_TICKS(50);
         break;
       case Mode::kBootFailed:
         wait = portMAX_DELAY;
@@ -441,6 +447,11 @@ void Task(void* arg) {
       switch (ev) {
         case LedEffect::kSetBoot:
           mode = Mode::kBoot;
+          frame = 0;
+          break;
+
+        case LedEffect::kSetProvisioning:
+          mode = Mode::kProvisioning;
           frame = 0;
           break;
 
@@ -593,6 +604,19 @@ void Task(void* arg) {
           PushPixel(strip, i, PackRgb(c.r, c.g, c.b), bright);
         }
         led_strip_refresh(strip);
+        ++frame;
+        break;
+      }
+      case Mode::kProvisioning: {
+        // Soft cyan breathe at the configured master brightness.
+        // 120-frame cycle × 50 ms = 6 s per full breath. Reuses
+        // led_curves::Breath so the curve matches kHeartbeat /
+        // kDataError; cyan reads as "wifi waiting" alongside the
+        // existing kWifiConnecting spinner colour.
+        constexpr uint32_t kCycleFrames = 120;
+        const uint8_t v =
+            led_curves::Breath(255, frame % kCycleFrames, kCycleFrames);
+        PaintUniform(strip, PackRgb(0, v, v), CurrentBrightness());
         ++frame;
         break;
       }
