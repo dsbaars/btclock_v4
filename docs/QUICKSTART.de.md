@@ -121,7 +121,7 @@ Die Auto-Rotation-Kadenz steht unter **Settings → Screen specific →
 Time per screen** (Standard: 30 Minuten — ja, E-Paper ist absichtlich
 träge; stelle es auf 1 Minute, wenn du lieber Bewegung sehen
 willst). Das
-[Handbook → Screen catalogue](HANDBOOK.md#screen-catalogue) zeigt,
+[Handbook → Screen catalogue](HANDBOOK.md#5-screen-catalogue) zeigt,
 wie jeder Bildschirm aussieht.
 
 ## 8. (Optional) Tweaks für den ersten Tag

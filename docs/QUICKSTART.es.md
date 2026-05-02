@@ -116,7 +116,7 @@ es:
 La cadencia de auto-rotación está en **Settings → Screen specific →
 Time per screen** (por defecto 30 minutos — sí, el e-paper es lento a
 propósito; bájalo a 1 minuto si prefieres ver movimiento). El
-[Handbook → Screen catalogue](HANDBOOK.md#screen-catalogue) muestra
+[Handbook → Screen catalogue](HANDBOOK.md#5-screen-catalogue) muestra
 cómo se ve cada pantalla.
 
 ## 8. (Opcional) ajustes para el primer día

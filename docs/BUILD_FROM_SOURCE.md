@@ -388,7 +388,7 @@ mkdocs serve          # http://127.0.0.1:8000
 mkdocs build
 ```
 
-Or use the `make` shortcuts (see [`Makefile`](../Makefile) at the
+Or use the `make` shortcuts (see [`Makefile`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/Makefile) at the
 repo root): `make docs-deps`, `make docs-serve`, `make docs-build`.
 
 ### Documentation translations
@@ -422,7 +422,7 @@ oddly in mixed-language navs.
 The same Markdown source can be rendered as a stapled-booklet PDF for
 offline reading or print. Pandoc + xelatex do the conversion; the
 script and per-language editions live under
-[`tools/docs/`](../tools/docs/README.md):
+[`tools/docs/`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/tools/docs/README.md):
 
 ```bash
 tools/docs/make_booklet.sh        # English — docs/build/btclock-booklet.pdf
@@ -443,5 +443,5 @@ brew install --cask basictex font-inter
 sudo tlmgr install pdfjam fancyhdr titlesec xcolor xurl newunicodechar
 ```
 
-See [`tools/docs/README.md`](../tools/docs/README.md) for the full
+See [`tools/docs/README.md`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/tools/docs/README.md) for the full
 toolchain table and design notes.

@@ -499,7 +499,7 @@ live in. The setting is **`tzString`**, default `"Europe/Amsterdam"`.
 - The format is the standard IANA zone name (e.g. `"Europe/Amsterdam"`,
   `"America/New_York"`, `"Asia/Tokyo"`, `"Australia/Sydney"`,
   `"UTC"`). A full list lives in
-  [data/src/lib/timezones.json](../data/src/lib/timezones.json) — the
+  [data/src/lib/timezones.json](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/data/src/lib/timezones.json) — the
   WebUI populates the dropdown from that file.
 - DST transitions are applied automatically — the firmware bundles the
   IANA tz database, so e.g. `"Europe/Amsterdam"` flips between CET and
@@ -643,7 +643,7 @@ Out-of-range values are rejected at PATCH time (the schema declares
 `min=0, max=15`).
 
 Regenerate the contact sheet from the embedded TTF with
-[`tools/fonts/render_sats_variants.py`](../tools/fonts/render_sats_variants.py).
+[`tools/fonts/render_sats_variants.py`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/tools/fonts/render_sats_variants.py).
 
 Affected by: `useMscwTime`, `useSatsSymbol`, `satsVariant`, active currency, `fontName`.
 

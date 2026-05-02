@@ -15,7 +15,7 @@ Conventions:
 ## 1. Component overview
 
 Top-level subsystems and the wires between them. `AppCtx`
-([main/app/app_ctx.hpp](../main/app/app_ctx.hpp)) is the runtime root —
+([main/app/app_ctx.hpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/app_ctx.hpp)) is the runtime root —
 everything else hangs off it.
 
 ```mermaid
@@ -103,7 +103,7 @@ flowchart TB
 ## 2. AppCtx ownership (class diagram)
 
 `AppCtx` is behaviour-free — a struct of subsystem handles populated by
-the `init_*` TUs in [main/app/boot/](../main/app/boot/). Composition
+the `init_*` TUs in [main/app/boot/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/boot/). Composition
 arrows point from owner to owned.
 
 ```mermaid
@@ -160,8 +160,8 @@ classDiagram
 ## 3. Data pipeline (class diagram)
 
 Pure-virtual `DataSource`
-([components/data_core/include/data_core/source.hpp:23](../components/data_core/include/data_core/source.hpp#L23))
-is the contract; `DataHub` ([hub.hpp](../components/data_core/include/data_core/hub.hpp))
+([components/data_core/include/data_core/source.hpp:23](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/data_core/include/data_core/source.hpp#L23))
+is the contract; `DataHub` ([hub.hpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/data_core/include/data_core/hub.hpp))
 fan-ins reports under a mutex and fires an `UpdateCallback`.
 
 ```mermaid
@@ -244,7 +244,7 @@ classDiagram
 ## 4. Mining-pool plugins (class diagram)
 
 Every `mining_pool_*` component subclasses `PoolDataSource`
-([components/mining_pool_common/include/mining_pool_common/pool_base.hpp:41](../components/mining_pool_common/include/mining_pool_common/pool_base.hpp#L41)).
+([components/mining_pool_common/include/mining_pool_common/pool_base.hpp:41](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/mining_pool_common/include/mining_pool_common/pool_base.hpp#L41)).
 Two pools (ViaBTC, Foundry) inherit through an intermediate
 `KeyedGetPoolBase` that swaps the auth header to `X-API-KEY`.
 
@@ -304,10 +304,10 @@ classDiagram
 
 ## 5. ScreenManager + renderers (class diagram)
 
-`ScreenManager` ([main/app/screen_manager.hpp:51](../main/app/screen_manager.hpp#L51))
+`ScreenManager` ([main/app/screen_manager.hpp:51](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/screen_manager.hpp#L51))
 owns the slot index, refresh policy, rotation timer, and last-rendered
 diff state. Renderers are free template functions in
-[main/screens/](../main/screens/) — there is no Screen base class.
+[main/screens/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/screens/) — there is no Screen base class.
 
 ```mermaid
 classDiagram
@@ -407,10 +407,10 @@ classDiagram
 
 ## 6. ControlServer + adapter interfaces (class diagram)
 
-`ControlServer` ([components/webserver/include/control_server.hpp](../components/webserver/include/control_server.hpp))
+`ControlServer` ([components/webserver/include/control_server.hpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/webserver/include/control_server.hpp))
 talks to `main/` only through pure-virtual `*Iface` interfaces so the
 webserver component never has to include `main/`. `main.cpp` instantiates
-adapter structs in [main/app/boot/adapters.hpp](../main/app/boot/adapters.hpp)
+adapter structs in [main/app/boot/adapters.hpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/boot/adapters.hpp)
 that forward to the real subsystems.
 
 ```mermaid
@@ -485,7 +485,7 @@ classDiagram
 
 ## 7. IO controllers (class diagram)
 
-[main/io/](../main/io/) wraps the chip drivers in higher-level controllers
+[main/io/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/io/) wraps the chip drivers in higher-level controllers
 the rest of the app talks to.
 
 ```mermaid
@@ -553,7 +553,7 @@ classDiagram
 
 ## 8. Boot sequence
 
-`app_main` ([main/main.cpp:37](../main/main.cpp#L37)) is straight-line
+`app_main` ([main/main.cpp:37](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/main.cpp#L37)) is straight-line
 wire-up. Each step populates `AppCtx`; the last call hands off to the
 event loop.
 
@@ -852,7 +852,7 @@ stateDiagram-v2
 
 ## 16. Flash partition layout
 
-The three [`partitions_*.csv`](../) files (`partitions_4mb.csv`,
+The three [`partitions_*.csv`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/) files (`partitions_4mb.csv`,
 `partitions_8mb.csv`, `partitions_16mb.csv`) carve flash into the
 same six regions across every variant — only the sizes differ. NVS
 sits at the conventional `0x9000` offset; both OTA app slots are
@@ -860,7 +860,7 @@ sits at the conventional `0x9000` offset; both OTA app slots are
 bundle; the coredump partition catches panic backtraces. On Rev A the
 coredump partition exists but capture is disabled at the sdkconfig
 level (`CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=n` in
-[`sdkconfig.defaults.rev_a`](../sdkconfig.defaults.rev_a)) — the 4 MB
+[`sdkconfig.defaults.rev_a`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/sdkconfig.defaults.rev_a)) — the 4 MB
 flash leaves the app partition with only ~3% headroom and the
 ~14 KiB capture path eats most of it. Rev B and V8 keep capture on
 and serve the dump over `GET /api/coredump`.
@@ -880,18 +880,18 @@ beyond the chip's 2 MiB), 8 MiB on Rev B (ESP32-S3-WROOM-1-N8R2,
 2 MiB PSRAM), and 16 MiB on V8 (8 MiB PSRAM). The OTA-able image
 (`btclock_v4.bin`) lives in whichever app slot `otadata` points to;
 `/upload/firmware` and the auto-update path
-([components/ota/](../components/ota/)) write to the inactive slot,
+([components/ota/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/ota/)) write to the inactive slot,
 flip `otadata`, and reboot.
 
 ---
 
 ## File index
 
-- Boot: [main/main.cpp](../main/main.cpp), [main/app/boot/](../main/app/boot/)
-- Runtime: [main/app/event_loop.cpp](../main/app/event_loop.cpp), [main/app/screen_manager.hpp](../main/app/screen_manager.hpp)
-- Data: [components/data_core/](../components/data_core/), [main/sources/](../main/sources/)
-- Pools: [components/mining_pool_common/](../components/mining_pool_common/), [components/mining_pool_*/](../components/)
-- HTTP: [components/webserver/](../components/webserver/)
-- IO: [main/io/](../main/io/)
-- Network: [components/wifi/](../components/wifi/)
-- Settings: [components/settings/](../components/settings/), [components/prefs/](../components/prefs/)
+- Boot: [main/main.cpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/main.cpp), [main/app/boot/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/boot/)
+- Runtime: [main/app/event_loop.cpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/event_loop.cpp), [main/app/screen_manager.hpp](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/app/screen_manager.hpp)
+- Data: [components/data_core/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/data_core/), [main/sources/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/sources/)
+- Pools: [components/mining_pool_common/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/mining_pool_common/), [components/mining_pool_*/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/)
+- HTTP: [components/webserver/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/webserver/)
+- IO: [main/io/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/io/)
+- Network: [components/wifi/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/wifi/)
+- Settings: [components/settings/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/settings/), [components/prefs/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/prefs/)

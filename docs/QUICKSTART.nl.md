@@ -113,7 +113,7 @@ sleep om de volgorde te bepalen. De standaardcatalogus is:
 De auto-rotatie-cadans staat onder **Settings → Screen specific →
 Time per screen** (standaard 30 minuten — ja, e-paper is bewust
 langzaam; zet hem op 1 minuut als je liever beweging ziet). De
-[Handbook → Screen catalogue](HANDBOOK.md#screen-catalogue) laat zien
+[Handbook → Screen catalogue](HANDBOOK.md#5-screen-catalogue) laat zien
 hoe elk scherm eruit ziet.
 
 ## 8. (Optioneel) tweaks voor dag één

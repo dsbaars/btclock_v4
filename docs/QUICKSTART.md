@@ -109,7 +109,7 @@ drag to set the order. The default catalogue is:
 Auto-rotate cadence is in **Settings → Screen specific → Time per
 screen** (default 30 minutes — yes, e-paper is slow on purpose; lower
 it to 1 minute if you'd rather see motion). The
-[Handbook → Screen catalogue](HANDBOOK.md#screen-catalogue) shows what
+[Handbook → Screen catalogue](HANDBOOK.md#5-screen-catalogue) shows what
 each screen looks like.
 
 ## 8. (Optional) First-day tweaks
