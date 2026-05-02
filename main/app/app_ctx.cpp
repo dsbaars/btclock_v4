@@ -12,6 +12,7 @@
 #include "control_server.hpp"
 #include "io/frontlight_controller.hpp"
 #include "io/light_sensor.hpp"
+#include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"

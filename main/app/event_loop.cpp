@@ -27,6 +27,7 @@
 #include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
 #include "io/light_sensor.hpp"
+#include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "mcp23017.hpp"
 #include "prefs.hpp"
@@ -300,9 +301,15 @@ constexpr const char* kTag = "btclock";
     const int64_t now_ms = MsNow();
 
     // Soft watchdog pump — skipped in AP/provisioning mode, where the
-    // whole point is that there's no STA connection to watch.
+    // whole point is that there's no STA connection to watch. Same
+    // skip applies to the LED-indicator watchdog: AP mode already runs
+    // the kSetProvisioning breathe and we don't want to clobber it
+    // with a "wifi down" red breath.
     if (!wifi.is_ap_mode()) {
       outage_watchdog.Tick(wifi, static_cast<uint32_t>(now_ms));
+      if (ctx.network_led_watchdog) {
+        ctx.network_led_watchdog->Tick(static_cast<uint32_t>(now_ms));
+      }
     }
 
     if (now_ms - last_heartbeat_ms >= 10'000) {

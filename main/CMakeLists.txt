@@ -23,6 +23,7 @@ idf_component_register(
          "io/frontlight_ambient_policy.cpp" "io/frontlight_stagger.cpp"
          "io/led_controller.cpp" "io/led_curves.cpp" "io/led_prefs.cpp"
          "io/light_sensor.cpp"
+         "io/network_led_watchdog.cpp"
          "io/wifi_guard.cpp"
          "io/mining_pool_selector.cpp"
          "app/time_sync.cpp" "app/screen_manager.cpp"

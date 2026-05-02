@@ -15,6 +15,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -53,6 +54,12 @@ void InitNetwork(AppCtx& ctx) {
     if (wifi_reboot_minutes > 120) wifi_reboot_minutes = 120;
   }
   ctx.outage_watchdog = std::make_unique<OutageWatchdog>(wifi_reboot_minutes);
+  // LED-only network watchdog: WiFi up/down + per-source stale signal.
+  // Probes are wired later by init_control_api.cpp once the data sources
+  // exist; here we just construct the empty state machine and bind the
+  // wifi pointer.
+  ctx.network_led_watchdog = std::make_unique<NetworkLedWatchdog>();
+  ctx.network_led_watchdog->SetWifi(ctx.wifi.get());
 
   if (!ssid.empty()) {
     ESP_ERROR_CHECK(ctx.wifi->Start());

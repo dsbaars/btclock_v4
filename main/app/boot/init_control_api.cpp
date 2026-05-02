@@ -30,6 +30,7 @@
 #include "freertos/task.h"
 #include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
+#include "io/network_led_watchdog.hpp"
 #include "io/light_sensor.hpp"
 #include "io/mining_pool_selector.hpp"
 #include "nostr/relay_client.hpp"
@@ -336,6 +337,16 @@ void InitControlApi(AppCtx& ctx) {
       ccfg.price_connected = [mk]() { return mk->IsKrakenConnected(); };
       ccfg.blocks_connected = [mk]() { return mk->IsMempoolConnected(); };
       ccfg.v2_connected = []() { return false; };
+      // Same probes feed the runtime LED indicator: a slow red breath
+      // when WiFi drops or both sources stall, a per-source blink when
+      // only one source is unhealthy. Watchdog ticks once per second
+      // from the event loop. dataSource=0 (single v2 WS) leaves the
+      // probes unset and the indicator falls back to the WiFi-only
+      // signal — bd btclock_v4-1xc tracks adding a v2 probe.
+      if (auto* nlw = ctx.network_led_watchdog.get()) {
+        nlw->SetPriceConnected([mk]() { return mk->IsKrakenConnected(); });
+        nlw->SetBlocksConnected([mk]() { return mk->IsMempoolConnected(); });
+      }
     }
     // Live PATCH refresh for the runtime-editable nostr keys
     // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,

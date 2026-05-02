@@ -45,6 +45,7 @@ class SseServer;
 class DnsHijack;
 class FrontlightController;
 class LightSensor;
+class NetworkLedWatchdog;
 class OutageWatchdog;
 class ProvisioningServer;
 class Wifi;
@@ -100,6 +101,7 @@ struct AppCtx {
   std::string ap_pw;
   std::string sta_ssid;  // remembered for the debug screen
   std::unique_ptr<OutageWatchdog> outage_watchdog;
+  std::unique_ptr<NetworkLedWatchdog> network_led_watchdog;
 
   // Data pipeline — the hub aggregates every DataSource; the screen
   // manager owns rotation + render bookkeeping.
