@@ -23,6 +23,12 @@ jobs:
       # require. The slimmer debian:stable-slim image was failing on
       # checkout with "node: executable file not found in $PATH".
       image: ghcr.io/catthehacker/ubuntu:js-24.04
+    env:
+      # CMake compiler launcher path — pinned to a literal absolute dir
+      # so the actions/cache `path:` matches the in-container HOME (the
+      # job runs as root, and ~ expansion happens runner-side, not
+      # container-side).
+      CCACHE_DIR: /root/.ccache
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,17 +41,37 @@ jobs:
         run: |
           # cmake is present in the base image but pin the install step
           # so the workflow stays self-documenting if the base image ever
-          # stops shipping it.
+          # stops shipping it. ninja-build + ccache: ninja's dep graph
+          # parallelises tighter than make on cold builds; ccache turns
+          # unchanged-source repushes into ~1-minute relinks instead of
+          # full ~10-minute recompiles.
           apt-get update
-          apt-get install -y --no-install-recommends build-essential cmake
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache
+
+      - uses: actions/cache@v5
+        with:
+          path: /root/.ccache
+          key: ccache-host-tests-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-
 
       - name: Configure
         shell: bash
-        run: cmake -S test_host -B build-host
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host -G Ninja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         shell: bash
         run: cmake --build build-host --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
 
       - name: Run
         shell: bash
@@ -58,6 +84,8 @@ jobs:
     runs-on: docker
     container:
       image: ghcr.io/catthehacker/ubuntu:js-24.04
+    env:
+      CCACHE_DIR: /root/.ccache
     steps:
       - uses: actions/checkout@v6
         with:
@@ -67,15 +95,37 @@ jobs:
         shell: bash
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential cmake
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache
+
+      # Sanitizer build ships its own cache slot — ccache keys
+      # incorporate compile flags, so an ASan/UBSan build won't share
+      # objects with the vanilla `host_tests` job. Each job gets its
+      # own cache entry; no cross-pollution.
+      - uses: actions/cache@v5
+        with:
+          path: /root/.ccache
+          key: ccache-host-tests-san-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-san-
 
       - name: Configure
         shell: bash
-        run: cmake -S test_host -B build-host-san -DBTCLOCK_HOST_TESTS_SANITIZE=ON
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host-san -G Ninja \
+            -DBTCLOCK_HOST_TESTS_SANITIZE=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         shell: bash
         run: cmake --build build-host-san --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
 
       - name: Run
         shell: bash
@@ -92,6 +142,8 @@ jobs:
     runs-on: docker
     container:
       image: ghcr.io/catthehacker/ubuntu:js-24.04
+    env:
+      CCACHE_DIR: /root/.ccache
     steps:
       - uses: actions/checkout@v6
         with:
@@ -102,15 +154,32 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential cmake gcovr
+            build-essential cmake ninja-build ccache gcovr
+
+      - uses: actions/cache@v5
+        with:
+          path: /root/.ccache
+          key: ccache-host-tests-cov-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-cov-
 
       - name: Configure
         shell: bash
-        run: cmake -S test_host -B build-host-cov -DBTCLOCK_HOST_TESTS_COVERAGE=ON
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host-cov -G Ninja \
+            -DBTCLOCK_HOST_TESTS_COVERAGE=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
         shell: bash
         run: cmake --build build-host-cov --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
 
       - name: Run
         shell: bash
