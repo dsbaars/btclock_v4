@@ -117,6 +117,7 @@ add_executable(btclock_host_tests
     test_refresh_policy.cpp
     test_build_time.cpp
     test_block_event_policy.cpp
+    test_block_height_validator.cpp
     test_vertical_desc.cpp
     test_sources_uri.cpp
     test_btclock_lastblock_uri.cpp

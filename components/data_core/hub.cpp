@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "data_core/block_height_validator.hpp"
 #include "esp_log.h"
 
 namespace btclock {
@@ -13,8 +14,24 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
   bool changed = false;
   if (other.block_height &&
       (!block_height || *block_height != *other.block_height)) {
-    block_height = other.block_height;
-    changed = true;
+    // Reject corrupt frames (height=0, regression below current tip)
+    // before they reach the canonical snapshot. Otherwise the next
+    // ConsumeNewBlock would treat the bogus value as a real new-block
+    // event and fire LED + frontlight + steal-focus side effects.
+    // Mirrors v3 commit b435552. The wild-jump catch-up case (legit
+    // ≥100-block deltas after a long offline window) is handled at
+    // event-loop layer by BlockEventPolicy::IsCatchUpJump.
+    const uint32_t prev = block_height.value_or(0);
+    if (BlockHeightValidator::IsValidUpdate(prev, *other.block_height)) {
+      block_height = other.block_height;
+      changed = true;
+    } else {
+      ESP_LOGW(kTag,
+               "rejected block_height update: prev=%u new=%u "
+               "(zero/regression)",
+               static_cast<unsigned>(prev),
+               static_cast<unsigned>(*other.block_height));
+    }
   }
   if (other.block_fee && (!block_fee || *block_fee != *other.block_fee)) {
     block_fee = other.block_fee;
