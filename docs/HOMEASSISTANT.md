@@ -5,32 +5,29 @@ firmware (same author) and published at
 [git.btclock.dev/btclock/homeassistant-btclock](https://git.btclock.dev/btclock/homeassistant-btclock)
 with a mirror on
 [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock).
-Install via HACS ("Custom repositories" → add the repo URL → integration),
-restart Home Assistant, then add the BTClock through **Settings → Devices
-& Services → Add integration → BTClock**. Discovery is automatic when both
-the BTClock and the HA host are on the same multicast domain — the device
-appears under "Discovered" within ~5 s of boot via the `_http._tcp.local.`
-mDNS service with the `btclock-*` instance name.
+
+Install via HACS by adding the repo URL under "Custom repositories" →
+integration, restart Home Assistant, then add the BTClock through
+**Settings → Devices & Services → Add integration → BTClock**. Devices
+on the same multicast domain auto-discover within a few seconds of boot
+and appear under "Discovered" — see
+[Authentication & discovery](#authentication-discovery) below for
+details.
 
 The integration auto-detects which firmware generation it's talking to
 (legacy ≤3.3, v3.4, v4) and surfaces the appropriate entities. v4-only
-fields (mining-pool selector, font selector, Bitaxe data source, pool
-poll cadences, the `simulate_zap` / `clear_pool_logos` /
-`restart_datasources` diagnostic actions) are gated on either the
-detected firmware variant or the presence of the backing setting in
-`/api/settings`, so they appear only on v4 devices.
+features — mining-pool selector, font selector, Bitaxe data source,
+pool poll cadences, and the Simulate Zap / Clear pool logos / Restart
+data sources actions — only appear on v4 devices, so the device card
+matches what your hardware actually supports.
 
-Two update modes ship: **Server-Sent Events** (push, default — opens a
-persistent connection to `/events` and updates entities as the device
-broadcasts) and **Polling** (configurable interval, for environments
-where long-lived HTTP isn't viable). Pick during the config flow; switch
+Two update modes ship: **Server-Sent Events** (push, default — the
+device streams state changes to Home Assistant in real time) and
+**Polling** (configurable interval, for environments where long-lived
+HTTP connections aren't viable). Pick during the config flow; switch
 later via the integration's Configure dialog.
 
-Authentication piggy-backs on `httpAuthEnabled` — when the device has a
-WebUI password set, the config flow asks for the credentials and stores
-them in the entry.
-
-![Integration overview](img/homeassistant/integration_overview.png)
+![Integration overview](img/homeassistant/integration_overview.png){ style="max-width:720px" }
 
 > All screenshots in this document are reproducible. The
 > [`scripts/screenshot`](https://git.btclock.dev/btclock/homeassistant-btclock/src/branch/main/scripts/screenshot)
@@ -47,111 +44,154 @@ with the BH1750 light sensor and PCA9685 frontlight populated.
 
 ### Device info
 
-Hardware revision, firmware version (`gitRev` from `git describe`), and
-a deep-link to the device's WebUI. The "Visit" button opens
-`http://<host>/` in a new tab — handy for the few features the
-integration doesn't surface (firmware OTA staging, screen rotation
-order).
+Hardware revision, firmware version, and a deep-link to the device's
+WebUI. The "Visit" button opens the WebUI in a new tab — handy for the
+few features the integration doesn't surface, like screen rotation
+order and firmware OTA staging (see
+[WebUI tour](HANDBOOK.md#4-webui-tour)).
 
-![Device info](img/homeassistant/section_device_info.png)
+![Device info](img/homeassistant/section_device_info.png){ style="max-width:480px;max-height:700px" }
 
 ### Controls
 
-Day-to-day toggles, selectors, and momentary buttons. Currency picker
-backs `actCurrencies`; Display font and Mining pool back `availableFonts`
-/ `availablePools` (v4 only). LEDs 1-4 expose the per-pixel NeoPixel
-state with RGB pickers. The DND time fields write back to
-`/api/settings.dnd.{startHour,startMinute,endHour,endMinute}`.
+Day-to-day toggles, selectors, and momentary buttons.
 
-![Controls](img/homeassistant/section_controls.png)
+The **Currency picker** switches the active price-feed currency,
+affecting the BTC ticker and Sats-per-dollar screens. **Display font**
+and **Mining pool** (v4 only) mirror the WebUI's font and pool choosers
+— see [Fonts](HANDBOOK.md#6-fonts) and the
+[Mining-pool guide](HANDBOOK.md#7-mining-pool-guide) for what each
+option does.
+
+**LEDs 1-4** expose each NeoPixel as a separate colour entity, so an
+automation can paint individual pixels — e.g. red on a stalled price
+feed. Background on the LED strip lives under
+[LEDs & frontlight](HANDBOOK.md#10-leds--frontlight).
+
+The **Do Not Disturb** start- and end-time fields schedule the
+device's nightly quiet window. They mirror the WebUI scheduler —
+see [Do Not Disturb](HANDBOOK.md#11-do-not-disturb) for what DND
+suppresses.
+
+Momentary buttons cover the rotation controls (next / previous screen,
+toggle pause), a global LED-strip toggle, and a reboot.
+
+![Controls](img/homeassistant/section_controls.png){ style="max-width:480px;max-height:700px" }
 
 ### Sensors
 
-Read-only state. Connection-status sensors (`Price feed`, `Blocks feed`,
-`V2 relay`) reflect the live `connectionStatus` block from
-`/api/status`; `Ambient light level` only appears when `hasLightLevel`
-is true (Rev B with a populated BH1750). `Nostr relay` exposes the
-configured upstream as both state (the URL) and a `connected` attribute
-so a single template can pick either.
+Read-only state.
 
-![Sensors](img/homeassistant/section_sensors.png)
+**Price feed**, **Blocks feed** and **V2 relay** mirror the connection
+indicators in the WebUI's
+[Status card](HANDBOOK.md#42-status-card-centre), so automations can
+react to a stalled feed — for example, notify when the blocks feed has
+been disconnected for more than ten minutes.
+
+**Ambient light level** appears on Rev B devices with a populated
+BH1750 sensor and reflects the lux value the auto-brightness logic
+uses to dim the LEDs and frontlight at night.
+
+**Nostr relay** exposes the configured relay URL as the entity state
+and a `connected` boolean as an attribute, so a single template can
+pick either. See [Nostr zap setup](HANDBOOK.md#9-nostr-zap-setup) for
+what the relay is doing.
+
+![Sensors](img/homeassistant/section_sensors.png){ style="max-width:480px;max-height:700px" }
 
 ### Configuration
 
-Settings-card entities and lifecycle actions. **LED brightness** writes
-the global brightness multiplier; **Firmware** is HA's standard Update
-entity, which polls `gitReleaseUrl` once a day and surfaces a one-click
-install (or specific-version install for downgrades). **Clear cached
-pool logos** is v4-only — fires `/api/action/clear_pool_logos` to wipe
-the runtime logo cache so the next render re-fetches from
-`poolLogosUrl`.
+Settings-card entities and lifecycle actions.
 
-![Configuration](img/homeassistant/section_configuration.png)
+**LED brightness** is the global LED-strip brightness slider — the
+same control found in the WebUI's
+[Light & LEDs section](HANDBOOK.md#light--leds).
+
+**Firmware** is Home Assistant's standard Update entity. It checks for
+new releases once a day and surfaces a one-click install — covered in
+detail under [Firmware updates](#firmware-updates) below.
+
+**Clear cached pool logos** (v4 only) wipes the logo cache so the next
+mining-pool screen render fetches a fresh copy — useful after pointing
+the device at a custom logo URL.
+
+![Configuration](img/homeassistant/section_configuration.png){ style="max-width:480px;max-height:700px" }
 
 ### Diagnostic
 
-Health metrics, identify, and the v4-only data-source actions.
-**Restart data sources** fires `/api/restart_datasources` to reconnect
-upstream feeds without rebooting the ESP. **Simulate Nostr Zap** fires
-`/api/action/simulate_zap` — useful for triggering the LED + screen
-overlay end-to-end without waiting for a real zap. **OTA state**
-mirrors `isOTAUpdating` so automations can suppress noisy notifications
-during a flash.
+Health metrics, an identify button, and the v4-only data-source
+actions.
 
-![Diagnostic](img/homeassistant/section_diagnostic.png)
+**Restart data sources** reconnects the price, blocks, mempool and
+Bitaxe feeds without rebooting the device — a softer alternative to a
+full reboot when a single upstream feed gets stuck.
+
+**Simulate Nostr Zap** triggers the full zap effect (LED flash plus
+on-screen overlay) without needing a real zap. Handy for verifying
+[Nostr zap setup](HANDBOOK.md#9-nostr-zap-setup) end-to-end, or for
+testing automations that react to the zap event.
+
+**OTA state** is on while a firmware update is downloading or
+installing, so automations can suppress notifications during a flash.
+
+![Diagnostic](img/homeassistant/section_diagnostic.png){ style="max-width:480px;max-height:700px" }
 
 ## Firmware updates
 
-The integration polls the device's `gitReleaseUrl` once a day and
-surfaces any newer release as a standard Home Assistant **Update**
-entity. When an update is available, the device's Configuration card
-shows a `Firmware — Update available` row; clicking it opens the
-familiar more-info dialog with the installed and latest versions side
-by side, the release notes (or a synthesized changelog from a Forgejo
-`compare/...` API call when the release `body` is empty), and an
-**Install** button that POSTs to `/api/firmware/auto_update` to kick
-the device's own OTA downloader.
+The integration checks the device's release feed once a day. When a
+newer firmware is available, the **Firmware** entity in the
+Configuration section flips to `Update available` and the device card
+shows the standard Home Assistant update prompt.
 
-![Firmware update dialog](img/homeassistant/update_dialog.png)
+Clicking it opens the more-info dialog with the installed and latest
+versions side by side, the release notes (or a synthesized changelog
+when the upstream release has no body), and an **Install** button. The
+update itself is handed off to the device's own over-the-air updater
+— no need to keep Home Assistant in the loop while the firmware
+downloads.
 
-For downgrades or pinning to a specific version, the dialog's
-overflow menu offers a version picker; selecting an older release
-streams the matching `*_firmware.bin` and `littlefs_<size>.bin` assets
-from Forgejo through Home Assistant's session and uploads them to
-`/upload/firmware` and `/upload/webui` directly. After either install
-path, the integration polls `/api/settings` once a minute for up to
-20 minutes to detect the post-OTA reboot, clears the in-progress
-indicator the moment the device reports a new version, and reloads the
-config entry so the entity set matches the new firmware variant
+![Firmware update dialog](img/homeassistant/update_dialog.png){ style="max-width:380px;max-height:700px" }
+
+For downgrades or pinning to a specific version, the dialog's overflow
+menu offers a version picker. The integration streams the chosen
+firmware and WebUI assets through Home Assistant and pushes them to
+the device, then waits quietly until it reboots onto the new version
+and refreshes the entity list to match the new firmware generation
 (legacy ↔ v3.4 ↔ v4).
 
-Dev / dirty builds (`gitTag` empty, or `gitRev` matching `-dirty` or
-the `git describe` past-tag form `4.0.0-3-gabc1234`) are skipped — the
-Update entity isn't created, so an actively-developed device doesn't
-surface bogus "newer" releases. Tagged prerelease builds
-(`4.0.0-beta.1`) are eligible.
+For a deeper look at the update mechanics or the USB / WebUI flashing
+alternatives, see [Firmware updates](HANDBOOK.md#15-firmware-updates).
+
+Development builds — anything not on a release tag — are skipped, so a
+bench device you're actively flashing won't surface bogus update
+prompts. Tagged prereleases (e.g. `4.0.0-beta.1`) are eligible.
 
 ## Services
 
 Two domain-level services, callable on both v3.4 and v4:
 
-- **`btclock.show_text`** — display arbitrary text across the panels,
-  one character per panel. Truncated to `numScreens`, auto-uppercased.
-  Equivalent to `POST /api/show/text?t=…`.
-- **`btclock.show_custom`** — display one string per panel (array body).
-  Equivalent to `POST /api/show/custom`.
+- **`btclock.show_text`** — display a short message across the panels,
+  one character per panel. Truncated to fit the number of panels and
+  auto-uppercased (the EPD font set is uppercase-only). Same feature
+  as the WebUI's [Control card](HANDBOOK.md#41-control-card-left) text
+  input.
+- **`btclock.show_custom`** — display one string per panel, for
+  layouts the single-character form can't express.
 
-Plus every `button` entity is callable as `button.press` from
-automations.
+Every `button` entity exposed by the device is also callable from
+automations via `button.press` — handy for wiring a physical Zigbee or
+Z-Wave remote to actions like "next screen" or "toggle pause".
 
 ## Authentication & discovery
 
-When `httpAuthEnabled` is set on the device, the config flow picks up
-the 401 from `/api/settings` on first contact and re-prompts for
-credentials. Stored credentials are sent as HTTP Basic Auth on every
-request; rotation is handled by HA's built-in re-auth flow.
+If you've enabled HTTP authentication on the device (Settings card →
+HTTP auth / OTA — see
+[HANDBOOK §4.3](HANDBOOK.md#43-settings-card-right)), the config flow
+asks for the username and password on first contact. Credentials are
+stored in the integration entry and Home Assistant will prompt for new
+ones automatically if you ever change them on the device.
 
-mDNS auto-discovery uses the `_http._tcp.local.` service with an
-instance name matching `btclock-*`. The config flow verifies any match
-by hitting `/api/settings` before completing, so unrelated HTTP
-advertisers on the same network don't yield false positives.
+Auto-discovery relies on the device's mDNS broadcast — every BTClock
+advertises itself as `btclock-<id>.local` on the local network. The
+integration verifies each candidate before adding it, so unrelated
+HTTP devices on the same network won't get picked up by mistake.
