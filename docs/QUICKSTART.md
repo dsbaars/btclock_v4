@@ -134,10 +134,14 @@ each screen looks like.
 
 - The full reference — every screen, every setting, every API endpoint
   — is in [`HANDBOOK.md`](HANDBOOK.md).
-- A Home Assistant custom integration is at
-  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock)
-  — entities for every data screen plus services for screen-push and
-  LED control.
+- A Home Assistant integration is maintained alongside the firmware
+  (same author) at
+  [git.btclock.dev/btclock/homeassistant-btclock](https://git.btclock.dev/btclock/homeassistant-btclock)
+  with a mirror on
+  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock).
+  Entities for every data screen plus services for screen-push and
+  LED control. See [`HOMEASSISTANT.md`](HOMEASSISTANT.md) for the full
+  setup walkthrough.
 - A web-based ESP-S3 flasher (no toolchain, just Chrome) lives at
   [web-flasher.btclock.dev](https://web-flasher.btclock.dev/) — the
   easiest way to flash a fresh board or recover from a bad firmware.

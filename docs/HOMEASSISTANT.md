@@ -14,6 +14,14 @@ and appear under "Discovered" — see
 [Authentication & discovery](#authentication-discovery) below for
 details.
 
+If you're already signed into Home Assistant in this browser, the two
+buttons below open the right pages directly — the first adds the
+custom repository to HACS in one click, the second jumps straight to
+the BTClock integration's "Add integration" flow once it's installed.
+
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dsbaars&repository=homeassistant-btclock&category=integration)
+[![Add integration](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=btclock)
+
 The integration auto-detects which firmware generation it's talking to
 (legacy ≤3.3, v3.4, v4) and surfaces the appropriate entities. v4-only
 features — mining-pool selector, font selector, Bitaxe data source,

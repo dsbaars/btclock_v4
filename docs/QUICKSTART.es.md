@@ -143,10 +143,14 @@ cómo se ve cada pantalla.
 
 - La referencia completa — cada pantalla, cada ajuste, cada endpoint
   de la API — está en [`HANDBOOK.md`](HANDBOOK.md).
-- Una integración comunitaria para Home Assistant en
-  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock)
-  — entidades para cada pantalla de datos y servicios para empujar
-  texto y controlar los LED.
+- Una integración para Home Assistant se mantiene junto con el
+  firmware (mismo autor) en
+  [git.btclock.dev/btclock/homeassistant-btclock](https://git.btclock.dev/btclock/homeassistant-btclock)
+  con una réplica en
+  [github.com/dsbaars/homeassistant-btclock](https://github.com/dsbaars/homeassistant-btclock).
+  Entidades para cada pantalla de datos y servicios para empujar
+  texto y controlar los LED. Consulta [`HOMEASSISTANT.md`](HOMEASSISTANT.md)
+  para el recorrido completo.
 - Un flasher de ESP-S3 basado en el navegador (sin toolchain, sólo
   Chrome) en [web-flasher.btclock.dev](https://web-flasher.btclock.dev/)
   — la forma más fácil de flashear una placa nueva o recuperar de un
