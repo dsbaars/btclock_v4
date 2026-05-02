@@ -6,6 +6,7 @@
 // ignored) at the building-block layer before the ScreenManager tests
 // exercise the composed behaviour.
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -206,17 +207,15 @@ TEST_CASE("ResumeSlot: no persisted lastSlot lands on first sequence entry") {
   // paint must be slot 1 (Time).
   const std::vector<std::size_t> seq = {1, 0};
   const auto r = rp::ResumeSlot(rp::kNoSavedSlot, sm::SlotCount(1), seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 1);
+  CHECK(r == std::optional<std::size_t>{1});
 }
 
 TEST_CASE("ResumeSlot: persisted slot inside rotation is restored") {
   // User was on slot 4 (the third sequence entry) when the device
   // rebooted — boot must land back on slot 4, not on sequence[0].
   const std::vector<std::size_t> seq = {0, 1, 4, 2};
-  const auto r = rp::ResumeSlot(/*saved=*/4u, sm::SlotCount(1), seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 4);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/4u, sm::SlotCount(1), seq);
+  CHECK(r == std::optional<std::size_t>{4});
 }
 
 TEST_CASE("ResumeSlot: trailing fee-rate slot resumes even without sequence") {
@@ -228,9 +227,8 @@ TEST_CASE("ResumeSlot: trailing fee-rate slot resumes even without sequence") {
   const std::vector<std::size_t> seq = {0, 1, 2};
   const std::size_t slot_count = sm::SlotCount(1);
   REQUIRE(slot_count == 12);
-  const auto r = rp::ResumeSlot(/*saved=*/11u, slot_count, seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 11);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/11u, slot_count, seq);
+  CHECK(r == std::optional<std::size_t>{11});
 }
 
 TEST_CASE(
@@ -241,9 +239,8 @@ TEST_CASE(
   // — boot must land on the user's first-in-order screen rather than
   // restoring a slot they can no longer reach via Next/Prev.
   const std::vector<std::size_t> seq = {0, 1, 2};
-  const auto r = rp::ResumeSlot(/*saved=*/4u, sm::SlotCount(1), seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 0);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/4u, sm::SlotCount(1), seq);
+  CHECK(r == std::optional<std::size_t>{0});
 }
 
 TEST_CASE(
@@ -253,9 +250,8 @@ TEST_CASE(
   // layout (slot_count = 12) — slot 14 no longer exists. Must not
   // address out of bounds; sequence[0] is the safe landing.
   const std::vector<std::size_t> seq = {0, 1, 2};
-  const auto r = rp::ResumeSlot(/*saved=*/14u, sm::SlotCount(1), seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 0);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/14u, sm::SlotCount(1), seq);
+  CHECK(r == std::optional<std::size_t>{0});
 }
 
 TEST_CASE(
@@ -286,9 +282,8 @@ TEST_CASE(
   // we must not sentinel-collide. kNoSavedSlot is UINT32_MAX so a
   // legitimately-saved 0 is fine, and the in-sequence check matches.
   const std::vector<std::size_t> seq = {2, 0, 1};
-  const auto r = rp::ResumeSlot(/*saved=*/0u, sm::SlotCount(1), seq);
-  REQUIRE(r.has_value());
-  CHECK(*r == 0);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/0u, sm::SlotCount(1), seq);
+  CHECK(r == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("cold-boot fallback never wedges when every api_id is gated off") {
