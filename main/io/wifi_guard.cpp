@@ -4,6 +4,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/led_controller.hpp"
 #include "prefs.hpp"
 #include "wifi.hpp"
 
@@ -15,6 +16,14 @@ constexpr const char* kTag = "wifi-guard";
 void WaitForConnected(Wifi& wifi, Prefs& net_prefs, uint32_t log_every_ms,
                       uint32_t max_terminal_strikes) {
   ESP_LOGI(kTag, "waiting for STA IP …");
+  // Skip the LED feedback when STA already has an IP at function entry:
+  // posting connecting+success would just produce a brief flicker over
+  // the boot-rainbow / power-test handoff. Only the actual "had to wait"
+  // path needs visual indication.
+  const bool had_to_wait = (wifi.state() != Wifi::State::kConnected);
+  if (had_to_wait) {
+    PostLedEffect(LedEffect::kWifiConnecting);
+  }
   uint32_t waited_ms = 0;
   while (wifi.state() != Wifi::State::kConnected) {
     vTaskDelay(pdMS_TO_TICKS(1000));
@@ -36,9 +45,17 @@ void WaitForConnected(Wifi& wifi, Prefs& net_prefs, uint32_t log_every_ms,
                static_cast<unsigned>(wifi.last_disconnect_reason()));
       net_prefs.SetString("ssid", "");
       net_prefs.Commit();
-      vTaskDelay(pdMS_TO_TICKS(500));
+      // Brief red↔blue blink before reboot so the user sees a "creds
+      // rejected, restarting into provisioning" cue rather than the
+      // device just going dark. Bumped from 500 ms to 1 s so the
+      // 3×100 ms blink has time to fully render.
+      PostLedEffect(LedEffect::kWifiConnectError);
+      vTaskDelay(pdMS_TO_TICKS(1000));
       esp_restart();
     }
+  }
+  if (had_to_wait) {
+    PostLedEffect(LedEffect::kWifiConnectSuccess);
   }
   ESP_LOGI(kTag, "STA up, ip=%s", wifi.ip().c_str());
 }

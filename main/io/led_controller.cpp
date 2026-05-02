@@ -303,20 +303,6 @@ void PlayHeartbeat(led_strip_handle_t strip) {
   PaintAllOff(strip);
 }
 
-// WiFi spinner: single lit pixel walking the strip tail-to-head.
-void PlayWifiConnecting(led_strip_handle_t strip) {
-  const uint32_t kCyan = PackRgb(16, 197, 236);
-  for (int32_t i = static_cast<int32_t>(g_count) - 1; i >= 0; --i) {
-    for (uint32_t j = 0; j < g_count; ++j) {
-      const uint32_t c = (static_cast<int32_t>(j) == i) ? kCyan : 0;
-      PushPixel(strip, j, c, CurrentBrightness());
-    }
-    led_strip_refresh(strip);
-    vTaskDelay(pdMS_TO_TICKS(100));
-  }
-  PaintAllOff(strip);
-}
-
 // Single-pixel head→tail sweep with a linear per-step delay ramp.
 // Does NOT clear when finished — leaves the last lit pixel held so
 // callers can append a brake-light / handbrake frame on either end.
@@ -396,7 +382,13 @@ void Task(void* arg) {
   // Modes where the idle ticks do something (boot palette, provisioning
   // breathe, boot-failed solid); everything else is a one-shot we play
   // inline and return to idle immediately.
-  enum class Mode : uint8_t { kBoot, kProvisioning, kIdle, kBootFailed };
+  enum class Mode : uint8_t {
+    kBoot,
+    kProvisioning,
+    kIdle,
+    kBootFailed,
+    kWifiConnecting,
+  };
   Mode mode = Mode::kBoot;
   size_t frame = 0;
 
@@ -414,6 +406,12 @@ void Task(void* arg) {
         break;
       case Mode::kBootFailed:
         wait = portMAX_DELAY;
+        break;
+      case Mode::kWifiConnecting:
+        // 100 ms/step matches the original one-shot PlayWifiConnecting
+        // cadence — one pixel hop per tick, full sweep ≈ 400 ms on a
+        // 4-LED strip.
+        wait = pdMS_TO_TICKS(100);
         break;
       case Mode::kIdle:
         wait = portMAX_DELAY;
@@ -541,9 +539,14 @@ void Task(void* arg) {
           break;
 
         case LedEffect::kWifiConnecting:
-          PlayWifiConnecting(strip);
-          mode = Mode::kIdle;
-          PaintResting(strip, bright);
+          // Continuous spinner: hand off to Mode::kWifiConnecting so
+          // the per-frame painter cycles the cyan pixel forever (or
+          // until another effect supplants it). The wifi-guard boot
+          // path posts kWifiConnectSuccess / kWifiConnectError at the
+          // edges, which switch back to kIdle.
+          mode = Mode::kWifiConnecting;
+          frame = 0;
+          PaintAllOff(strip);
           break;
 
         case LedEffect::kWifiConnectError:
@@ -617,6 +620,24 @@ void Task(void* arg) {
         const uint8_t v =
             led_curves::Breath(255, frame % kCycleFrames, kCycleFrames);
         PaintUniform(strip, PackRgb(0, v, v), CurrentBrightness());
+        ++frame;
+        break;
+      }
+      case Mode::kWifiConnecting: {
+        // Single-pixel cyan spinner, one hop per 100 ms tick. Cycles
+        // through the strip head→tail and wraps. Same colour and
+        // pace as the one-shot PlayWifiConnecting helper, but the
+        // animation runs until kWifiConnectSuccess / kWifiConnectError
+        // / any other event swaps the mode out — so the user sees a
+        // steady "trying to connect" indicator across a multi-second
+        // STA association instead of a single 400 ms flash.
+        const uint8_t bright = CurrentBrightness();
+        const uint32_t kCyan = PackRgb(16, 197, 236);
+        const uint32_t lit = (g_count > 0) ? frame % g_count : 0;
+        for (uint32_t j = 0; j < g_count; ++j) {
+          PushPixel(strip, j, j == lit ? kCyan : 0, bright);
+        }
+        led_strip_refresh(strip);
         ++frame;
         break;
       }

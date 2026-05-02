@@ -28,7 +28,8 @@
 //   kFlashError         quick red blink (generic error)
 //   kFlashUpdate        yellow-green blink (flash-on-data-update)
 //   kHeartbeat          single slow blue blink (alive marker)
-//   kWifiConnecting     blue spinner sweep
+//   kWifiConnecting     blue spinner sweep, drawn continuously until
+//                       another event (used while the STA is associating)
 //   kWifiConnectError   red/blue alternating flash
 //   kWifiConnectSuccess triple green flash
 //   kWifiWaitForConfig  twin-blue flash (AP mode)
