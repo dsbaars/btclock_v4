@@ -22,7 +22,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -194,6 +196,53 @@ inline std::vector<std::size_t> BuildRotationSequence(
   }
   if (out.empty()) out.push_back(0);
   return out;
+}
+
+// Sentinel for "no persisted lastSlot" — written by ResumeSlot callers
+// when NVS returns the GetU32 default for a missing key. UINT32_MAX
+// keeps the helper free of NVS / ESP-IDF dependencies so host tests
+// can exercise the same code path the firmware boot runs.
+inline constexpr std::uint32_t kNoSavedSlot = UINT32_MAX;
+
+// Decide which slot the device should resume on after boot.
+//
+// Inputs mirror what `init_screen_manager` already has on hand after
+// it builds the rotation sequence:
+//   - `saved_slot`: persisted lastSlot from the runtime-state NVS
+//     namespace, or `kNoSavedSlot` when absent (fresh device / first
+//     boot after factory reset).
+//   - `slot_count`: ScreenManager::slot_count() under the active
+//     currency list — bounds the saved slot.
+//   - `sequence`: the freshly-built rotation_sequence the device just
+//     installed via `SetRotationSequence`.
+//
+// Returns the slot to call SetSlot(...) with, or std::nullopt to leave
+// the constructor default (slot 0). Two-tier policy:
+//   1. Restore `saved_slot` iff it's within bounds AND either matches
+//      the trailing fee-rate slot (slot_count - 1, never appears in
+//      `sequence` because the rotation expansion lists it explicitly)
+//      or is present in `sequence`.
+//   2. Otherwise land on `sequence[0]` so the user's first-in-order
+//      screen paints on the very first frame instead of always
+//      booting on block-height (slot 0) and auto-rotating off it
+//      30 s later.
+//   3. With an empty sequence, return std::nullopt — the constructor
+//      default is the only sane landing spot.
+inline std::optional<std::size_t> ResumeSlot(
+    std::uint32_t saved_slot, std::size_t slot_count,
+    const std::vector<std::size_t>& sequence) {
+  auto in_sequence = [&sequence](std::size_t s) -> bool {
+    for (std::size_t v : sequence)
+      if (v == s) return true;
+    return false;
+  };
+  const bool fee_slot = (slot_count > 0) && (saved_slot == slot_count - 1);
+  if (saved_slot != kNoSavedSlot && saved_slot < slot_count &&
+      (fee_slot || in_sequence(saved_slot))) {
+    return static_cast<std::size_t>(saved_slot);
+  }
+  if (!sequence.empty()) return sequence.front();
+  return std::nullopt;
 }
 
 // Minimal rotation-step simulator. ScreenManager's Next/Prev/MaybeAutoRotate

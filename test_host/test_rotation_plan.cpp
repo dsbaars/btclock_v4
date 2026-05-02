@@ -190,6 +190,107 @@ TEST_CASE(
   }
 }
 
+// --- ResumeSlot: pin the boot-time cursor restore policy ---
+//
+// Mirrors `init_screen_manager.cpp`'s resume block (refactored to call
+// rotation_plan::ResumeSlot so these tests exercise the same code).
+// Each branch the boot path can take has its own case so a future
+// refactor can't silently regress to "always boot on block-height" —
+// the bug 4d66391 set out to fix.
+
+TEST_CASE("ResumeSlot: no persisted lastSlot lands on first sequence entry") {
+  // Fresh device — NVS GetU32 returns the kNoSavedSlot default. Boot
+  // should resume on the user's first-in-order screen, not the
+  // constructor default of slot 0. With screenOrder=[Time, BlockHeight]
+  // (api ids 3, 0) the rotation_sequence is [1, 0], so the first
+  // paint must be slot 1 (Time).
+  const std::vector<std::size_t> seq = {1, 0};
+  const auto r = rp::ResumeSlot(rp::kNoSavedSlot, sm::SlotCount(1), seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 1);
+}
+
+TEST_CASE("ResumeSlot: persisted slot inside rotation is restored") {
+  // User was on slot 4 (the third sequence entry) when the device
+  // rebooted — boot must land back on slot 4, not on sequence[0].
+  const std::vector<std::size_t> seq = {0, 1, 4, 2};
+  const auto r = rp::ResumeSlot(/*saved=*/4u, sm::SlotCount(1), seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 4);
+}
+
+TEST_CASE("ResumeSlot: trailing fee-rate slot resumes even without sequence") {
+  // The fee-rate slot lives at slot_count - 1 and is *not* part of
+  // rotation_sequence_ unless the user keeps api_id 6 in screenOrder.
+  // ResumeSlot still restores it because the user explicitly navigated
+  // there before the reboot — dropping them onto sequence[0] would
+  // surprise them. SlotCount(1) = 8 + 3 + 1 = 12 → fee slot is 11.
+  const std::vector<std::size_t> seq = {0, 1, 2};
+  const std::size_t slot_count = sm::SlotCount(1);
+  REQUIRE(slot_count == 12);
+  const auto r = rp::ResumeSlot(/*saved=*/11u, slot_count, seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 11);
+}
+
+TEST_CASE(
+    "ResumeSlot: persisted slot dropped from rotation falls back to "
+    "sequence[0]") {
+  // User was on slot 4 (mining-pool earnings) before they PATCHed it
+  // out. After reboot the rotation_sequence no longer contains slot 4
+  // — boot must land on the user's first-in-order screen rather than
+  // restoring a slot they can no longer reach via Next/Prev.
+  const std::vector<std::size_t> seq = {0, 1, 2};
+  const auto r = rp::ResumeSlot(/*saved=*/4u, sm::SlotCount(1), seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 0);
+}
+
+TEST_CASE(
+    "ResumeSlot: persisted slot >= slot_count falls back to sequence[0]") {
+  // A previous boot saved slot 14 under a 4-currency layout
+  // (slot_count = 8+12+1 = 21). User then dropped to a 1-currency
+  // layout (slot_count = 12) — slot 14 no longer exists. Must not
+  // address out of bounds; sequence[0] is the safe landing.
+  const std::vector<std::size_t> seq = {0, 1, 2};
+  const auto r = rp::ResumeSlot(/*saved=*/14u, sm::SlotCount(1), seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 0);
+}
+
+TEST_CASE(
+    "ResumeSlot: empty sequence yields nullopt so the constructor default "
+    "stays put") {
+  // Pathological state — rotation builder returned empty (only
+  // possible if both screenOrder is empty AND every slot is gated
+  // off, and the BuildRotationSequence wedge guard somehow skipped).
+  // ResumeSlot returns nullopt → init_screen_manager skips SetSlot
+  // and the ScreenManager constructor's slot_=0 stands.
+  const auto r = rp::ResumeSlot(rp::kNoSavedSlot, /*slot_count=*/0, {});
+  CHECK_FALSE(r.has_value());
+}
+
+TEST_CASE("ResumeSlot: kNoSavedSlot with empty sequence yields nullopt") {
+  // Same nullopt outcome via the no-saved-slot branch — kNoSavedSlot
+  // != fee_slot (slot_count==0) and isn't in the empty sequence, so
+  // we fall through to the empty-sequence guard.
+  const std::vector<std::size_t> seq;
+  const auto r = rp::ResumeSlot(rp::kNoSavedSlot, /*slot_count=*/0, seq);
+  CHECK_FALSE(r.has_value());
+}
+
+TEST_CASE(
+    "ResumeSlot: saved slot 0 (BlockHeight) restores even though it's the "
+    "constructor default") {
+  // Distinct from "fresh boot" — user explicitly landed on slot 0 and
+  // we must not sentinel-collide. kNoSavedSlot is UINT32_MAX so a
+  // legitimately-saved 0 is fine, and the in-sequence check matches.
+  const std::vector<std::size_t> seq = {2, 0, 1};
+  const auto r = rp::ResumeSlot(/*saved=*/0u, sm::SlotCount(1), seq);
+  REQUIRE(r.has_value());
+  CHECK(*r == 0);
+}
+
 TEST_CASE("cold-boot fallback never wedges when every api_id is gated off") {
   // Pathological config: predicate rejects everything. Builder must
   // still emit at least one slot so ScreenManager's index math doesn't
