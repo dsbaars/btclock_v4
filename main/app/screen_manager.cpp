@@ -610,11 +610,14 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
   return false;
 }
 
-bool ScreenManager::ConsumeNewBlock(const DataSnapshot& snap) {
+bool ScreenManager::ConsumeNewBlock(const DataSnapshot& snap,
+                                    uint32_t* out_prev_height) {
   if (!snap.block_height) return false;
   const uint32_t h = *snap.block_height;
-  const bool is_new = last_seen_height_ != 0 && h != last_seen_height_;
+  const uint32_t prev = last_seen_height_;
+  const bool is_new = prev != 0 && h != prev;
   last_seen_height_ = h;
+  if (out_prev_height) *out_prev_height = prev;
   return is_new;
 }
 

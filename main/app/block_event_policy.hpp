@@ -49,6 +49,35 @@ struct BlockEventPolicy {
         return true;
     }
   }
+
+  // Threshold for the catch-up jump guard. Mirrors the v3 firmware's
+  // hardcoded value (100 blocks ≈ 16 hours of chain advance) so a
+  // device that boots after being offline for a few hours doesn't yank
+  // the user, flash the LED, and pulse the frontlight as if 50 blocks
+  // landed in the same minute.
+  static constexpr uint32_t kCatchUpJumpBlocks = 100;
+
+  // Returns true when the latest block-height update is almost
+  // certainly the device catching up to chain tip rather than a
+  // realtime new-block event. Suppresses the LED flash, frontlight
+  // pulse, and stealFocus jump for the catch-up frame — the screen
+  // still re-renders via the normal ShouldRender path so the new
+  // height does appear.
+  //
+  // Rules:
+  //   - prev_height == 0 → first observation (ScreenManager debounce
+  //     also returns is_new=false here, so this path is never reached
+  //     in practice; treat as not-catch-up to keep the predicate
+  //     monotonic.)
+  //   - new_height <= prev_height → reorg / no-op / stale read; never
+  //     a catch-up (a real new block always increments).
+  //   - new_height - prev_height > kCatchUpJumpBlocks → catch-up.
+  static constexpr bool IsCatchUpJump(uint32_t prev_height,
+                                      uint32_t new_height) {
+    if (prev_height == 0) return false;
+    if (new_height <= prev_height) return false;
+    return (new_height - prev_height) > kCatchUpJumpBlocks;
+  }
 };
 
 struct ZapOverlayPolicy {

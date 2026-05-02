@@ -232,7 +232,14 @@ class ScreenManager {
   // Detects a block-height change vs the last snapshot this manager
   // has seen (not vs the last one rendered). True iff the new height
   // differs AND the last seen height was non-zero. Updates seen-height.
-  bool ConsumeNewBlock(const DataSnapshot& snap);
+  // When `out_prev_height` is non-null, fills it with the height the
+  // manager was tracking before this call — paired with the snapshot's
+  // new height the caller can detect catch-up jumps via
+  // BlockEventPolicy::IsCatchUpJump (suppresses the LED flash, the
+  // frontlight pulse, and the stealFocus yank when the device is just
+  // catching up to chain tip after being offline).
+  bool ConsumeNewBlock(const DataSnapshot& snap,
+                       uint32_t* out_prev_height = nullptr);
 
   // Render the current slot. Uses dirty to decide full vs partial
   // refresh; clears dirty after. Updates last-rendered bookkeeping.

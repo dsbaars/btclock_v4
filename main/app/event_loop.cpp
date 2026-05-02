@@ -373,22 +373,37 @@ constexpr const char* kTag = "btclock";
     if (!hub) continue;
     const auto snap = hub->GetSnapshot();
 
-    if (sm.ConsumeNewBlock(snap)) {
-      PostLedEvent(LedEvent::kBlockFlash);
-      if (frontlight) frontlight->Flash();
-      // stealFocus: when enabled, a new block jumps the display to the
-      // block-height screen so the viewer sees the fresh height without
-      // waiting for rotation. Pref read per-event so a live PATCH lands
-      // without reboot. Overlay-aware — debug / custom / zap overlays
-      // block the steal (see BlockEventPolicy::ShouldSteal).
-      Prefs block_prefs(prefs::kSettingsNs);
-      const bool steal_focus =
-          btclock::settings::ReadBool(block_prefs, prefs::kStealFocus);
-      if (BlockEventPolicy::ShouldSteal(steal_focus, sm.current_kind())) {
-        if (sm.SetKind(ScreenType::kBlockHeight, now_ms)) {
-          sm.Render(panels, fb_storage, fonts, snap);
-          publish_status();
-          continue;
+    uint32_t prev_block_height = 0;
+    if (sm.ConsumeNewBlock(snap, &prev_block_height)) {
+      // Catch-up gate: when the device boots after being offline (or
+      // after a long WS reconnect window), the first snapshot can jump
+      // hundreds of blocks ahead of last_seen_height_. Treat that as
+      // "catching up to chain tip" rather than a realtime new-block
+      // event — the user shouldn't get a LED strobe + frontlight pulse
+      // + steal-focus yank for what is effectively a startup snapshot.
+      // The screen still re-renders via the normal ShouldRender path
+      // below, so the new height does appear.
+      const uint32_t new_block_height =
+          snap.block_height ? *snap.block_height : 0;
+      const bool catch_up =
+          BlockEventPolicy::IsCatchUpJump(prev_block_height, new_block_height);
+      if (!catch_up) {
+        PostLedEvent(LedEvent::kBlockFlash);
+        if (frontlight) frontlight->Flash();
+        // stealFocus: when enabled, a new block jumps the display to the
+        // block-height screen so the viewer sees the fresh height without
+        // waiting for rotation. Pref read per-event so a live PATCH lands
+        // without reboot. Overlay-aware — debug / custom / zap overlays
+        // block the steal (see BlockEventPolicy::ShouldSteal).
+        Prefs block_prefs(prefs::kSettingsNs);
+        const bool steal_focus =
+            btclock::settings::ReadBool(block_prefs, prefs::kStealFocus);
+        if (BlockEventPolicy::ShouldSteal(steal_focus, sm.current_kind())) {
+          if (sm.SetKind(ScreenType::kBlockHeight, now_ms)) {
+            sm.Render(panels, fb_storage, fonts, snap);
+            publish_status();
+            continue;
+          }
         }
       }
     }
