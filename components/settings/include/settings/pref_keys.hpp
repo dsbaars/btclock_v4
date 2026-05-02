@@ -145,6 +145,12 @@ inline constexpr const char* kRuntimeStateNs = "rt";
 // PublishStatus when slot_ changes; read at boot in
 // init_screen_manager so a reboot resumes the user's last cursor.
 inline constexpr const char* kLastSlot = "lastSlot";
+// Last seen block height. Persisted from the main task on every
+// validated block-height update so a reboot starts with the height
+// the device was tracking instead of the empty `last_seen_height_=0`
+// that suppresses the very first WS-frame's new-block reaction.
+// Mirrors v3 commit 989e645 ("fix: Fix block number caching").
+inline constexpr const char* kLastBlockHeight = "lastBlockHt";
 
 // Compile-time guard: NVS keys must be <= 15 chars. Enforced once here
 // so a future rename can't silently truncate on-flash.
@@ -244,6 +250,7 @@ BTCLOCK_PREF_KEY_ASSERT(kWpTimeout);
 BTCLOCK_PREF_KEY_ASSERT(kSettingsNs);
 BTCLOCK_PREF_KEY_ASSERT(kRuntimeStateNs);
 BTCLOCK_PREF_KEY_ASSERT(kLastSlot);
+BTCLOCK_PREF_KEY_ASSERT(kLastBlockHeight);
 
 #undef BTCLOCK_PREF_KEY_ASSERT
 

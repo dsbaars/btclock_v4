@@ -121,6 +121,15 @@ void InitScreenManager(AppCtx& ctx) {
     const auto resume = rotation_plan::ResumeSlot(
         saved, ctx.sm->slot_count_public(), ctx.sm->rotation_sequence());
     if (resume) ctx.sm->SetSlot(*resume, MsNow());
+    // Seed the block-height tracker from persisted runtime state so
+    // the very first WS frame after a reboot can detect a missed
+    // block and trigger the proper LED + frontlight + steal-focus
+    // reaction (gated by IsCatchUpJump for big offline windows).
+    // Without this seed, the ConsumeNewBlock debounce on `prev != 0`
+    // silently swallows the first frame's update event. Mirrors
+    // v3 commit 989e645 ("fix: Fix block number caching").
+    const uint32_t saved_height = rt.GetU32(prefs::kLastBlockHeight, 0);
+    if (saved_height != 0) ctx.sm->SeedLastSeenHeight(saved_height);
   }
 
   // Sats-symbol glyph index (0..15) — index into the 16 glyphs at

@@ -241,6 +241,15 @@ class ScreenManager {
   bool ConsumeNewBlock(const DataSnapshot& snap,
                        uint32_t* out_prev_height = nullptr);
 
+  // Seed `last_seen_height_` from persisted runtime state so the very
+  // first WS frame after a reboot can detect "this is a new block I
+  // missed while offline" instead of silently swallowing it (the
+  // ConsumeNewBlock debounce gates on `prev != 0`). Called once at
+  // boot from init_screen_manager after the runtime-state NVS read.
+  // No effect when `height == 0` (cold device, never persisted).
+  void SeedLastSeenHeight(uint32_t height) { last_seen_height_ = height; }
+  uint32_t last_seen_height() const { return last_seen_height_; }
+
   // Render the current slot. Uses dirty to decide full vs partial
   // refresh; clears dirty after. Updates last-rendered bookkeeping.
   // No-op while IsDebug() — callers should use RenderDebug() in that

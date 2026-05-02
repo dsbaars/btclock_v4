@@ -375,6 +375,20 @@ constexpr const char* kTag = "btclock";
 
     uint32_t prev_block_height = 0;
     if (sm.ConsumeNewBlock(snap, &prev_block_height)) {
+      // Persist the new height so the next reboot's
+      // SeedLastSeenHeight reads back a non-zero value and the very
+      // first WS frame after boot is treated as a real new-block
+      // event (catch-up if delta>100, fresh if delta<=100). NVS
+      // writes are cheap on the heartbeat cadence of new blocks
+      // (~1 / 10 min), so no batching is needed. Mirrors v3 commit
+      // 989e645. Static so the open is hot; same task as the rest
+      // of the event loop.
+      const uint32_t new_block_height =
+          snap.block_height ? *snap.block_height : 0;
+      if (new_block_height != 0) {
+        static Prefs rt(prefs::kRuntimeStateNs);
+        rt.SetU32(prefs::kLastBlockHeight, new_block_height);
+      }
       // Catch-up gate: when the device boots after being offline (or
       // after a long WS reconnect window), the first snapshot can jump
       // hundreds of blocks ahead of last_seen_height_. Treat that as
@@ -383,8 +397,6 @@ constexpr const char* kTag = "btclock";
       // + steal-focus yank for what is effectively a startup snapshot.
       // The screen still re-renders via the normal ShouldRender path
       // below, so the new height does appear.
-      const uint32_t new_block_height =
-          snap.block_height ? *snap.block_height : 0;
       const bool catch_up =
           BlockEventPolicy::IsCatchUpJump(prev_block_height, new_block_height);
       if (!catch_up) {
