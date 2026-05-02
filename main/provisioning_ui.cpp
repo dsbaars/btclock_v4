@@ -155,8 +155,8 @@ void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     const std::string fw_ver_wrapped = WrapGitDescribe(fw_ver);
     char body[256];
     std::snprintf(body, sizeof(body),
-                  "*HW:*\n%s\n2.13\"\n\n*SW:*\nBTClock v4\n%s\n\n*Built:*\n%s",
-                  kHwName, fw_ver_wrapped.c_str(), __DATE__);
+                  "*HW:*\n%s\n2.13\"\n\n*SW:*\n%s\n\n*Built:*\n%s", kHwName,
+                  fw_ver_wrapped.c_str(), __DATE__);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kInfoPx, false);
   }
