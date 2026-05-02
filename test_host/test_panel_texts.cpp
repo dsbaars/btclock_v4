@@ -278,6 +278,36 @@ TEST_CASE("panel_texts — V8 Moscow time fills trailing slot for large sats") {
   CHECK(out[7] == "0");
 }
 
+TEST_CASE("panel_texts — Moscow time rounds half-up at the .5 sats boundary") {
+  // Defensive guard against a v3 bug class (commit 132aa83 "Mow Units
+  // no rounding!") where the sats-per-unit conversion truncated rather
+  // than rounded, producing off-by-one digits for prices that landed
+  // on the half-sats boundary. v4 already does it right via `+ 0.5`
+  // before the int cast in SatsPerUnitLocal — this test pins the
+  // rounding direction so a future refactor can't silently regress
+  // to truncation.
+  //
+  // Pick a price where 1e8/price has a fractional part > 0.5 — the
+  // truncation regression would render the lower integer.
+  // 1e8 / 99950 = 1000.5002… → round-half-up = 1001 (correct)
+  //                          → truncate     = 1000 (regressed)
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "USD";
+  in.price = "99950";
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "MSCW/TIME");
+  // 4-digit value in 6 slots: 2 leading pads collapse to one blank
+  // cell + the STS marker, then the digits "1001" right-justified.
+  CHECK(out[1] == "");     // blank pad
+  CHECK(out[2] == "STS");  // sats glyph marker
+  CHECK(out[3] == "1");    // ← regression would show "1"...
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "1");  // ← ...followed by "0" instead of "1"
+}
+
 TEST_CASE("panel_texts — SATS/<CCY> label for non-USD currencies") {
   PanelTextInputs in;
   in.kind = ScreenType::kMoscowTime;
