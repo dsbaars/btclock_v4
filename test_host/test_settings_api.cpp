@@ -1458,7 +1458,9 @@ bool ScreensChangedTriggers(const std::vector<std::string>& touched_keys) {
     const bool is_visible = (k.size() > 7 && k.compare(0, 6, "screen") == 0 &&
                              k.compare(k.size() - 7, 7, "Visible") == 0);
     const bool is_currencies = (k == btclock::prefs::kActCurrencies);
-    if (is_order || is_visible || is_currencies) return true;
+    const bool is_feature_gate = (k == btclock::prefs::kMiningPoolStats ||
+                                  k == btclock::prefs::kBitaxeEnabled);
+    if (is_order || is_visible || is_currencies || is_feature_gate) return true;
   }
   return false;
 }
@@ -1509,6 +1511,29 @@ TEST_CASE("PATCH actCurrencies fires the rotation-rebuild hook trigger") {
       "{\"actCurrencies\":[\"EUR\",\"USD\"]}", DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["actCurrencies"] == "EUR,USD");
+  CHECK(ScreensChangedTriggers(res.touched_keys));
+}
+
+TEST_CASE("PATCH miningPoolStats fires the rotation-rebuild hook trigger") {
+  // Without this trigger, toggling miningPoolStats off at runtime would
+  // leave slots 70/71 in the auto-rotate cycle until reboot — the
+  // is_enabled lambda only re-runs when on_screens_changed fires.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"miningPoolStats\":true}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.b_["miningPoolStats"] == true);
+  CHECK(ScreensChangedTriggers(res.touched_keys));
+}
+
+TEST_CASE("PATCH bitaxeEnabled fires the rotation-rebuild hook trigger") {
+  // Symmetric to the miningPoolStats case — slots 80/81 must drop out
+  // of rotation immediately when the parent feature is toggled off.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"bitaxeEnabled\":true}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.b_["bitaxeEnabled"] == true);
   CHECK(ScreensChangedTriggers(res.touched_keys));
 }
 

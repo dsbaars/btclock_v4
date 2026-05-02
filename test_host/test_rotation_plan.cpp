@@ -159,6 +159,47 @@ TEST_CASE(
   for (std::size_t i = 0; i < 21; ++i) CHECK(seq[i] == i);
 }
 
+TEST_CASE(
+    "cold-boot fallback honours is_enabled — disabled feature slots "
+    "never appear at first boot") {
+  // Repro for the "fresh device shows mining-pool / bitaxe screens
+  // even with miningPoolStats=false and bitaxeEnabled=false" report.
+  // Predicate gates ids 70/71 (mining pool) + 80/81 (bitaxe), as the
+  // is_enabled lambdas in init_screen_manager / event_loop now do.
+  auto enabled = [](int api_id) {
+    if (api_id == 70 || api_id == 71) return false;
+    if (api_id == 80 || api_id == 81) return false;
+    return true;
+  };
+  const auto seq = rp::BuildRotationSequence("", enabled, 1);
+  // 8 agnostic slots minus 4 hidden (4,5,6,7) + 3 per-ccy + 1 fee = 8.
+  REQUIRE(seq.size() == 8);
+  CHECK(seq[0] == 0);   // BlockHeight
+  CHECK(seq[1] == 1);   // Clock
+  CHECK(seq[2] == 2);   // Halving
+  CHECK(seq[3] == 3);   // BitcoinSupply
+  CHECK(seq[4] == 8);   // Moscow USD (slot 4..7 dropped)
+  CHECK(seq[5] == 9);   // Price USD
+  CHECK(seq[6] == 10);  // MarketCap USD
+  CHECK(seq[7] == 11);  // BlockFeeRate (trailing slot)
+  for (const auto s : seq) {
+    CHECK(s != 4);
+    CHECK(s != 5);
+    CHECK(s != 6);
+    CHECK(s != 7);
+  }
+}
+
+TEST_CASE("cold-boot fallback never wedges when every api_id is gated off") {
+  // Pathological config: predicate rejects everything. Builder must
+  // still emit at least one slot so ScreenManager's index math doesn't
+  // divide by zero — same guarantee as the screenOrder path.
+  auto enabled = [](int) { return false; };
+  const auto seq = rp::BuildRotationSequence("", enabled, 2);
+  REQUIRE(seq.size() == 1);
+  CHECK(seq[0] == 0);
+}
+
 // --- Composed behaviour: build-sequence + step-sequence ---
 //
 // These replay the bug-report scenarios against the same primitives

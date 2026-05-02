@@ -216,6 +216,18 @@ constexpr const char* kTag = "btclock";
           if (ctrl) ctrl->SetCurrencies(new_currencies);
           auto is_enabled = [](int api_id) -> bool {
             Prefs p(prefs::kSettingsNs);
+            // Parent-feature gates: keep the runtime rebuild in sync with
+            // boot-time init_screen_manager. Without these checks a
+            // PATCH that flips miningPoolStats / bitaxeEnabled wouldn't
+            // drop the disabled slots from rotation until reboot.
+            if ((api_id == 70 || api_id == 71) &&
+                !btclock::settings::ReadBool(p, prefs::kMiningPoolStats)) {
+              return false;
+            }
+            if ((api_id == 80 || api_id == 81) &&
+                !btclock::settings::ReadBool(p, prefs::kBitaxeEnabled)) {
+              return false;
+            }
             char vkey[24];
             std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
             return p.GetBool(vkey, true);

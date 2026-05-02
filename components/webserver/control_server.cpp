@@ -2182,13 +2182,19 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   // "Visible" (e.g. screen0Visible, screen10Visible) — suffix-match
   // keeps this independent of the catalogue id list. actCurrencies
   // also resizes per-currency screen slots so the same hook handles it.
+  // miningPoolStats / bitaxeEnabled gate the child slots (70/71, 80/81)
+  // so flipping them at runtime must rebuild rotation too — without
+  // this, toggling either off leaves the dormant slots in the auto-
+  // rotate cycle until reboot.
   if (cfg_.on_screens_changed) {
     for (const auto& k : result.touched_keys) {
       const bool is_order = (k == btclock::prefs::kScreenOrder);
       const bool is_visible = (k.size() > 7 && k.compare(0, 6, "screen") == 0 &&
                                k.compare(k.size() - 7, 7, "Visible") == 0);
       const bool is_currencies = (k == btclock::prefs::kActCurrencies);
-      if (is_order || is_visible || is_currencies) {
+      const bool is_feature_gate = (k == btclock::prefs::kMiningPoolStats ||
+                                    k == btclock::prefs::kBitaxeEnabled);
+      if (is_order || is_visible || is_currencies || is_feature_gate) {
         cfg_.on_screens_changed();
         break;
       }

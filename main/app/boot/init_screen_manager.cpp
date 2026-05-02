@@ -84,6 +84,19 @@ void InitScreenManager(AppCtx& ctx) {
         btclock::settings::ReadString(settings, prefs::kScreenOrder);
     auto is_enabled = [](int api_id) -> bool {
       Prefs p(prefs::kSettingsNs);
+      // Parent-feature gates: hashrate / earnings (70/71) live behind
+      // miningPoolStats; bitaxe hashrate / best-diff (80/81) behind
+      // bitaxeEnabled. Both default false in schema, so a fresh device
+      // suppresses these rotation slots even though `screen<id>Visible`
+      // defaults to true.
+      if ((api_id == 70 || api_id == 71) &&
+          !btclock::settings::ReadBool(p, prefs::kMiningPoolStats)) {
+        return false;
+      }
+      if ((api_id == 80 || api_id == 81) &&
+          !btclock::settings::ReadBool(p, prefs::kBitaxeEnabled)) {
+        return false;
+      }
       char vkey[24];
       std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
       return p.GetBool(vkey, true);

@@ -159,7 +159,11 @@ inline std::vector<int> ParseScreenOrderCsv(const std::string& csv) {
 // When `screen_order_csv` is empty, fall back to emitting every slot
 // 0..SlotCount-1 in index order (the pre-screenOrder default). This is
 // the backwards-compat path — a device that was factory-reset or was
-// never PATCHed via the WebUI lands here.
+// never PATCHed via the WebUI lands here. The `is_enabled` predicate
+// still applies: a slot whose owning api_id is gated off (parent feature
+// flag, per-screen `screen<id>Visible`, etc.) is dropped from the cold-
+// boot sequence too — otherwise a fresh device with `miningPoolStats=
+// false` would auto-rotate onto the dormant mining-pool slots.
 //
 // When `screen_order_csv` is present, walk the user's order, dropping
 // disabled entries and expanding per-currency kinds inline. Entries whose
@@ -173,7 +177,14 @@ inline std::vector<std::size_t> BuildRotationSequence(
   std::vector<std::size_t> out;
   if (screen_order_csv.empty()) {
     const std::size_t total = slot_map::SlotCount(currency_count);
-    for (std::size_t i = 0; i < total; ++i) out.push_back(i);
+    for (std::size_t i = 0; i < total; ++i) {
+      if (is_enabled) {
+        const int api_id = slot_map::ApiIdForSlot(i, currency_count);
+        if (api_id < 0 || !is_enabled(api_id)) continue;
+      }
+      out.push_back(i);
+    }
+    if (out.empty()) out.push_back(0);
     return out;
   }
   const std::vector<int> api_ids = ParseScreenOrderCsv(screen_order_csv);
