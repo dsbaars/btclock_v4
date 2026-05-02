@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "board/board.hpp"
 #include "esp_app_desc.h"
@@ -50,6 +51,35 @@ void DrawQr(LandscapeFb& lfb, const char* text) {
 
 // Resolved from the active board header.
 constexpr const char* kHwName = board::kHardwareName;
+
+// Wrap a `git describe --tags --always --dirty --match "[0-9]*"` string
+// across newlines so DrawMarkdown's panel-wide auto-fit isn't dragged
+// down by one wide row (snapshot builds emit e.g.
+// "4.0.0-beta.6-7-gd3ace07-dirty" — at the panel's 18 px request that
+// shrinks the entire panel by ~50% to make the line fit). Splits are
+// chosen at the well-defined `-g<hash>` boundary and the `-dirty`
+// suffix, both of which `git describe --long` always emits at the
+// same position.
+std::string WrapGitDescribe(const char* v) {
+  std::string s(v ? v : "");
+  bool dirty = false;
+  if (auto pos = s.rfind("-dirty"); pos != std::string::npos) {
+    s.erase(pos);
+    dirty = true;
+  }
+  std::string out;
+  if (auto pos = s.find("-g"); pos != std::string::npos) {
+    out = s.substr(0, pos);
+    out += '\n';
+    out += s.substr(pos + 1);  // skip the leading '-' for visual cleanliness
+  } else {
+    out = s;
+  }
+  if (dirty) {
+    out += "\n-dirty";
+  }
+  return out;
+}
 
 }  // namespace
 
@@ -122,10 +152,11 @@ void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     // uncommitted edits at build time.
     const esp_app_desc_t* app = esp_app_get_description();
     const char* fw_ver = (app && app->version[0]) ? app->version : "unknown";
+    const std::string fw_ver_wrapped = WrapGitDescribe(fw_ver);
     char body[256];
     std::snprintf(body, sizeof(body),
                   "*HW:*\n%s\n2.13\"\n\n*SW:*\nBTClock v4\n%s\n\n*Built:*\n%s",
-                  kHwName, fw_ver, __DATE__);
+                  kHwName, fw_ver_wrapped.c_str(), __DATE__);
     DrawMarkdown(lfb, lfb.native_width, lfb.native_height, body, reg, bold,
                  kInfoPx, false);
   }
