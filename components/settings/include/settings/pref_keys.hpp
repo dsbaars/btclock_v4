@@ -135,6 +135,17 @@ inline constexpr const char* kWpTimeout = "wpTimeout";
 // a backup can be taken with nvs_entry_find("nvs", kSettingsNs, ...).
 inline constexpr const char* kSettingsNs = "settings";
 
+// Runtime-state namespace — slot/rotation cursor that lives across
+// reboots so the device resumes where it was rather than always
+// booting on slot 0 (block height). Kept separate from `kSettingsNs`
+// because this isn't user-PATCH-able and we don't want it surfacing
+// on /api/settings or in factory-reset round-trips on the same axis.
+inline constexpr const char* kRuntimeStateNs = "rt";
+// Last rendered slot index. Written from the main task via
+// PublishStatus when slot_ changes; read at boot in
+// init_screen_manager so a reboot resumes the user's last cursor.
+inline constexpr const char* kLastSlot = "lastSlot";
+
 // Compile-time guard: NVS keys must be <= 15 chars. Enforced once here
 // so a future rename can't silently truncate on-flash.
 constexpr bool FitsNvsLimit(const char* s) {
@@ -231,6 +242,8 @@ BTCLOCK_PREF_KEY_ASSERT(kWifiConfigured);
 BTCLOCK_PREF_KEY_ASSERT(kWifiRebootMin);
 BTCLOCK_PREF_KEY_ASSERT(kWpTimeout);
 BTCLOCK_PREF_KEY_ASSERT(kSettingsNs);
+BTCLOCK_PREF_KEY_ASSERT(kRuntimeStateNs);
+BTCLOCK_PREF_KEY_ASSERT(kLastSlot);
 
 #undef BTCLOCK_PREF_KEY_ASSERT
 

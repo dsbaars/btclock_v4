@@ -204,6 +204,13 @@ class ScreenManager {
   // currently-displayed slot if it still appears in the new sequence.
   void SetRotationSequence(std::vector<std::size_t> sequence);
 
+  // Read-only accessor for the rotation plan. Used by the boot-time
+  // resume path so it can validate a persisted lastSlot against the
+  // freshly-built sequence before restoring the cursor.
+  const std::vector<std::size_t>& rotation_sequence() const {
+    return rotation_sequence_;
+  }
+
   // Replace the active currency list at runtime. Used by the
   // on_screens_changed hook when PATCH /api/settings updates
   // `actCurrencies` so the per-currency slot expansion follows the new

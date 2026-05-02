@@ -542,6 +542,19 @@ void PublishStatus(AppCtx& ctx) {
   ls.currency = ctx.sm->current_currency();
   ls.panel_texts = ctx.sm->last_panel_texts();
   ctx.ctrl->PublishStatus(ls);
+  // Persist the cursor so a reboot resumes here instead of
+  // defaulting to slot 0 (block-height). Skip on no-op transitions
+  // to avoid burning NVS cycles on every status broadcast — the
+  // function fires on every render, but the slot only changes on
+  // navigation / auto-rotate / steal-focus events. Static state is
+  // safe: PublishStatus only runs on the main task.
+  static std::size_t last_persisted_slot = SIZE_MAX;
+  const std::size_t cur = ctx.sm->current_slot();
+  if (cur != last_persisted_slot) {
+    Prefs rt(prefs::kRuntimeStateNs);
+    rt.SetU32(prefs::kLastSlot, static_cast<uint32_t>(cur));
+    last_persisted_slot = cur;
+  }
   // Fan out to SSE subscribers so screen rotations / button presses
   // surface in the WebUI without waiting for the next poll.
   ctx.ctrl->BroadcastStatus();

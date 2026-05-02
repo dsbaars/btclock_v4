@@ -92,6 +92,37 @@ void InitScreenManager(AppCtx& ctx) {
         order_csv, is_enabled, ctx.currencies.size()));
   }
 
+  // Resume cursor: by default the constructor leaves slot_=0
+  // (block-height), but that ignores screenOrder — a user who put
+  // Time first would always boot on block-height. Two-tier restore:
+  //   1. If a previous boot persisted `lastSlot` in the runtime-
+  //      state namespace, restore that slot iff it's still valid
+  //      (in the current rotation_sequence_ or is the trailing
+  //      fee-rate slot).
+  //   2. Otherwise land on rotation_sequence_[0] so the user's
+  //      first-in-order screen paints on the very first frame.
+  // SetSlot() syncs rotation_idx_ via IndexForSlot so the next
+  // auto-rotate step advances from the resumed position rather
+  // than from a stale slot 0.
+  {
+    Prefs rt(prefs::kRuntimeStateNs);
+    const uint32_t kSentinel = UINT32_MAX;
+    const uint32_t saved = rt.GetU32(prefs::kLastSlot, kSentinel);
+    const std::size_t n = ctx.sm->slot_count_public();
+    auto in_rotation = [&ctx](std::size_t s) -> bool {
+      const auto& seq = ctx.sm->rotation_sequence();
+      for (std::size_t v : seq)
+        if (v == s) return true;
+      return false;
+    };
+    const bool fee_slot = (n > 0) && (saved == n - 1);
+    if (saved != kSentinel && saved < n && (fee_slot || in_rotation(saved))) {
+      ctx.sm->SetSlot(saved, MsNow());
+    } else if (!ctx.sm->rotation_sequence().empty()) {
+      ctx.sm->SetSlot(ctx.sm->rotation_sequence().front(), MsNow());
+    }
+  }
+
   // Sats-symbol glyph index (0..15) — index into the 16 glyphs at
   // U+E000..U+E00F of the SatoshiSymbol font. Now lives in the
   // "settings" NVS namespace under `satsVariant` (camelCase, matches
