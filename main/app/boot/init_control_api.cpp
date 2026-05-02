@@ -362,9 +362,14 @@ void InitControlApi(AppCtx& ctx) {
                                : LedEffect::kTimerResume);
     };
     // POST /api/action/simulate_zap — drives the same code path the
-    // real zap listener uses (DataSnapshot patch + pending flag +
-    // task notify) but skips the LED / frontlight / nostrZapNotify
-    // gates so the overlay fires unconditionally for QA.
+    // real zap listener uses so HA's "Simulate Zap" button actually
+    // exercises the LED strip + frontlight too, not just the screen
+    // overlay. The screen overlay fires unconditionally (it's the
+    // primary "did the action work?" signal for QA / automation
+    // wiring), but the physical effects honour their per-effect
+    // user gates — ledFlashOnZap and flFlashOnZap — so flipping
+    // either toggle is observable from a simulated event. bd
+    // btclock_v4-8a4.
     ccfg.simulate_zap = [ctx_ptr](int64_t amount_sats, std::string message) {
       if (!ctx_ptr->hub) return;
       DataSnapshot patch;
@@ -372,6 +377,13 @@ void InitControlApi(AppCtx& ctx) {
       patch.latest_zap.message = std::move(message);
       patch.latest_zap.received_ms = MsNow();
       ctx_ptr->hub->Report(patch);
+      if (ctx_ptr->flash_on_zap_enabled.load()) {
+        PostLedEffect(LedEffect::kZap);
+      }
+      if (ctx_ptr->frontlight &&
+          ctx_ptr->flash_frontlight_on_zap_enabled.load()) {
+        ctx_ptr->frontlight->ZapFlash();
+      }
       ctx_ptr->zap_notify_pending.store(true);
       if (ctx_ptr->main_task) xTaskNotifyGive(ctx_ptr->main_task);
     };
