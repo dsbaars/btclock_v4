@@ -66,7 +66,10 @@ option does.
 **LEDs 1-4** expose each NeoPixel as a separate colour entity, so an
 automation can paint individual pixels — e.g. red on a stalled price
 feed. Background on the LED strip lives under
-[LEDs & frontlight](HANDBOOK.md#10-leds--frontlight).
+[LEDs & frontlight](HANDBOOK.md#10-leds--frontlight); the device also
+plays its own indicator patterns for boot / WiFi / data-feed faults
+which are catalogued under
+[LED status effects](HANDBOOK.md#led-status-effects).
 
 The **Do Not Disturb** start- and end-time fields schedule the
 device's nightly quiet window. They mirror the WebUI scheduler —

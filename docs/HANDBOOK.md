@@ -971,6 +971,37 @@ curl -X POST 'http://btclock-xxxxxx.local/api/lights/color?c=E04300'
 curl -X POST http://btclock-xxxxxx.local/api/lights/off
 ```
 
+#### LED status effects
+
+The strip is also a status indicator. Beyond the block-flash pulse it
+plays a handful of patterns to communicate device state — useful when
+the panels can't (during boot, while connecting, when an upstream
+data feed drops). They're all suppressed when **Disable all LED
+effects** is on or DND is active.
+
+| Pattern | Meaning | What to do |
+|---|---|---|
+| Rainbow scan, ~1.5 s, then off | Power-on self-test. | Nothing — boot is in progress. (Toggle **LED power-on test** off to skip it.) |
+| Single cyan pixel sweeping along the strip, continuous | Connecting to WiFi. | Wait. Long sweeps point at a slow AP or a weak signal. |
+| Triple green flash | WiFi connected, IP obtained. | Nothing — fires once after the spinner clears. |
+| Red ↔ blue alternating, three quick flashes | Saved WiFi credentials kept failing — device is rebooting into provisioning. | Reconnect to the `BTClock-XXXX` SoftAP and submit fresh credentials. |
+| Soft cyan breathing, continuous | Provisioning portal active (SoftAP / captive-portal mode). | Connect to the BTClock's hotspot and finish setup — see [§2 Hardware tour](#2-hardware-tour) and [§4 WebUI tour](#4-webui-tour). |
+| Quick orange (or your chosen colour) pulse | A new Bitcoin block arrived. | Nothing. Toggle **LED flash on new block** off to silence it. |
+| Quick bright pulse | Nostr zap received (when LED flash on zap is enabled). | Background — see [§9 Nostr zap setup](#9-nostr-zap-setup). |
+| Slow red breath, ~2 s, repeating every ~5 s | WiFi has dropped, **or** both upstream data feeds are stalled. | Check your WiFi router and the device's RSSI in [§4.2 Status card](#42-status-card-centre). |
+| Two quick purple blinks every ~10 s | Block-source feed (Mempool) is stalled but WiFi is fine. | Usually self-recovers. The Status card's "Blocks" badge tells the same story. |
+| Two quick amber blinks every ~10 s | Price-source feed (Kraken) is stalled but WiFi is fine. | Usually self-recovers. Mirrored in the Status card's "Price" badge. |
+| Yellow-green blink | A data refresh just landed (any source). | Disable via **LED flash on update** if you find it distracting (`ledFlashOnUpd`). |
+| Amber sweep ending in red brake-light | Screen rotation paused (front button held, or `/api/pause` called). | Press the front button again to resume — see [§3 On-device controls](#3-on-device-controls). |
+| Red handbrake → green sweep | Screen rotation resumed. | Background. |
+| All pixels solid red | Boot sanity failure. | Reflash via the [Web flasher](#14-web-flasher) — the firmware never made it to a usable state. |
+
+The fault indicators (red breath / purple / amber blinks) only fire
+*between* user-set colours rather than overwriting them — the strip
+returns to whatever you last set via the colour swatch or
+`/api/lights/color` between pulses, so a static colour is still
+visible most of the time.
+
 ### Frontlight (Rev B only)
 
 A row of soft-white LEDs aimed across the panel faces, driven by a
