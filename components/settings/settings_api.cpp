@@ -332,55 +332,86 @@ bool HasControlBytes(const char* s) {
   return false;
 }
 
-bool ApplyScalar(const FieldSpec& f, const cJSON* v, PrefsWriter& writer) {
+// ApplyScalar tri-state: kRejected = validation/type error (caller emits
+// kBadField/kBadRequest); kUnchanged = value equals what's already stored
+// (caller skips touched_keys to avoid firing post-PATCH hooks for fields
+// the user didn't actually modify); kChanged = value differed and was
+// written (caller emplaces touched_keys so the dispatch hooks run).
+//
+// Skipping the unchanged case matters because the WebUI sends the full
+// settings object on every save (SettingsPanel.svelte handleSubmit), so
+// without a compare-on-write check `fontName`/`tzString`/`invertedColor`
+// would each fire their MarkDirty-driven full EPD refresh on every save
+// regardless of whether the user touched those sections.
+enum class ApplyOutcome : uint8_t { kRejected, kUnchanged, kChanged };
+
+ApplyOutcome ApplyScalar(const FieldSpec& f, const cJSON* v,
+                         const PrefsReader& prefs, PrefsWriter& writer) {
   switch (f.kind) {
     case FieldKind::kString: {
-      if (!cJSON_IsString(v) || !v->valuestring) return false;
+      if (!cJSON_IsString(v) || !v->valuestring) return ApplyOutcome::kRejected;
       const std::size_t cap =
           f.max_value > 0 ? f.max_value : kDefaultStringMaxLen;
-      if (std::strlen(v->valuestring) > cap) return false;
-      if (HasControlBytes(v->valuestring)) return false;
+      if (std::strlen(v->valuestring) > cap) return ApplyOutcome::kRejected;
+      if (HasControlBytes(v->valuestring)) return ApplyOutcome::kRejected;
+      const std::string prior =
+          prefs.GetString(f.key.data(), f.default_str.data());
+      if (prior == v->valuestring) return ApplyOutcome::kUnchanged;
       writer.SetString(f.key.data(), v->valuestring);
-      return true;
+      return ApplyOutcome::kChanged;
     }
     case FieldKind::kUint: {
-      if (!cJSON_IsNumber(v) || v->valuedouble < 0) return false;
+      if (!cJSON_IsNumber(v) || v->valuedouble < 0)
+        return ApplyOutcome::kRejected;
       const double d = v->valuedouble;
       if (f.max_value != 0 && d > static_cast<double>(f.max_value))
-        return false;
+        return ApplyOutcome::kRejected;
       if (f.min_value != 0 && d < static_cast<double>(f.min_value))
-        return false;
-      writer.SetU32(f.key.data(), static_cast<uint32_t>(d));
-      return true;
+        return ApplyOutcome::kRejected;
+      const uint32_t next = static_cast<uint32_t>(d);
+      const uint32_t prior = prefs.GetU32(
+          f.key.data(), static_cast<uint32_t>(f.default_int));
+      if (prior == next) return ApplyOutcome::kUnchanged;
+      writer.SetU32(f.key.data(), next);
+      return ApplyOutcome::kChanged;
     }
     case FieldKind::kInt: {
-      if (!cJSON_IsNumber(v)) return false;
-      writer.SetI32(f.key.data(), static_cast<int32_t>(v->valuedouble));
-      return true;
+      if (!cJSON_IsNumber(v)) return ApplyOutcome::kRejected;
+      const int32_t next = static_cast<int32_t>(v->valuedouble);
+      const int32_t prior = prefs.GetI32(f.key.data(), f.default_int);
+      if (prior == next) return ApplyOutcome::kUnchanged;
+      writer.SetI32(f.key.data(), next);
+      return ApplyOutcome::kChanged;
     }
     case FieldKind::kUChar: {
-      if (!cJSON_IsNumber(v) || v->valuedouble < 0) return false;
+      if (!cJSON_IsNumber(v) || v->valuedouble < 0)
+        return ApplyOutcome::kRejected;
       const double d = v->valuedouble;
       if (f.max_value != 0 && d > static_cast<double>(f.max_value))
-        return false;
-      writer.SetU8(f.key.data(), static_cast<uint8_t>(d));
-      return true;
+        return ApplyOutcome::kRejected;
+      const uint8_t next = static_cast<uint8_t>(d);
+      const uint8_t prior =
+          prefs.GetU8(f.key.data(), static_cast<uint8_t>(f.default_int));
+      if (prior == next) return ApplyOutcome::kUnchanged;
+      writer.SetU8(f.key.data(), next);
+      return ApplyOutcome::kChanged;
     }
     case FieldKind::kBool: {
-      if (!cJSON_IsBool(v)) return false;
-      writer.SetBool(f.key.data(), cJSON_IsTrue(v));
-      return true;
+      if (!cJSON_IsBool(v)) return ApplyOutcome::kRejected;
+      const bool next = cJSON_IsTrue(v);
+      const bool prior = prefs.GetBool(f.key.data(), f.default_bool);
+      if (prior == next) return ApplyOutcome::kUnchanged;
+      writer.SetBool(f.key.data(), next);
+      return ApplyOutcome::kChanged;
     }
   }
-  return false;
+  return ApplyOutcome::kRejected;
 }
 
 }  // namespace
 
 PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
                        const PrefsReader& prefs, PrefsWriter& writer) {
-  (void)prefs;  // currently only used for writes; kept for future hooks
-
   PatchResult result;
   cJSON* root = cJSON_Parse(body_json);
   if (!root) {
@@ -519,7 +550,8 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       }
     }
 
-    if (!ApplyScalar(*spec, item, writer)) {
+    const ApplyOutcome outcome = ApplyScalar(*spec, item, prefs, writer);
+    if (outcome == ApplyOutcome::kRejected) {
       // Type mismatch or out-of-range. Old firmware's generic loop was
       // `settings[k].is<T>()`-gated — a mismatch was silent. Here we
       // surface structured errors so the WebUI can report the field
@@ -541,13 +573,14 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         return result;
       }
       // No explicit range → treat as a bad type (the only other way
-      // ApplyScalar returns false). Structured error; matches the new
+      // ApplyScalar rejects. Structured error; matches the new
       // convention the task spec calls out.
       result.status = PatchStatus::kBadField;
       result.error = std::string(spec->key) + ":bad_type";
       cJSON_Delete(root);
       return result;
     }
+    if (outcome == ApplyOutcome::kUnchanged) continue;
     result.touched_keys.emplace_back(key);
     if (spec->boot_only) result.reboot_required = true;
   }
@@ -567,12 +600,15 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     cJSON* inv = cJSON_GetObjectItemCaseSensitive(root, "invertedColor");
     if (cJSON_IsBool(inv)) {
       const bool v = cJSON_IsTrue(inv);
-      writer.SetBool(prefs::kInvertedColor, v);
-      // Match old firmware: white-on-black when inverted, else swap.
-      // Numeric colour codes: WHITE=0xFFFF / BLACK=0.
-      writer.SetU32(prefs::kFgColor, v ? 0xFFFFu : 0u);
-      writer.SetU32(prefs::kBgColor, v ? 0u : 0xFFFFu);
-      result.touched_keys.emplace_back("invertedColor");
+      const bool prior = prefs.GetBool(prefs::kInvertedColor, false);
+      if (prior != v) {
+        writer.SetBool(prefs::kInvertedColor, v);
+        // Match old firmware: white-on-black when inverted, else swap.
+        // Numeric colour codes: WHITE=0xFFFF / BLACK=0.
+        writer.SetU32(prefs::kFgColor, v ? 0xFFFFu : 0u);
+        writer.SetU32(prefs::kBgColor, v ? 0u : 0xFFFFu);
+        result.touched_keys.emplace_back("invertedColor");
+      }
     }
   }
 
@@ -582,9 +618,11 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     cJSON* tps = cJSON_GetObjectItemCaseSensitive(root, "timePerScreen");
     if (cJSON_IsNumber(tps) && tps->valuedouble > 0 &&
         tps->valuedouble <= 60 * 60 /* sanity cap */) {
-      writer.SetU32(prefs::kTimerSeconds,
-                    static_cast<uint32_t>(tps->valuedouble * 60.0));
-      result.touched_keys.emplace_back("timerSeconds");
+      const uint32_t next = static_cast<uint32_t>(tps->valuedouble * 60.0);
+      if (prefs.GetU32(prefs::kTimerSeconds, 0) != next) {
+        writer.SetU32(prefs::kTimerSeconds, next);
+        result.touched_keys.emplace_back("timerSeconds");
+      }
     }
   }
 
@@ -594,12 +632,26 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     cJSON* tx = cJSON_GetObjectItemCaseSensitive(root, "txPower");
     if (cJSON_IsNumber(tx)) {
       const int raw = static_cast<int>(tx->valuedouble);
+      // The "auto / reset to default" sentinel removes the key. We
+      // probe whether the slot is set by reading with two distinct
+      // sentinels: a present value answers identically for both, an
+      // absent value answers with each sentinel verbatim. That lets us
+      // skip the Remove() (and the touched_keys emplace) when the key
+      // is already absent — same intent as the compare-on-write check
+      // for the SetI32 branch.
+      const int32_t a = prefs.GetI32(prefs::kTxPower, 12345);
+      const int32_t b = prefs.GetI32(prefs::kTxPower, 67890);
+      const bool absent = (a == 12345 && b == 67890);
       if (raw == 80) {
-        writer.Remove(prefs::kTxPower);
-        result.touched_keys.emplace_back("txPower");
+        if (!absent) {
+          writer.Remove(prefs::kTxPower);
+          result.touched_keys.emplace_back("txPower");
+        }
       } else if (raw >= -1 && raw <= 78) {
-        writer.SetI32(prefs::kTxPower, raw);
-        result.touched_keys.emplace_back("txPower");
+        if (absent || a != raw) {
+          writer.SetI32(prefs::kTxPower, raw);
+          result.touched_keys.emplace_back("txPower");
+        }
       }
     }
   }
@@ -630,8 +682,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         if (!joined.empty()) joined.push_back(',');
         joined.append(code);
       }
-      writer.SetString(prefs::kActCurrencies, joined.c_str());
-      result.touched_keys.emplace_back(prefs::kActCurrencies);
+      if (prefs.GetString(prefs::kActCurrencies, "USD,EUR,JPY") != joined) {
+        writer.SetString(prefs::kActCurrencies, joined.c_str());
+        result.touched_keys.emplace_back(prefs::kActCurrencies);
+      }
     }
   }
 
@@ -740,8 +794,10 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
           if (!order_csv.empty()) order_csv.push_back(',');
           order_csv.append(std::to_string(p.second));
         }
-        writer.SetString(prefs::kScreenOrder, order_csv.c_str());
-        result.touched_keys.emplace_back(prefs::kScreenOrder);
+        if (prefs.GetString(prefs::kScreenOrder, "") != order_csv) {
+          writer.SetString(prefs::kScreenOrder, order_csv.c_str());
+          result.touched_keys.emplace_back(prefs::kScreenOrder);
+        }
       }
 
       // Pass 2: visibility toggles (independent of reorder path).
@@ -752,8 +808,11 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         const int iid = static_cast<int>(id->valuedouble);
         char vkey[24];
         std::snprintf(vkey, sizeof(vkey), "screen%dVisible", iid);
-        writer.SetBool(vkey, cJSON_IsTrue(enabled));
-        result.touched_keys.emplace_back(vkey);
+        const bool next = cJSON_IsTrue(enabled);
+        if (prefs.GetBool(vkey, true) != next) {
+          writer.SetBool(vkey, next);
+          result.touched_keys.emplace_back(vkey);
+        }
       }
     }
   }
@@ -765,8 +824,11 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     if (cJSON_IsObject(dnd)) {
       cJSON* te = cJSON_GetObjectItemCaseSensitive(dnd, "dndTimeEnabled");
       if (cJSON_IsBool(te)) {
-        writer.SetBool(prefs::kDndTimeEnabled, cJSON_IsTrue(te));
-        result.touched_keys.emplace_back(prefs::kDndTimeEnabled);
+        const bool next = cJSON_IsTrue(te);
+        if (prefs.GetBool(prefs::kDndTimeEnabled, false) != next) {
+          writer.SetBool(prefs::kDndTimeEnabled, next);
+          result.touched_keys.emplace_back(prefs::kDndTimeEnabled);
+        }
       }
       cJSON* sh = cJSON_GetObjectItemCaseSensitive(dnd, "startHour");
       cJSON* sm = cJSON_GetObjectItemCaseSensitive(dnd, "startMinute");
@@ -784,15 +846,22 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
           cJSON_Delete(root);
           return result;
         }
-        writer.SetU32(prefs::kDndStartHour,
-                      static_cast<uint32_t>(sh->valuedouble));
-        writer.SetU32(prefs::kDndStartMin,
-                      static_cast<uint32_t>(sm->valuedouble));
-        writer.SetU32(prefs::kDndEndHour,
-                      static_cast<uint32_t>(eh->valuedouble));
-        writer.SetU32(prefs::kDndEndMin,
-                      static_cast<uint32_t>(em->valuedouble));
-        result.touched_keys.emplace_back(prefs::kDndStartHour);
+        const uint32_t nsh = static_cast<uint32_t>(sh->valuedouble);
+        const uint32_t nsm = static_cast<uint32_t>(sm->valuedouble);
+        const uint32_t neh = static_cast<uint32_t>(eh->valuedouble);
+        const uint32_t nem = static_cast<uint32_t>(em->valuedouble);
+        const bool any_changed =
+            prefs.GetU32(prefs::kDndStartHour, 22) != nsh ||
+            prefs.GetU32(prefs::kDndStartMin, 0) != nsm ||
+            prefs.GetU32(prefs::kDndEndHour, 7) != neh ||
+            prefs.GetU32(prefs::kDndEndMin, 0) != nem;
+        if (any_changed) {
+          writer.SetU32(prefs::kDndStartHour, nsh);
+          writer.SetU32(prefs::kDndStartMin, nsm);
+          writer.SetU32(prefs::kDndEndHour, neh);
+          writer.SetU32(prefs::kDndEndMin, nem);
+          result.touched_keys.emplace_back(prefs::kDndStartHour);
+        }
       }
     }
   }

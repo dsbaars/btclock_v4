@@ -447,7 +447,9 @@ TEST_CASE("PATCH still accepts screen 71 in full reorder when hidden") {
       "]}",
       ctx, prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.b_["screen71Visible"] == true);
+  // screen<id>Visible defaults to true; compare-on-write skips the
+  // SetBool when the new value matches the default. Read effective.
+  CHECK(prefs.GetBool("screen71Visible", true) == true);
 }
 
 TEST_CASE("PATCH accepts reorder covering only visible subset (71 hidden)") {
@@ -529,6 +531,68 @@ TEST_CASE("PATCH unknown field silently ignored") {
   CHECK(!res.reboot_required);
 }
 
+TEST_CASE("PATCH same-value scalar leaves touched_keys empty") {
+  // Compare-on-write: if the body sends the same value the prefs
+  // reader already returns, ApplyPatch must NOT mark the key touched.
+  // Without this, the post-PATCH dispatch hooks (fontName / tzString /
+  // invertedColor) fire on every WebUI save, triggering one full EPD
+  // refresh per hook — the WebUI sends the entire settings object on
+  // each save, so every field would otherwise be "touched" regardless
+  // of what the user changed.
+  FakePrefs prefs;
+  prefs.SetString(btclock::prefs::kFontName, "antonio");
+  prefs.SetString(btclock::prefs::kTzString, "Europe/Amsterdam");
+  prefs.SetBool(btclock::prefs::kInvertedColor, false);
+
+  auto res = btclock::settings::ApplyPatch(
+      "{\"fontName\":\"antonio\",\"tzString\":\"Europe/Amsterdam\","
+      "\"invertedColor\":false}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(res.touched_keys.empty());
+  CHECK(!res.reboot_required);
+}
+
+TEST_CASE("PATCH mixed same+changed only marks the changed keys") {
+  FakePrefs prefs;
+  prefs.SetString(btclock::prefs::kFontName, "antonio");
+  prefs.SetString(btclock::prefs::kTzString, "Europe/Amsterdam");
+
+  auto res = btclock::settings::ApplyPatch(
+      "{\"fontName\":\"antonio\",\"tzString\":\"America/New_York\"}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  REQUIRE(res.touched_keys.size() == 1);
+  CHECK(res.touched_keys[0] == "tzString");
+}
+
+TEST_CASE("PATCH same-value matches default (unwritten slot) is unchanged") {
+  // Fresh prefs (no slot written yet). The schema's default for satsVariant
+  // is 7; sending 7 in the PATCH must match the default and skip the
+  // touched-keys emplace, so on_sats_variant_changed doesn't fire on a
+  // first-save where the user never picked a glyph.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch("{\"satsVariant\":7}", DefaultCtx(),
+                                           prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(res.touched_keys.empty());
+}
+
+TEST_CASE("PATCH same-value invertedColor leaves touched_keys empty") {
+  // invertedColor is a bespoke writer (also stamps fgColor/bgColor); it
+  // must respect the same compare-on-write semantics as the schema-driven
+  // scalars so a re-save of the dashboard's current state doesn't fire a
+  // full refresh.
+  FakePrefs prefs;
+  prefs.SetBool(btclock::prefs::kInvertedColor, true);
+  prefs.SetU32(btclock::prefs::kFgColor, 0xFFFFu);
+  prefs.SetU32(btclock::prefs::kBgColor, 0u);
+  auto res = btclock::settings::ApplyPatch("{\"invertedColor\":true}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(res.touched_keys.empty());
+}
+
 TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch(
@@ -536,17 +600,23 @@ TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
       prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(!res.reboot_required);
-  CHECK(prefs.b_["mcapBigChar"] == true);
-  CHECK(prefs.b_["stealFocus"] == false);
+  // mcapBigChar default is `true` and stealFocus default is `true`; the
+  // test PATCHes mcapBigChar=true (no-op write) and stealFocus=false
+  // (changed). Compare-on-write only writes the latter, so check the
+  // effective state via the prefs interface.
+  CHECK(prefs.GetBool("mcapBigChar", true) == true);
+  CHECK(prefs.GetBool("stealFocus", true) == false);
 }
 
 TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
   FakePrefs prefs;
-  // In-range value accepted.
+  // In-range value accepted. ledBrightness default is 128 — same as the
+  // PATCH value, so compare-on-write skips the SetU32 and the underlying
+  // map stays empty. Observe via the effective interface.
   auto ok = btclock::settings::ApplyPatch("{\"ledBrightness\":128}",
                                           DefaultCtx(), prefs, prefs);
   CHECK(ok.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.u32_["ledBrightness"] == 128u);
+  CHECK(prefs.GetU32("ledBrightness", 128) == 128u);
 
   // Out-of-range value rejected (ledBrightness bounded 0..255).
   FakePrefs prefs2;
@@ -690,8 +760,12 @@ TEST_CASE("PATCH screens visibility only") {
       "{\"id\":3,\"enabled\":true}]}",
       DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.b_["screen0Visible"] == false);
-  CHECK(prefs.b_["screen3Visible"] == true);
+  // ApplyPatch's compare-on-write skips writes whose new value matches
+  // the prior value (default = true for screen visibility), so
+  // screen3Visible's "stay-true" doesn't materialise in the underlying
+  // map. Read via GetBool to observe the effective state.
+  CHECK(prefs.GetBool("screen0Visible", true) == false);
+  CHECK(prefs.GetBool("screen3Visible", true) == true);
 }
 
 TEST_CASE("PATCH screens partial order rejected") {
@@ -905,8 +979,10 @@ TEST_CASE("PATCH mining-pool bundle writes user + toggles") {
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["miningPoolName"] == "braiins");
   CHECK(prefs.str_["miningPoolUser"] == "deadbeef-api-token");
-  CHECK(prefs.b_["miningPoolStats"] == true);
-  CHECK(prefs.b_["poolGlobalStats"] == true);
+  CHECK(prefs.GetBool("miningPoolStats", false) == true);
+  // poolGlobalStats's schema default is `true`, so a PATCH of `true` is
+  // a no-op write under compare-on-write. Read via the effective interface.
+  CHECK(prefs.GetBool("poolGlobalStats", true) == true);
   CHECK(prefs.str_["localPoolHost"] == "10.0.0.42");
   // localPoolHost is boot-only (data-source bring-up happens in setup).
   CHECK(res.reboot_required);
@@ -1018,7 +1094,9 @@ TEST_CASE("PATCH verticalDesc round-trips without reboot") {
   auto res = btclock::settings::ApplyPatch("{\"verticalDesc\":true}",
                                            DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.b_["verticalDesc"] == true);
+  // verticalDesc's schema default is `true`, so PATCH(true) is a no-op
+  // under compare-on-write. Read via the effective interface.
+  CHECK(prefs.GetBool("verticalDesc", true) == true);
   CHECK(!res.reboot_required);
 }
 
@@ -1028,8 +1106,10 @@ TEST_CASE("PATCH flFlashOnZap + ledFlashOnZap runtime bools") {
       "{\"flFlashOnZap\":true,\"ledFlashOnZap\":false}", DefaultCtx(), prefs,
       prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.b_["flFlashOnZap"] == true);
-  CHECK(prefs.b_["ledFlashOnZap"] == false);
+  // flFlashOnZap's schema default is `true`, so PATCH(true) is a no-op
+  // write; observe via the effective interface.
+  CHECK(prefs.GetBool("flFlashOnZap", true) == true);
+  CHECK(prefs.GetBool("ledFlashOnZap", false) == false);
   CHECK(!res.reboot_required);
 }
 
@@ -1706,7 +1786,10 @@ TEST_CASE("PATCH satsVariant accepts in-range values 0..15") {
         btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
     CAPTURE(v);
     CHECK(res.status == btclock::settings::PatchStatus::kOk);
-    CHECK(prefs.u32_["satsVariant"] == static_cast<uint32_t>(v));
+    // satsVariant's schema default is 7; compare-on-write skips a
+    // no-op for v=7. Read via the effective interface so the assertion
+    // passes regardless of whether the underlying map slot was written.
+    CHECK(prefs.GetU32("satsVariant", 7) == static_cast<uint32_t>(v));
   }
 }
 
