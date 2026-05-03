@@ -673,9 +673,11 @@ std::string ControlServer::BuildStatusJson() const {
                                  : 0;
   const std::size_t psram_total_bytes =
       esp_psram_is_initialized() ? esp_psram_get_size() : 0;
-  AttachHeapMetricsJson(root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                        heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
-                        psram_free_bytes, psram_total_bytes);
+  AttachHeapMetricsJson(
+      root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+      heap_caps_get_total_size(MALLOC_CAP_INTERNAL), psram_free_bytes,
+      psram_total_bytes, heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
 
   cJSON* conn = cJSON_AddObjectToObject(root, "connectionStatus");
   // Each channel reports its real upstream state when a callback is
@@ -784,9 +786,11 @@ esp_err_t ControlServer::HandleSystemStatus(httpd_req_t* req) {
                                  : 0;
   const std::size_t psram_total =
       esp_psram_is_initialized() ? esp_psram_get_size() : 0;
-  AttachHeapMetricsJson(root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-                        heap_caps_get_total_size(MALLOC_CAP_INTERNAL),
-                        psram_free, psram_total);
+  AttachHeapMetricsJson(
+      root, heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+      heap_caps_get_total_size(MALLOC_CAP_INTERNAL), psram_free, psram_total,
+      heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
 
   // LittleFS usage — zero-out on error so the WebUI panel still
   // renders. Mount lives in main.cpp (see beads-bq0 / btclock_fs).

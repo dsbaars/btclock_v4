@@ -100,3 +100,50 @@ TEST_CASE("AttachHeapMetricsJson: null root is a no-op") {
   btclock::AttachHeapMetricsJson(nullptr, 1, 2, 3, 4);
   CHECK(true);  // reaching here means no crash
 }
+
+TEST_CASE("AttachHeapMetricsJson: emits espMinFreeHeap + espLargestFreeBlock") {
+  // The two diagnostic fields surface the leak/fragmentation signal that
+  // the four canonical fields can't show on their own:
+  //   - min_free is the lifetime low-water mark (drops monotonically).
+  //   - largest_free_dma is what a single EPD-SPI / WiFi-LWIP allocation
+  //     can actually claim right now; falls below espFreeHeap once the
+  //     internal SRAM fragments and silently breaks the EPD render.
+  cJSON* root = cJSON_CreateObject();
+  btclock::AttachHeapMetricsJson(root,
+                                 /*free_internal=*/120'000,
+                                 /*total_internal=*/329'995,
+                                 /*free_psram=*/1'800'000,
+                                 /*total_psram=*/2'097'152,
+                                 /*min_free_internal=*/18'000,
+                                 /*largest_free_internal_dma=*/4'096);
+  cJSON* m = cJSON_GetObjectItemCaseSensitive(root, "espMinFreeHeap");
+  cJSON* l = cJSON_GetObjectItemCaseSensitive(root, "espLargestFreeBlock");
+  REQUIRE(cJSON_IsNumber(m));
+  REQUIRE(cJSON_IsNumber(l));
+  CHECK(m->valuedouble == doctest::Approx(18'000.0));
+  CHECK(l->valuedouble == doctest::Approx(4'096.0));
+  // Sanity: min_free can never exceed current free, and largest_free_dma
+  // can never exceed current free internal. (The helper doesn't enforce
+  // this — these checks codify the contract callers must respect.)
+  CHECK(m->valuedouble <= 120'000.0);
+  CHECK(l->valuedouble <= 120'000.0);
+  cJSON_Delete(root);
+}
+
+TEST_CASE(
+    "AttachHeapMetricsJson: defaulted diagnostic fields emit zero "
+    "(back-compat)") {
+  // Old call sites that pre-date the diagnostic fields still compile and
+  // emit zeros for the two new fields — neutral default that the WebUI
+  // can interpret as "no data yet" without breaking the existing four
+  // canonical fields.
+  cJSON* root = cJSON_CreateObject();
+  btclock::AttachHeapMetricsJson(root, 100'000, 329'995, 0, 0);
+  cJSON* m = cJSON_GetObjectItemCaseSensitive(root, "espMinFreeHeap");
+  cJSON* l = cJSON_GetObjectItemCaseSensitive(root, "espLargestFreeBlock");
+  REQUIRE(cJSON_IsNumber(m));
+  REQUIRE(cJSON_IsNumber(l));
+  CHECK(m->valuedouble == 0.0);
+  CHECK(l->valuedouble == 0.0);
+  cJSON_Delete(root);
+}
