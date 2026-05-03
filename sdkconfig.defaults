@@ -1,5 +1,13 @@
 CONFIG_IDF_TARGET="esp32s3"
 
+# Static fallback for the LwIP DHCP option-12 hostname. Routers display
+# whatever string is announced here when esp_netif_set_hostname() hasn't
+# (yet) overridden it. Default is "espressif" — bumping it to "btclock"
+# means a misconfigured / pre-Connect read still surfaces a sane name.
+# At runtime InitNetwork calls esp_netif_set_hostname with the user's
+# `<hostnamePrefix>-<mac6>` value, so this static is only a safety net.
+CONFIG_LWIP_LOCAL_HOSTNAME="btclock"
+
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y

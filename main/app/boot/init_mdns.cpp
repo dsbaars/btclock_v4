@@ -11,6 +11,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_netif.h"
 #include "mdns.h"
 #include "net_util/hostname.hpp"
 #include "prefs.hpp"
@@ -178,6 +179,27 @@ void ReinitMdns() {
     mdns_free();
   }
   StartMdnsAdvertisement();
+  // Push the same name to DHCP so the router shows the new hostname at
+  // next lease renewal. esp_netif_set_hostname does not force a RENEW;
+  // the router picks it up on the next cycle (typical lease ~1 h).
+  ApplyDhcpHostname();
+}
+
+void ApplyDhcpHostname() {
+  esp_netif_t* sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+  if (!sta) {
+    // STA netif not yet created (AP / provisioning mode). The hostname
+    // will be applied on the next Connect via the InitNetwork call site.
+    return;
+  }
+  const std::string hostname = BuildHostname();
+  const esp_err_t err = esp_netif_set_hostname(sta, hostname.c_str());
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "esp_netif_set_hostname('%s') failed: %s", hostname.c_str(),
+             esp_err_to_name(err));
+    return;
+  }
+  ESP_LOGI(kTag, "DHCP hostname set to %s", hostname.c_str());
 }
 
 }  // namespace btclock

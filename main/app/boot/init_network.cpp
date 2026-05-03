@@ -6,6 +6,7 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/boot/init_mdns.hpp"
 #include "app/time_sync.hpp"
 #include "board/board.hpp"
 #include "esp_err.h"
@@ -80,6 +81,13 @@ void InitNetwork(AppCtx& ctx) {
         esp_wifi_set_max_tx_power(static_cast<int8_t>(tx));
       }
     }
+    // Push the user's `<hostnamePrefix>-<mac6>` into the STA netif's
+    // DHCP option-12 hostname BEFORE Connect — DHCP DISCOVER fires on
+    // association, so a later set wouldn't surface in the router's
+    // client list until the next lease renewal. Without this the
+    // device announces as CONFIG_LWIP_LOCAL_HOSTNAME (the IDF default
+    // is "espressif"), which is what every BTClock owner saw before.
+    ApplyDhcpHostname();
     ESP_ERROR_CHECK(ctx.wifi->Connect(ssid.c_str(), pw.c_str()));
     WaitForConnected(*ctx.wifi, net_prefs);
     ESP_ERROR_CHECK(StartSntpSync());
