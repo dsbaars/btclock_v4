@@ -154,8 +154,11 @@ void ReturnPanels(RenderContext& ctx,
 // fonts (which carry glyphs the family fonts don't have).
 //
 // 0 = antonio (stock), 1 = oswald, 2 = inter, 3 = sourceSerif,
-// 4 = merriweather, 5 = bitter, 6 = atkinson. Unknown families fall
-// back to antonio — same semantics as the old ApplyFontOverride.
+// 4 = merriweather, 5 = bitter, 6 = atkinson, 7 = antonioSemiBold,
+// 8 = antonioBold. Unknown families fall back to antonio — same
+// semantics as the old ApplyFontOverride. Numeric ids match
+// FontFamily's enum values in main/fonts_app.hpp; keep the cases in
+// lockstep.
 void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
   btclock::FontFamily f = btclock::FontFamily::kAntonio;
   switch (family) {
@@ -176,6 +179,12 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
       break;
     case 6:
       f = btclock::FontFamily::kAtkinson;
+      break;
+    case 7:
+      f = btclock::FontFamily::kAntonioSemiBold;
+      break;
+    case 8:
+      f = btclock::FontFamily::kAntonioBold;
       break;
     default:
       f = btclock::FontFamily::kAntonio;
@@ -1323,13 +1332,14 @@ val renderDebugAlpha(std::string ip, std::string ssid,
 
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
 // is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
-// 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson.
-// Unknown font families fall back to stock. Call whenever the user
-// changes the UI selector; safe to call before every render.
+// 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
+// 7=antonioSemiBold, 8=antonioBold. Unknown font families fall back to
+// stock. Call whenever the user changes the UI selector; safe to call
+// before every render.
 void setRenderOptions(int panels, int font_family) {
   auto& ctx = Ctx();
   ctx.panels_active = (panels == 8) ? 8 : 7;
-  if (font_family < 0 || font_family > 6) font_family = 0;
+  if (font_family < 0 || font_family > 8) font_family = 0;
   ctx.font_family = font_family;
 }
 

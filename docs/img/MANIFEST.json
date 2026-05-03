@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-05-03T11:55:50.335Z",
+  "rendered_at": "2026-05-03T16:28:41.901Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -197,6 +197,18 @@
       "id": "atkinson",
       "title": "Atkinson Hyperlegible",
       "path": "docs/img/fonts/atkinson.png"
+    },
+    {
+      "kind": "font",
+      "id": "antonioSemiBold",
+      "title": "Antonio SemiBold",
+      "path": "docs/img/fonts/antonioSemiBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "antonioBold",
+      "title": "Antonio Bold",
+      "path": "docs/img/fonts/antonioBold.png"
     }
   ]
 }

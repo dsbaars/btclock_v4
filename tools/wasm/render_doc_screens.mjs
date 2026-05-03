@@ -672,6 +672,10 @@ const SCREENS = [
   },
 ];
 
+// Order MUST match FontFamily's numeric values in main/fonts_app.hpp —
+// the loop below uses the array index as the font_family argument to
+// setRenderOptions(), so re-ordering here would silently render the
+// wrong face under each label.
 const FONTS = [
   { id: "antonio", title: "Antonio (default)" },
   { id: "oswald", title: "Oswald" },
@@ -680,6 +684,8 @@ const FONTS = [
   { id: "merriweather", title: "Merriweather" },
   { id: "bitter", title: "Bitter" },
   { id: "atkinson", title: "Atkinson Hyperlegible" },
+  { id: "antonioSemiBold", title: "Antonio SemiBold" },
+  { id: "antonioBold", title: "Antonio Bold" },
 ];
 
 const generated = [];

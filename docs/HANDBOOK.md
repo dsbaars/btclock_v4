@@ -831,15 +831,26 @@ Pick the digit face under Settings → Display → **Font name**. The
 label panel always uses Oswald-bold (it's a separate slot on the font
 table); only the digit / suffix / unit glyphs swap.
 
-| Font | Preview |
-|---|---|
-| **Antonio** (default) | ![antonio](img/fonts/antonio.png) |
-| **Oswald** | ![oswald](img/fonts/oswald.png) |
-| **Inter** | ![inter](img/fonts/inter.png) |
-| **Source Serif** | ![sourceSerif](img/fonts/sourceSerif.png) |
-| **Merriweather** | ![merriweather](img/fonts/merriweather.png) |
-| **Bitter** | ![bitter](img/fonts/bitter.png) |
-| **Atkinson Hyperlegible** | ![atkinson](img/fonts/atkinson.png) |
+| Font | `fontName` id | Preview |
+|---|---|---|
+| **Antonio** (default) | `antonio` | ![antonio](img/fonts/antonio.png) |
+| **Antonio SemiBold** | `antonioSemiBold` | ![antonioSemiBold](img/fonts/antonioSemiBold.png) |
+| **Antonio Bold** | `antonioBold` | ![antonioBold](img/fonts/antonioBold.png) |
+| **Oswald** | `oswald` | ![oswald](img/fonts/oswald.png) |
+| **Inter** | `inter` | ![inter](img/fonts/inter.png) |
+| **Source Serif** | `sourceSerif` | ![sourceSerif](img/fonts/sourceSerif.png) |
+| **Merriweather** | `merriweather` | ![merriweather](img/fonts/merriweather.png) |
+| **Bitter** | `bitter` | ![bitter](img/fonts/bitter.png) |
+| **Atkinson Hyperlegible** | `atkinson` | ![atkinson](img/fonts/atkinson.png) |
+
+Antonio is a condensed display sans, designed for tight digit columns
+on the BTClock's narrow 2.13" panels. The three Antonio cuts share the
+same letterforms but step up in stroke weight: Regular (wght=400) →
+SemiBold (600) → Bold (700). Pick **Antonio SemiBold** when the default
+reads too thin in bright light or at glance distance, and
+**Antonio Bold** for maximum stroke contrast — useful when the device
+is mounted further from the viewer or when the e-paper panels are
+viewed under a frontlight.
 
 To preview your own data live (your block height, your currency,
 your mining-pool name) without flashing — open
