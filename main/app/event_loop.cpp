@@ -90,13 +90,23 @@ constexpr const char* kTag = "btclock";
   while (true) {
     // Drain control-API commands first. These ride in on the httpd
     // worker task via the ControlServer's queue, not the button queue,
-    // so they need their own drain step. A single iteration handles
-    // one command to keep the event loop's "one action per pass"
-    // contract intact (rotations, rendering, etc. in the same pass).
+    // so they need their own drain step.
+    //
+    // Drain the entire queue in this pass before rendering. A single
+    // settings-PATCH from the WebUI typically posts several commands
+    // (kSetFont + kSetTimezone + on_inverted_color_changed's MarkDirty
+    // — sometimes more) and rendering once per command would mean N
+    // sequential full-refreshes for one user save. The state mutations
+    // commute (each touches a different field), so coalescing them
+    // into one render is correct: the final frame reflects every
+    // applied change. `re_render` is OR-accumulated across the batch
+    // and the single Render at the end honours the merged dirty flag.
     ControlCommand ccmd{};
-    if (ctrl && ctrl->TryPopCommand(&ccmd)) {
+    bool re_render = false;
+    bool any_cmd = false;
+    while (ctrl && ctrl->TryPopCommand(&ccmd)) {
+      any_cmd = true;
       using Kind = ControlCommand::Kind;
-      bool re_render = false;
       switch (ccmd.kind) {
         case Kind::kFullRefresh:
           sm.MarkDirty();
@@ -242,6 +252,8 @@ constexpr const char* kTag = "btclock";
           break;
         }
       }
+    }
+    if (any_cmd) {
       if (re_render && hub)
         sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
