@@ -160,8 +160,14 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       return;
     case PaintSlot::kSatsGlyph:
       if (slot.text.empty()) return;
+      // Scale the sats glyph proportionally to the live digit pixel height
+      // so it stays visually weight-matched as `digitFontPx` moves. The
+      // historical 130 px baseline pairs with the historical 180 px digit;
+      // ratio that against g_digit_px so the glyph grows/shrinks 1:1 with
+      // the digits next to it.
       DrawTextCentered(lfb, w, h, slot.text.c_str(), slot.text.c_str(),
-                       fonts.sats_glyph(), px(kSatsGlyphPx),
+                       fonts.sats_glyph(),
+                       px(kSatsGlyphPx * (g_digit_px / kDigitPxDefault)),
                        /*white_text=*/false);
       return;
     case PaintSlot::kCurrencyGlyph:
