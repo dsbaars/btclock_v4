@@ -20,9 +20,54 @@
 
 #pragma once
 
+#include <cctype>
+#include <string_view>
+
 namespace btclock {
 
 struct AppCtx;
+
+// Decide whether the zap listener can ride the Nostr data source's
+// existing WSS connection (i.e. NIP-01 multi-subscription on one
+// socket) instead of opening a second RelayClient. True when both URLs
+// resolve to the same host:port + scheme after normalisation.
+//
+// Sharing collapses ~30+ KB of internal SRAM (a second 12 KB WS task
+// stack + 8 KB rx buffer + mbedTLS context per WSS) and the matching
+// largest-block fragmentation that was breaking the EPD render path
+// on long-running devices (bd btclock_v4-17r). The fragmentation
+// signal — `espLargestFreeBlock` pinned at 7 KB with two RelayClients
+// vs ~31 KB with one — was the smoking gun.
+//
+// Normalisation rules, kept narrow on purpose:
+//   * lowercase the scheme + host portion (URLs are case-insensitive
+//     for both per RFC 3986 §3.1 / §3.2.2).
+//   * strip a single trailing '/' from the path (relay roots are
+//     advertised both with and without it; "wss://relay/" and
+//     "wss://relay" must match).
+//   * ignore empty-string inputs (return false; no socket to share).
+//
+// Deliberately NOT normalised: query strings, fragments, port numbers
+// (the WS lib treats wss://host vs wss://host:443 as different anyway,
+// and our schema rejects non-default ports today).
+inline bool ShouldShareNostrRelay(std::string_view a, std::string_view b) {
+  if (a.empty() || b.empty()) return false;
+  auto strip_slash = [](std::string_view s) {
+    if (!s.empty() && s.back() == '/') s.remove_suffix(1);
+    return s;
+  };
+  a = strip_slash(a);
+  b = strip_slash(b);
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    const auto la =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(a[i])));
+    const auto lb =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(b[i])));
+    if (la != lb) return false;
+  }
+  return true;
+}
 
 void InitZapListener(AppCtx& ctx);
 

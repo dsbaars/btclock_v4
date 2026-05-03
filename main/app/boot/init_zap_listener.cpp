@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
+#include "nostr/nostr_data_source.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
@@ -117,6 +118,33 @@ void InitZapListener(AppCtx& ctx) {
     return;
   }
 
+  // Try to share the Nostr data source's RelayClient + SubscriptionManager
+  // when both the data source and the zap listener point at the same
+  // relay. NIP-01 supports multiple subscriptions per WSS, so the second
+  // RelayClient is pure overhead (~30+ KB internal SRAM + heap
+  // fragmentation that pinned espLargestFreeBlock at 7 KB and silently
+  // broke the EPD render path). Falls back to the original separate-WSS
+  // path when the URLs differ or the data source is absent.
+  nostr::SubscriptionManager* shared_subs = nullptr;
+  if (ctx.nostr_source != nullptr &&
+      ShouldShareNostrRelay(ctx.nostr_source->relay_url(), zap_cfg.relay_url)) {
+    shared_subs = ctx.nostr_source->subs();
+  }
+  if (shared_subs != nullptr) {
+    ctx.zap_listener = std::make_unique<nostr::ZapListener>(
+        *shared_subs, std::string("zap"), zap_cfg.zap_pubkey);
+    ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
+    BindOnZap(ctx);
+    ctx.zap_listener->Start();
+    ESP_LOGI(kTag,
+             "zap listener enabled (shared WSS via nostr data source): "
+             "relay=%s pub=%s… flashLed=%d flashFl=%d",
+             zap_cfg.relay_url.c_str(), zap_cfg.zap_pubkey.substr(0, 8).c_str(),
+             ctx.flash_on_zap_enabled.load() ? 1 : 0,
+             ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
+    return;
+  }
+
   ctx.zap_relay = std::make_unique<nostr::RelayClient>(zap_cfg.relay_url);
   ctx.zap_subs = std::make_unique<nostr::SubscriptionManager>(*ctx.zap_relay);
   ctx.zap_listener = std::make_unique<nostr::ZapListener>(
@@ -135,7 +163,8 @@ void InitZapListener(AppCtx& ctx) {
   }
   ctx.zap_listener->Start();
   ESP_LOGI(kTag,
-           "zap listener enabled: relay=%s pub=%s… flashLed=%d flashFl=%d",
+           "zap listener enabled (dedicated WSS): relay=%s pub=%s… flashLed=%d "
+           "flashFl=%d",
            zap_cfg.relay_url.c_str(), zap_cfg.zap_pubkey.substr(0, 8).c_str(),
            ctx.flash_on_zap_enabled.load() ? 1 : 0,
            ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
@@ -161,10 +190,32 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
   // task — keeping that out of the runtime path is a deliberate scope
   // cut for bd btclock_v4-aw5/q1l (RelayClient bring-up isn't safe
   // from the httpd worker thread without more synchronisation).
-  if (!ctx.zap_listener || !ctx.zap_subs) {
+  //
+  // Two valid wiring shapes after InitZapListener:
+  //   A) dedicated WSS — ctx.zap_relay + ctx.zap_subs both set, listener
+  //      borrows ctx.zap_subs.
+  //   B) shared WSS — both ctx.zap_relay and ctx.zap_subs are null, the
+  //      listener borrows ctx.nostr_source->subs() instead. We must NOT
+  //      treat (B) as "listener unset" — only the absence of zap_listener
+  //      itself signals that.
+  if (!ctx.zap_listener) {
     ESP_LOGI(kTag,
              "RefreshZapListenerSettings: listener unset, "
              "skip Stop+Start (master toggle requires reboot)");
+    return;
+  }
+  // Resolve which SubscriptionManager the listener is currently using —
+  // either the dedicated zap_subs (shape A) or the data source's subs
+  // (shape B). Pubkey rotation rebuilds the listener against the same
+  // manager so the existing socket stays up.
+  nostr::SubscriptionManager* active_subs = ctx.zap_subs.get();
+  if (active_subs == nullptr && ctx.nostr_source != nullptr) {
+    active_subs = ctx.nostr_source->subs();
+  }
+  if (active_subs == nullptr) {
+    ESP_LOGW(kTag,
+             "RefreshZapListenerSettings: no SubscriptionManager available "
+             "(neither dedicated nor shared); skipping pubkey rotation");
     return;
   }
 
@@ -198,7 +249,7 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
   }
   ctx.zap_listener->Stop();
   ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-      *ctx.zap_subs, std::string("zap"), zap_cfg.zap_pubkey);
+      *active_subs, std::string("zap"), zap_cfg.zap_pubkey);
   ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
   BindOnZap(ctx);
   ctx.zap_listener->Start();

@@ -104,6 +104,7 @@ add_executable(btclock_host_tests
     test_url_decode.cpp
     test_sse_frame.cpp
     test_heap_metrics.cpp
+    test_nostr_relay_share.cpp
     test_sats_variant.cpp
     test_auth_gate_logic.cpp
     test_wifi_outage_watchdog.cpp

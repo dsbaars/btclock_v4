@@ -52,6 +52,16 @@ class NostrDataSource : public DataSource {
   esp_err_t Start(DataHub& hub) override;
   esp_err_t Stop() override;
 
+  // Borrow the running SubscriptionManager so a sibling consumer (e.g.
+  // the zap-receipt listener) can register an additional NIP-01 sub on
+  // the same WSS connection instead of opening a second one. Returns
+  // null until Start() has run; callers MUST treat the pointer as
+  // non-owning and MUST tear down their subscription before this source
+  // does. See main/app/boot/init_zap_listener.cpp::ShouldShareNostrRelay
+  // for the URL-equality gate that decides when sharing is correct.
+  SubscriptionManager* subs() const { return subs_.get(); }
+  const std::string& relay_url() const { return cfg_.relay_url; }
+
  private:
   // Route a decoded EVENT frame into the DataHub. Filters to kind
   // 30078, drops stale replays by (d_tag, created_at), delegates the

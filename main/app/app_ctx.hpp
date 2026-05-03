@@ -50,6 +50,7 @@ class OutageWatchdog;
 class ProvisioningServer;
 class Wifi;
 namespace nostr {
+class NostrDataSource;
 class RelayClient;
 class SubscriptionManager;
 class ZapListener;
@@ -112,6 +113,16 @@ struct AppCtx {
   // list without poking through DataHub internals. Cleared in
   // sources.cpp::WireDataSources when AP-mode skips the source bring-up.
   BtclockDataSource* btclock_ws = nullptr;
+  // Non-owning back-ref to the Nostr data source when dataSource=2.
+  // Set in MaybeAddNostrSource right after AddSource so InitZapListener
+  // (which runs later in boot) can decide whether to share that source's
+  // RelayClient + SubscriptionManager instead of spawning a second WSS.
+  // Sharing collapses ~30+ KB of internal SRAM (a second 12 KB WS task
+  // stack + 8 KB rx buffer + mbedTLS context) and the matching
+  // largest-block fragmentation that was silently breaking the EPD
+  // render path. See bd btclock_v4-17r and the URL-match gate in
+  // init_zap_listener.cpp::ShouldShareNostrRelay.
+  nostr::NostrDataSource* nostr_source = nullptr;
   // Non-owning back-ref to the mempool+kraken source when dataSource=1.
   // Used by /api/status to surface the two channels' live connection
   // state separately (price → kraken, blocks → mempool); null on every

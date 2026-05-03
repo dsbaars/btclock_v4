@@ -58,8 +58,14 @@ void MaybeAddNostrSource(AppCtx& ctx) {
     // Leave d_tags empty → subscribe to all slots the publisher
     // emits (price:*, blockheight, medianFee). Narrowing is a
     // future optimisation if the pubkey publishes more than we need.
-    ctx.hub->AddSource(
-        std::make_unique<nostr::NostrDataSource>(std::move(ncfg)));
+    auto source = std::make_unique<nostr::NostrDataSource>(std::move(ncfg));
+    // Stash the raw pointer before the unique_ptr is moved into the hub,
+    // so InitZapListener can consult subs() / relay_url() to share the
+    // single WSS instead of opening a second one. Lifetime: the hub
+    // outlives the listener (declaration order in AppCtx), so the
+    // back-ref stays valid for the listener's whole life.
+    ctx.nostr_source = source.get();
+    ctx.hub->AddSource(std::move(source));
     ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…", cfg.relay_url.c_str(),
              cfg.author_pubkey_hex.substr(0, 8).c_str());
   } else {
