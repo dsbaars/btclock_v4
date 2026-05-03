@@ -65,7 +65,7 @@ missing, and `esptool` runs from a stale PATH. Agents keep missing
 this — don't.
 
 ```bash
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh
+source ~/esp/v6.0/esp-idf/export.sh
 ```
 
 The `Bash` tool in Claude Code does NOT persist shell state between
@@ -73,7 +73,7 @@ calls, so source it inline (prefix with `&&`) on every build / flash
 command, e.g.:
 
 ```bash
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
+source ~/esp/v6.0/esp-idf/export.sh && \
   idf.py -B build-rev-b -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-rev-b/sdkconfig build
 ```
 
@@ -81,7 +81,7 @@ source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
 
 ```bash
 # ALWAYS source first:
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh
+source ~/esp/v6.0/esp-idf/export.sh
 
 # BTCLOCK_BOARD picks the pin map (REV_A / REV_B / V8). BTCLOCK_PANEL
 # picks the EPD geometry (2_13 / 2_9 / 7_5). The two are independent —
@@ -121,14 +121,16 @@ add the header.
 from a wrong Python and port-enumeration silently fails:
 
 ```bash
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh
+source ~/esp/v6.0/esp-idf/export.sh
 ```
 
-Port is NOT stable across sessions — re-enumerate every time. The
-board's MAC is the only reliable identifier:
+Port is NOT stable across sessions — re-enumerate every time.
+**Flash size is the per-variant identifier** (4 MB / 8 MB / 16 MB are
+unique to Rev A / Rev B / V8 respectively); MAC addresses are
+operator-specific and live in agent memory:
 
 ```bash
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
+source ~/esp/v6.0/esp-idf/export.sh && \
   for p in /dev/cu.usbmodem*; do
     esptool.py --port "$p" flash_id 2>&1 | grep -E 'MAC|flash_size|Chip is' | \
       sed "s|^|$p: |"
@@ -137,11 +139,11 @@ source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
 
 Board identification:
 
-| Variant   | MAC                   | Flash | PSRAM | Default panel | Notes |
-|-----------|-----------------------|-------|-------|---------------|-------|
-| Rev A     | `dc:54:75:d6:00:fc`   | 4 MB  | 2 MB  | 2.13"         | no BH1750, no frontlight (Lolin S3 Mini) |
-| Rev B     | `98:88:e0:9d:55:30`   | 8 MB  | 2 MB  | 2.13"         | BH1750, frontlight |
-| V8        | `30:30:f9:3e:d3:9c`   | 16 MB | 8 MB  | 2.13"         | 8 panels |
+| Variant   | Flash | PSRAM | Default panel | Notes |
+|-----------|-------|-------|---------------|-------|
+| Rev A     | 4 MB  | 2 MB  | 2.13"         | no BH1750, no frontlight (Lolin S3 Mini) |
+| Rev B     | 8 MB  | 2 MB  | 2.13"         | BH1750, frontlight |
+| V8        | 16 MB | 8 MB  | 2.13"         | 8 panels |
 
 Panel override: `BTCLOCK_PANEL=2_9` swaps to 2.9" (GDEY029T94,
 128x296), `BTCLOCK_PANEL=7_5` to 7.5" (GDEY075T7 / UC8179, 800x480 —
@@ -153,7 +155,7 @@ combo gets a bring-up pass.
 Flash firmware (uses the `flash_args` file the build produced):
 
 ```bash
-source /Users/padjuri/esp/v6.0/esp-idf/export.sh && \
+source ~/esp/v6.0/esp-idf/export.sh && \
   cd build-rev-a && \
   esptool.py --chip esp32s3 --port <PORT> -b 460800 \
     --before default_reset --after hard_reset write_flash "@flash_args"
