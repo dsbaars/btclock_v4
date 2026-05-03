@@ -28,7 +28,12 @@ esp_err_t RelayClient::Start() {
   cfg.ping_interval_sec = 30;  // relays often pong every ~30 s
   cfg.pingpong_timeout_sec = 20;
   cfg.buffer_size = 8192;  // zap receipts can carry large description tags
-  cfg.task_stack = 6144;
+  // secp256k1 schnorr verification runs inline on this task (via the
+  // on_frame_ → SubscriptionManager → VerifyEvent path), which needs
+  // ~3 KB of scratch on top of the WebSocket internal overhead and
+  // Sha256Ctx frame. 12 KB is the measured-safe threshold; 6 KB caused
+  // a hard stack-overflow boot-loop in production.
+  cfg.task_stack = 12288;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
 
   client_ = esp_websocket_client_init(&cfg);
