@@ -15,4 +15,8 @@ app0,      app,  ota_0,    0x10000,  0x370000
 app1,      app,  ota_1,    0x380000, 0x370000
 storage,   data, littlefs, 0x6F0000, 0xCD000
 coredump,  data, coredump, 0x7BD000, 0x10000
-# 0x7CD000..0x800000 (~200 KiB) reserved for future growth.
+# 0x7CD000..0x800000 (~200 KiB) unused tail — sits after coredump, so
+# it can't extend app0/app1 in place (storage + coredump are between
+# the apps and this tail). Useful only for adding a NEW trailing data
+# partition; growing any existing partition still requires re-flashing
+# the partition table binary at 0x8000.

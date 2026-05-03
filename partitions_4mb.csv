@@ -20,5 +20,12 @@ app0,      app,  ota_0,    0x10000,  0x1B0000
 app1,      app,  ota_1,    0x1C0000, 0x1B0000
 storage,   data, littlefs, 0x370000, 0x67000
 coredump,  data, coredump, 0x3D7000, 0x10000
-# 0x3E7000..0x400000 (~100 KiB) intentionally unused — reserved for
-# future partition growth without reflashing a new table.
+# 0x3E7000..0x400000 (~100 KiB) is unused tail — leftover after the
+# alignment-driven trims above (apps shrunk 32 KiB each for the 64 KiB
+# MMU boundary; storage rounded up 1 KiB so coredump starts 0x1000-
+# aligned), NOT a growth budget for the app slots. Growing app0/app1
+# would have to come out of storage or coredump (both sit between the
+# apps and the tail), and any partition layout edit still requires
+# re-flashing the partition table binary at 0x8000. What the tail
+# does enable is adding a NEW trailing data partition (e.g. a second
+# NVS namespace) without first shrinking an existing partition.
