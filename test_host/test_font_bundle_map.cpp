@@ -40,7 +40,8 @@ TEST_CASE("ResolveBundleSlots AntonioSemiBold pairs SemiBold with Bold") {
   CHECK(s.bold == FontSlot::kAntonioBold);
 }
 
-TEST_CASE("ResolveBundleSlots AntonioBold doubles its bold cut into both slots") {
+TEST_CASE(
+    "ResolveBundleSlots AntonioBold doubles its bold cut into both slots") {
   // Like the base Antonio family, AntonioBold doubles its single weight
   // (wght=700) into the bold slot — '*bold*' still parses, just with
   // matching visual weight.

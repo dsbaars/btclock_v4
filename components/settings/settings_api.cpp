@@ -369,8 +369,8 @@ ApplyOutcome ApplyScalar(const FieldSpec& f, const cJSON* v,
       if (f.min_value != 0 && d < static_cast<double>(f.min_value))
         return ApplyOutcome::kRejected;
       const uint32_t next = static_cast<uint32_t>(d);
-      const uint32_t prior = prefs.GetU32(
-          f.key.data(), static_cast<uint32_t>(f.default_int));
+      const uint32_t prior =
+          prefs.GetU32(f.key.data(), static_cast<uint32_t>(f.default_int));
       if (prior == next) return ApplyOutcome::kUnchanged;
       writer.SetU32(f.key.data(), next);
       return ApplyOutcome::kChanged;

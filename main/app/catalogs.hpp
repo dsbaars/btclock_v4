@@ -39,9 +39,8 @@ namespace catalogs {
 // FontFamily's numeric values so WASM/IDF dropdowns and the WebUI line
 // up by index without a separate mapping table.
 inline constexpr std::array<std::string_view, 9> kAvailableFonts = {
-    "antonio",      "oswald",          "inter",       "sourceSerif",
-    "merriweather", "bitter",          "atkinson",    "antonioSemiBold",
-    "antonioBold",
+    "antonio", "oswald",   "inter",           "sourceSerif", "merriweather",
+    "bitter",  "atkinson", "antonioSemiBold", "antonioBold",
 };
 
 // ISO 4217 codes the price / moscow-time / market-cap screens can
