@@ -196,6 +196,10 @@ void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
 #ifdef BTCLOCK_WASM_BUILD
 extern const uint8_t kAntonioTtf[];
 extern const size_t kAntonioTtfSize;
+extern const uint8_t kAntonioSemiBoldTtf[];
+extern const size_t kAntonioSemiBoldTtfSize;
+extern const uint8_t kAntonioBoldTtf[];
+extern const size_t kAntonioBoldTtfSize;
 extern const uint8_t kOswaldTtf[];
 extern const size_t kOswaldTtfSize;
 extern const uint8_t kOswaldBoldTtf[];
@@ -227,6 +231,12 @@ extern const size_t kMaterialDesignIconsTtfSize;
 #else
 extern const uint8_t kAntonioTtf[] asm("_binary_Antonio_ttf_start");
 extern const uint8_t kAntonioTtfEnd[] asm("_binary_Antonio_ttf_end");
+extern const uint8_t kAntonioSemiBoldTtf[] asm(
+    "_binary_AntonioSemiBold_ttf_start");
+extern const uint8_t kAntonioSemiBoldTtfEnd[] asm(
+    "_binary_AntonioSemiBold_ttf_end");
+extern const uint8_t kAntonioBoldTtf[] asm("_binary_AntonioBold_ttf_start");
+extern const uint8_t kAntonioBoldTtfEnd[] asm("_binary_AntonioBold_ttf_end");
 extern const uint8_t kOswaldTtf[] asm("_binary_Oswald_ttf_start");
 extern const uint8_t kOswaldTtfEnd[] asm("_binary_Oswald_ttf_end");
 extern const uint8_t kOswaldBoldTtf[] asm("_binary_OswaldBold_ttf_start");

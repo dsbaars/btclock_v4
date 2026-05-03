@@ -32,6 +32,23 @@ TEST_CASE("ResolveBundleSlots Antonio doubles the regular slot into bold") {
   CHECK(s.bold == FontSlot::kAntonio);
 }
 
+TEST_CASE("ResolveBundleSlots AntonioSemiBold pairs SemiBold with Bold") {
+  // The SemiBold family carries a real bold cut: regular = wght=600,
+  // bold = wght=700.
+  const auto s = ResolveBundleSlots(FontFamily::kAntonioSemiBold, true);
+  CHECK(s.regular == FontSlot::kAntonioSemiBold);
+  CHECK(s.bold == FontSlot::kAntonioBold);
+}
+
+TEST_CASE("ResolveBundleSlots AntonioBold doubles its bold cut into both slots") {
+  // Like the base Antonio family, AntonioBold doubles its single weight
+  // (wght=700) into the bold slot — '*bold*' still parses, just with
+  // matching visual weight.
+  const auto s = ResolveBundleSlots(FontFamily::kAntonioBold, true);
+  CHECK(s.regular == FontSlot::kAntonioBold);
+  CHECK(s.bold == FontSlot::kAntonioBold);
+}
+
 TEST_CASE("ResolveBundleSlots maps Oswald to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kOswald, true);
   CHECK(s.regular == FontSlot::kOswaldRegular);
@@ -88,13 +105,13 @@ TEST_CASE("ResolveBundleSlots covers every FontFamily enumerator") {
   // adds to FontFamily but forgets to handle in ResolveBundleSlots —
   // the default-Atkinson tail covers that case but the test pins it.
   for (uint8_t i = static_cast<uint8_t>(FontFamily::kAntonio);
-       i <= static_cast<uint8_t>(FontFamily::kAtkinson); ++i) {
+       i <= static_cast<uint8_t>(FontFamily::kAntonioBold); ++i) {
     const auto f = static_cast<FontFamily>(i);
     const auto s = ResolveBundleSlots(f, /*has_merriweather=*/true);
     CHECK(static_cast<uint8_t>(s.regular) <=
-          static_cast<uint8_t>(FontSlot::kAtkinsonBold));
+          static_cast<uint8_t>(FontSlot::kAntonioBold));
     CHECK(static_cast<uint8_t>(s.bold) <=
-          static_cast<uint8_t>(FontSlot::kAtkinsonBold));
+          static_cast<uint8_t>(FontSlot::kAntonioBold));
   }
 }
 
@@ -117,7 +134,8 @@ TEST_CASE("FontSlot enumerators are unique") {
       FontSlot::kSourceSerifBold,  FontSlot::kMerriweatherRegular,
       FontSlot::kMerriweatherBold, FontSlot::kBitterRegular,
       FontSlot::kBitterBold,       FontSlot::kAtkinsonRegular,
-      FontSlot::kAtkinsonBold,
+      FontSlot::kAtkinsonBold,     FontSlot::kAntonioSemiBold,
+      FontSlot::kAntonioBold,
   };
   const std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {

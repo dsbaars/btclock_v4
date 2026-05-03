@@ -11,6 +11,8 @@ namespace btclock {
 // we just pass them straight through.
 AppFonts::AppFonts()
     : antonio_(kAntonioTtf, kAntonioTtfSize),
+      antonio_semibold_(kAntonioSemiBoldTtf, kAntonioSemiBoldTtfSize),
+      antonio_bold_(kAntonioBoldTtf, kAntonioBoldTtfSize),
       oswald_(kOswaldTtf, kOswaldTtfSize),
       oswald_bold_(kOswaldBoldTtf, kOswaldBoldTtfSize),
       inter_(kInterTtf, kInterTtfSize),
@@ -37,6 +39,11 @@ size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
 
 AppFonts::AppFonts()
     : antonio_(kAntonioTtf, SizeBetween(kAntonioTtf, kAntonioTtfEnd)),
+      antonio_semibold_(
+          kAntonioSemiBoldTtf,
+          SizeBetween(kAntonioSemiBoldTtf, kAntonioSemiBoldTtfEnd)),
+      antonio_bold_(kAntonioBoldTtf,
+                    SizeBetween(kAntonioBoldTtf, kAntonioBoldTtfEnd)),
       oswald_(kOswaldTtf, SizeBetween(kOswaldTtf, kOswaldTtfEnd)),
       oswald_bold_(kOswaldBoldTtf,
                    SizeBetween(kOswaldBoldTtf, kOswaldBoldTtfEnd)),
@@ -83,6 +90,10 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
   switch (s) {
     case FontSlot::kAntonio:
       return &antonio_;
+    case FontSlot::kAntonioSemiBold:
+      return &antonio_semibold_;
+    case FontSlot::kAntonioBold:
+      return &antonio_bold_;
     case FontSlot::kOswaldRegular:
       return &oswald_;
     case FontSlot::kOswaldBold:
@@ -126,6 +137,12 @@ void AppFonts::SetFamily(FontFamily f) {
   switch (f) {
     case FontFamily::kAntonio:
       regular = &antonio_;
+      break;
+    case FontFamily::kAntonioSemiBold:
+      regular = &antonio_semibold_;
+      break;
+    case FontFamily::kAntonioBold:
+      regular = &antonio_bold_;
       break;
     case FontFamily::kOswald:
       regular = &oswald_;

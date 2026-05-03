@@ -9,6 +9,8 @@ import sys
 
 FONTS = [
     ("Antonio.ttf", "kAntonioTtf", "kAntonioTtfSize"),
+    ("AntonioSemiBold.ttf", "kAntonioSemiBoldTtf", "kAntonioSemiBoldTtfSize"),
+    ("AntonioBold.ttf", "kAntonioBoldTtf", "kAntonioBoldTtfSize"),
     ("Oswald.ttf", "kOswaldTtf", "kOswaldTtfSize"),
     ("OswaldBold.ttf", "kOswaldBoldTtf", "kOswaldBoldTtfSize"),
     ("Inter.ttf", "kInterTtf", "kInterTtfSize"),

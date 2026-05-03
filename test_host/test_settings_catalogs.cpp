@@ -89,6 +89,8 @@ TEST_CASE("availableFonts is a plain-string array with known ids") {
   // paths that hard-code fontFamily::kAntonio etc. would still compile
   // but the UI's font picker would suddenly hide options.
   CHECK(fonts.count("antonio") == 1);
+  CHECK(fonts.count("antonioSemiBold") == 1);
+  CHECK(fonts.count("antonioBold") == 1);
   CHECK(fonts.count("oswald") == 1);
   CHECK(fonts.count("inter") == 1);
   CHECK(fonts.count("sourceSerif") == 1);

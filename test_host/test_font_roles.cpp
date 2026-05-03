@@ -36,6 +36,8 @@ namespace btclock {
 namespace {
 struct RoleFixture {
   int antonio = 0;
+  int antonio_semibold = 0;
+  int antonio_bold = 0;
   int oswald = 0;
   int inter = 0;
   int source_serif = 0;
@@ -57,6 +59,12 @@ struct RoleFixture {
     switch (f) {
       case FontFamily::kAntonio:
         regular = &antonio;
+        break;
+      case FontFamily::kAntonioSemiBold:
+        regular = &antonio_semibold;
+        break;
+      case FontFamily::kAntonioBold:
+        regular = &antonio_bold;
         break;
       case FontFamily::kOswald:
         regular = &oswald;
@@ -177,12 +185,36 @@ TEST_CASE("SetFamily(kAntonio) returns to day-1 default") {
 
 TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("antonio") == FontFamily::kAntonio);
+  CHECK(ParseFontFamily("antonioSemiBold") == FontFamily::kAntonioSemiBold);
+  CHECK(ParseFontFamily("antonioBold") == FontFamily::kAntonioBold);
   CHECK(ParseFontFamily("oswald") == FontFamily::kOswald);
   CHECK(ParseFontFamily("inter") == FontFamily::kInter);
   CHECK(ParseFontFamily("sourceSerif") == FontFamily::kSourceSerif);
   CHECK(ParseFontFamily("merriweather") == FontFamily::kMerriweather);
   CHECK(ParseFontFamily("bitter") == FontFamily::kBitter);
   CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
+}
+
+TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kAntonioSemiBold);
+  CHECK(f.digit == &f.antonio_semibold);
+  CHECK(f.label == &f.antonio_semibold);
+  CHECK(f.small_chars == &f.antonio_semibold);
+  CHECK(f.unit == &f.antonio_semibold);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kAntonioBold) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kAntonioBold);
+  CHECK(f.digit == &f.antonio_bold);
+  CHECK(f.label == &f.antonio_bold);
+  CHECK(f.small_chars == &f.antonio_bold);
+  CHECK(f.unit == &f.antonio_bold);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
 }
 
 TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {

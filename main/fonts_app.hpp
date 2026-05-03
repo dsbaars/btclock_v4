@@ -1,9 +1,9 @@
 // Application-side font bundle.
 //
 // Loads every TTF the firmware ships and exposes them both by name
-// (antonio / oswald / inter / sourceSerif / merriweather / bitter /
-// atkinson) and via a selectable FontFamily enum that the production
-// firmware's `fontName` preference maps to.
+// (antonio / antonioSemiBold / antonioBold / oswald / inter / sourceSerif /
+// merriweather / bitter / atkinson) and via a selectable FontFamily enum
+// that the production firmware's `fontName` preference maps to.
 
 #pragma once
 
@@ -55,7 +55,9 @@ inline SatsGlyphUtf8Buf SatsGlyphUtf8(uint8_t variant) {
 // binding's setRenderOptions(panels, font_family) selector and the WebUI
 // dropdown can map by integer id without reaching for a string table.
 // Order: 0 antonio, 1 oswald, 2 inter, 3 sourceSerif, 4 merriweather,
-// 5 bitter, 6 atkinson — matches preview.html's <option value=…>.
+// 5 bitter, 6 atkinson, 7 antonioSemiBold, 8 antonioBold — matches
+// preview.html's <option value=…>. New ids are appended so the existing
+// numeric mapping stays stable across firmware upgrades.
 enum class FontFamily : uint8_t {
   kAntonio = 0,
   kOswald = 1,
@@ -64,6 +66,8 @@ enum class FontFamily : uint8_t {
   kMerriweather = 4,
   kBitter = 5,
   kAtkinson = 6,
+  kAntonioSemiBold = 7,
+  kAntonioBold = 8,
 };
 
 struct FontBundle {
@@ -91,6 +95,8 @@ enum class FontSlot : uint8_t {
   kBitterBold = 10,
   kAtkinsonRegular = 11,
   kAtkinsonBold = 12,
+  kAntonioSemiBold = 13,
+  kAntonioBold = 14,
 };
 
 class AppFonts {
@@ -133,10 +139,10 @@ class AppFonts {
   // from the PATCH /api/settings `fontName` hook at runtime.
   void SetFamily(FontFamily f);
 
-  // Resolve a FontFamily into its (regular, bold) pair. Antonio has no
-  // separate bold variant — its regular is used for both roles; callers
-  // that specifically need bold markup should use Oswald or any of the
-  // serif/legible families.
+  // Resolve a FontFamily into its (regular, bold) pair. The base
+  // Antonio family has no distinct bold cut — its regular is used for
+  // both roles; pick AntonioSemiBold or AntonioBold (or any non-Antonio
+  // family) when callers need a visibly heavier '*bold*' marker.
   FontBundle Bundle(FontFamily f) const;
 
  private:
@@ -147,6 +153,8 @@ class AppFonts {
 
  private:
   Font antonio_;
+  Font antonio_semibold_;
+  Font antonio_bold_;
   Font oswald_;
   Font oswald_bold_;
   Font inter_;
@@ -174,14 +182,14 @@ class AppFonts {
   const Font* role_sats_glyph_ = &sats_symbol_;
 };
 
-// Map the NVS `fontName` string ("antonio" / "oswald" / "inter" /
-// "sourceSerif" / "merriweather" / "bitter" / "atkinson") to a
-// FontFamily. Unknown values fall back to kAntonio — the day-1 default
-// every built-in screen was tuned against. Devices upgrading from a
-// build that stored "dejavu" land here too: kAntonio is the safe fallback.
-// Defined inline so host tests can call it without linking AppFonts
-// (whose ctor references TTF-blob symbols that only exist in an IDF
-// build).
+// Map the NVS `fontName` string ("antonio" / "antonioSemiBold" /
+// "antonioBold" / "oswald" / "inter" / "sourceSerif" / "merriweather" /
+// "bitter" / "atkinson") to a FontFamily. Unknown values fall back to
+// kAntonio — the day-1 default every built-in screen was tuned against.
+// Devices upgrading from a build that stored "dejavu" land here too:
+// kAntonio is the safe fallback. Defined inline so host tests can call
+// it without linking AppFonts (whose ctor references TTF-blob symbols
+// that only exist in an IDF build).
 inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "oswald") return FontFamily::kOswald;
   if (id == "inter") return FontFamily::kInter;
@@ -189,6 +197,8 @@ inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "merriweather") return FontFamily::kMerriweather;
   if (id == "bitter") return FontFamily::kBitter;
   if (id == "atkinson") return FontFamily::kAtkinson;
+  if (id == "antonioSemiBold") return FontFamily::kAntonioSemiBold;
+  if (id == "antonioBold") return FontFamily::kAntonioBold;
   return FontFamily::kAntonio;
 }
 

@@ -1,10 +1,16 @@
 # Embedded TTFs
 
-## Antonio / Oswald
+## Antonio / AntonioSemiBold / AntonioBold / Oswald
 
 Subsetted with kerning/ligature tables stripped. Antonio additionally
 includes the common currency symbols used by the price screen (£, ¥, €);
 Oswald is ASCII-only since it only renders the split-text label.
+
+The upstream Antonio TTF is a variable font with a `wght` axis spanning
+100..700 and named instances at Thin (100), Light (300), Regular (400),
+SemiBold (600), and Bold (700). stb_truetype doesn't read fvar/gvar, so
+we ship the Regular master as `Antonio.ttf` and bake separate static
+instances for SemiBold (wght=600) and Bold (wght=700) before subsetting.
 
 To regenerate from upstream Google Fonts sources:
 
@@ -12,9 +18,26 @@ To regenerate from upstream Google Fonts sources:
 curl -L -o /tmp/Antonio.ttf "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
 curl -L -o /tmp/Oswald.ttf  "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
 
+# Regular master (default wght=400) goes through pyftsubset directly.
 pyftsubset /tmp/Antonio.ttf \
     --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=Antonio.ttf
+
+# SemiBold (wght=600) and Bold (wght=700) are instanced from the
+# variable font first, then subset to the same codepoint range. The
+# instancer drops fvar/gvar/avar/HVAR so the result is a static TTF
+# stb_truetype can read.
+python3 -m fontTools.varLib.instancer /tmp/Antonio.ttf wght=600 \
+    -o /tmp/Antonio-SemiBold.ttf
+python3 -m fontTools.varLib.instancer /tmp/Antonio.ttf wght=700 \
+    -o /tmp/Antonio-Bold.ttf
+pyftsubset /tmp/Antonio-SemiBold.ttf \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioSemiBold.ttf
+pyftsubset /tmp/Antonio-Bold.ttf \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioBold.ttf
+
 pyftsubset /tmp/Oswald.ttf \
     --unicodes=U+0020-007E \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=Oswald.ttf
@@ -279,6 +302,8 @@ In-tree byte counts (`wc -c`), rounded:
 | Font                  | Size    |
 |-----------------------|--------:|
 | Antonio               |  22.3 KB |
+| AntonioSemiBold       |   9.6 KB |
+| AntonioBold           |   9.6 KB |
 | Oswald                |   8.9 KB |
 | OswaldBold            |   8.9 KB |
 | Inter                 |   9.6 KB |

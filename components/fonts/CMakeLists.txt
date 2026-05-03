@@ -4,7 +4,9 @@
 # (handled in main/fonts_app.cpp); the WebUI bundle itself stays
 # identical across boards.
 set(_FONT_EMBEDS
-    "assets/Antonio.ttf" "assets/Oswald.ttf"
+    "assets/Antonio.ttf"
+    "assets/AntonioSemiBold.ttf" "assets/AntonioBold.ttf"
+    "assets/Oswald.ttf"
     "assets/OswaldBold.ttf"
     "assets/Inter.ttf" "assets/InterBold.ttf"
     "assets/SourceSerif.ttf" "assets/SourceSerifBold.ttf"

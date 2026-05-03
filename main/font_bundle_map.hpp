@@ -29,10 +29,22 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
                                                 bool has_merriweather) {
   switch (f) {
     case FontFamily::kAntonio:
-      // Antonio has no separate bold in the asset set. Doubling the
-      // regular into the bold slot keeps the markdown '*bold*' marker
-      // parsing correctly even if the visual weight is identical.
+      // The base Antonio family carries only the wght=400 cut. Doubling
+      // the regular into the bold slot keeps the markdown '*bold*'
+      // marker parsing correctly even if the visual weight is identical.
+      // Users who want a real bold markup contrast should pick
+      // kAntonioSemiBold (regular=600, bold=700) instead.
       return {FontSlot::kAntonio, FontSlot::kAntonio};
+    case FontFamily::kAntonioSemiBold:
+      // SemiBold (wght=600) for body, Bold (wght=700) for markdown
+      // '*bold*' — the 100-unit weight delta gives noticeable contrast
+      // at the panel sizes the renderer uses.
+      return {FontSlot::kAntonioSemiBold, FontSlot::kAntonioBold};
+    case FontFamily::kAntonioBold:
+      // Bold (wght=700) doubled into the bold slot. Like the base
+      // Antonio family this collapses '*bold*' visually but keeps the
+      // markdown parser happy.
+      return {FontSlot::kAntonioBold, FontSlot::kAntonioBold};
     case FontFamily::kOswald:
       return {FontSlot::kOswaldRegular, FontSlot::kOswaldBold};
     case FontFamily::kInter:
