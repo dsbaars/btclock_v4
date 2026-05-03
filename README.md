@@ -229,9 +229,9 @@ gcc and clang.
   builds the WebUI once, packs per-size LittleFS images, then
   matrix-builds firmware for `rev-a`, `rev-a-29`, `rev-b`, `v8` and
   attaches the flat per-variant `btclock_<variant>_ota.bin`
-  (+ `.sha256`), shared support binaries, and a top-level
+  (+ `.sha256` + `.md5`), shared support binaries, and a top-level
   `manifest.json` (per-variant board / panel / firmware SHA / WebUI
-  submodule SHA / IDF version / sha256s) to the Forgejo release. CI
+  submodule SHA / IDF version / sha256s + md5s) to the Forgejo release. CI
   currently pins `espressif/idf:v6.0.1`.
 
 ## Documentation

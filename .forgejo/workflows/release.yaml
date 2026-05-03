@@ -319,8 +319,13 @@ jobs:
           cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
           cp "${{ matrix.sdkconfig_dir }}/flash_args"                         "$out/" || true
           cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
-          # SHA-256 of the app binary for OTA integrity checks.
-          ( cd "$out" && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 )
+          # SHA-256 of the app binary for OTA integrity checks. MD5
+          # alongside it so esp-web-tools / esptool's post-flash verify
+          # (which speaks MD5 against the chip's flash readback) has a
+          # ready-to-compare value without needing to re-hash the asset.
+          ( cd "$out" \
+            && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 \
+            && md5sum    btclock_v4.bin > btclock_v4.bin.md5 )
 
       - name: Generate variant manifest fragment
         shell: bash
@@ -347,7 +352,9 @@ jobs:
           . "$IDF_PATH/export.sh" >/dev/null
           idf_version="$(idf.py --version 2>&1 | tail -n1)"
           fw_sha256="$(awk '{print $1}' "$out/btclock_v4.bin.sha256")"
+          fw_md5="$(awk '{print $1}' "$out/btclock_v4.bin.md5")"
           storage_sha256="$(sha256sum "$out/storage.bin" | awk '{print $1}')"
+          storage_md5="$(md5sum "$out/storage.bin" | awk '{print $1}')"
           jq -n \
             --arg variant         '${{ matrix.variant_label }}' \
             --arg board           '${{ matrix.btclock_board }}' \
@@ -359,7 +366,9 @@ jobs:
             --arg webui_sha       "$webui_sha" \
             --arg idf_version     "$idf_version" \
             --arg fw_sha256       "$fw_sha256" \
+            --arg fw_md5          "$fw_md5" \
             --arg storage_sha256  "$storage_sha256" \
+            --arg storage_md5     "$storage_md5" \
             --arg built_at        "$(date -u +%FT%TZ)" \
             '{variant: $variant, board: $board, panel: $panel,
               flash_label: $flash_label, storage_offset: $storage_offset,
@@ -367,7 +376,9 @@ jobs:
               firmware_version: $firmware_version,
               webui_sha: $webui_sha, idf_version: $idf_version,
               firmware_sha256: $fw_sha256,
-              storage_sha256: $storage_sha256, built_at: $built_at}' \
+              firmware_md5: $fw_md5,
+              storage_sha256: $storage_sha256,
+              storage_md5: $storage_md5, built_at: $built_at}' \
             > "$out/manifest-fragment.json"
           cat "$out/manifest-fragment.json"
 
@@ -463,10 +474,14 @@ jobs:
           done
 
           # sha256 sidecars in the format `<hex>  <name>` so e.g.
-          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works.
+          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works. md5 sidecar
+          # alongside so flasher tools that compare against the chip's
+          # MD5-based flash readback (esptool verify, esp-web-tools)
+          # don't have to recompute the digest from the asset.
           ( cd release
             for f in *.bin; do
               sha256sum "$f" > "${f}.sha256"
+              md5sum    "$f" > "${f}.md5"
             done
           )
           ls -la release
@@ -545,7 +560,7 @@ jobs:
           fi
           echo "release id: $rel_id"
 
-          for f in release/*.bin release/*.sha256 release/manifest.json; do
+          for f in release/*.bin release/*.sha256 release/*.md5 release/manifest.json; do
             [ -f "$f" ] || continue
             echo "uploading $f"
             curl -sSL -X POST -H "$auth" \
