@@ -319,13 +319,8 @@ jobs:
           cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
           cp "${{ matrix.sdkconfig_dir }}/flash_args"                         "$out/" || true
           cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
-          # SHA-256 of the app binary for OTA integrity checks. MD5
-          # alongside it so esp-web-tools / esptool's post-flash verify
-          # (which speaks MD5 against the chip's flash readback) has a
-          # ready-to-compare value without needing to re-hash the asset.
-          ( cd "$out" \
-            && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 \
-            && md5sum    btclock_v4.bin > btclock_v4.bin.md5 )
+          # SHA-256 of the app binary for OTA integrity checks.
+          ( cd "$out" && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 )
 
       - name: Generate variant manifest fragment
         shell: bash
@@ -352,7 +347,13 @@ jobs:
           . "$IDF_PATH/export.sh" >/dev/null
           idf_version="$(idf.py --version 2>&1 | tail -n1)"
           fw_sha256="$(awk '{print $1}' "$out/btclock_v4.bin.sha256")"
-          fw_md5="$(awk '{print $1}' "$out/btclock_v4.bin.md5")"
+          # MD5s computed inline, not emitted as sidecar files —
+          # consumed only by esp-web-tools / esptool post-flash verify
+          # (which speaks the chip's MD5-based flash readback). MD5 is
+          # weak / deprecated for general integrity, so we surface it
+          # solely through manifest.json rather than inviting wider
+          # use via *.bin.md5 sidecars.
+          fw_md5="$(md5sum "$out/btclock_v4.bin" | awk '{print $1}')"
           storage_sha256="$(sha256sum "$out/storage.bin" | awk '{print $1}')"
           storage_md5="$(md5sum "$out/storage.bin" | awk '{print $1}')"
           jq -n \
@@ -474,14 +475,13 @@ jobs:
           done
 
           # sha256 sidecars in the format `<hex>  <name>` so e.g.
-          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works. md5 sidecar
-          # alongside so flasher tools that compare against the chip's
-          # MD5-based flash readback (esptool verify, esp-web-tools)
-          # don't have to recompute the digest from the asset.
+          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works. No md5
+          # sidecar — flasher tools that need MD5 (esptool verify,
+          # esp-web-tools) read it from manifest.json's per-variant
+          # `firmware_md5` / `storage_md5` fields instead.
           ( cd release
             for f in *.bin; do
               sha256sum "$f" > "${f}.sha256"
-              md5sum    "$f" > "${f}.md5"
             done
           )
           ls -la release
@@ -560,7 +560,7 @@ jobs:
           fi
           echo "release id: $rel_id"
 
-          for f in release/*.bin release/*.sha256 release/*.md5 release/manifest.json; do
+          for f in release/*.bin release/*.sha256 release/manifest.json; do
             [ -f "$f" ] || continue
             echo "uploading $f"
             curl -sSL -X POST -H "$auth" \
