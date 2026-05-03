@@ -8,6 +8,7 @@
 #include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "fonts_app.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
@@ -68,6 +69,15 @@ void InitPanelsAndSplash(AppCtx& ctx) {
   {
     Prefs p(prefs::kSettingsNs);
     EpdSetGlobalInverted(btclock::settings::ReadBool(p, prefs::kInvertedColor));
+    // Bind the font-role accessors to the NVS-selected family BEFORE the
+    // splash paints, so a user with fontName="oswald" (etc.) sees their
+    // pick on the very first frame instead of the default Antonio. Mirrors
+    // the same call in init_screen_manager.cpp; safe to do twice — both
+    // resolve from the same NVS slot, and SetFamily just reseats the role
+    // pointers. Unknown / empty values fall back to Antonio via
+    // ParseFontFamily.
+    ctx.fonts.SetFamily(
+        ParseFontFamily(btclock::settings::ReadString(p, prefs::kFontName)));
   }
 
   // --- Boot splash — letter-per-panel BTCLOCK[!]. ---
