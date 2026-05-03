@@ -41,6 +41,13 @@ inline constexpr const char* kCeDisableSSL = "ceDisableSSL";
 inline constexpr const char* kCeEndpoint = "ceEndpoint";
 inline constexpr const char* kCurrentScreen = "currentScreen";
 inline constexpr const char* kDataSource = "dataSource";
+// Pixel height for the "big" digit glyphs on data screens (block height,
+// BTC price, fee rate, mining-pool earnings, etc.). Default 180 matches
+// the historical kDigitPx baseline; the schema bounds (80..220) leave
+// horizontal headroom for Antonio's widest digit ink (~0.55 * px) within
+// the 122 px short axis. Runtime — on_settings_patched marks the screen
+// dirty so the next paint picks up the new value.
+inline constexpr const char* kDigitFontPx = "digitFontPx";
 inline constexpr const char* kDisableLeds = "disableLeds";
 inline constexpr const char* kDndEnabled = "dndEnabled";
 inline constexpr const char* kDndEndHour = "dndEndHour";
@@ -176,6 +183,7 @@ BTCLOCK_PREF_KEY_ASSERT(kCeDisableSSL);
 BTCLOCK_PREF_KEY_ASSERT(kCeEndpoint);
 BTCLOCK_PREF_KEY_ASSERT(kCurrentScreen);
 BTCLOCK_PREF_KEY_ASSERT(kDataSource);
+BTCLOCK_PREF_KEY_ASSERT(kDigitFontPx);
 BTCLOCK_PREF_KEY_ASSERT(kDisableLeds);
 BTCLOCK_PREF_KEY_ASSERT(kDndEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kDndEndHour);

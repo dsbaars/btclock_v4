@@ -256,6 +256,17 @@ struct PaintSlot {
   std::uint32_t mdi_codepoint = 0;
 };
 
+// Runtime-mutable digit pixel height for the kDigit / kCurrencyGlyph
+// PaintSlot kinds. Mirrors EpdSetGlobalInverted's global-toggle pattern —
+// ScreenManager::Render pushes the live `digitFontPx` settings value here
+// before painting, so the per-screen renderers' constructed PaintSlots
+// pick up the new size on the next frame without changing every renderer
+// signature. PaintSlot::pixel_height_override still wins per-slot (used
+// by bitaxe's 160 px tail), so individual screens that need a different
+// metric stay independent. Default 180 matches the historical baseline.
+void SetGlobalDigitPx(float px);
+float GetGlobalDigitPx();
+
 // Non-template paint-one-panel helper. Declared here so the template
 // wrapper below stays header-only (it references EpdPanel whose type
 // differs between device / WASM builds) without pulling the paint

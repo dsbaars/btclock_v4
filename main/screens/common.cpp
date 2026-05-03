@@ -21,7 +21,11 @@ constexpr const char* kLabelRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 // plumb an override through — the family of kinds is small enough that
 // one-kind-per-size is clearer than one parameterised kind.
 constexpr float kLabelPx = 54.0f;
-constexpr float kDigitPx = 180.0f;
+// Default digit pixel height. Lives here only as the seed value for the
+// runtime-mutable g_digit_px below; ScreenManager::Render overwrites it
+// each frame with the user's `digitFontPx` setting via SetGlobalDigitPx.
+constexpr float kDigitPxDefault = 180.0f;
+float g_digit_px = kDigitPxDefault;
 constexpr float kSmallGroupPx = 90.0f;
 // The Satoshi Symbol font fills its em-box (ink width ≈ em-width), so
 // rendering it at the digit pixel-height would leave much less visual
@@ -81,6 +85,19 @@ void PaintInvertedBitmap(LandscapeFb& lfb, const std::uint8_t* bitmap,
 
 }  // namespace
 
+void SetGlobalDigitPx(float px) {
+  // Clamp to the schema bounds so a stale NVS slot or out-of-band caller
+  // can't push a value that overflows the panel or paints a 0 px digit.
+  // Mirrors the explicit 80..220 range in settings/schema.hpp.
+  if (!(px >= 80.0f)) px = 80.0f;
+  if (px > 220.0f) px = 220.0f;
+  g_digit_px = px;
+}
+
+float GetGlobalDigitPx() {
+  return g_digit_px;
+}
+
 void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                      const PaintSlot& slot, bool vertical_desc) {
   // Label slots honour `vertical_desc` by rotating 90° CCW relative to
@@ -132,7 +149,7 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       if (slot.text.empty() || slot.text == " ") return;
       DrawTextCentered(lfb, w, h, slot.text.c_str(),
                        slot.ref_override ? slot.ref_override : kDigitRef,
-                       fonts.digit(), px(kDigitPx), /*white_text=*/false);
+                       fonts.digit(), px(g_digit_px), /*white_text=*/false);
       return;
     case PaintSlot::kSmallGroup:
       if (slot.text.empty() || slot.text == " ") return;
@@ -151,7 +168,7 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       if (slot.text.empty()) return;
       DrawTextCentered(lfb, w, h, slot.text.c_str(),
                        slot.ref_override ? slot.ref_override : kDigitRef,
-                       fonts.digit(), px(kDigitPx), /*white_text=*/false);
+                       fonts.digit(), px(g_digit_px), /*white_text=*/false);
       return;
     case PaintSlot::kUnitSplit: {
       std::string top, bottom;

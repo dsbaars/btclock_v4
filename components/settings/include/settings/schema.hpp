@@ -86,7 +86,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 73> kFields = {{
+inline constexpr std::array<FieldSpec, 74> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -120,6 +120,15 @@ inline constexpr std::array<FieldSpec, 73> kFields = {{
      "ws-staging.btclock.dev"},
     // v3 DEFAULT_DATA_SOURCE=0 (BTCLOCK_SOURCE).
     {prefs::kDataSource, FieldKind::kUChar, true, 0, 3, false, 0, {}},
+    // digitFontPx: pixel height for the big digit glyphs on data screens.
+    // Runtime — ScreenManager::Render reads this each frame and pushes it
+    // through SetGlobalDigitPx; on_settings_patched marks the screen dirty
+    // so the next paint repaints with the new size. Bounds 80..220 leave
+    // horizontal headroom for Antonio's widest digit ink within the 122 px
+    // short axis (at ~0.55 * px ink/height, 220 → ~121 px). Default 180
+    // matches the historical kDigitPx baseline so a fresh install paints
+    // identically to pre-feature behaviour.
+    {prefs::kDigitFontPx, FieldKind::kUint, false, 80, 220, false, 180, {}},
     // v3 DEFAULT_DISABLE_LEDS=false.
     {prefs::kDisableLeds, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // DND — schedule defaults 22:00-07:00 (the WebUI's pre-fill).

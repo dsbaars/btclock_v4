@@ -13,6 +13,7 @@
 #include "screens/common.hpp"
 #include "screens/panel_texts.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 namespace {
@@ -55,6 +56,12 @@ struct RenderPrefs {
   // `DEFAULT_MINUTES_FULL_REFRESH=60`).
   bool refr_scrn_change;
   int full_refresh_min;
+  // digitFontPx: pixel height for the kDigit / kCurrencyGlyph PaintSlot
+  // kinds. Pushed into screens/common.cpp's process-global via
+  // SetGlobalDigitPx at the top of Render(), so per-screen renderers
+  // pick up the new size on the next frame without changing call sites.
+  // Schema bounds 80..220, default 180 (matches the historical kDigitPx).
+  uint32_t digit_font_px;
 };
 
 RenderPrefs ReadRenderPrefs() {
@@ -74,6 +81,8 @@ RenderPrefs ReadRenderPrefs() {
   out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
   out.full_refresh_min =
       static_cast<int>(prefs.GetU32(btclock::prefs::kFullRefreshMin, 60));
+  out.digit_font_px =
+      btclock::settings::ReadU32(prefs, btclock::prefs::kDigitFontPx);
   return out;
 }
 
@@ -635,6 +644,11 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   const ScreenType kind = current_kind();
   const std::string& ccy = current_currency();
   const RenderPrefs rp = ReadRenderPrefs();
+  // Push the live digitFontPx setting into the screens/common.cpp
+  // process-global before any per-screen renderer constructs PaintSlots.
+  // SetGlobalDigitPx clamps to the schema bounds defensively, so a stale
+  // NVS value can't paint a 0 px digit.
+  SetGlobalDigitPx(static_cast<float>(rp.digit_font_px));
   // Route the full-vs-partial decision through the policy so
   // refrScrnChange + fullRefreshMin are honoured. MarkDirty() maps to
   // is_force_full; navigation events (Next/Prev/SetSlot/etc.) map to

@@ -883,7 +883,12 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // 16 sats-symbol glyphs at U+E000..U+E00F are PATCH-able live via
   // /api/settings; field count 72 -> 73, boot-only unchanged (runtime
   // hook re-binds the renderer immediately).
-  CHECK(btclock::settings::kFields.size() == 73);
+  // 2026-05-03 bd btclock_v4-0ut: digitFontPx added (uint, range 80..220,
+  // default 180) so the big-digit pixel height on data screens is
+  // PATCH-able live; field count 73 -> 74, boot-only unchanged (runtime
+  // — ScreenManager::Render reads it each frame and pushes it through
+  // SetGlobalDigitPx, on_settings_patched marks the screen dirty).
+  CHECK(btclock::settings::kFields.size() == 74);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, fontName, mempoolInstance, mempoolSecure,
   // dataSource, ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey,
