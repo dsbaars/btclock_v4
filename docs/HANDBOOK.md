@@ -1245,6 +1245,7 @@ curl -X POST -H 'Content-Type: application/json' \
 
 | Symptom | What's happening | Fix |
 |---|---|---|
+| Can't reach the WebUI on `http://btclock-xxxx.local/` or its IP | Your client and the device aren't sharing a layer-2 segment, or the client's traffic is being shipped elsewhere. | Make sure your phone/laptop is on the **same Wi-Fi network** the device joined (not a Guest SSID, not a separate VLAN). **Disable any VPN** on the client — split-tunnel routing usually sends LAN ranges over the tunnel and mDNS broadcasts never reach the device. In your router, **disable "Client / AP / Guest Isolation"** (sometimes labelled "Wireless Isolation" or "AP Isolation") — that setting blocks station-to-station traffic and the device becomes invisible to other clients on the same SSID. mDNS resolution (`*.local`) additionally needs UDP/5353 multicast forwarding to be on. |
 | AP won't appear | Booted into STA mode but the credentials are bad. | Wait `wpTimeout` (default 15 min) for the auto-reboot. Or USB-flash and `factory_reset`. |
 | WebUI loads but screens are stale | Data source disconnected. | Status card shows "BTClock data-source connection" red — try Settings → Data sources, swap to mempool.space (`dataSource=1`) and restart. |
 | Panels show the same content forever | Rotation is paused. | Click "Resume" on the Status card, or press Button-1. |
