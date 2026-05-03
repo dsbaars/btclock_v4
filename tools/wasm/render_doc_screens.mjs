@@ -362,7 +362,11 @@ function buildProvisioningPanels(apSsid, apPw, hwName, builtDate, fwVersion) {
     ),
     drawCenter(
       panelOriginsMm[5],
-      `*HW:*\n${hwName}\n2.13"\n\n*SW:*\nBTClock v4\n${fwVersion}\n\n*Built:*\n${builtDate}`,
+      // Mirrors the firmware's provisioning_ui.cpp P5 markdown:
+      // *HW:* / <hwName> / 2.13" / *SW:* / <fwVersion> / *Built:* / <builtDate>.
+      // The "BTClock v4" line that used to sit between *SW:* and the
+      // version string was dropped on-device and is dropped here too.
+      `*HW:*\n${hwName}\n2.13"\n\n*SW:*\n${fwVersion}\n\n*Built:*\n${builtDate}`,
       { fontSize: 3.6, weight: 400 },
     ),
     buildPlaceholderQrSvg(panelOriginsMm[6], innerWMm, innerHMm),
@@ -727,8 +731,9 @@ async function main() {
       apSsid: "BTClock-A1B2",
       apPw: "Mq3HpRtV",
       hwName: "Rev B",
-      builtDate: "Apr 26 2026",
-      fwVersion: "v0.1.0",
+      // __DATE__ + esp_app_get_description()->version on a tagged build.
+      builtDate: "May 03 2026",
+      fwVersion: "4.0.0-beta.8",
     });
     generated.push({
       kind: "screen",
