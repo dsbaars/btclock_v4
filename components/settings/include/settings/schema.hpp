@@ -72,8 +72,13 @@ struct FieldSpec {
 //     old firmware tears down the WS client and setupDataSource()
 //     only runs at boot (it's legal to call again, but it leaves
 //     dangling tasks in practice).
-//   - Display driver settings (fontName, invertedColor) reboot because
-//     they touch EPD driver state only initialised in setup().
+//   - invertedColor used to be in this set (EPD driver init) but
+//     bd btclock_v4-5wj wired EpdSetGlobalInverted so it applies live.
+//     fontName likewise: bd btclock_v4-5az dispatches kSetFont through
+//     the ControlCommand queue (see main/app/event_loop.cpp), so the
+//     four-pointer AppFonts swap happens on the main task without a
+//     reboot. Keep the schema entry runtime so the PATCH response no
+//     longer claims rebootRequired.
 //   - Everything else takes effect live: LED brightness, DND, screen
 //     visibility, countdown flags, etc.
 //
@@ -167,7 +172,7 @@ inline constexpr std::array<FieldSpec, 74> kFields = {{
     // walks `assets[]` and matches `btclock_<variant>_ota.bin` (+
     // sibling `.sha256`) per the naming scheme published by
     // .forgejo/workflows/release.yaml.
-    {prefs::kFontName, FieldKind::kString, true, 0, 0, false, 0, "antonio"},
+    {prefs::kFontName, FieldKind::kString, false, 0, 0, false, 0, "antonio"},
     {prefs::kFullRefreshMin,
      FieldKind::kUint,
      false,

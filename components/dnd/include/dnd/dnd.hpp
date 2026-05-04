@@ -9,9 +9,11 @@
 // circular include.
 //
 // NVS layout matches the old firmware key strings so installs can
-// migrate without a data conversion step. Namespace is new ("dnd");
-// the old firmware used a single global Preferences namespace per
-// ArduinoCore.
+// migrate without a data conversion step. Reads/writes go through the
+// shared `prefs::kSettingsNs` namespace so the settings PATCH handler
+// and this singleton agree on a single source of truth — see
+// bd btclock_v4-j76.3 for the dual-namespace bug this consolidation
+// fixes.
 
 #pragma once
 
@@ -36,8 +38,8 @@ class Dnd {
  public:
   Dnd();
 
-  // Load persisted state from NVS (namespace "dnd"). Idempotent. No
-  // error path: a failed NVS read leaves the in-memory defaults in
+  // Load persisted state from NVS (`prefs::kSettingsNs`). Idempotent.
+  // No error path: a failed NVS read leaves the in-memory defaults in
   // place, mirroring old-firmware Preferences.get*(..., default) shape.
   void Load();
 

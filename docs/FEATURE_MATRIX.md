@@ -84,7 +84,7 @@ Rough per-category parity (counts full + partial as "done"):
 
 | Category | Rows | Done | Parity |
 |---|---:|---:|---:|
-| Display / screens | 16 | 16 | 100% (2 partial: fee-rate decimal/unit glyph, runtime-pushed countdown variant) |
+| Display / screens | 16 | 16 | 100% (1 partial: runtime-pushed countdown variant) |
 | Data sources | 12 | 12 | 100% (2 partial: BTClock WS mempool sub-channels, WASM bindings) |
 | HTTP / Control API | 40 | 40 | 100% |
 | Provisioning / WiFi | 8 | 8 | 100% |
@@ -128,7 +128,7 @@ Renderers under [`main/screens/`](../main/screens).
 | BTC ticker (`SCREEN_BTC_TICKER`) | screen_handler.cpp | [btc_price.cpp](../main/screens/btc_price.cpp) | Implemented (multi-currency) | — |
 | Time / clock (`SCREEN_TIME`) | screen_handler.cpp | [clock.cpp](../main/screens/clock.cpp) | Implemented (blocks-mode) | — |
 | Halving countdown (`SCREEN_HALVING_COUNTDOWN`) | screen_handler.cpp | [halving.cpp](../main/screens/halving.cpp) | Implemented (blocks-mode + years/days/hours/mins time-mode via `as_blocks` flag) | — |
-| Block fee rate (`SCREEN_BLOCK_FEE_RATE`) | screen_handler.cpp | [fee_rate.cpp](../main/screens/fee_rate.cpp) | Partial: integer sats/vB only; no "sat/vB" unit glyph; blockfee2 decimal variant pending | — |
+| Block fee rate (`SCREEN_BLOCK_FEE_RATE`) | screen_handler.cpp | [fee_rate.cpp](../main/screens/fee_rate.cpp) | Implemented (decimal sats/vB from `blockfee2` WS topic + paired-split-text "sat/vB" unit on the trailing panel) | — |
 | Market cap (`SCREEN_MARKET_CAP`) | screen_handler.cpp | [market_cap.cpp](../main/screens/market_cap.cpp) | Implemented bigChars ($1.56T form) by default; small-char 3-digit-group mode exposed through panel_texts for /api/status, renderer still paints bigChars only | — |
 | Bitcoin supply (`SCREEN_BITCOIN_SUPPLY`) | screen_handler.cpp | [bitcoin_supply.cpp](../main/screens/bitcoin_supply.cpp) | Implemented bigChars (19.9M) + supplyPercent (93.48 %) modes; small-char 3-digit-group mirror available via panel_texts, renderer pending | — |
 | Mining pool hashrate / earnings (`SCREEN_MINING_POOL_STATS_*`) | screen_handler.cpp | [mining_pool.cpp](../main/screens/mining_pool.cpp) | Implemented (11 pools selectable via `miningPoolName` pref + on-demand LittleFS-cached logo fetcher) | `btclock_v4-5yi` |

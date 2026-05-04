@@ -9,7 +9,13 @@ namespace btclock {
 namespace dnd {
 namespace {
 
-constexpr const char* kNamespace = "dnd";
+// Single source of truth for DND state. The settings PATCH handler
+// (components/settings/settings_api.cpp) writes the same NVS keys to
+// the same "settings" namespace; reading from a private "dnd"
+// namespace used to leave the singleton's snapshot stale whenever a
+// PATCH was a no-op write (compare-on-write skips touched_keys, so
+// the on_dnd_changed sync hook never fired). bd btclock_v4-j76.3.
+constexpr const char* kNamespace = prefs::kSettingsNs;
 
 }  // namespace
 

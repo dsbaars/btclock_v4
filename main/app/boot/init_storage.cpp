@@ -2,6 +2,7 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
+#include "dnd/dnd.hpp"
 #include "epd_ssd1680.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -41,6 +42,15 @@ void InitStorage(AppCtx& /*ctx*/) {
     Prefs p(prefs::kSettingsNs);
     EpdSetGlobalInverted(btclock::settings::ReadBool(p, prefs::kInvertedColor));
   }
+
+  // Force the DND singleton to (re-)Load now that NVS is up. Without
+  // this, the LED suppressor lambda installed by InitBootLeds can fire
+  // before InitPanelsAndSplash's Prefs::InitOnce returns, triggering
+  // the Meyer-singleton's lazy Load against an uninitialised NVS — the
+  // open fails (`ESP_ERR_NVS_NOT_INITIALIZED`) and cfg_ caches the
+  // schema defaults forever. Explicit Load is idempotent.
+  // bd btclock_v4-j76.3.
+  dnd::Instance().Load();
 
   // Set the process-wide TZ from NVS (namespace "time", key "tz")
   // before anything that calls localtime_r. The clock screen, log

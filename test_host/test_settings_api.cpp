@@ -684,11 +684,19 @@ TEST_CASE(
   // live without a reboot.
   for (const char* k :
        {"otaEnabled", "httpAuthEnabled", "httpAuthUser", "httpAuthPass",
-        "otaPass", "fontName", "mempoolInstance", "dataSource"}) {
+        "otaPass", "mempoolInstance", "dataSource"}) {
     CAPTURE(k);
     const auto* spec = btclock::settings::FindField(k);
     REQUIRE(spec != nullptr);
     CHECK(spec->boot_only);
+  }
+  // fontName is intentionally absent — bd btclock_v4-j76.5 flipped it
+  // to runtime: kSetFont is dispatched through the ControlCommand queue
+  // and AppFonts::SetFamily applies live on the main task.
+  {
+    const auto* spec = btclock::settings::FindField("fontName");
+    REQUIRE(spec != nullptr);
+    CHECK_FALSE(spec->boot_only);
   }
 }
 
@@ -890,12 +898,13 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // SetGlobalDigitPx, on_settings_patched marks the screen dirty).
   CHECK(btclock::settings::kFields.size() == 74);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
-  // httpAuthPass, otaPass, fontName, mempoolInstance, mempoolSecure,
-  // dataSource, ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey,
-  // nostrRelay, enableDebugLog, wpTimeout = 16. hostnamePrefix and
-  // mdnsEnabled used to be in this set; bd btclock_v4-9ut flipped them
-  // to runtime via on_mdns_changed.
-  CHECK(btclock::settings::BootOnlyCount() == 16);
+  // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
+  // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
+  // enableDebugLog, wpTimeout = 15. hostnamePrefix and mdnsEnabled used
+  // to be in this set; bd btclock_v4-9ut flipped them to runtime via
+  // on_mdns_changed. fontName likewise: bd btclock_v4-j76.5 dropped it
+  // because kSetFont applies live via the ControlCommand queue.
+  CHECK(btclock::settings::BootOnlyCount() == 15);
 }
 
 TEST_CASE("NVS key length guard: every field key fits NVS's 15-char limit") {
@@ -924,13 +933,15 @@ TEST_CASE("Round-trip: GET field count matches what PATCH can write") {
 
 // -- fontName catalog validation -----------------------------------
 
-TEST_CASE("PATCH fontName in catalog is accepted and reboots") {
+TEST_CASE("PATCH fontName in catalog is accepted and applies live") {
   FakePrefs prefs;
   auto res = btclock::settings::ApplyPatch("{\"fontName\":\"oswald\"}",
                                            DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["fontName"] == "oswald");
-  CHECK(res.reboot_required);  // fontName is boot-only (EPD driver init)
+  // bd btclock_v4-j76.5: fontName is dispatched via kSetFont
+  // ControlCommand on the main task; no reboot required.
+  CHECK_FALSE(res.reboot_required);
 }
 
 TEST_CASE("PATCH fontName outside catalog rejected as bad_field") {
