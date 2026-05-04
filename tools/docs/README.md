@@ -2,9 +2,9 @@
 
 This directory holds two doc-tooling pieces:
 
-1. `make_booklet.sh` (+ `booklet.yaml` / `booklet-header.tex`) — pandoc
-   pipeline that turns the markdown under `docs/` into a print-ready
-   A5 booklet. Same content as the
+1. `make_booklet.sh` (+ `booklet.yaml` / `booklet-header.tex` /
+   `render_mermaid.py`) — pandoc pipeline that turns the markdown under
+   `docs/` into a print-ready A4 booklet. Same content as the
    [mkdocs-material site](https://docs.btclock.dev) — different binding.
 2. `capture_webui.mjs` — Playwright script that drives a headless
    Chromium against a live BTClock WebUI (defaults to the Vite dev
@@ -14,30 +14,30 @@ This directory holds two doc-tooling pieces:
 ## Usage — booklet
 
 ```bash
-tools/docs/make_booklet.sh        # English (default)
-tools/docs/make_booklet.sh nl     # Nederlands quickstart edition
-tools/docs/make_booklet.sh de     # Deutsch
-tools/docs/make_booklet.sh es     # Español
+tools/docs/make_booklet.sh
 ```
 
-Per-language editions only swap the QUICKSTART for the localised
-variant — the rest of the docs are English (no full translations exist
-for HANDBOOK / SETTINGS / etc. yet, mirroring the live site's
-fallback behaviour).
+Only English is built. Quickstart translations exist on the live
+mkdocs site, but `HANDBOOK.md`, `SETTINGS.md`, `ARCHITECTURE.md`,
+`BUILD_FROM_SOURCE.md`, `WEBUI_MINING_POOL_FIELDS.md` and `STORY.md`
+are English-only — a localised booklet would be ~95% English with
+one translated chapter and is more confusing than helpful.
 
 ## Outputs
 
 ```
 docs/build/
-├── btclock-booklet.pdf            ← single A5 PDF — the read-on-screen format
+├── btclock-booklet.pdf            ← single A4 PDF — the read-on-screen format
 ├── btclock-booklet.tex            ← intermediate LaTeX (for diffing builds)
-└── btclock-booklet-impose.pdf     ← A4 fold-and-staple imposition
+├── btclock-booklet-impose.pdf     ← A3 fold-and-staple imposition (A4 booklet)
+└── booklet-src/                   ← preprocessed markdown + rendered mermaid PNGs
 ```
 
 `btclock-booklet.pdf` is meant for screen reading or single-sided
-print. `btclock-booklet-impose.pdf` is the A4 landscape imposition —
-print double-sided, fold each sheet down the middle, and staple along
-the spine. Page order is computed by `pdfjam --booklet`.
+print. `btclock-booklet-impose.pdf` is the A3 landscape imposition
+(2 A4 pages per side) — print double-sided on A3, fold each sheet
+down the middle, and staple along the spine. Page order is computed
+by `pdfjam --booklet`.
 
 The whole `docs/build/` tree is gitignored.
 
@@ -47,23 +47,34 @@ The whole `docs/build/` tree is gitignored.
 |---|---|---|
 | pandoc | markdown → LaTeX → PDF | `brew install pandoc` |
 | xelatex (TeX Live) | PDF engine | `brew install --cask mactex-no-gui` (full) or `brew install --cask basictex` |
-| pdfjam (TeX Live) | A4 booklet imposition | bundled with TeX Live; or `tlmgr install pdfjam` |
+| pdfjam (TeX Live) | A3 booklet imposition | bundled with TeX Live; or `tlmgr install pdfjam` |
 | Inter (font) | body text | `brew install --cask font-inter` |
+| Ubuntu (font family) | cover wordmark — matches the engraved BTClock text on the acrylic frame | `brew install --cask font-ubuntu` |
 | DejaVu Sans Mono | code blocks | bundled on macOS / `brew install --cask font-dejavu` |
+| Node + npm | drives `npx mmdc` for mermaid pre-render | `brew install node` |
 
-If `pdfjam` isn't installed the script still produces the A5 PDF and
-just skips the imposition step.
+If `pdfjam` isn't installed the script still produces the A4 PDF and
+skips the imposition step. If `mmdc` (or `npx`) is missing, mermaid
+fences fall back to fenced code blocks tagged "render failed".
 
 ## How it's wired
 
 - `make_booklet.sh` — runs pandoc twice (once for PDF, once for `.tex`)
-  with a fixed doc order matching the mkdocs nav.
+  with a fixed doc order matching the mkdocs nav. Pre-renders mermaid
+  diagrams and skips non-EN translations.
+- `render_mermaid.py` — walks each markdown input and shells out to
+  `mmdc` for every `​```mermaid` fence, writes a preprocessed copy
+  under `docs/build/booklet-src/` with `![](png)` substituted in.
 - `booklet.yaml` — pandoc metadata block: title page, page geometry,
   fonts, link colours.
 - `booklet-header.tex` — LaTeX header injected via
   `--include-in-header`: BTClock orange palette, fancyhdr running
-  headers, titlesec chapter/section styling, unicode mappings for
-  characters DejaVu Mono doesn't cover (₿, →, ✅, …).
+  headers, titlesec chapter/section styling, custom dark-band
+  cover page with the BTC-price screen render and a Ubuntu Medium
+  Italic wordmark, unicode mappings for characters DejaVu Mono
+  doesn't cover (₿, →, ✅, …), and a `\pandocbounded` override that
+  caps image width inside `longtable` cells so two-column comparison
+  tables don't overflow the page.
 
 The pandoc input dialect is `gfm+yaml_metadata_block` — the same
 GitHub-flavoured Markdown the docs already validate against in
@@ -71,9 +82,9 @@ mkdocs.
 
 ## Style choices
 
-- **A5** (148 × 210 mm) page size — small enough to staple as a
-  pocket booklet, large enough that 10pt body text + screen renders
-  stay legible.
+- **A4** (210 × 297 mm) page size — gives the dense feature /
+  settings tables and the wide screen renders enough horizontal
+  room without forcing landscape orientation.
 - `documentclass=report` so each top-level Markdown heading becomes a
   `\chapter` — matches the doc-per-topic structure of the source tree.
 - BTClock orange (`#E04300`) on links, chapter titles, section
@@ -81,6 +92,8 @@ mkdocs.
   the firmware.
 - Alternating row shading on tables (very useful for the dense
   feature/settings tables).
+- Cover wordmark in Ubuntu Medium Italic — matches the "BTClock"
+  text engraved on the acrylic faceplate.
 
 ## Adding a new doc
 

@@ -1124,6 +1124,14 @@ curl -X POST http://btclock-xxxxxx.local/api/action/timer_restart
 # Set the LED strip to all-orange
 curl -X POST 'http://btclock-xxxxxx.local/api/lights/color?c=E04300'
 
+# Trigger a named LED effect (blink / blink_success / blink_error /
+# rainbow / breathe / breathe_error / zap / identify / heartbeat /
+# off / idle). Effects honour DND, disableLeds, and the global
+# suppressor — the call returns 200 even when the effect is muted.
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"name":"rainbow"}' \
+  http://btclock-xxxxxx.local/api/lights/effect
+
 # Force a full refresh (clears EPD ghosting)
 curl -X POST http://btclock-xxxxxx.local/api/full_refresh
 

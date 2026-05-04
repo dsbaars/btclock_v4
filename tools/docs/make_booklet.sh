@@ -1,55 +1,39 @@
 #!/usr/bin/env bash
-# Render the docs as a print-ready PDF booklet.
+# Render the docs as a print-ready PDF booklet (English only).
 #
 # Outputs:
-#   docs/build/btclock-booklet.pdf        — single-page A5 PDF (final read)
+#   docs/build/btclock-booklet.pdf        — single A4 PDF (final read)
 #   docs/build/btclock-booklet.tex        — intermediate LaTeX (kept for diffing)
-#   docs/build/btclock-booklet-impose.pdf — A4-imposed, fold-and-staple booklet
+#   docs/build/btclock-booklet-impose.pdf — A3 imposed, fold-and-staple booklet
 #                                           (only when `pdfjam` is installed)
 #
 # Requires (mac/brew):
 #   brew install pandoc                 # markdown → tex/pdf
 #   brew install --cask mactex-no-gui   # provides xelatex
 #   brew install --cask font-inter      # body font (or use any installed family)
-#   brew install pdfjam   (optional)    # for the A4-imposed booklet
+#   brew install pdfjam   (optional)    # for the A3-imposed booklet
+#   node + npm                          # for `npx mmdc` mermaid pre-render
 #
-# Usage:
-#   tools/docs/make_booklet.sh
-#   tools/docs/make_booklet.sh nl       # build the Dutch quickstart edition
-#   tools/docs/make_booklet.sh es       # Spanish, de = German
-#
-# Per-language editions only swap the QUICKSTART for the localised
-# variant; the rest of the docs are English (no translations exist for
-# HANDBOOK / SETTINGS / etc. yet — the mkdocs-i18n plugin falls back
-# to English on the live site too, so the booklet matches what readers
-# see online).
+# Only English is built. Quickstart translations exist on the live
+# mkdocs site, but HANDBOOK / SETTINGS / ARCHITECTURE / etc. are
+# English-only — a localised booklet would be ~95% English with one
+# translated chapter, which is more confusing than helpful.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
-LANG_TAG="${1:-en}"
-case "$LANG_TAG" in
-  en) QUICKSTART="docs/QUICKSTART.md"        ; LANG_FULL="English"    ;;
-  nl) QUICKSTART="docs/QUICKSTART.nl.md"     ; LANG_FULL="Nederlands" ;;
-  de) QUICKSTART="docs/QUICKSTART.de.md"     ; LANG_FULL="Deutsch"    ;;
-  es) QUICKSTART="docs/QUICKSTART.es.md"     ; LANG_FULL="Español"    ;;
-  *)  echo "unknown language tag: $LANG_TAG (want one of: en nl de es)" >&2; exit 2 ;;
-esac
-
 OUT_DIR="docs/build"
-SUFFIX=""
-[[ "$LANG_TAG" != "en" ]] && SUFFIX="-$LANG_TAG"
-OUT_PDF="$OUT_DIR/btclock-booklet${SUFFIX}.pdf"
-OUT_TEX="$OUT_DIR/btclock-booklet${SUFFIX}.tex"
+OUT_PDF="$OUT_DIR/btclock-booklet.pdf"
+OUT_TEX="$OUT_DIR/btclock-booklet.tex"
 mkdir -p "$OUT_DIR"
 
 # Order matches the mkdocs.yml nav. The home page comes first so the
 # booklet opens with the same landing copy the website does.
 DOC_ORDER=(
   docs/index.md
-  "$QUICKSTART"
+  docs/QUICKSTART.md
   docs/HANDBOOK.md
   docs/SETTINGS.md
   docs/ARCHITECTURE.md
@@ -58,8 +42,39 @@ DOC_ORDER=(
   docs/STORY.md
 )
 
-echo "[booklet] language: $LANG_FULL ($LANG_TAG)"
 echo "[booklet] inputs: ${#DOC_ORDER[@]} markdown files"
+
+# Pre-render ```mermaid fences to PNGs so xelatex can include them.
+# MkDocs renders mermaid client-side via Material's bundled JS; pandoc
+# can't, so we shell out to mermaid-cli (`mmdc`) and substitute an
+# ![](png) reference into a preprocessed markdown copy. Use a globally
+# installed mmdc when available, otherwise fall back to npx.
+PRE_DIR="$OUT_DIR/booklet-src"
+DIAG_DIR="$PRE_DIR/diagrams"
+mkdir -p "$PRE_DIR" "$DIAG_DIR"
+
+if command -v mmdc >/dev/null 2>&1; then
+  MMDC_CMD="mmdc"
+elif command -v npx >/dev/null 2>&1; then
+  MMDC_CMD="npx -y --package=@mermaid-js/mermaid-cli mmdc"
+else
+  MMDC_CMD=""
+  echo "[booklet] (no mmdc / npx available — mermaid blocks will render as code)"
+fi
+
+PROCESSED_ORDER=()
+for src in "${DOC_ORDER[@]}"; do
+  if grep -q '^```mermaid' "$src" 2>/dev/null && [ -n "$MMDC_CMD" ]; then
+    base="$(basename "$src" .md)"
+    dst="$PRE_DIR/$(basename "$src")"
+    python3 tools/docs/render_mermaid.py \
+      "$src" "$dst" "$DIAG_DIR" "$base" "$MMDC_CMD"
+    PROCESSED_ORDER+=( "$dst" )
+  else
+    PROCESSED_ORDER+=( "$src" )
+  fi
+done
+DOC_ORDER=( "${PROCESSED_ORDER[@]}" )
 
 # Pandoc reads gfm-flavoured markdown (the dialect mkdocs-material uses
 # for tables / fenced code / task lists), normalises to LaTeX, and runs
@@ -69,10 +84,10 @@ echo "[booklet] inputs: ${#DOC_ORDER[@]} markdown files"
 pandoc \
   --from gfm+yaml_metadata_block \
   --pdf-engine=xelatex \
-  --resource-path "docs:docs/img:." \
+  --resource-path "docs:docs/img:$PRE_DIR:." \
   --standalone \
   --metadata-file=tools/docs/booklet.yaml \
-  --metadata "lang=$LANG_TAG" \
+  --lua-filter=tools/docs/equal_table_widths.lua \
   --include-in-header=tools/docs/booklet-header.tex \
   --toc --toc-depth=2 \
   --top-level-division=chapter \
@@ -91,10 +106,10 @@ pandoc \
 pandoc \
   --from gfm+yaml_metadata_block \
   --to latex \
-  --resource-path "docs:docs/img:." \
+  --resource-path "docs:docs/img:$PRE_DIR:." \
   --standalone \
   --metadata-file=tools/docs/booklet.yaml \
-  --metadata "lang=$LANG_TAG" \
+  --lua-filter=tools/docs/equal_table_widths.lua \
   --include-in-header=tools/docs/booklet-header.tex \
   --toc --toc-depth=2 \
   --top-level-division=chapter \
@@ -112,13 +127,14 @@ echo "[booklet] wrote $OUT_PDF ($((bytes / 1024)) KB)"
 echo "[booklet] wrote $OUT_TEX (intermediate LaTeX)"
 
 # Imposed (fold-and-staple) booklet — optional, only if pdfjam is
-# installed. Produces an A4-landscape PDF where each sheet carries 4
-# A5 pages in print order; print double-sided, fold in half, staple.
+# installed. Source pages are A4, so the booklet is imposed onto A3
+# landscape: each sheet carries 2 A4 pages per side, print double-
+# sided, fold in half once, staple.
 if command -v pdfjam >/dev/null 2>&1; then
-  IMPOSED="$OUT_DIR/btclock-booklet${SUFFIX}-impose.pdf"
-  pdfjam --booklet true --landscape --paper a4paper \
+  IMPOSED="$OUT_DIR/btclock-booklet-impose.pdf"
+  pdfjam --booklet true --landscape --paper a3paper \
     --outfile "$IMPOSED" "$OUT_PDF" >/dev/null
-  echo "[booklet] wrote $IMPOSED (A4 imposed, fold + staple)"
+  echo "[booklet] wrote $IMPOSED (A3 imposed, fold + staple → A4 booklet)"
 else
-  echo "[booklet] (skipping A4 imposition — install pdfjam for fold-and-staple output)"
+  echo "[booklet] (skipping imposition — install pdfjam for fold-and-staple output)"
 fi

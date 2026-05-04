@@ -71,7 +71,77 @@
 \usepackage{graphicx}
 \setkeys{Gin}{width=\linewidth,keepaspectratio}
 
+% Pandoc emits `\begin{longtable}[]{@{}ll@{}}` for gfm tables without
+% explicit column widths, and the image cells then render at native
+% pixel size and overflow the text block. Detect the longtable
+% context and shrink \pandocbounded so two-image-side-by-side tables
+% (verticalDesc / invertedColor / suffix mode / etc.) and the
+% three-column font-preview table both fit on the page.
+\usepackage{etoolbox}
+\usepackage{adjustbox}
+\newif\ifBTinlongtable
+\AtBeginEnvironment{longtable}{\BTinlongtabletrue}
+\AtEndEnvironment{longtable}{\BTinlongtablefalse}
+\AtBeginDocument{%
+  \renewcommand{\pandocbounded}[1]{%
+    \ifBTinlongtable
+      \begin{adjustbox}{max size={0.46\linewidth}{0.5\textheight}}#1\end{adjustbox}%
+    \else
+      \begin{adjustbox}{max size={\linewidth}{0.85\textheight}}#1\end{adjustbox}%
+    \fi
+  }%
+}
+
 % Code blocks: subtle background panel, monospaced.
 \usepackage{fancyvrb}
 \fvset{frame=single,framerule=0pt,rulecolor=\color{BTPanelGrey},
        fontsize=\footnotesize}
+
+% Wide / dense markdown tables on A4 sometimes overshoot the text
+% block when pandoc emits explicit \real{} column widths. Force long
+% tables to fit the page width and let cells wrap, and tighten the
+% column padding so the hardware/settings tables breathe.
+\usepackage{array}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\AtBeginDocument{%
+  \let\origlongtable\longtable
+  \def\longtable{\setlength{\LTpre}{6pt}\setlength{\LTpost}{6pt}\origlongtable}%
+}
+
+% Custom cover page: full-bleed dark band, brand-orange title,
+% subtitle, and a hero render of a BTClock screen. Replaces pandoc's
+% default \maketitle which prints author/date we don't want. The
+% wordmark uses Ubuntu Medium Italic to match the "BTClock" text
+% engraved on the acrylic frame.
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{eso-pic}
+\newfontfamily\BTCoverFont{Ubuntu Medium}[ItalicFont={Ubuntu Medium Italic}]
+\renewcommand{\maketitle}{%
+  \begin{titlepage}%
+    \thispagestyle{empty}%
+    \AddToShipoutPictureBG*{%
+      \AtPageUpperLeft{%
+        \tikz[remember picture,overlay]{%
+          \fill[BTDark] (0,0) rectangle (\paperwidth,-0.42\paperheight);%
+        }%
+      }%
+    }%
+    \begin{center}%
+      \vspace*{18mm}%
+      {\color{white}\BTCoverFont\itshape\fontsize{72pt}{80pt}\selectfont BTClock\par}%
+      \vspace{6mm}%
+      {\color{BTOrange}\BTCoverFont\itshape\Large User \& developer handbook\par}%
+      \vspace{2mm}%
+      {\color{white}\BTCoverFont\itshape\large v4 firmware\par}%
+      \vspace{30mm}%
+      \includegraphics[width=0.92\linewidth]{docs/img/screens/btc_price.png}%
+      \vfill%
+      {\color{BTOrange}\rule{0.35\linewidth}{1pt}\par}%
+      \vspace{4mm}%
+      {\BTCoverFont\itshape\large btclock.dev\par}%
+    \end{center}%
+  \end{titlepage}%
+  \cleardoublepage%
+}
