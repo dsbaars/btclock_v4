@@ -55,9 +55,21 @@ esp_err_t NostrDataSource::Start(DataHub& hub) {
 }
 
 esp_err_t NostrDataSource::Stop() {
+  // Order matters: SubscriptionManager's constructor installs an
+  // on_frame_ lambda on the RelayClient that captures `this`. If we
+  // destroy subs_ first, the WS task (still running until
+  // relay_->Stop() joins it) can dispatch one more frame into the
+  // dangling capture and InstructionFetchError-panic on the freed
+  // vtable. Send the NIP-01 CLOSE while the socket is still alive,
+  // then JOIN the WS task via relay_->Stop() (which calls
+  // esp_websocket_client_stop+destroy and waits for the task to
+  // terminate), and only THEN drop subs_. Observed Rev B 4.0.0-beta.11
+  // crash signature: InstructionFetchError at PC inside .flash.rodata,
+  // backtrace pointing at SubscriptionManager's frame-handler lambda
+  // dispatched from esp_websocket_client_dispatch_event.
   if (subs_) subs_->Unsubscribe(cfg_.sub_id);
-  subs_.reset();
   if (relay_) relay_->Stop();
+  subs_.reset();
   relay_.reset();
   hub_ = nullptr;
   return ESP_OK;

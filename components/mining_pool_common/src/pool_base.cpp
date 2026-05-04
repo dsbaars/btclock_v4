@@ -72,6 +72,10 @@ esp_err_t http_event_handler(esp_http_client_event_t* evt) {
 PoolDataSource::PoolDataSource() = default;
 PoolDataSource::~PoolDataSource() {
   Stop();
+  if (done_ != nullptr) {
+    vSemaphoreDelete(done_);
+    done_ = nullptr;
+  }
 }
 
 uint32_t PoolDataSource::poll_interval_ms() const {
@@ -87,6 +91,14 @@ uint32_t PoolDataSource::poll_interval_ms() const {
 esp_err_t PoolDataSource::Start(DataHub& hub) {
   hub_ = &hub;
   stop_.store(false, std::memory_order_release);
+  if (done_ == nullptr) {
+    done_ = xSemaphoreCreateBinary();
+    if (done_ == nullptr) {
+      ESP_LOGE(kTag, "%s: done semaphore alloc failed", pool_name());
+      hub_ = nullptr;
+      return ESP_ERR_NO_MEM;
+    }
+  }
   // 8 KB stack: cJSON parsing + esp_http_client + a few hundred bytes
   // of std::string churn fit comfortably. Mirror the old firmware's
   // 6 KB allocation plus headroom for the IDF HTTPS client.
@@ -103,17 +115,37 @@ esp_err_t PoolDataSource::Start(DataHub& hub) {
 }
 
 esp_err_t PoolDataSource::Stop() {
+  if (task_ == nullptr) {
+    hub_ = nullptr;
+    return ESP_OK;
+  }
   stop_.store(true, std::memory_order_release);
-  // The task checks stop_ before each sleep and exits via vTaskDelete
-  // from within Run(), so we don't join here. Clear the hub pointer so
-  // a stray Report() cannot fire post-Stop.
+  // Block until the poll task observes the flag and signals exit. Pool
+  // pollers do an HTTPS GET (TLS handshake + JSON body), which can take
+  // a few seconds under normal conditions and longer under network
+  // degradation. 12 s covers the typical worst-case poll already in
+  // flight; if the wait times out the OTA path proceeds anyway because
+  // flash op locks already cover cache-disable races — the wait just
+  // lets the task release its mbedtls / lwIP buffers back to the heap
+  // before esp_https_ota_perform competes for them.
+  if (done_ != nullptr) {
+    if (xSemaphoreTake(done_, pdMS_TO_TICKS(12000)) != pdTRUE) {
+      ESP_LOGW(kTag, "%s: Stop() timed out waiting for task to exit",
+               pool_name());
+    }
+  }
   hub_ = nullptr;
   task_ = nullptr;
   return ESP_OK;
 }
 
 void PoolDataSource::TaskTrampoline(void* arg) {
-  static_cast<PoolDataSource*>(arg)->Run();
+  auto* self = static_cast<PoolDataSource*>(arg);
+  self->Run();
+  // Signal Stop()'s waiter BEFORE the self-delete; once vTaskDelete
+  // runs, the task's stack is unwound and `self->done_` is the only
+  // surviving handle into this object.
+  if (self->done_ != nullptr) xSemaphoreGive(self->done_);
   vTaskDelete(nullptr);
 }
 

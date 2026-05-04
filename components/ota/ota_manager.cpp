@@ -19,6 +19,7 @@
 #include "esp_partition.h"
 #include "esp_psram.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mbedtls/md.h"
@@ -361,6 +362,16 @@ void OtaManager::RunAutoUpdate() {
   http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
   http_cfg.timeout_ms = 15000;
   http_cfg.keep_alive_enable = true;
+  // Default esp_https_ota chunk is 1024 B (IMAGE_HEADER_SIZE) — every
+  // perform iteration is one esp_http_client_read of that size, capping
+  // throughput at ~1 KB per TLS-record + per-iteration scheduling cost.
+  // Bumping buffer_size grows ota_upgrade_buf via MAX(buffer_size,
+  // IMAGE_HEADER_SIZE) at esp_https_ota.c:561, so each perform call now
+  // drains a full TLS record (mbedtls SSL_IN_CONTENT_LEN=16 KiB). 8 KiB
+  // is the usable cap on Rev B's internal heap budget; larger values
+  // risk fragmentation when the cert bundle, OTA buffer, and the EPD
+  // framebuffers all want internal DRAM at once.
+  http_cfg.buffer_size = 8192;
 
   esp_https_ota_config_t ota_cfg = {};
   ota_cfg.http_config = &http_cfg;
@@ -391,8 +402,14 @@ void OtaManager::RunAutoUpdate() {
   // while there's more body to read. Throttle progress emission to
   // every kProgressStepBytes (~16 KiB) so the LED bar advances multiple
   // times during a 1.5 MiB image without spamming the LED queue.
+  // Diagnostic: if image_len_read hasn't advanced for a full second,
+  // log the current state. Helped pin down the post-fix download
+  // stall reported in btclock_v4-phy.
   constexpr size_t kProgressStepBytes = 16 * 1024;
   size_t next_progress = kProgressStepBytes;
+  int64_t last_log_us = esp_timer_get_time();
+  int last_read_at_log = 0;
+  const int64_t start_us = last_log_us;
   while ((rc = esp_https_ota_perform(handle)) ==
          ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
     const int read = esp_https_ota_get_image_len_read(handle);
@@ -402,7 +419,19 @@ void OtaManager::RunAutoUpdate() {
       EmitProgress(prog);
       next_progress = static_cast<size_t>(read) + kProgressStepBytes;
     }
-    vTaskDelay(pdMS_TO_TICKS(1));
+    const int64_t now_us = esp_timer_get_time();
+    if (now_us - last_log_us >= 1000000) {
+      const int delta = read - last_read_at_log;
+      const int64_t elapsed_ms = (now_us - start_us) / 1000;
+      ESP_LOGW(kTag, "ota perform: read=%d (+%d B/s) elapsed=%lldms heap=%zu",
+               read, delta, static_cast<long long>(elapsed_ms),
+               heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+      last_log_us = now_us;
+      last_read_at_log = read;
+    }
+    // Removed vTaskDelay: esp_http_client_read inside perform already
+    // blocks on the TLS socket and yields — adding our own 1 ms delay
+    // just stretches the round-trip per chunk without any benefit.
   }
   if (rc != ESP_OK) {
     ESP_LOGE(kTag, "esp_https_ota_perform: %s", esp_err_to_name(rc));

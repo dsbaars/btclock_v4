@@ -13,6 +13,7 @@
 #include "app/boot/init_mdns.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
+#include "app/ota_quiesce.hpp"
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "app/screen_slot_map.hpp"
@@ -482,13 +483,10 @@ void InitControlApi(AppCtx& ctx) {
   // only; the EPD stays on the "UPDATE!" screen until esp_restart).
   GetOtaManager().SetPreFlashHook([ctx_ptr]() {
     ESP_LOGW("ota-ux", "pre-flash hook: quiescing data + painting UPDATE");
-    // Quiesce data sources — DataHub::StopAll is best-effort and safe
-    // to call from any task.
-    if (ctx_ptr->hub) ctx_ptr->hub->StopAll();
-    // Nostr stack. Stop the listener first so its callback won't fire
-    // after the relay closes; then stop the relay's own WS task.
-    if (ctx_ptr->zap_listener) ctx_ptr->zap_listener->Stop();
-    if (ctx_ptr->zap_relay) ctx_ptr->zap_relay->Stop();
+    // Order is non-obvious — see ota_quiesce.hpp. Host-tested in
+    // test_ota_quiesce.cpp.
+    QuiesceOtaPreFlash(ctx_ptr->zap_listener.get(), ctx_ptr->zap_relay.get(),
+                       ctx_ptr->hub.get());
     // Latch ScreenManager into OTA mode before painting — ShouldRender
     // now returns false so the main loop stays out of the EPD for the
     // remainder of the flash. Rotation timer is frozen via the same

@@ -85,6 +85,7 @@ add_executable(btclock_host_tests
     test_webui_upload_bounds.cpp
     test_ota_upload_bounds.cpp
     test_ota_progress.cpp
+    test_ota_quiesce.cpp
     test_timezone.cpp
     test_led_curves.cpp
     test_led_color_parse.cpp

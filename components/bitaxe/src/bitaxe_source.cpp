@@ -81,11 +81,23 @@ uint32_t BitaxeSource::poll_interval_ms() const {
 
 BitaxeSource::~BitaxeSource() {
   Stop();
+  if (done_ != nullptr) {
+    vSemaphoreDelete(done_);
+    done_ = nullptr;
+  }
 }
 
 esp_err_t BitaxeSource::Start(DataHub& hub) {
   hub_ = &hub;
   stop_.store(false, std::memory_order_release);
+  if (done_ == nullptr) {
+    done_ = xSemaphoreCreateBinary();
+    if (done_ == nullptr) {
+      ESP_LOGE(kTag, "done semaphore alloc failed");
+      hub_ = nullptr;
+      return ESP_ERR_NO_MEM;
+    }
+  }
   // 4 KB stack: cJSON + esp_http_client + the tiny response buffer all
   // fit. Lower priority than the WS data sources (tskIDLE_PRIORITY+1)
   // so a slow Bitaxe can't starve the main snapshot pipeline.
@@ -102,17 +114,36 @@ esp_err_t BitaxeSource::Start(DataHub& hub) {
 }
 
 esp_err_t BitaxeSource::Stop() {
+  if (task_ == nullptr) {
+    hub_ = nullptr;
+    return ESP_OK;
+  }
   stop_.store(true, std::memory_order_release);
-  // Task self-deletes via vTaskDelete(nullptr) when it observes the
-  // stop flag, so we don't join here. Clear hub so a late-arriving
-  // Report() cannot fire post-Stop.
+  // Block until the poll task observes the flag and signals exit. The
+  // run loop sleeps in 1 s chunks AND PollOnce holds the http client
+  // for up to its connect/recv timeout (~5–10 s on a healthy LAN, can
+  // spike during Wi-Fi degradation). 12 s covers the worst-case poll
+  // already in flight; if the wait times out the OTA path proceeds
+  // anyway because flash op locks already cover cache-disable races —
+  // the wait just lets the task release its mbedtls / lwIP buffers
+  // back to the heap before esp_https_ota_perform competes for them.
+  if (done_ != nullptr) {
+    if (xSemaphoreTake(done_, pdMS_TO_TICKS(12000)) != pdTRUE) {
+      ESP_LOGW(kTag, "Stop() timed out waiting for task to exit");
+    }
+  }
   hub_ = nullptr;
   task_ = nullptr;
   return ESP_OK;
 }
 
 void BitaxeSource::TaskTrampoline(void* arg) {
-  static_cast<BitaxeSource*>(arg)->Run();
+  auto* self = static_cast<BitaxeSource*>(arg);
+  self->Run();
+  // Signal Stop()'s waiter BEFORE the self-delete; once vTaskDelete
+  // runs, the task's stack is unwound and `self->done_` is the only
+  // surviving handle into this object.
+  if (self->done_ != nullptr) xSemaphoreGive(self->done_);
   vTaskDelete(nullptr);
 }
 

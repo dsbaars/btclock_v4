@@ -27,6 +27,7 @@
 #include "data_core/source.hpp"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 namespace btclock {
@@ -52,6 +53,12 @@ class BitaxeSource : public DataSource {
   DataHub* hub_ = nullptr;
   TaskHandle_t task_ = nullptr;
   std::atomic<bool> stop_{false};
+  // Given by Run() right before vTaskDelete(nullptr); waited on by
+  // Stop() with a timeout so the OTA pre-flash hook can guarantee the
+  // poll task has fully exited before flash erase begins. Without
+  // this, a poll mid-HTTP-request could still be alive (and holding
+  // mbedtls / lwIP buffers) when esp_ota_write disables cache.
+  SemaphoreHandle_t done_ = nullptr;
 };
 
 // Factory — returns nullptr when settings/bitaxeEnabled=false or
