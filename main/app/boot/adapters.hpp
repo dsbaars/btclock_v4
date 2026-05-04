@@ -45,6 +45,7 @@ struct LedsAdapter : LedsIface {
   void SetBrightness(uint8_t value) override;
   void SetBlockFlashColor(uint32_t rgb) override;
   void TriggerIdentify() override;
+  bool PostEffectByName(const char* name) override;
 };
 
 struct DndAdapter : DndIface {

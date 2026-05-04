@@ -1,5 +1,7 @@
 #include "app/boot/adapters.hpp"
 
+#include <cstring>
+
 #include "app/screen_manager.hpp"
 #include "dnd/dnd.hpp"
 #include "io/frontlight_controller.hpp"
@@ -65,6 +67,50 @@ void LedsAdapter::SetBlockFlashColor(uint32_t rgb) {
 }
 void LedsAdapter::TriggerIdentify() {
   PostLedEffect(LedEffect::kIdentify);
+}
+
+namespace {
+// Name lookup for /api/lights/effect. Lower-snake_case so callers can
+// build the URL body from a static dictionary; the table itself sits
+// in rodata (string literals + a const struct array). Linear scan is
+// fine — under a dozen entries and only walked on user-initiated POSTs.
+//
+// Names map to the LED catalog documented in `io/led_controller.hpp`:
+//   - "blink" / "blink_success" / "blink_error" — quick one-shot flashes
+//   - "rainbow"  — kPowerTest one-shot rainbow scan
+//   - "breathe"  — kSetProvisioning soft cyan breathe (continuous until
+//                  another effect supersedes it)
+//   - "breathe_error" — kDataError slow red breathe (continuous)
+//   - "zap" / "identify" / "heartbeat" — one-shot nameds from production
+//   - "off" / "idle" — kSetIdle (restore resting mirror)
+struct EffectName {
+  const char* name;
+  LedEffect effect;
+};
+constexpr EffectName kLedEffectNames[] = {
+    {"blink", LedEffect::kFlashUpdate},
+    {"blink_success", LedEffect::kFlashSuccess},
+    {"blink_error", LedEffect::kFlashError},
+    {"rainbow", LedEffect::kPowerTest},
+    {"breathe", LedEffect::kSetProvisioning},
+    {"breathe_error", LedEffect::kDataError},
+    {"zap", LedEffect::kZap},
+    {"identify", LedEffect::kIdentify},
+    {"heartbeat", LedEffect::kHeartbeat},
+    {"off", LedEffect::kSetIdle},
+    {"idle", LedEffect::kSetIdle},
+};
+}  // namespace
+
+bool LedsAdapter::PostEffectByName(const char* name) {
+  if (!name || !*name) return false;
+  for (const auto& entry : kLedEffectNames) {
+    if (std::strcmp(entry.name, name) == 0) {
+      PostLedEffect(entry.effect);
+      return true;
+    }
+  }
+  return false;
 }
 
 // --- DndAdapter -------------------------------------------------------

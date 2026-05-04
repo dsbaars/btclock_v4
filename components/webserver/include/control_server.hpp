@@ -136,6 +136,11 @@ class LedsIface {
   virtual void SetBrightness(uint8_t value) = 0;
   virtual void SetBlockFlashColor(uint32_t rgb) = 0;
   virtual void TriggerIdentify() = 0;
+  // Post a named effect (lower-snake_case) to the LED queue. Returns
+  // false when the name is unknown so the HTTP layer can surface 400.
+  // Implemented in the adapter so the webserver TU stays independent
+  // of `main/io/led_controller.hpp` (which drags FreeRTOS + RMT + NVS).
+  virtual bool PostEffectByName(const char* name) = 0;
 };
 
 // Commands the HTTP task posts to the main task. `arg` is command-
@@ -548,6 +553,7 @@ class ControlServer {
   static esp_err_t TrampolineLightsColor(httpd_req_t* req);
   static esp_err_t TrampolineLightsOff(httpd_req_t* req);
   static esp_err_t TrampolineLightsSet(httpd_req_t* req);
+  static esp_err_t TrampolineLightsEffect(httpd_req_t* req);
   static esp_err_t TrampolineSettingsGet(httpd_req_t* req);
   static esp_err_t TrampolineSettingsPatch(httpd_req_t* req);
   static esp_err_t TrampolineDndStatus(httpd_req_t* req);
@@ -592,6 +598,7 @@ class ControlServer {
   esp_err_t HandleLightsColor(httpd_req_t* req);
   esp_err_t HandleLightsOff(httpd_req_t* req);
   esp_err_t HandleLightsSet(httpd_req_t* req);
+  esp_err_t HandleLightsEffect(httpd_req_t* req);
   esp_err_t HandleSettingsGet(httpd_req_t* req);
   esp_err_t HandleSettingsPatch(httpd_req_t* req);
   esp_err_t HandleDndStatus(httpd_req_t* req);

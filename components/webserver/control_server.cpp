@@ -406,6 +406,7 @@ esp_err_t ControlServer::Start() {
   reg("/api/lights/color", HTTP_POST, TrampolineLightsColor);
   reg("/api/lights/off", HTTP_POST, TrampolineLightsOff);
   reg("/api/lights/set", HTTP_POST, TrampolineLightsSet);
+  reg("/api/lights/effect", HTTP_POST, TrampolineLightsEffect);
   reg("/api/settings", HTTP_GET, TrampolineSettingsGet);
   reg("/api/settings", HTTP_PATCH, TrampolineSettingsPatch);
   reg("/api/dnd/status", HTTP_GET, TrampolineDndStatus);
@@ -544,6 +545,9 @@ esp_err_t ControlServer::TrampolineLightsOff(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineLightsSet(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleLightsSet(req);
+}
+esp_err_t ControlServer::TrampolineLightsEffect(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleLightsEffect(req);
 }
 esp_err_t ControlServer::TrampolineSettingsGet(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleSettingsGet(req);
@@ -1612,6 +1616,60 @@ esp_err_t ControlServer::HandleLightsSet(httpd_req_t* req) {
   cfg_.leds->SetPixels(pixels, static_cast<uint32_t>(n));
   BroadcastStatus();
   return SendEmptyOk(req);
+}
+
+// --- /api/lights/effect ------------------------------------------------
+// JSON body `{"name": "<effect>"}`. Unknown JSON keys are silently
+// ignored so callers can speculatively send `color`, `count`,
+// `duration_ms` etc. and we wire those up later without breaking
+// existing clients. The name table lives in `LedsAdapter` so the
+// webserver TU stays decoupled from `io/led_controller.hpp`.
+esp_err_t ControlServer::HandleLightsEffect(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!cfg_.leds) return SendLedsUnavailable(req);
+
+  constexpr std::size_t kMaxBody = 256;
+  char* body = ReadFullBody(req, kMaxBody);
+  std::string body_str = body ? std::string(body) : std::string();
+  heap_caps_free(body);
+
+  cJSON* root = cJSON_Parse(body_str.c_str());
+  const cJSON* name_node =
+      root ? cJSON_GetObjectItemCaseSensitive(root, "name") : nullptr;
+  const bool has_name = name_node && cJSON_IsString(name_node) &&
+                        name_node->valuestring && name_node->valuestring[0];
+  if (!has_name) {
+    cJSON_Delete(root);
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"name required\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+
+  // Copy the name out before releasing the cJSON tree — the response
+  // echoes it back and we don't want a use-after-free if the writer
+  // mutates the buffer between Delete and snprintf.
+  std::string name = name_node->valuestring;
+  cJSON_Delete(root);
+
+  if (!cfg_.leds->PostEffectByName(name.c_str())) {
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"unknown effect\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+
+  // PostEffectByName returned true, so `name` matched a table entry.
+  // Every entry is a short lower-snake string under 16 chars; a 64 B
+  // buffer is plenty and keeps the handler stack frame small.
+  httpd_resp_set_type(req, kJsonType);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  char out[64];
+  const int n = std::snprintf(out, sizeof(out),
+                              "{\"queued\":true,\"name\":\"%s\"}", name.c_str());
+  return httpd_resp_send(req, out, n > 0 ? static_cast<size_t>(n) : 0);
 }
 
 // --- WiFi TX-power ------------------------------------------------
