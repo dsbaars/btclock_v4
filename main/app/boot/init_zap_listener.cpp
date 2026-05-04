@@ -252,7 +252,17 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
       *active_subs, std::string("zap"), zap_cfg.zap_pubkey);
   ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
   BindOnZap(ctx);
-  ctx.zap_listener->Start();
+  if (!ctx.zap_listener->Start()) {
+    // Subscribe() failed at the SubscriptionManager layer (e.g. WSS
+    // disconnected mid-rotation). Leave the listener installed —
+    // started_ stays false so the next pubkey change retries cleanly,
+    // and the WSS-layer reconnect will not re-issue the REQ. Loud
+    // because losing the zap subscription is silent otherwise.
+    ESP_LOGW(kTag,
+             "RefreshZapListenerSettings: Start() failed for new pubkey %s…",
+             zap_cfg.zap_pubkey.substr(0, 8).c_str());
+    return;
+  }
   ESP_LOGI(kTag, "RefreshZapListenerSettings: pubkey rotated to %s…",
            zap_cfg.zap_pubkey.substr(0, 8).c_str());
 }

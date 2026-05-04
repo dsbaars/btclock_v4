@@ -21,6 +21,9 @@
 #include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_heap_caps.h"
+#if CONFIG_HEAP_TRACING_STANDALONE
+#include "esp_heap_trace.h"
+#endif
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
@@ -418,6 +421,16 @@ esp_err_t ControlServer::Start() {
   reg("/api/factory_reset", HTTP_POST, TrampolineFactoryReset);
   reg("/api/coredump", HTTP_GET, TrampolineCoredumpGet);
   reg("/api/coredump", HTTP_DELETE, TrampolineCoredumpDelete);
+  // Standalone heap_trace control surface — used to attribute slow
+  // internal-heap drift to a specific allocator on a live device.
+  // start?cap=N initializes a HEAP_TRACE_LEAKS recording with N records
+  // in PSRAM; stop returns the unfreed-records dump as JSON for
+  // addr2line postprocessing. Auth-gated; never registered on a
+  // build that doesn't enable CONFIG_HEAP_TRACING_STANDALONE.
+#if CONFIG_HEAP_TRACING_STANDALONE
+  reg("/api/diag/heap_trace/start", HTTP_POST, TrampolineHeapTraceStart);
+  reg("/api/diag/heap_trace/stop", HTTP_POST, TrampolineHeapTraceStop);
+#endif
 
   // Long-lived SSE stream for the WebUI's live-refresh. Registered
   // via SseServer::RegisterRoute so the handler owns its own client
@@ -577,6 +590,12 @@ esp_err_t ControlServer::TrampolineCoredumpGet(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineCoredumpDelete(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleCoredumpDelete(req);
+}
+esp_err_t ControlServer::TrampolineHeapTraceStart(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleHeapTraceStart(req);
+}
+esp_err_t ControlServer::TrampolineHeapTraceStop(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleHeapTraceStop(req);
 }
 
 esp_err_t ControlServer::TrampolineStatic(httpd_req_t* req) {
@@ -986,6 +1005,143 @@ esp_err_t ControlServer::HandleCoredumpDelete(httpd_req_t* req) {
   httpd_resp_set_status(req, "204 No Content");
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   return httpd_resp_send(req, nullptr, 0);
+}
+
+#if CONFIG_HEAP_TRACING_STANDALONE
+namespace {
+// Single-trace state. heap_trace allows only one active recording at a
+// time, and the records buffer is sized once per start. Storing the
+// pointer at TU scope (not in ControlServer) so the trace outlives the
+// HTTP request callback that started it — the user runs start, exercises
+// the suspect path for ~60 s, then runs stop. Records live in PSRAM so
+// the trace itself doesn't pollute the internal heap we're measuring.
+heap_trace_record_t* g_trace_records = nullptr;
+size_t g_trace_capacity = 0;
+bool g_trace_running = false;
+}  // namespace
+#endif  // CONFIG_HEAP_TRACING_STANDALONE
+
+esp_err_t ControlServer::HandleHeapTraceStart(httpd_req_t* req) {
+#if !CONFIG_HEAP_TRACING_STANDALONE
+  httpd_resp_send_err(req, HTTPD_501_METHOD_NOT_IMPLEMENTED,
+                      "heap_trace not built in");
+  return ESP_FAIL;
+#else
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Capacity bounded: each record is ~ (8 + 4*depth*4) bytes; 4096
+  // records at depth=4 is ~150 KiB in PSRAM, fine. Default 256 keeps
+  // the dump JSON cheap for the common case.
+  size_t cap = 256;
+  char buf[16];
+  if (QueryParam(req, "cap", buf, sizeof(buf))) {
+    const int n = std::atoi(buf);
+    if (n > 0 && n <= 4096) cap = static_cast<size_t>(n);
+  }
+
+  if (g_trace_running) {
+    heap_trace_stop();
+    g_trace_running = false;
+  }
+  if (g_trace_records) {
+    heap_caps_free(g_trace_records);
+    g_trace_records = nullptr;
+    g_trace_capacity = 0;
+  }
+
+  const size_t bytes = cap * sizeof(heap_trace_record_t);
+  g_trace_records = static_cast<heap_trace_record_t*>(
+      heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (!g_trace_records) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "psram alloc failed");
+    return ESP_FAIL;
+  }
+  esp_err_t err = heap_trace_init_standalone(g_trace_records, cap);
+  if (err != ESP_OK) {
+    heap_caps_free(g_trace_records);
+    g_trace_records = nullptr;
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "heap_trace_init_standalone failed");
+    return ESP_FAIL;
+  }
+  err = heap_trace_start(HEAP_TRACE_LEAKS);
+  if (err != ESP_OK) {
+    heap_caps_free(g_trace_records);
+    g_trace_records = nullptr;
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                        "heap_trace_start failed");
+    return ESP_FAIL;
+  }
+  g_trace_running = true;
+  g_trace_capacity = cap;
+
+  httpd_resp_set_type(req, kJsonType);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+  char body[80];
+  const int n = std::snprintf(body, sizeof(body),
+                              "{\"started\":true,\"capacity\":%u,\"depth\":%d}",
+                              static_cast<unsigned>(cap),
+                              CONFIG_HEAP_TRACING_STACK_DEPTH);
+  return httpd_resp_send(req, body, n);
+#endif
+}
+
+esp_err_t ControlServer::HandleHeapTraceStop(httpd_req_t* req) {
+#if !CONFIG_HEAP_TRACING_STANDALONE
+  httpd_resp_send_err(req, HTTPD_501_METHOD_NOT_IMPLEMENTED,
+                      "heap_trace not built in");
+  return ESP_FAIL;
+#else
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!g_trace_running) {
+    httpd_resp_set_status(req, "409 Conflict");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char body[] = "{\"error\":\"no trace running\"}";
+    httpd_resp_send(req, body, sizeof(body) - 1);
+    return ESP_OK;
+  }
+  heap_trace_stop();
+  g_trace_running = false;
+
+  const size_t count = heap_trace_get_count();
+
+  httpd_resp_set_type(req, kJsonType);
+  httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+  char buf[256];
+  int n = std::snprintf(buf, sizeof(buf),
+                        "{\"count\":%u,\"capacity\":%u,\"leaks\":[",
+                        static_cast<unsigned>(count),
+                        static_cast<unsigned>(g_trace_capacity));
+  httpd_resp_send_chunk(req, buf, n);
+
+  bool first = true;
+  for (size_t i = 0; i < count; ++i) {
+    heap_trace_record_t rec;
+    if (heap_trace_get(i, &rec) != ESP_OK) continue;
+    // HEAP_TRACE_LEAKS auto-prunes freed records, so anything still in
+    // the buffer is a live leak. Defensive freed_by check anyway.
+    if (rec.freed_by[0] != nullptr) continue;
+    int len =
+        std::snprintf(buf, sizeof(buf),
+                      "%s{\"sz\":%u,\"addr\":\"%p\",\"cc\":%u,\"pcs\":[",
+                      first ? "" : ",", static_cast<unsigned>(rec.size),
+                      rec.address, static_cast<unsigned>(rec.ccount));
+    for (int j = 0; j < CONFIG_HEAP_TRACING_STACK_DEPTH; ++j) {
+      if (rec.alloced_by[j] == nullptr) break;
+      len += std::snprintf(buf + len, sizeof(buf) - len, "%s\"%p\"",
+                           j == 0 ? "" : ",", rec.alloced_by[j]);
+    }
+    len += std::snprintf(buf + len, sizeof(buf) - len, "]}");
+    httpd_resp_send_chunk(req, buf, len);
+    first = false;
+  }
+
+  httpd_resp_send_chunk(req, "]}", 2);
+  httpd_resp_send_chunk(req, nullptr, 0);
+  return ESP_OK;
+#endif
 }
 
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {

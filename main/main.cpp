@@ -23,8 +23,10 @@
 #include "app/app_ctx.hpp"
 #include "app/boot/init_boot_leds.hpp"
 #include "app/boot/init_boot_path.hpp"
+#include "app/boot/init_cjson_psram.hpp"
 #include "app/boot/init_control_api.hpp"
 #include "app/boot/init_hardware.hpp"
+#include "app/boot/init_mbedtls_psram.hpp"
 #include "app/boot/init_mdns.hpp"
 #include "app/boot/init_network.hpp"
 #include "app/boot/init_panels.hpp"
@@ -63,6 +65,20 @@ extern "C" void app_main() {
                static_cast<unsigned>(size));
     }
   }
+
+  // Route every cJSON node alloc through PSRAM. Must run before any
+  // cJSON_Parse fires — that includes settings load (InitStorage →
+  // ApplyPatch on persisted blob), so register the hook before *any*
+  // Init* call. See init_cjson_psram.cpp for the rationale.
+  btclock::InitCjsonPsram();
+
+  // Route every mbedTLS calloc/free through PSRAM. Must run before
+  // any TLS handshake — that includes WiFi WPA2 (in InitNetwork) and
+  // every later HTTPS/WSS connection. Mitigates the
+  // esp_crt_ca_cb_callback leak on the cert-bundle verify path; see
+  // init_mbedtls_psram.cpp for the heap_trace evidence + upstream
+  // bug-filing pointer.
+  btclock::InitMbedtlsPsram();
 
   btclock::InitBootLeds();
 

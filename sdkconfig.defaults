@@ -8,6 +8,16 @@ CONFIG_IDF_TARGET="esp32s3"
 # `<hostnamePrefix>-<mac6>` value, so this static is only a safety net.
 CONFIG_LWIP_LOCAL_HOSTNAME="btclock"
 
+# Bump LWIP socket pool from the IDF default of 10. The firmware runs
+# at minimum: httpd listener + 0–4 accepted conns, Nostr WSS (1–2),
+# bitaxe HTTP poller (transient), noderunners HTTPS poller (transient),
+# mDNS, plus sntp/dns. Steady-state of 4–6 with bursts to 8+ leaves
+# zero margin against any FD leak; 16 gives breathing room while a
+# real attribution effort runs (see diag socket-census log in
+# main/app/event_loop.cpp). Each extra socket is ~ a few hundred
+# bytes of internal RAM — cheap.
+CONFIG_LWIP_MAX_SOCKETS=16
+
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
@@ -17,7 +27,17 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_QUAD=y
 CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_MALLOC=y
-CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+# Was 16384 (every alloc < 16 KiB pinned to internal DRAM "for handshake
+# latency"). Dropped to 0 after a 10-min heap_trace on Rev A pinned a
+# slow ~3 KiB / 15 min internal-heap drift to esp_crt_bundle.c:489
+# (`esp_crt_ca_cb_callback` leaking 2–168 B X.509 fragments per HTTPS
+# handshake — IDF v6.0.1 issue, see comment in init_mbedtls_psram.cpp).
+# At 0 every default malloc tries PSRAM first; the leak still exists
+# but bleeds into the 1.95 MiB PSRAM pool instead of the 75 KiB
+# internal one — time-to-failure goes from ~5 h to weeks. Tiny per-
+# alloc latency cost is invisible at the screens-renderer + 1-Hz poll
+# cadence this firmware runs at.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
@@ -153,13 +173,12 @@ CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 # re-attached on each new connection via cfg->crt_bundle_attach.
 CONFIG_MBEDTLS_DYNAMIC_FREE_CONFIG_DATA=y
 
-# Route mbedtls dynamic allocations through the default IDF malloc
-# (PSRAM-with-internal-fallback). Combined with
-# SPIRAM_MALLOC_ALWAYSINTERNAL=16384 above, every allocation < 16 KiB
-# (including handshake scratch + RNG state where latency matters)
-# stays in DRAM, while the larger session/cert structures spill to
-# PSRAM. Trades a small handshake-latency hit on the spilled-to-PSRAM
-# allocations for ~10s of KiB of internal heap returned to the system.
+# Route mbedtls dynamic allocations through the default IDF malloc.
+# Combined with SPIRAM_MALLOC_ALWAYSINTERNAL=0 above, every mbedtls
+# alloc tries PSRAM first. We additionally install an explicit PSRAM
+# calloc/free pair for mbedtls in init_mbedtls_psram.cpp — belt and
+# suspenders, so even allocations that bypass the C runtime malloc
+# wrapper still land in PSRAM.
 CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 
 CONFIG_PARTITION_TABLE_CUSTOM=y

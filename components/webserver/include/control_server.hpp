@@ -562,6 +562,8 @@ class ControlServer {
   static esp_err_t TrampolineFactoryReset(httpd_req_t* req);
   static esp_err_t TrampolineCoredumpGet(httpd_req_t* req);
   static esp_err_t TrampolineCoredumpDelete(httpd_req_t* req);
+  static esp_err_t TrampolineHeapTraceStart(httpd_req_t* req);
+  static esp_err_t TrampolineHeapTraceStop(httpd_req_t* req);
   static esp_err_t TrampolineNotImplemented(httpd_req_t* req);
   static esp_err_t TrampolineOptions(httpd_req_t* req);
   static esp_err_t TrampolineStatic(httpd_req_t* req);
@@ -604,6 +606,8 @@ class ControlServer {
   esp_err_t HandleFactoryReset(httpd_req_t* req);
   esp_err_t HandleCoredumpGet(httpd_req_t* req);
   esp_err_t HandleCoredumpDelete(httpd_req_t* req);
+  esp_err_t HandleHeapTraceStart(httpd_req_t* req);
+  esp_err_t HandleHeapTraceStop(httpd_req_t* req);
   esp_err_t HandleStatic(httpd_req_t* req);
 
   static void ApplyCors(httpd_req_t* req);

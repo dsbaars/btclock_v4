@@ -29,6 +29,7 @@
 #include "io/light_sensor.hpp"
 #include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
+#include "lwip/sockets.h"
 #include "mcp23017.hpp"
 #include "prefs.hpp"
 #include "screens/screens.hpp"
@@ -336,6 +337,31 @@ constexpr const char* kTag = "btclock";
           static_cast<unsigned>(port & 0xF), lux,
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+      // Socket-FD census + heap, emitted at WARN so it survives the
+      // CONFIG_LOG_MAXIMUM_LEVEL_WARN strip. Hunting an LWIP socket
+      // leak: at 8 h uptime Rev B exhausted CONFIG_LWIP_MAX_SOCKETS
+      // (accept(23)=ENFILE, esp-tls socket() fails). This line is the
+      // diagnostic hook to attribute the leak to a specific subsystem.
+      {
+        int used = 0;
+        for (int fd = LWIP_SOCKET_OFFSET;
+             fd < LWIP_SOCKET_OFFSET + CONFIG_LWIP_MAX_SOCKETS; ++fd) {
+          int type = 0;
+          socklen_t len = sizeof(type);
+          if (lwip_getsockopt(fd, SOL_SOCKET, SO_TYPE, &type, &len) == 0) {
+            ++used;
+          }
+        }
+        ESP_LOGW(
+            kTag,
+            "diag t=%llds sockets=%d/%d heap=%u largest=%u psram=%u",
+            static_cast<long long>(now_ms / 1000), used,
+            CONFIG_LWIP_MAX_SOCKETS,
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(
+                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+      }
       // Auto-off: feed each fresh lux reading to the frontlight
       // controller. Below threshold -> on, above -> off. No-op if the
       // board has no frontlight or no ambient sensor.
