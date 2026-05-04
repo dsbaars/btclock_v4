@@ -22,6 +22,10 @@ NostrDataSource::~NostrDataSource() {
   Stop();
 }
 
+bool NostrDataSource::relay_connected() const {
+  return relay_ && relay_->connected();
+}
+
 esp_err_t NostrDataSource::Start(DataHub& hub) {
   hub_ = &hub;
 

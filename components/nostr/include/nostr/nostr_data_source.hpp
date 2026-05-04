@@ -62,6 +62,14 @@ class NostrDataSource : public DataSource {
   SubscriptionManager* subs() const { return subs_.get(); }
   const std::string& relay_url() const { return cfg_.relay_url; }
 
+  // Liveness probe for /api/status connectionStatus.nostr. False until
+  // Start() has run AND the underlying RelayClient's TCP+WS handshake
+  // completes; flips back to false on disconnect. Used as the fallback
+  // signal in init_control_api when the dedicated zap_relay is null
+  // because the zap listener is sharing this source's WSS. Defined
+  // out-of-line so RelayClient stays forward-declared.
+  bool relay_connected() const;
+
  private:
   // Route a decoded EVENT frame into the DataHub. Filters to kind
   // 30078, drops stale replays by (d_tag, created_at), delegates the

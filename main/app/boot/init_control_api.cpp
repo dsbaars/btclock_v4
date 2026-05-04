@@ -33,6 +33,7 @@
 #include "io/light_sensor.hpp"
 #include "io/mining_pool_selector.hpp"
 #include "io/network_led_watchdog.hpp"
+#include "nostr/nostr_data_source.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/zap_listener.hpp"
 #include "ota_manager.hpp"
@@ -322,11 +323,22 @@ void InitControlApi(AppCtx& ctx) {
     for (const auto& s : catalogs::kScreenKinds) {
       ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label)});
     }
-    // Nostr zap-relay liveness — read on every /api/status so the WebUI's
-    // connection badge tracks reality instead of the hardcoded-false we
-    // used before the ZapListener was wired.
+    // Nostr connection liveness — read on every /api/status so the
+    // WebUI's connection badge tracks reality instead of the
+    // hardcoded-false we used before the ZapListener was wired. Two
+    // mutually exclusive topologies need a probe:
+    //   1. Dedicated zap WSS — ctx.zap_relay set (zap listener + data
+    //      source point at different relays, or data source isn't
+    //      Nostr but zap notify is on).
+    //   2. Shared WSS — ctx.zap_relay is null because af2ad6c collapses
+    //      the listener onto ctx.nostr_source's RelayClient when both
+    //      relays match. Without this fallback the badge always reads
+    //      "not connected" while Nostr is the data source — that is
+    //      the whole point of the badge.
     if (nostr::RelayClient* zap_ptr = ctx.zap_relay.get()) {
       ccfg.nostr_connected = [zap_ptr]() { return zap_ptr->connected(); };
+    } else if (nostr::NostrDataSource* ns = ctx.nostr_source) {
+      ccfg.nostr_connected = [ns]() { return ns->relay_connected(); };
     }
     // dataSource=1 plumbs price/blocks straight from the source's
     // per-WS connection probes. dataSource=0 leaves all three callbacks
