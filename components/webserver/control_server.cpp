@@ -1082,10 +1082,9 @@ esp_err_t ControlServer::HandleHeapTraceStart(httpd_req_t* req) {
   httpd_resp_set_type(req, kJsonType);
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   char body[80];
-  const int n = std::snprintf(body, sizeof(body),
-                              "{\"started\":true,\"capacity\":%u,\"depth\":%d}",
-                              static_cast<unsigned>(cap),
-                              CONFIG_HEAP_TRACING_STACK_DEPTH);
+  const int n = std::snprintf(
+      body, sizeof(body), "{\"started\":true,\"capacity\":%u,\"depth\":%d}",
+      static_cast<unsigned>(cap), CONFIG_HEAP_TRACING_STACK_DEPTH);
   return httpd_resp_send(req, body, n);
 #endif
 }
@@ -1114,10 +1113,9 @@ esp_err_t ControlServer::HandleHeapTraceStop(httpd_req_t* req) {
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
   char buf[256];
-  int n = std::snprintf(buf, sizeof(buf),
-                        "{\"count\":%u,\"capacity\":%u,\"leaks\":[",
-                        static_cast<unsigned>(count),
-                        static_cast<unsigned>(g_trace_capacity));
+  int n = std::snprintf(
+      buf, sizeof(buf), "{\"count\":%u,\"capacity\":%u,\"leaks\":[",
+      static_cast<unsigned>(count), static_cast<unsigned>(g_trace_capacity));
   httpd_resp_send_chunk(req, buf, n);
 
   bool first = true;
@@ -1127,11 +1125,10 @@ esp_err_t ControlServer::HandleHeapTraceStop(httpd_req_t* req) {
     // HEAP_TRACE_LEAKS auto-prunes freed records, so anything still in
     // the buffer is a live leak. Defensive freed_by check anyway.
     if (rec.freed_by[0] != nullptr) continue;
-    int len =
-        std::snprintf(buf, sizeof(buf),
-                      "%s{\"sz\":%u,\"addr\":\"%p\",\"cc\":%u,\"pcs\":[",
-                      first ? "" : ",", static_cast<unsigned>(rec.size),
-                      rec.address, static_cast<unsigned>(rec.ccount));
+    int len = std::snprintf(buf, sizeof(buf),
+                            "%s{\"sz\":%u,\"addr\":\"%p\",\"cc\":%u,\"pcs\":[",
+                            first ? "" : ",", static_cast<unsigned>(rec.size),
+                            rec.address, static_cast<unsigned>(rec.ccount));
     for (int j = 0; j < CONFIG_HEAP_TRACING_STACK_DEPTH; ++j) {
       if (rec.alloced_by[j] == nullptr) break;
       len += std::snprintf(buf + len, sizeof(buf) - len, "%s\"%p\"",
@@ -1667,8 +1664,8 @@ esp_err_t ControlServer::HandleLightsEffect(httpd_req_t* req) {
   httpd_resp_set_type(req, kJsonType);
   httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
   char out[64];
-  const int n = std::snprintf(out, sizeof(out),
-                              "{\"queued\":true,\"name\":\"%s\"}", name.c_str());
+  const int n = std::snprintf(
+      out, sizeof(out), "{\"queued\":true,\"name\":\"%s\"}", name.c_str());
   return httpd_resp_send(req, out, n > 0 ? static_cast<size_t>(n) : 0);
 }
 

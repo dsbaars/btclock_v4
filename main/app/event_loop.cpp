@@ -353,8 +353,7 @@ constexpr const char* kTag = "btclock";
           }
         }
         ESP_LOGW(
-            kTag,
-            "diag t=%llds sockets=%d/%d heap=%u largest=%u psram=%u",
+            kTag, "diag t=%llds sockets=%d/%d heap=%u largest=%u psram=%u",
             static_cast<long long>(now_ms / 1000), used,
             CONFIG_LWIP_MAX_SOCKETS,
             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
