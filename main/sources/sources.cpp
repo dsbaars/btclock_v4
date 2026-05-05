@@ -107,11 +107,6 @@ void WireDataSources(AppCtx& ctx) {
         btclock::settings::ReadBool(settings, prefs::kCeDisableSSL);
     block_fee_dec = btclock::settings::ReadBool(settings, prefs::kBlockFeeDec);
   }
-  if (data_source == 3) {
-    ESP_LOGW(kTag, "dataSource=%d not implemented, using btclock_v2 fallback",
-             static_cast<int>(data_source));
-  }
-
   if (data_source == 1) {
     // mempool.space + Kraken — two independent WSS connections, neither
     // takes the other down. Skips the v2 source entirely; the

@@ -37,21 +37,28 @@ struct AppCtx;
 void WireDataSources(AppCtx& ctx);
 
 // Pure helper exposed so host tests can pin the URI shape without
-// dragging in NVS. Maps the v3 dataSource enum onto an actual WSS
+// dragging in NVS. Maps the dataSource enum (shared with WebUI's
+// DataSourceType in data/src/lib/types/settings.ts) onto an actual WSS
 // endpoint:
 //   * 0 (BTCLOCK_SOURCE)         -> wss://ws.btclock.dev/api/v2/ws
-//   * 2 (CUSTOM)                 -> ws[s]://<endpoint>/api/v2/ws
-//                                   (wss unless disable_ssl is true).
-//                                   Any leading ws:// or wss:// in
-//                                   `endpoint` is stripped first.
-//   * 1 (mempool+kraken)         -> falls back to BTCLOCK_SOURCE; the
+//   * 1 (THIRD_PARTY_SOURCE)     -> falls back to BTCLOCK_SOURCE; the
 //                                   mempool+kraken source uses its own
 //                                   hard-coded URIs (not v2/ws shaped),
 //                                   so this helper is only consulted on
 //                                   the v2 path. WireDataSources skips
 //                                   it entirely for ds=1.
-//   * 3                          -> falls back to BTCLOCK_SOURCE (legacy
-//                                   combo source — not implemented).
+//   * 2 (NOSTR_SOURCE)           -> ws[s]://<endpoint>/api/v2/ws when
+//                                   ceEndpoint is set (Nostr is enabled
+//                                   via its own settings; a non-empty
+//                                   ceEndpoint here means the user wants
+//                                   a custom price feed alongside Nostr),
+//                                   else the public default.
+//   * 3 (CUSTOM_SOURCE)          -> ws[s]://<endpoint>/api/v2/ws
+//                                   (wss unless disable_ssl is true).
+//                                   Any leading ws:// or wss:// in
+//                                   `endpoint` is stripped first. Same
+//                                   branch as ds=2 — both share the
+//                                   custom-endpoint path.
 std::string BuildBtclockSourceUri(std::uint8_t data_source,
                                   const std::string& endpoint,
                                   bool disable_ssl);

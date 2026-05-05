@@ -15,16 +15,28 @@ constexpr const char* kDefaultBtclockUri = "wss://ws.btclock.dev/api/v2/ws";
 std::string BuildBtclockSourceUri(std::uint8_t data_source,
                                   const std::string& endpoint,
                                   bool disable_ssl) {
-  // dataSource enum mirrors the v3 firmware's src/lib/system/defaults.hpp:
-  //   0 = BTCLOCK_SOURCE (the public ws.btclock.dev v2 feed)
-  //   1 = mempool+kraken (separate source — see mempool_kraken_source.cpp;
-  //       WireDataSources doesn't consult this helper for ds=1)
-  //   2 = CUSTOM endpoint (user-supplied via ceEndpoint)
-  //   3 = (legacy combo source, not implemented)
-  // Anything other than 2 falls back to the public default; the caller
-  // logs a warning so this is visible on the serial console rather than
-  // silently masking a broken setting.
-  if (data_source != 2) return kDefaultBtclockUri;
+  // dataSource enum is shared with the WebUI (data/src/lib/types/settings.ts
+  // DataSourceType):
+  //   0 = BTCLOCK_SOURCE        — public ws.btclock.dev v2 feed
+  //   1 = THIRD_PARTY_SOURCE    — mempool+kraken, handled separately in
+  //                                WireDataSources (this helper isn't
+  //                                consulted on that branch).
+  //   2 = NOSTR_SOURCE          — Nostr is enabled via its own settings
+  //                                (nostrEnable / nostrRelay / nostrPubKey).
+  //                                For the BTClock data-source URI we
+  //                                still consult ceEndpoint here so a
+  //                                user running Nostr alongside a custom
+  //                                price feed gets the custom feed; falls
+  //                                back to the public default when the
+  //                                endpoint is empty.
+  //   3 = CUSTOM_SOURCE         — user-supplied custom endpoint via
+  //                                ceEndpoint. Same branch as 2; the
+  //                                two values share the custom path so
+  //                                legacy NVS state (which used 2 for
+  //                                "custom" before the WebUI added the
+  //                                Nostr enum value) keeps working.
+  // Anything other than {2, 3} falls back to the public default.
+  if (data_source != 2 && data_source != 3) return kDefaultBtclockUri;
 
   // Defensive scheme-strip: users routinely paste a full URL into the
   // "Custom Endpoint" textbox. We tolerate that and rebuild the scheme

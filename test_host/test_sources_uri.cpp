@@ -59,12 +59,31 @@ TEST_CASE(
         "wss://ws.btclock.dev/api/v2/ws");
 }
 
-TEST_CASE("BuildBtclockSourceUri: dataSource=1 / 3 fall back to default") {
-  // mempool+kraken poller (bd-1xc) is not implemented yet. Until it is,
-  // both unknown enum values must keep the device on the public feed
-  // rather than refuse to connect anywhere.
+TEST_CASE("BuildBtclockSourceUri: dataSource=1 falls back to default") {
+  // mempool+kraken (THIRD_PARTY_SOURCE) is handled in WireDataSources via
+  // its own source class with hard-coded URIs; this helper is only called
+  // on the v2/ws path, so ds=1 should never round-trip through here. If
+  // it does, fall back to public so the device stays connected somewhere.
   CHECK(btclock::BuildBtclockSourceUri(1, "ignored", false) ==
         "wss://ws.btclock.dev/api/v2/ws");
-  CHECK(btclock::BuildBtclockSourceUri(3, "ignored", false) ==
+}
+
+TEST_CASE(
+    "BuildBtclockSourceUri: dataSource=3 (WebUI CUSTOM) honours ceEndpoint") {
+  // WebUI's DataSourceType.CUSTOM_SOURCE = 3
+  // (data/src/lib/types/settings.ts). Used to fall through to the public
+  // default — which silently dropped users on a LAN endpoint back to
+  // ws.btclock.dev. Now shares the custom branch with ds=2.
+  CHECK(btclock::BuildBtclockSourceUri(3, "192.168.21.88:8080", true) ==
+        "ws://192.168.21.88:8080/api/v2/ws");
+  CHECK(btclock::BuildBtclockSourceUri(3, "ws-testing.btclock.dev", false) ==
+        "wss://ws-testing.btclock.dev/api/v2/ws");
+}
+
+TEST_CASE(
+    "BuildBtclockSourceUri: dataSource=3 with empty endpoint -> default") {
+  CHECK(btclock::BuildBtclockSourceUri(3, "", false) ==
+        "wss://ws.btclock.dev/api/v2/ws");
+  CHECK(btclock::BuildBtclockSourceUri(3, "", true) ==
         "wss://ws.btclock.dev/api/v2/ws");
 }
