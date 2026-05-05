@@ -170,12 +170,31 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                        px(kSatsGlyphPx * (g_digit_px / kDigitPxDefault)),
                        /*white_text=*/false);
       return;
-    case PaintSlot::kCurrencyGlyph:
+    case PaintSlot::kCurrencyGlyph: {
       if (slot.text.empty()) return;
-      DrawTextCentered(lfb, w, h, slot.text.c_str(),
-                       slot.ref_override ? slot.ref_override : kDigitRef,
-                       fonts.digit(), px(g_digit_px), /*white_text=*/false);
+      // Single-codepoint glyphs ($, €, £, ¥) render at the digit
+      // pixel-height so the symbol weight-matches the price digits next
+      // to it. ISO-code fallbacks (e.g. "ZAR", "BRL", "INR" — codes that
+      // /api/v2/currencies includes but the firmware has no dedicated
+      // glyph for) would overflow the panel at digit size; switch to the
+      // label font + label pixel-height instead, same shape and size as
+      // the Nostr-zap "ZAP" cell so the multi-letter code reads as a
+      // caption rather than a clipped digit.
+      std::size_t cp_count = 0;
+      for (char c : slot.text) {
+        if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) ++cp_count;
+      }
+      if (cp_count > 1) {
+        DrawTextCentered(lfb, w, h, slot.text.c_str(),
+                         slot.ref_override ? slot.ref_override : kLabelRef,
+                         fonts.label(), kLabelPx, /*white_text=*/false);
+      } else {
+        DrawTextCentered(lfb, w, h, slot.text.c_str(),
+                         slot.ref_override ? slot.ref_override : kDigitRef,
+                         fonts.digit(), px(g_digit_px), /*white_text=*/false);
+      }
       return;
+    }
     case PaintSlot::kUnitSplit: {
       std::string top, bottom;
       SplitOnSlash(slot.text, top, bottom);
