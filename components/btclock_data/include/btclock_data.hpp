@@ -81,6 +81,12 @@ class BtclockDataSource : public DataSource {
   // close+reconnect on the WS so SendSubscriptions() replays.
   static void WatchdogTrampoline(TimerHandle_t timer);
   void OnWatchdogTick();
+  // Worker entrypoint for the staleness probe + reconnect. Runs on a
+  // transient task (NOT on Tmr Svc) so the TLS HTTPS handshake inside
+  // FetchUpstreamHeight has the stack it needs. Spawned only when the
+  // staleness threshold is exceeded; self-deletes on completion.
+  static void ProbeTaskTrampoline(void* arg);
+  void RunStalenessProbe();
   // Probes `/api/lastblock`; returns true and sets `out` on HTTP 2xx
   // with a parseable integer body, false otherwise. False means
   // "couldn't probe" — the watchdog treats that as graceful and tries
@@ -111,6 +117,11 @@ class BtclockDataSource : public DataSource {
   TimerHandle_t watchdog_timer_ = nullptr;
   std::atomic<uint32_t> last_height_{0};
   std::atomic<TickType_t> last_change_tick_{0};
+  // Set true while a probe worker task is running. Tmr Svc uses this
+  // to skip spawning a second probe when one is still in flight, and
+  // Stop() polls it before destroying the WS client so the worker
+  // can't dereference a destroyed handle.
+  std::atomic<bool> probe_in_flight_{false};
 };
 
 }  // namespace btclock

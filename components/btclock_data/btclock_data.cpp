@@ -14,6 +14,7 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "freertos/task.h"
 
 namespace btclock {
 namespace {
@@ -156,6 +157,14 @@ esp_err_t BtclockDataSource::Stop() {
     xTimerStop(watchdog_timer_, 0);
     xTimerDelete(watchdog_timer_, 0);
     watchdog_timer_ = nullptr;
+  }
+  // A probe worker may be mid-fetch on its own task — wait for it to
+  // finish before destroying the WS client, otherwise its
+  // ForceReconnect() / RunStalenessProbe() would touch a freed handle.
+  // Bounded by FetchUpstreamHeight's HTTP timeout (8 s) plus margin.
+  for (int i = 0; i < 100 && probe_in_flight_.load(std::memory_order_acquire);
+       ++i) {
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
   if (client_ == nullptr) {
     hub_ = nullptr;
@@ -315,9 +324,11 @@ void BtclockDataSource::WatchdogTrampoline(TimerHandle_t timer) {
 }
 
 void BtclockDataSource::OnWatchdogTick() {
-  // The timer task has a small stack; keep this short and avoid heavy
-  // logging. esp_http_client itself runs on the timer task, so the
-  // fetch is synchronous here.
+  // Runs on FreeRTOS Tmr Svc — 2048-word stack. Anything HTTPS-shaped
+  // (esp_http_client + TLS handshake + cert bundle) blows that stack
+  // and panics with "stack overflow in task Tmr Svc". So this callback
+  // does only the cheap atomic staleness check and, on a hit, hands
+  // off to a worker task with a real stack.
   if (client_ == nullptr) return;
   const TickType_t now = xTaskGetTickCount();
   const TickType_t since_tick =
@@ -325,6 +336,33 @@ void BtclockDataSource::OnWatchdogTick() {
   if (since_tick == 0) return;  // no sample yet; nothing to compare
   const uint32_t since_ms = (now - since_tick) * portTICK_PERIOD_MS;
   if (since_ms < kStaleThresholdMs) return;
+
+  // Skip if a probe is already running so a backed-up timer queue can't
+  // pile up workers while one is mid-handshake.
+  bool expected = false;
+  if (!probe_in_flight_.compare_exchange_strong(expected, true,
+                                                std::memory_order_acq_rel)) {
+    return;
+  }
+  // 6 KiB stack mirrors the WS client's task_stack — same TLS path.
+  if (xTaskCreate(&BtclockDataSource::ProbeTaskTrampoline, "btclock-wd-probe",
+                  6144, this, tskIDLE_PRIORITY + 1, nullptr) != pdPASS) {
+    probe_in_flight_.store(false, std::memory_order_release);
+    ESP_LOGW(kTag, "watchdog: probe task spawn failed");
+  }
+}
+
+void BtclockDataSource::ProbeTaskTrampoline(void* arg) {
+  auto* self = static_cast<BtclockDataSource*>(arg);
+  self->RunStalenessProbe();
+  self->probe_in_flight_.store(false, std::memory_order_release);
+  vTaskDelete(nullptr);
+}
+
+void BtclockDataSource::RunStalenessProbe() {
+  // Re-check client presence — Stop() may have nulled it between Tmr
+  // Svc spawning us and our first instruction here.
+  if (client_ == nullptr) return;
 
   uint32_t upstream = 0;
   if (!FetchUpstreamHeight(upstream)) {
@@ -334,6 +372,11 @@ void BtclockDataSource::OnWatchdogTick() {
     ESP_LOGW(kTag, "watchdog: lastblock probe failed; deferring reconnect");
     return;
   }
+
+  const TickType_t now = xTaskGetTickCount();
+  const TickType_t since_tick =
+      last_change_tick_.load(std::memory_order_acquire);
+  const uint32_t since_ms = (now - since_tick) * portTICK_PERIOD_MS;
 
   const uint32_t cached = last_height_.load(std::memory_order_acquire);
   if (cached == upstream) {
