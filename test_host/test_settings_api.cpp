@@ -896,7 +896,10 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // PATCH-able live; field count 73 -> 74, boot-only unchanged (runtime
   // — ScreenManager::Render reads it each frame and pushes it through
   // SetGlobalDigitPx, on_settings_patched marks the screen dirty).
-  CHECK(btclock::settings::kFields.size() == 74);
+  // proxy_transport landed 7 fields (proxyEnabled, proxyType, proxyHost,
+  // proxyPort, proxyUser, proxyPass, proxyBypass); none boot_only —
+  // they're re-read per request by the ApplyProxyTo* helper.
+  CHECK(btclock::settings::kFields.size() == 81);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,

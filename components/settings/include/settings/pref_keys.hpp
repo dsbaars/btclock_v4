@@ -108,6 +108,18 @@ inline constexpr const char* kOtaPass = "otaPass";
 inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
 inline constexpr const char* kPoolLogosUrl = "poolLogosUrl";
 inline constexpr const char* kPoolPollSec = "poolPollSec";
+// Outbound proxy — applied at every esp_http_client / esp_websocket_client
+// init point. proxyType: 0=none, 1=HTTP CONNECT, 2=SOCKS4, 3=SOCKS4a, 4=SOCKS5.
+// Auth (proxyUser/Pass) is honoured for HTTP CONNECT and SOCKS5 only.
+// proxyBypass: comma-separated globs evaluated against destination hostname,
+// e.g. "*.local,192.168.*"; matching destinations connect direct.
+inline constexpr const char* kProxyEnabled = "proxyEnabled";
+inline constexpr const char* kProxyType = "proxyType";
+inline constexpr const char* kProxyHost = "proxyHost";
+inline constexpr const char* kProxyPort = "proxyPort";
+inline constexpr const char* kProxyUser = "proxyUser";
+inline constexpr const char* kProxyPass = "proxyPass";
+inline constexpr const char* kProxyBypass = "proxyBypass";
 inline constexpr const char* kRefrScrnChange = "refrScrnChange";
 // Sats-symbol variant (0..15) — index into the 16 glyphs at U+E000..U+E00F
 // of the SatoshiSymbol font. Default 7 matches the production glyph that

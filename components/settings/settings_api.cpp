@@ -279,6 +279,8 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   AddBool(root, "httpAuthPassSet",
           !prefs.GetString(prefs::kHttpAuthPass, "").empty());
   AddBool(root, "otaPassSet", !prefs.GetString(prefs::kOtaPass, "").empty());
+  AddBool(root, "proxyPassSet",
+          !prefs.GetString(prefs::kProxyPass, "").empty());
 
   // miningPoolUser is normally a public identifier (payout address,
   // username, worker name) and rides plaintext in the EmitField loop

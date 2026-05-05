@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 74> kFields = {{
+inline constexpr std::array<FieldSpec, 81> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -294,6 +294,21 @@ inline constexpr std::array<FieldSpec, 74> kFields = {{
     // that publish per-minute stats already, without overwhelming free
     // public endpoints.
     {prefs::kPoolPollSec, FieldKind::kUint, false, 10, 3600, false, 60, {}},
+    // Outbound proxy. Applied at every esp_http_client / esp_websocket_client
+    // init point via net_util's ApplyProxyTo* helpers. None of these are
+    // boot_only — net_util reads the config per-request, and the
+    // on_proxy_changed hook fires kReconnectAll so existing WS sessions
+    // re-establish through the new path. proxyType: 0=none, 1=HTTP CONNECT,
+    // 2=SOCKS4, 3=SOCKS4a, 4=SOCKS5; bounds clamp to the enum range.
+    // proxyPass is suppressed in GET like httpAuthPass — see settings_api.cpp.
+    {prefs::kProxyEnabled, FieldKind::kBool, false, 0, 0, false, 0, {}},
+    {prefs::kProxyType, FieldKind::kUChar, false, 0, 4, false, 0, {}},
+    {prefs::kProxyHost, FieldKind::kString, false, 0, 0, false, 0, {}},
+    {prefs::kProxyPort, FieldKind::kUint, false, 1, 65535, false, 1080, {}},
+    {prefs::kProxyUser, FieldKind::kString, false, 0, 0, false, 0, {}},
+    {prefs::kProxyPass, FieldKind::kString, false, 0, 0, false, 0, {}},
+    {prefs::kProxyBypass, FieldKind::kString, false, 0, 0, false, 0,
+     "*.local,192.168.*,10.*,127.0.0.1"},
     // v3 DEFAULT_REFRESH_ON_SCREEN_CHANGE=false,
     // DEFAULT_SCREEN_RESTORE_AFTER_ZAP=true, DEFAULT_SUFFIX_PRICE=false,
     // DEFAULT_SUFFIX_SHARE_DOT=false, DEFAULT_SUPPLY_PERCENT=false.
