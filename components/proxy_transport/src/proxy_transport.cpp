@@ -39,7 +39,6 @@ constexpr const char* kTag = "proxy_transport";
 
 struct Ctx {
   Config cfg;                 // copy so settings reload after init still works
-  std::string dest_host;      // upper layer's intended destination
   bool use_tls = false;
   esp_err_t (*crt_bundle_attach)(void* conf) = nullptr;
   int fd = -1;
@@ -50,10 +49,11 @@ struct Ctx {
 extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
                         int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
-  // Re-evaluate bypass against the destination we were just given —
-  // upper-layer client may pass a different host than the one we
-  // captured at MakeProxyTransport time (e.g. http_client follows
-  // redirects to a new host).
+  // Bypass is evaluated against whatever destination the upper layer
+  // hands us — esp_http_client / esp_websocket_client parse cfg.url /
+  // cfg.uri and call us with the host extracted, including after
+  // redirects. So the same factory-built transport can serve multiple
+  // destinations and bypass works correctly per-connection.
   ctx->bypassed = ShouldBypass(ctx->cfg, host ? host : "");
 
   if (ctx->bypassed) {
@@ -219,7 +219,6 @@ extern "C" int Destroy(esp_transport_handle_t t) {
 }  // namespace
 
 esp_transport_handle_t MakeProxyTransport(const Config& cfg,
-                                          const char* dest_host,
                                           const TransportParams& params) {
   esp_transport_handle_t t = esp_transport_init();
   if (!t) return nullptr;
@@ -229,7 +228,6 @@ esp_transport_handle_t MakeProxyTransport(const Config& cfg,
     return nullptr;
   }
   ctx->cfg = cfg;
-  if (dest_host) ctx->dest_host = dest_host;
   ctx->use_tls = params.use_tls;
   ctx->crt_bundle_attach = params.crt_bundle_attach;
   esp_transport_set_context_data(t, ctx);

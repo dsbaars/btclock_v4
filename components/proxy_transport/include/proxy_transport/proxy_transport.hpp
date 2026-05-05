@@ -20,9 +20,16 @@ namespace proxy {
 //   2. Runs the protocol-specific handshake to the *destination*,
 //   3. Optionally runs a TLS handshake on top (esp-tls + crt_bundle).
 //
+// The destination host+port flow in via the esp_transport `connect()`
+// callback signature — esp_http_client / esp_websocket_client parse
+// cfg.url / cfg.uri and call our transport with host+port already
+// extracted, so this factory takes only the proxy config + TLS knobs.
+// Bypass-list evaluation happens at connect time against the
+// upper-layer-supplied host.
+//
 // When `cfg.kind == kNone` or the destination matches the bypass list,
-// returns a transport that performs a direct TCP connect to the
-// destination instead — same external behaviour as a non-proxy build.
+// the transport performs a direct TCP connect to the destination
+// instead — same external behaviour as a non-proxy build.
 //
 // `use_tls` controls whether the upper layer (HTTPS / WSS) needs the
 // transport to handle TLS itself. esp_http_client and
@@ -43,7 +50,6 @@ struct TransportParams {
   esp_err_t (*crt_bundle_attach)(void* conf) = nullptr;
 };
 esp_transport_handle_t MakeProxyTransport(const Config& cfg,
-                                          const char* dest_host,
                                           const TransportParams& params);
 
 }  // namespace proxy
