@@ -68,9 +68,23 @@ TEST_CASE("ComputeSatsPerCurrencyLayout: integer path — share_dot is a no-op")
 
 TEST_CASE("ComputeSatsPerCurrencyLayout: fractional path — VND-scale price") {
   // 1 BTC at ~2.55B VND → 1e8 / 2.55e9 ≈ 0.0392 sats per VND. 6 slots,
-  // share_dot=false: ["0", ".", "0", "3", "9", "2"].
+  // use_symbol=true reserves cells[0] for the sats glyph, so the
+  // fractional budget shrinks by one: [STS, "0", ".", "0", "3", "9"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<6>(
       "2550000000.0", /*use_symbol=*/true, /*share_dot=*/false);
+  CHECK(l.fractional);
+  CHECK(CellsAsString(l) == "_|0|.|0|3|9");
+  CHECK(l.is_sats[0]);
+  for (std::size_t i = 1; i < 6; ++i) CHECK_FALSE(l.is_sats[i]);
+}
+
+TEST_CASE(
+    "ComputeSatsPerCurrencyLayout: fractional path — use_symbol=false fills "
+    "every slot") {
+  // Without the sats glyph the leading slot is freed for an extra
+  // fractional digit. 6 slots: ["0", ".", "0", "3", "9", "2"].
+  auto l = btclock::ComputeSatsPerCurrencyLayout<6>(
+      "2550000000.0", /*use_symbol=*/false, /*share_dot=*/false);
   CHECK(l.fractional);
   CHECK(CellsAsString(l) == "0|.|0|3|9|2");
   for (std::size_t i = 0; i < 6; ++i) CHECK_FALSE(l.is_sats[i]);
@@ -79,40 +93,48 @@ TEST_CASE("ComputeSatsPerCurrencyLayout: fractional path — VND-scale price") {
 TEST_CASE(
     "ComputeSatsPerCurrencyLayout: fractional path — share_dot folds 0+. into "
     "one cell") {
-  // share_dot=true: same input gets one extra fractional digit because
-  // "0." merges into a single cell. 6 slots: ["0.", "0", "3", "9", "2", "2"].
+  // share_dot=true folds "0" + "." into one cell, freeing one slot for
+  // an extra fractional digit. With use_symbol=true the sats glyph
+  // still reserves cells[0]: 6 slots = [STS, "0.", "0", "3", "9", "2"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<6>(
       "2550000000.0", /*use_symbol=*/true, /*share_dot=*/true);
   CHECK(l.fractional);
-  CHECK(CellsAsString(l) == "0.|0|3|9|2|2");
+  CHECK(CellsAsString(l) == "_|0.|0|3|9|2");
+  CHECK(l.is_sats[0]);
 }
 
 TEST_CASE("ComputeSatsPerCurrencyLayout: fractional path — V8 (7 slots)") {
-  // 7 slots, share_dot=false: ["0", ".", "0", "3", "9", "2", "2"].
+  // 7 slots, share_dot=false, use_symbol=true: [STS, "0", ".", "0", "3",
+  // "9", "2"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<7>(
       "2550000000.0", /*use_symbol=*/true, /*share_dot=*/false);
   CHECK(l.fractional);
-  CHECK(CellsAsString(l) == "0|.|0|3|9|2|2");
+  CHECK(CellsAsString(l) == "_|0|.|0|3|9|2");
+  CHECK(l.is_sats[0]);
 }
 
 TEST_CASE(
     "ComputeSatsPerCurrencyLayout: fractional path — V8 share_dot adds a "
     "digit") {
-  // 7 slots, share_dot=true: one extra fractional digit fits.
+  // 7 slots, share_dot=true, use_symbol=true: one extra fractional digit
+  // fits — [STS, "0.", "0", "3", "9", "2", "2"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<7>(
       "2550000000.0", /*use_symbol=*/true, /*share_dot=*/true);
   CHECK(l.fractional);
-  CHECK(CellsAsString(l) == "0.|0|3|9|2|1|6");
+  CHECK(CellsAsString(l) == "_|0.|0|3|9|2|2");
+  CHECK(l.is_sats[0]);
 }
 
 TEST_CASE(
     "ComputeSatsPerCurrencyLayout: fractional path — values just under 1") {
   // sats_d ≈ 0.5 — used to round to int(1) which lied to the user. Now
-  // shows the actual ratio.
+  // shows the actual ratio. 6 slots, use_symbol=true: [STS, "0", ".",
+  // "5", "0", "0"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<6>(
       "200000000.0", /*use_symbol=*/true, /*share_dot=*/false);
   CHECK(l.fractional);
-  CHECK(CellsAsString(l) == "0|.|5|0|0|0");
+  CHECK(CellsAsString(l) == "_|0|.|5|0|0");
+  CHECK(l.is_sats[0]);
 }
 
 TEST_CASE("ComputeSatsPerCurrencyLayout: fractional rounds to 1 falls back") {

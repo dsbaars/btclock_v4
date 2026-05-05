@@ -109,29 +109,34 @@ inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
   // Fractional path — "0.dddd".
   //
   // share_dot=false (default): "0", ".", and the fractional digits each
-  // get their own cell — fractional digits fill `Slots - 2` cells.
+  // get their own cell.
   //
   // share_dot=true: the '.' folds into the leading cell as "0.", freeing
   // one slot for an extra fractional digit. Mirrors the BTC-price suffix
   // layout's shareDot branch so a user setting decimalShareDot=true gets
   // a consistent look across every decimal layout.
   //
+  // use_symbol=true reserves one leading cell for the sats glyph (cells[0]
+  // stays empty, is_sats[0] is set) so the screen still identifies the
+  // unit even when sats-per-currency drops below 1. The cost is one
+  // fractional digit; users who want maximum decimal precision can pair
+  // it with decimalShareDot=true to win one digit back.
+  //
   // The format string fills any unused trailing slots with zeros (e.g.
   // exactly 2 sats per 1e8 → "0.5000" on a 6-slot board) — that's a
   // deliberate choice over rendering "0.5   " so the precision is
   // unambiguous.
   l.fractional = true;
-  // Need room for "0.x" minimum (3 cells, share_dot=false) or "0.x"
-  // (2 cells, share_dot=true); fall back to "0" right-justified on
-  // anything smaller than that.
-  const std::size_t min_slots = share_dot ? 2u : 3u;
-  if (Slots < min_slots) {
+  // Layout budget — start with the cells the leading "0[.]" + optional
+  // '.' + optional sats-glyph slot consumes; whatever's left is the
+  // fractional-digit budget. Fall back to right-justified "0" if the
+  // panel can't fit even the minimum.
+  const std::size_t reserved = (share_dot ? 1u : 2u) + (use_symbol ? 1u : 0u);
+  if (Slots <= reserved) {
     l.cells[Slots - 1] = "0";
     return l;
   }
-  // Fractional-digit budget. share_dot=true reserves 1 cell for "0.";
-  // share_dot=false reserves 2 cells for "0" and ".".
-  const int frac_digits = static_cast<int>(Slots) - (share_dot ? 1 : 2);
+  const int frac_digits = static_cast<int>(Slots - reserved);
   char buf[32];
   std::snprintf(buf, sizeof(buf), "%.*f", frac_digits, sats_d);
   // Defensive: rounding right-up to "1.0000" (sats_d just under 1.0
@@ -147,12 +152,13 @@ inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
   }
   // Walk `buf` (which is "0.<digits>") from left to right, mapping each
   // character to a cell. share_dot=true emits "0." into a single cell
-  // at the same position the share_dot=false path would emit "0".
-  //
-  // share_dot=false: cells = ["0", ".", d0, d1, …], total = frac_digits+2 =
-  // Slots. share_dot=true:  cells = ["0.", d0, d1, …],     total =
-  // frac_digits+1 = Slots.
+  // at the same position the share_dot=false path would emit "0". When
+  // use_symbol=true, cells[0] stays empty and is_sats[0] flags the
+  // sats-glyph slot — same convention the integer path uses.
   std::size_t i = 0;  // cell index
+  if (use_symbol) {
+    l.is_sats[i++] = true;
+  }
   if (share_dot) {
     l.cells[i++] = "0.";
     // Skip "0." in buf.

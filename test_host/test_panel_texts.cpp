@@ -910,7 +910,7 @@ TEST_CASE("panel_texts — mowMode overflow: unknown ISO falls back to code") {
 TEST_CASE("panel_texts — moscow time fractional: weak fiat shows 0.dddd") {
   // 1 BTC at ~2.55B VND → 1e8 / 2.55e9 ≈ 0.0392 sats per VND. Old
   // layout rounded to int32 and rendered "0" or all-blank — wrong. New
-  // layout fills every digit cell with "0.0392".
+  // layout fills every digit cell with the fractional ratio.
   PanelTextInputs in;
   in.kind = ScreenType::kMoscowTime;
   in.currency = "VND";
@@ -923,8 +923,32 @@ TEST_CASE("panel_texts — moscow time fractional: weak fiat shows 0.dddd") {
   // SATS/<CCY> label keeps showing the currency identity (no MSCW path
   // for sub-1 sats).
   CHECK(out[0] == "SATS/VND");
-  // Cell index 1 carries '0', then '.', then 4 fractional digits across
-  // cells 2..5. No "STS" sats-glyph cell on the fractional path.
+  // use_sats_symbol=true reserves cell 1 for "STS"; the fractional
+  // body shifts right by one — "0", ".", and 3 fractional digits across
+  // cells 2..6.
+  CHECK(out[1] == "STS");
+  CHECK(out[2] == "0");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "3");
+  CHECK(out[6] == "9");
+}
+
+TEST_CASE(
+    "panel_texts — moscow time fractional: use_sats_symbol=false fills every "
+    "slot") {
+  // Same 0.0392 input but with the sats glyph suppressed — every cell
+  // is free for digits, so one extra fractional digit fits.
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "VND";
+  in.price = "2550000000.0";
+  in.use_sats_symbol = false;
+  in.use_mscw_time = true;
+  in.share_dot = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "SATS/VND");
   CHECK(out[1] == "0");
   CHECK(out[2] == ".");
   CHECK(out[3] == "0");
@@ -938,7 +962,8 @@ TEST_CASE(
     "a digit") {
   // Same 0.0392 input as above, but with the new decimalShareDot pref
   // set: the layout merges "0" and "." into a single cell so one extra
-  // fractional digit fits across the same cell budget — "0.03922".
+  // fractional digit fits across the same cell budget — even with the
+  // sats glyph reserving cell 1.
   PanelTextInputs in;
   in.kind = ScreenType::kMoscowTime;
   in.currency = "VND";
@@ -949,11 +974,11 @@ TEST_CASE(
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "SATS/VND");
-  CHECK(out[1] == "0.");
-  CHECK(out[2] == "0");
-  CHECK(out[3] == "3");
-  CHECK(out[4] == "9");
-  CHECK(out[5] == "2");
+  CHECK(out[1] == "STS");
+  CHECK(out[2] == "0.");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "3");
+  CHECK(out[5] == "9");
   CHECK(out[6] == "2");
 }
 
