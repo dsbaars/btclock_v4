@@ -11,6 +11,7 @@
 #include "screens/btc_price_suffix_layout.hpp"
 #include "screens/fee_rate_layout.hpp"
 #include "screens/price_layout.hpp"
+#include "screens/sats_per_currency_layout.hpp"
 #include "screens/screen_math.hpp"
 
 namespace btclock {
@@ -381,34 +382,40 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   // left the trailing V8 panel blank).
   std::vector<std::string> out;
   out.reserve(n_panels);
-  const int32_t sats = SatsPerUnitLocal(price);
-  const bool moscow =
-      use_mscw_time && currency == "USD" && sats > 0 && sats < 100000;
-  out.emplace_back(moscow ? std::string("MSCW/TIME") : ("SATS/" + currency));
-
+  // Layout helper handles both the >= 1 sat-per-currency integer path
+  // and the < 1 fractional "0.dddd" path. Moscow-time label only
+  // applies to the integer path (USD, < 100k sats per dollar). The
+  // fractional path keeps the SATS/<CCY> label so users with weak-fiat
+  // currencies (VND/IRR/LBP) still see the currency identified.
+  const int32_t sats_int = SatsPerUnitLocal(price);
   const std::size_t digit_slots = (n_panels >= 1) ? n_panels - 1 : 0;
+  // Run the layout in the runtime size by constructing the appropriate
+  // template instantiation. n_panels is bounded to {7, 8} on every
+  // shipping board; the kDigit slot count is digit_slots == 6 or 7.
+  // Falling back to the 6-slot layout for any other size keeps the
+  // mirror non-empty rather than crashing.
+  bool fractional = false;
   std::vector<char> digits(digit_slots, ' ');
   std::vector<bool> is_sats(digit_slots, false);
-  if (sats >= 0 && digit_slots > 0) {
-    char buf[16];
-    std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(sats));
-    const std::size_t len = std::strlen(buf);
-    if (len >= digit_slots) {
-      const std::size_t start = len - digit_slots;
-      for (std::size_t i = 0; i < digit_slots; ++i) {
-        digits[i] = buf[start + i];
-      }
-    } else {
-      const std::size_t pad = digit_slots - len;
-      for (std::size_t i = 0; i < digit_slots; ++i) {
-        digits[i] = (i < pad) ? ' ' : buf[i - pad];
-      }
-      if (pad > 0) {
-        is_sats[pad - 1] = true;
-        digits[pad - 1] = ' ';
-      }
+  auto fill_from_layout = [&](auto layout) {
+    fractional = layout.fractional;
+    for (std::size_t i = 0; i < digit_slots; ++i) {
+      digits[i] = layout.digits[i];
+      is_sats[i] = layout.is_sats[i];
     }
+  };
+  if (digit_slots == 7) {
+    fill_from_layout(ComputeSatsPerCurrencyLayout<7>(price, use_sats_symbol));
+  } else if (digit_slots == 6) {
+    fill_from_layout(ComputeSatsPerCurrencyLayout<6>(price, use_sats_symbol));
+  } else if (digit_slots > 0) {
+    // Defensive fallback — shouldn't be hit on shipping boards.
+    fill_from_layout(ComputeSatsPerCurrencyLayout<6>(price, use_sats_symbol));
   }
+
+  const bool moscow = use_mscw_time && currency == "USD" && !fractional &&
+                      sats_int > 0 && sats_int < 100000;
+  out.emplace_back(moscow ? std::string("MSCW/TIME") : ("SATS/" + currency));
 
   for (std::size_t i = 0; i < digit_slots; ++i) {
     if (is_sats[i] && use_sats_symbol) {
@@ -416,7 +423,8 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
     } else {
       // When use_sats_symbol=false, the marker cell stays blank — a
       // stray "STS" on the suppressed side would disagree with what
-      // the EPD paints.
+      // the EPD paints. The fractional path emits literal '.' / digits
+      // here via CharSlot.
       out.push_back(CharSlot(digits[i]));
     }
   }

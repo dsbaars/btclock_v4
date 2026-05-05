@@ -907,6 +907,31 @@ TEST_CASE("panel_texts — mowMode overflow: unknown ISO falls back to code") {
   CHECK(out[6] == "M");
 }
 
+TEST_CASE("panel_texts — moscow time fractional: weak fiat shows 0.dddd") {
+  // 1 BTC at ~2.55B VND → 1e8 / 2.55e9 ≈ 0.0392 sats per VND. Old
+  // layout rounded to int32 and rendered "0" or all-blank — wrong. New
+  // layout fills every digit cell with "0.0392".
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "VND";
+  in.price = "2550000000.0";
+  in.use_sats_symbol = true;
+  in.use_mscw_time = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  // SATS/<CCY> label keeps showing the currency identity (no MSCW path
+  // for sub-1 sats).
+  CHECK(out[0] == "SATS/VND");
+  // Cell index 1 carries '0', then '.', then 4 fractional digits across
+  // cells 2..5. No "STS" sats-glyph cell on the fractional path.
+  CHECK(out[1] == "0");
+  CHECK(out[2] == ".");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "3");
+  CHECK(out[5] == "9");
+  CHECK(out[6] == "2");
+}
+
 TEST_CASE("panel_texts — market cap small chars: unknown code in separator") {
   // The small-chars market-cap separator cell is " <glyph> ". For a code
   // without a hardcoded glyph (e.g. NOK), CurrencySymbolLocal falls back

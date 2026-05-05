@@ -126,6 +126,7 @@ add_executable(btclock_host_tests
     ../components/btclock_data/btclock_lastblock_uri.cpp
     test_btclock_currencies_uri.cpp
     test_btclock_currencies_parse.cpp
+    test_sats_per_currency_layout.cpp
     ../components/btclock_data/btclock_currencies_uri.cpp
     ../components/btclock_data/btclock_currencies_parse.cpp
     ../main/sources/sources_uri.cpp
