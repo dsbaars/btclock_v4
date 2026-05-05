@@ -917,6 +917,7 @@ TEST_CASE("panel_texts — moscow time fractional: weak fiat shows 0.dddd") {
   in.price = "2550000000.0";
   in.use_sats_symbol = true;
   in.use_mscw_time = true;
+  in.share_dot = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   // SATS/<CCY> label keeps showing the currency identity (no MSCW path
@@ -929,6 +930,30 @@ TEST_CASE("panel_texts — moscow time fractional: weak fiat shows 0.dddd") {
   CHECK(out[3] == "0");
   CHECK(out[4] == "3");
   CHECK(out[5] == "9");
+  CHECK(out[6] == "2");
+}
+
+TEST_CASE(
+    "panel_texts — moscow time fractional: share_dot folds 0+. and gains "
+    "a digit") {
+  // Same 0.0392 input as above, but with the new decimalShareDot pref
+  // set: the layout merges "0" and "." into a single cell so one extra
+  // fractional digit fits across the same cell budget — "0.03922".
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "VND";
+  in.price = "2550000000.0";
+  in.use_sats_symbol = true;
+  in.use_mscw_time = true;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "SATS/VND");
+  CHECK(out[1] == "0.");
+  CHECK(out[2] == "0");
+  CHECK(out[3] == "3");
+  CHECK(out[4] == "9");
+  CHECK(out[5] == "2");
   CHECK(out[6] == "2");
 }
 

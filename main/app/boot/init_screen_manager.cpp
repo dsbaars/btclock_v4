@@ -172,6 +172,29 @@ void InitScreenManager(AppCtx& ctx) {
     }
     ctx.sm->SetSatsVariant(ClampSatsVariant(resolved));
   }
+
+  // One-shot migration: copy legacy `suffixShareDot` (renamed
+  // 2026-05-05 to `decimalShareDot` because the same dot-folding now
+  // applies to every decimal layout, not just K/M/B suffix). Only
+  // runs when the new key is unset and the old one exists, so a
+  // re-run is a no-op. The legacy key is left in place — old WebUI
+  // builds reading it stay consistent until the next PATCH writes
+  // the new key. RenderPrefs only consults `decimalShareDot` from
+  // here on out.
+  {
+    Prefs settings(prefs::kSettingsNs);
+    constexpr uint32_t kSentinel = UINT32_MAX;
+    const uint32_t new_v = settings.GetU32(prefs::kDecimalShareDot, kSentinel);
+    if (new_v == kSentinel) {
+      const uint32_t legacy_v =
+          settings.GetU32(prefs::kSuffixShareDot_Legacy, kSentinel);
+      if (legacy_v != kSentinel) {
+        settings.SetU32(prefs::kDecimalShareDot, legacy_v);
+        ESP_LOGI(kTag, "migrated suffixShareDot=%u → decimalShareDot",
+                 static_cast<unsigned>(legacy_v));
+      }
+    }
+  }
   // Rotation skip hook: honours the pool capability flag so solo pools
   // don't cycle onto the earnings slot even if the user's persisted
   // `screen71Visible` is still true. Evaluated per-tick so a PATCH that

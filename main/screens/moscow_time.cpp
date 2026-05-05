@@ -27,7 +27,8 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                             const std::string& price,
                             const std::string& prev_price, uint8_t sats_variant,
                             bool use_sats_symbol, bool use_mscw_time,
-                            bool full_refresh_mode, bool vertical_desc) {
+                            bool share_dot, bool full_refresh_mode,
+                            bool vertical_desc) {
   static_assert(N >= 7, "Moscow-time layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
   // `cell_diff_reset` forces every cell to repaint; `full_refresh_mode`
@@ -37,17 +38,18 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   // Integer sats — kept for the "MSCW/TIME" label decision below
   // (Moscow-time only applies to the integer path, USD, and the 5-digit
   // range). The render-side digit layout uses ComputeSatsPerCurrencyLayout
-  // which handles the < 1 sats-per-currency case as "0.dddd".
+  // which handles the < 1 sats-per-currency case as "0.dddd" and honours
+  // `share_dot` (the global decimalShareDot pref) on the fractional path.
   const int32_t new_sats_int = SatsPerUnit(price);
 
   // use_sats_symbol=false feeds `use_symbol=false` into the layout so
   // the marker cell never gets flagged — the EPD paints a blank there.
-  const auto now =
-      ComputeSatsPerCurrencyLayout<kDigitPanels>(price, use_sats_symbol);
+  const auto now = ComputeSatsPerCurrencyLayout<kDigitPanels>(
+      price, use_sats_symbol, share_dot);
   const auto before = cell_diff_reset
                           ? SatsPerCurrencyLayout<kDigitPanels>{}
                           : ComputeSatsPerCurrencyLayout<kDigitPanels>(
-                                prev_price, use_sats_symbol);
+                                prev_price, use_sats_symbol, share_dot);
 
   const auto glyph = SatsGlyphUtf8(sats_variant);
 
@@ -71,21 +73,24 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   // at panel 1. `is_sats[i]` flags the sats-glyph cell one slot before
   // the first digit (integer path only); paint it via kSatsGlyph at the
   // sats_glyph-specific pixel height. The fractional path emits a '.'
-  // char among the digits and never sets is_sats — '.' renders via the
+  // char among the digits (or "0." merged with the leading cell when
+  // share_dot=true) and never sets is_sats — '.' renders via the
   // standard kDigit path with kDigitRef, which already centres the dot
   // visually next to the digits (see price_layout.hpp's parity comment).
-  // Blank pad cells stay blank after ClearFb.
+  // Empty cells stay blank after ClearFb.
   for (size_t i = 0; i < kDigitPanels; ++i) {
     const size_t panel_idx = 1 + i;
     if (now.is_sats[i]) {
       slots[panel_idx] = PaintSlot{PaintSlot::kSatsGlyph,
                                    std::string(glyph.c_str()), nullptr, 0, 0};
+    } else if (now.cells[i].empty()) {
+      slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
     } else {
-      slots[panel_idx] = PaintSlot{
-          PaintSlot::kDigit, std::string(1, now.digits[i]), nullptr, 0, 0};
+      slots[panel_idx] =
+          PaintSlot{PaintSlot::kDigit, now.cells[i], nullptr, 0, 0};
     }
     update[panel_idx] = cell_diff_reset || full_refresh_mode ||
-                        now.digits[i] != before.digits[i] ||
+                        now.cells[i] != before.cells[i] ||
                         now.is_sats[i] != before.is_sats[i];
   }
 
@@ -96,10 +101,10 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 template void RenderMoscowTimeScreen<7>(
     std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
-    uint8_t, bool, bool, bool, bool);
+    uint8_t, bool, bool, bool, bool, bool);
 template void RenderMoscowTimeScreen<8>(
     std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
-    uint8_t, bool, bool, bool, bool);
+    uint8_t, bool, bool, bool, bool, bool);
 
 }  // namespace btclock

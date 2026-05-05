@@ -100,10 +100,11 @@ struct PanelTextInputs {
   // only when the integer itself is wide enough (>= N digits).
   bool suffix_price = false;
   bool mow_mode = false;
-  // suffixShareDot: see RenderPrefs::suffix_share_dot — pack the
-  // decimal point into its preceding digit cell so the K/M label form
-  // gets one more digit panel of width. Applies to BTC-price suffix
-  // and MOW modes, plus market-cap big-chars.
+  // decimalShareDot: see RenderPrefs::decimal_share_dot — pack the
+  // decimal point into its preceding digit cell so any decimal layout
+  // gets one more digit panel of width. Applies to BTC-price suffix +
+  // MOW modes, market-cap big-chars, and the sub-1 sat-per-currency
+  // "0.dddd" layout on SATS/<CCY>.
   bool share_dot = false;
   // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
   MiningPoolMirror pool{};

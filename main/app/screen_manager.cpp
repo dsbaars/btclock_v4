@@ -39,11 +39,13 @@ struct RenderPrefs {
   bool block_fee_dec;
   bool suffix_price;
   bool mow_mode;
-  // suffixShareDot: when the suffix layout fits the K/M/B label form,
-  // pack the decimal point into the slot before it so the digits get
-  // one more slot of width (v3 parsePriceData shareDot branch). No
-  // effect on the overflow path or the plain integer path.
-  bool suffix_share_dot;
+  // decimalShareDot: pack the decimal point into the digit cell before
+  // it instead of using a dedicated panel. Applies wherever the layout
+  // includes a '.': K/M/B suffix on the BTC price screen (v3
+  // parsePriceData shareDot branch), market-cap big-chars, and the
+  // sub-1 sat-per-currency "0.dddd" path on SATS/<CCY>. No effect on
+  // pure-integer layouts.
+  bool decimal_share_dot;
   // Clock screen: drop the leading zero on single-digit hours.
   bool hide_lead_zero;
   // verticalDesc: rotate label panels 90° CCW so "BLOCK/HEIGHT" etc.
@@ -75,7 +77,8 @@ RenderPrefs ReadRenderPrefs() {
   out.block_fee_dec = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
   out.suffix_price = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
   out.mow_mode = prefs.GetBool(btclock::prefs::kMowMode, false);
-  out.suffix_share_dot = prefs.GetBool(btclock::prefs::kSuffixShareDot, false);
+  out.decimal_share_dot =
+      prefs.GetBool(btclock::prefs::kDecimalShareDot, false);
   out.hide_lead_zero = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
   out.vertical_desc = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
   out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
@@ -694,7 +697,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         RenderMoscowTimeScreen(panels, fb, fonts, ccy, *p,
                                force_repaint ? "" : last_rendered_price_,
                                sats_variant_, rp.use_sats_symbol,
-                               rp.use_mscw_time, force_full, rp.vertical_desc);
+                               rp.use_mscw_time, rp.decimal_share_dot,
+                               force_full, rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
       }
@@ -705,7 +709,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         RenderBtcPriceScreen(panels, fb, fonts, ccy, *p,
                              force_repaint ? "" : last_rendered_price_,
                              sym.c_str(), rp.suffix_price, rp.mow_mode,
-                             rp.suffix_share_dot, force_full, rp.vertical_desc);
+                             rp.decimal_share_dot, force_full,
+                             rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
       }
@@ -783,8 +788,8 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
         RenderMarketCapScreen(panels, fb, fonts, ccy, *p, *snap.block_height,
                               force_repaint ? "" : last_rendered_cap_price_,
                               force_repaint ? 0 : last_rendered_cap_height_,
-                              rp.mcap_big_char, rp.suffix_share_dot, force_full,
-                              rp.vertical_desc);
+                              rp.mcap_big_char, rp.decimal_share_dot,
+                              force_full, rp.vertical_desc);
         last_rendered_cap_price_ = *p;
         last_rendered_cap_height_ = *snap.block_height;
         last_price_apply_ms_ = now_ms_policy;
@@ -907,7 +912,7 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   pti.use_mscw_time = rp.use_mscw_time;
   pti.suffix_price = rp.suffix_price;
   pti.mow_mode = rp.mow_mode;
-  pti.share_dot = rp.suffix_share_dot;
+  pti.share_dot = rp.decimal_share_dot;
   pti.hide_lead_zero = rp.hide_lead_zero;
   // Bitaxe mirror fields. pti copies the raw snapshot values so the
   // panel_texts builder formats identically to what the EPD renderer

@@ -348,7 +348,8 @@ val parseBlockHeight(int block_height) {
 
 val parsePriceData(int price_int, std::string currency) {
   const std::string label = "BTC/" + currency;
-  const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+  const std::string symbol_storage = btclock::CurrencySymbolUtf8(currency);
+  const char* symbol_utf8 = symbol_storage.c_str();
   const bool use_symbol = symbol_utf8[0] != '\0';
 
   std::array<char, 6> d{' ', ' ', ' ', ' ', ' ', ' '};
@@ -602,18 +603,19 @@ val renderPriceData(int price_int, std::string currency) {
   char price_buf[24];
   std::snprintf(price_buf, sizeof(price_buf), "%d",
                 price_int < 0 ? 0 : price_int);
-  const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+  const std::string symbol_storage = btclock::CurrencySymbolUtf8(currency);
+  const char* symbol_utf8 = symbol_storage.c_str();
   const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderBtcPriceScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8,
-            false, false, /*full_refresh_mode=*/true, vd);
+            false, false, /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderBtcPriceScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, "", symbol_utf8,
-            false, false, /*full_refresh_mode=*/true, vd);
+            false, false, /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -631,13 +633,13 @@ val renderSatsPerCurrency(int price_int, std::string currency,
         btclock::RenderMoscowTimeScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, "",
             btclock::kSatsVariantDefault, with_sats_symbol, true,
-            /*full_refresh_mode=*/true, vd);
+            /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMoscowTimeScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, "",
             btclock::kSatsVariantDefault, with_sats_symbol, true,
-            /*full_refresh_mode=*/true, vd);
+            /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -916,7 +918,8 @@ val renderPriceDataAlpha(int price_int, std::string currency) {
     char price_buf[24];
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
-    const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+    const std::string symbol_storage = btclock::CurrencySymbolUtf8(currency);
+    const char* symbol_utf8 = symbol_storage.c_str();
     const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
@@ -935,7 +938,7 @@ val renderPriceDataAlpha(int price_int, std::string currency) {
 }
 
 // Same as renderPriceDataAlpha but exposes the `suffixPrice`,
-// `mowMode`, and `suffixShareDot` flags. The plain renderer always
+// `mowMode`, and `decimalShareDot` flags. The plain renderer always
 // passes false; this variant lets the docs renderer demonstrate the
 // k/M-suffix layout, Million-Of-Watoshis layout, and the dot-folding
 // compact form at realistic price values.
@@ -947,7 +950,11 @@ val renderPriceDataWithFlagsAlpha(int price_int, std::string currency,
     char price_buf[24];
     std::snprintf(price_buf, sizeof(price_buf), "%d",
                   price_int < 0 ? 0 : price_int);
-    const char* symbol_utf8 = btclock::CurrencySymbolUtf8(currency);
+    // CurrencySymbolUtf8 returns std::string (with an ISO-code fallback
+    // for unknown codes); materialise to keep .c_str() pointer stable
+    // across the renderer call.
+    const std::string symbol_storage = btclock::CurrencySymbolUtf8(currency);
+    const char* symbol_utf8 = symbol_storage.c_str();
     const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
@@ -977,13 +984,15 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, with_sats_symbol, true, true, vd);
+          btclock::kSatsVariantDefault, with_sats_symbol, true,
+          /*share_dot=*/false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, with_sats_symbol, true, true, vd);
+          btclock::kSatsVariantDefault, with_sats_symbol, true,
+          /*share_dot=*/false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -1005,13 +1014,15 @@ val renderSatsPerCurrencyWithFlagsAlpha(int price_int, std::string currency,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, use_sats_symbol, true, true, vd);
+          btclock::kSatsVariantDefault, use_sats_symbol, true,
+          /*share_dot=*/false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, use_sats_symbol, true, true, vd);
+          btclock::kSatsVariantDefault, use_sats_symbol, true,
+          /*share_dot=*/false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });

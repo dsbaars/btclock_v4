@@ -670,15 +670,22 @@ filling the middle, and a `k`-suffix unit cell on the right.
 form on the digit cells. Auto-suffix still fires past 7 digits to
 prevent overflow, regardless of the flag.
 
-#### Suffix compact notation (`suffixShareDot`)
+#### Decimal compact notation (`decimalShareDot`)
 
 The decimal dot normally takes its own panel cell. Toggling
-`suffixShareDot` folds the dot into the preceding digit's cell so the
-whole number gets one extra cell of width — useful at high prices
-where a single-digit "$1.M" form is too coarse and "$1.23M" needs the
-extra digit room.
+`decimalShareDot` folds the dot into the preceding digit's cell so the
+whole number gets one extra cell of width. Applies wherever the
+layout includes a `.`:
 
-| `suffixShareDot=false` (default) | `suffixShareDot=true` |
+* **BTC-price suffix / MOW** — `$95,432` becomes `$95.3K` instead of
+  `$95.K` because the `5.` cell carries both a digit and the dot.
+* **Market-cap big-chars** — same trick on the cap form.
+* **`SATS/<CCY>` for sub-1 sat-per-currency** (weak-fiat codes like
+  VND, IRR, LBP) — `0.0392` becomes `0.03922` because the `0.` cell
+  collapses two cells into one and frees a slot for one more
+  fractional digit.
+
+| `decimalShareDot=false` (default) | `decimalShareDot=true` |
 |---|---|
 | ![Suffix mode without share-dot](img/screens/btc_price_suffix.png) | ![Suffix mode with share-dot](img/screens/btc_price_suffix_sharedot.png) |
 
@@ -686,6 +693,11 @@ Both panels render the same `$95,432` price with `suffixPrice=true`.
 On the left the dot sits on its own panel and the layout fits two
 digits (`9`, `5`) plus the `k` suffix; on the right the dot folds
 into the "5." cell and a third digit (`3`) lands on the freed panel.
+
+> **Renamed 2026-05-05** from `suffixShareDot` — the new name reflects
+> that the same dot-folding now applies to every decimal layout the
+> screens produce, not just the K/M suffix path. Legacy NVS values
+> are migrated forward automatically on first boot.
 
 #### Mow mode (`mowMode`)
 
@@ -703,7 +715,7 @@ body is a normal suffix-form layout. The view re-orients the brain
 around the long-term "Bitcoin is going to a million dollars" frame
 without any of the underlying maths changing.
 
-Affected by: `actCurrencies`, `suffixPrice`, `suffixShareDot`,
+Affected by: `actCurrencies`, `suffixPrice`, `decimalShareDot`,
 `mowMode`, `useSatsSymbol`, `fontName`.
 
 ### Market cap

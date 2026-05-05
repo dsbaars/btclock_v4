@@ -313,7 +313,7 @@ inline constexpr std::array<FieldSpec, 74> kFields = {{
     {prefs::kScrnRestoreZap, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kStealFocus, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kSuffixPrice, FieldKind::kBool, false, 0, 0, false, 0, {}},
-    {prefs::kSuffixShareDot, FieldKind::kBool, false, 0, 0, false, 0, {}},
+    {prefs::kDecimalShareDot, FieldKind::kBool, false, 0, 0, false, 0, {}},
     {prefs::kSupplyPercent, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // v3 DEFAULT_TZ_STRING="Europe/Amsterdam".
     {prefs::kTzString, FieldKind::kString, false, 0, 0, false, 0,

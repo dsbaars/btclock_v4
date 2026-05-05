@@ -74,6 +74,10 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                             uint8_t sats_variant = kSatsVariantDefault,
                             bool use_sats_symbol = true,
                             bool use_mscw_time = true,
+                            // share_dot mirrors the global decimalShareDot
+                            // pref. Only meaningful on the sub-1 fractional
+                            // path; integer-sats path ignores it.
+                            bool share_dot = false,
                             bool full_refresh_mode = true,
                             bool vertical_desc = false);
 

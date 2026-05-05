@@ -1312,7 +1312,7 @@ TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
       {"nostrZapNotify", false},  {"otaEnabled", true},
       {"poolGlobalStats", true},  {"refrScrnChange", false},
       {"scrnRestoreZap", true},   {"stealFocus", true},
-      {"suffixPrice", false},     {"suffixShareDot", false},
+      {"suffixPrice", false},     {"decimalShareDot", false},
       {"supplyPercent", false},   {"useBlkCountdown", true},
       {"useMscwTime", true},      {"useSatsSymbol", false},
       {"verticalDesc", true},

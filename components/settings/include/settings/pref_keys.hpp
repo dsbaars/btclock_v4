@@ -118,7 +118,22 @@ inline constexpr const char* kScreenOrder = "screenOrder";
 inline constexpr const char* kScrnRestoreZap = "scrnRestoreZap";
 inline constexpr const char* kStealFocus = "stealFocus";
 inline constexpr const char* kSuffixPrice = "suffixPrice";
-inline constexpr const char* kSuffixShareDot = "suffixShareDot";
+// Decimal-point packing — when true, fold the '.' into the digit cell
+// before it instead of using a dedicated panel. Applies anywhere the
+// price layout includes a decimal point: the K/M-suffix path on the BTC
+// price screen, the same path on the market-cap big-chars screen, and
+// the sub-1 sat-per-currency "0.dddd" layout on the SATS/<CCY> screen.
+//
+// Renamed 2026-05-05 from `suffixShareDot` (the old name implied K/M
+// suffixes only — the same dot-folding applies to every decimal layout
+// the screens produce). The 15-char NVS limit forced one of these
+// shorter forms; `decimalShareDot` describes both regimes precisely.
+// Legacy `suffixShareDot` value is auto-migrated at boot — see
+// settings_migration.cpp.
+inline constexpr const char* kDecimalShareDot = "decimalShareDot";
+// Pre-rename name. Keep readable so a one-shot migration can copy the
+// value forward; never written by new code.
+inline constexpr const char* kSuffixShareDot_Legacy = "suffixShareDot";
 inline constexpr const char* kSupplyPercent = "supplyPercent";
 inline constexpr const char* kTimerActive = "timerActive";
 inline constexpr const char* kTimerSeconds = "timerSeconds";
@@ -242,7 +257,8 @@ BTCLOCK_PREF_KEY_ASSERT(kScreenOrder);
 BTCLOCK_PREF_KEY_ASSERT(kScrnRestoreZap);
 BTCLOCK_PREF_KEY_ASSERT(kStealFocus);
 BTCLOCK_PREF_KEY_ASSERT(kSuffixPrice);
-BTCLOCK_PREF_KEY_ASSERT(kSuffixShareDot);
+BTCLOCK_PREF_KEY_ASSERT(kDecimalShareDot);
+BTCLOCK_PREF_KEY_ASSERT(kSuffixShareDot_Legacy);
 BTCLOCK_PREF_KEY_ASSERT(kSupplyPercent);
 BTCLOCK_PREF_KEY_ASSERT(kTimerActive);
 BTCLOCK_PREF_KEY_ASSERT(kTimerSeconds);
