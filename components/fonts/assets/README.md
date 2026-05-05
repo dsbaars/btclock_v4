@@ -1,10 +1,11 @@
 # Embedded TTFs
 
-## Antonio / AntonioSemiBold / AntonioBold / Oswald
+## Antonio / AntonioSemiBold / AntonioBold / Oswald / OswaldBold
 
-Subsetted with kerning/ligature tables stripped. Antonio additionally
-includes the common currency symbols used by the price screen (£, ¥, €);
-Oswald is ASCII-only since it only renders the split-text label.
+Subsetted with kerning/ligature tables stripped. Both families ship the
+common currency symbols used by the price screen (£, ¥, €) — Oswald is
+selectable as a price-screen family, not just for the split-text label,
+so it needs the same range as Antonio.
 
 The upstream Antonio TTF is a variable font with a `wght` axis spanning
 100..700 and named instances at Thin (100), Light (300), Regular (400),
@@ -18,7 +19,7 @@ To regenerate from upstream Google Fonts sources:
 
 ```sh
 curl -L -o /tmp/Antonio-VF.ttf "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
-curl -L -o /tmp/Oswald.ttf     "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
+curl -L -o /tmp/Oswald-VF.ttf  "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
 
 # Instance the variable font at each weight we ship, then subset.
 python3 -m fontTools.varLib.instancer /tmp/Antonio-VF.ttf wght=400 \
@@ -37,10 +38,19 @@ pyftsubset /tmp/Antonio-Bold.ttf \
     --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioBold.ttf
 
-pyftsubset /tmp/Oswald.ttf \
-    --unicodes=U+0020-007E \
+# Oswald: instance at 400 / 700, then subset with the same currency range.
+python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=400 \
+    -o /tmp/Oswald-Regular.ttf
+python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=700 \
+    -o /tmp/Oswald-Bold.ttf
+pyftsubset /tmp/Oswald-Regular.ttf \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=Oswald.ttf
+pyftsubset /tmp/Oswald-Bold.ttf \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --drop-tables+=GPOS,GSUB,DSIG --output-file=OswaldBold.ttf
 ```
+
 
 Antonio codepoints: printable ASCII + £ (U+00A3) + ¥ (U+00A5) + € (U+20AC).
 `$` (U+0024) is already part of ASCII. Add more symbols here as more
