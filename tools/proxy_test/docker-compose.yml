@@ -1,0 +1,52 @@
+# Local proxy rig for testing the firmware's proxy_transport component.
+#
+# Spins up the official 3proxy/3proxy container, which serves all four
+# proxy protocols simultaneously:
+#   - 1080 : SOCKS (auto-detects SOCKS4 / SOCKS4a / SOCKS5)        — no auth
+#   - 1081 : SOCKS5 with username/password (testuser:testpass)
+#   - 3128 : HTTP CONNECT (and plain HTTP forward)                  — no auth
+#   - 3129 : HTTP CONNECT with Basic auth (testuser:testpass)
+#
+# 3proxy auto-detects the SOCKS version from the client greeting byte,
+# so the same listener handles SOCKS4, SOCKS4a (ATYP=domain via the
+# 0x00 placeholder + null-terminated host) and SOCKS5. The device picks
+# which version to emit; the proxy doesn't care.
+#
+# The official image is amd64-only (verified on docker hub as of 2026),
+# so on Apple Silicon this runs through Rosetta — fine for a test rig
+# but ~3x slower than native. `platform:` is set explicitly so compose
+# doesn't warn on every up.
+#
+# Usage:
+#   cd tools/proxy_test
+#   docker compose up -d
+#   docker compose logs -f proxy
+#
+#   curl --socks5-hostname 127.0.0.1:1080 https://api.coinbase.com/v2/time
+#   curl --proxy http://127.0.0.1:3128 https://api.coinbase.com/v2/time
+
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: 0.9.4
+    image: btclock/proxy_test:0.9.4
+    container_name: btclock_proxy_test
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1080:1080"
+      - "127.0.0.1:1081:1081"
+      - "127.0.0.1:3128:3128"
+      - "127.0.0.1:3129:3129"
+    volumes:
+      - ./3proxy.cfg:/etc/3proxy/3proxy.cfg:ro
+    # /logs holds rotated per-day log files; /count is the optional
+    # bandwidth-counter file 3proxy keeps on disk. Tmpfs keeps the
+    # rootfs read-only-friendly without losing per-connection traces
+    # between restarts. Tail with:
+    #   docker exec btclock_proxy_test cat /logs/3proxy-$(date +%y%m%d).log
+    tmpfs:
+      - /logs
+      - /count

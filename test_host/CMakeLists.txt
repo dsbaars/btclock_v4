@@ -127,8 +127,12 @@ add_executable(btclock_host_tests
     test_btclock_currencies_uri.cpp
     test_btclock_currencies_parse.cpp
     test_sats_per_currency_layout.cpp
+    test_proxy_framing.cpp
+    test_proxy_bypass.cpp
     ../components/btclock_data/btclock_currencies_uri.cpp
     ../components/btclock_data/btclock_currencies_parse.cpp
+    ../components/proxy_transport/src/proxy_framing.cpp
+    ../components/proxy_transport/src/proxy_bypass.cpp
     ../main/sources/sources_uri.cpp
     ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
@@ -185,6 +189,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/fonts/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/bh1750/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/proxy_transport/include
 )
 
 find_package(Threads REQUIRED)
