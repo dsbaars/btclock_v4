@@ -23,3 +23,6 @@ photos/
 
 # Cloudflare Wrangler local state
 .wrangler/
+
+# MCP server config that pins per-project servers / tokens locally.
+.mcp.json
