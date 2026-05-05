@@ -270,6 +270,17 @@ jobs:
           name: lfs-storage-images
           path: dist-lfs
 
+      # Apply project-local patches to the IDF tree before building.
+      # Each patch fixes an upstream bug we hit in production but
+      # isn't yet released. Catalog + removal-criteria live in
+      # tools/idf-patches/README.md. The script is idempotent so
+      # cache-restored builds re-run it harmlessly.
+      - name: Apply IDF patches
+        shell: bash
+        env:
+          IDF_PATH: /opt/esp/idf
+        run: tools/idf-patches/apply.sh
+
       - name: Configure + build firmware
         shell: bash
         # The espressif/idf container's entrypoint sources export.sh
