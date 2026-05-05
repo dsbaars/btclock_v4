@@ -100,19 +100,23 @@ double PriceDoubleLocal(const std::string& price_str) {
   return p;
 }
 
-// UTF-8 currency symbol for the given ISO code, or "" if none available.
-// Mirrors common.cpp's CurrencySymbolUtf8 (kept local for header purity).
-// CAD / AUD share $; CHF has no single-char glyph so the renderer gets
-// the ISO code — it'll fit in the currency-separator slot.
-const char* CurrencySymbolLocal(const std::string& ccy) {
+// UTF-8 currency symbol for the given ISO code. Mirrors common.cpp's
+// CurrencySymbolUtf8 (kept local for header purity). For codes outside
+// the dedicated-glyph set (USD/EUR/GBP/JPY/CAD/AUD), returns the ISO
+// code itself — a runtime-fetched catalogue from /api/v2/currencies can
+// include codes the firmware has no single-char glyph for (CHF, BRL,
+// INR, …), and rendering the code keeps the currency-glyph cell non-
+// empty so the panel-text mirror agrees byte-for-byte with what the
+// on-device renderer (CurrencySymbolUtf8) paints.
+std::string CurrencySymbolLocal(const std::string& ccy) {
   if (ccy == "USD") return "$";
   if (ccy == "EUR") return "\xE2\x82\xAC";
   if (ccy == "GBP") return "\xC2\xA3";
   if (ccy == "JPY") return "\xC2\xA5";
   if (ccy == "CAD") return "$";
   if (ccy == "AUD") return "$";
-  if (ccy == "CHF") return "CHF";
-  return "";
+  if (ccy.empty()) return "";
+  return ccy;
 }
 
 // Single-char slot for a digit; empty string for ' ' padding. Keeps the
@@ -315,8 +319,7 @@ std::vector<std::string> BuildMarketCap(uint32_t h, const std::string& price,
     // a magnitude like "$1.02T" becomes ["$","1.","0","2","T"] instead
     // of ["$","1",".","0","T"] — same trick as the BTC-price suffix
     // layout, applied to the EmitBigCharsFrame tail.
-    const char* sym = CurrencySymbolLocal(currency);
-    std::string glyph = (sym && *sym) ? std::string(sym) : currency;
+    const std::string glyph = CurrencySymbolLocal(currency);
     const int budget = static_cast<int>(n_panels) - (share_dot ? 1 : 2);
     std::string s = glyph + FormatNumberWithSuffix(cap, budget);
     if (!share_dot) {
@@ -355,8 +358,7 @@ std::vector<std::string> BuildMarketCap(uint32_t h, const std::string& price,
   // Small-chars: three-digit groups across the trailing slots, with a
   // " <CCY> " separator cell just before the first group. Matches
   // RenderMarketCapSmallChars (test_datahandler_parity.cpp).
-  const char* sym = CurrencySymbolLocal(currency);
-  std::string glyph = (sym && *sym) ? std::string(sym) : currency;
+  const std::string glyph = CurrencySymbolLocal(currency);
   std::string ccy_cell = std::string(" ") + glyph + " ";
   return EmitSmallCharsGroups(currency + "/MCAP", cap, ccy_cell, n_panels);
 }
@@ -435,7 +437,11 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
   // parsePriceData in lib/btclock/data_handler.cpp.
   std::vector<std::string> out;
   out.reserve(n_panels);
-  const char* sym = CurrencySymbolLocal(currency);
+  // Materialise the local for stable .c_str() lifetime — the layout
+  // helpers below take const char* and the returned cells reference
+  // that pointer's bytes when the glyph is the ISO-code fallback.
+  const std::string sym_storage = CurrencySymbolLocal(currency);
+  const char* sym = sym_storage.c_str();
   const double pd = PriceDoubleLocal(price);
 
   // Suffix path fires when `suffix_price` is on OR the integer part of

@@ -240,18 +240,20 @@ int32_t PriceInt(const std::string& price_str) {
   return static_cast<int32_t>(p + 0.5);
 }
 
-const char* CurrencySymbolUtf8(const std::string& ccy) {
+std::string CurrencySymbolUtf8(const std::string& ccy) {
   if (ccy == "USD") return "$";
   if (ccy == "EUR") return "\xE2\x82\xAC";  // U+20AC
   if (ccy == "GBP") return "\xC2\xA3";      // U+00A3
   if (ccy == "JPY") return "\xC2\xA5";      // U+00A5
-  // CAD / AUD share the dollar glyph; CHF has no single-char Unicode
-  // symbol, so fall back to the ISO code (renderer fits ~3 chars at
-  // the currency slot's medium font size).
+  // CAD / AUD share the dollar glyph. CHF has no single-char Unicode
+  // symbol — and so do every code that reaches the fallback below.
+  // Returning the ISO code itself keeps the currency-glyph slot non-
+  // empty so the renderer paints *something* there; the digit-font
+  // fits 3 chars in the slot at the medium price size.
   if (ccy == "CAD") return "$";
   if (ccy == "AUD") return "$";
-  if (ccy == "CHF") return "CHF";
-  return "";
+  if (ccy.empty()) return "";
+  return ccy;
 }
 
 DigitLayout ComputeMoscowLayout(int32_t sats, bool use_symbol) {

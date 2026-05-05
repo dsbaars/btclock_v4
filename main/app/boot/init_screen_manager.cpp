@@ -8,6 +8,7 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/catalogs.hpp"
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "buttons.hpp"
@@ -70,6 +71,17 @@ void InitScreenManager(AppCtx& ctx) {
       if (!item.empty()) ctx.currencies.push_back(item);
     }
     if (ctx.currencies.empty()) ctx.currencies.push_back("USD");
+  }
+  // Seed the upstream-currency catalogue from the compile-time list. On
+  // dataSource=0/2, WireDataSources replaces this with the live
+  // `/api/v2/currencies` response; on dataSource=1 (mempool+kraken) it
+  // stays as the catalogue. Kept in AppCtx instead of recomputed at the
+  // settings_api layer so a single fetch round-trips into both the
+  // /api/settings drop-down and the actCurrencies-filter set.
+  ctx.available_currencies.clear();
+  ctx.available_currencies.reserve(catalogs::kAvailableCurrencies.size());
+  for (const auto& c : catalogs::kAvailableCurrencies) {
+    ctx.available_currencies.emplace_back(c);
   }
   ctx.sm = std::make_unique<ScreenManager>(MsNow(), ctx.currencies);
 

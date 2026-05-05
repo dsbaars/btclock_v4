@@ -701,11 +701,11 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
       break;
     case ScreenType::kBtcPrice:
       if (const auto* p = snap.PriceOf(ccy)) {
+        const std::string sym = CurrencySymbolUtf8(ccy);
         RenderBtcPriceScreen(panels, fb, fonts, ccy, *p,
                              force_repaint ? "" : last_rendered_price_,
-                             CurrencySymbolUtf8(ccy), rp.suffix_price,
-                             rp.mow_mode, rp.suffix_share_dot, force_full,
-                             rp.vertical_desc);
+                             sym.c_str(), rp.suffix_price, rp.mow_mode,
+                             rp.suffix_share_dot, force_full, rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
       }

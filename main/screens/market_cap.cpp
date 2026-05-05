@@ -145,7 +145,12 @@ void RenderMarketCapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
     if (currency == "JPY") return '^';
     return '$';
   }();
-  const char* currency_utf8 = CurrencySymbolUtf8(currency);
+  // Materialise the result so the const char* uses below have a
+  // stable pointer. CurrencySymbolUtf8 now returns std::string (with
+  // an ISO-code fallback for unknown codes); the rest of this function
+  // still inspects bytes via the C string view.
+  const std::string currency_utf8_storage = CurrencySymbolUtf8(currency);
+  const char* currency_utf8 = currency_utf8_storage.c_str();
 
   MarketCapBigCell new_cells[kDigitPanels];
   MarketCapBigCell old_cells[kDigitPanels];

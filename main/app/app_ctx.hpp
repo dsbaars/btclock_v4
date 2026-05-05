@@ -131,6 +131,14 @@ struct AppCtx {
   class MempoolKrakenSource* mempool_kraken = nullptr;
   std::unique_ptr<ScreenManager> sm;
   std::vector<std::string> currencies;
+  // Catalogue of currency codes the *upstream* publishes. Default-filled
+  // from catalogs::kAvailableCurrencies in InitScreenManager so the
+  // settings drop-down has a sensible list before WireDataSources runs;
+  // overwritten by FetchAvailableCurrencies on dataSource=0/2 when the
+  // GET /api/v2/currencies probe lands. dataSource=1 (mempool+kraken)
+  // keeps the static catalogue — Kraken's currency set is independent of
+  // the v2 API.
+  std::vector<std::string> available_currencies;
 
   // Buttons — queue + reader.
   QueueHandle_t button_q = nullptr;

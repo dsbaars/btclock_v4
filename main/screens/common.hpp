@@ -127,12 +127,15 @@ inline MoscowLayoutN<Slots> ComputeMoscowLayoutN(int32_t sats,
   return l;
 }
 
-// UTF-8 currency symbol for the given ISO code, or "" if no glyph is
-// available yet (the Antonio subset covers $, £, ¥, €; see
-// components/fonts/assets/README.md for the codepoint list). Empty
-// means the price screen won't paint a symbol panel — just the label
-// and digits. Callers treat empty the same as "no symbol requested".
-const char* CurrencySymbolUtf8(const std::string& ccy);
+// UTF-8 currency symbol for the given ISO code. Returns the dedicated
+// glyph for the codes the Antonio subset covers ($, £, ¥, €; see
+// components/fonts/assets/README.md), and falls back to the ISO code
+// itself for everything else — so a runtime-fetched catalogue from
+// /api/v2/currencies that includes codes without a single-char glyph
+// (CHF, AUD-as-non-USD, BRL, INR, …) still renders something visible
+// next to the price digits. Returns std::string (not const char*)
+// because the fallback path needs to materialise a copy of the input.
+std::string CurrencySymbolUtf8(const std::string& ccy);
 
 // Pure halving / supply / clock math moved to screen_math.hpp so host
 // tests can include it without pulling the ESP-IDF-dependent font and

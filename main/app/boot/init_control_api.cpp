@@ -318,9 +318,11 @@ void InitControlApi(AppCtx& ctx) {
     for (const auto& f : catalogs::kAvailableFonts) {
       ccfg.available_fonts.emplace_back(f);
     }
-    for (const auto& c : catalogs::kAvailableCurrencies) {
-      ccfg.available_currencies.emplace_back(c);
-    }
+    // Currencies come from ctx (seeded in InitScreenManager from the
+    // catalogue, then overwritten by FetchAvailableCurrencies on
+    // dataSource=0/2). This way GET /api/settings reflects the upstream-
+    // supported set instead of a compile-time array that can drift.
+    ccfg.available_currencies = ctx.available_currencies;
     for (const auto& s : catalogs::kScreenKinds) {
       ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label)});
     }

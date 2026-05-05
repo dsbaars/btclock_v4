@@ -9,6 +9,7 @@
 #include "app/boot/helpers.hpp"
 #include "app/screen_manager.hpp"
 #include "bitaxe/bitaxe_source.hpp"
+#include "btclock_currencies_fetch.hpp"
 #include "btclock_data.hpp"
 #include "buttons.hpp"
 #include "data_core/hub.hpp"
@@ -132,6 +133,44 @@ void WireDataSources(AppCtx& ctx) {
         BuildBtclockSourceUri(data_source, ce_endpoint, ce_disable_ssl);
     ESP_LOGI(kTag, "btclock_ws connecting to: %s (dataSource=%d)", uri.c_str(),
              static_cast<int>(data_source));
+
+    // One-shot HTTPS GET on `/api/v2/currencies` so the available-
+    // currency drop-down (and actCurrencies filter) reflects what the
+    // backend actually serves — the static catalogue in catalogs.hpp
+    // can drift behind the upstream when new codes are added. Only the
+    // BTClock (ds=0) and custom-endpoint (ds=2) paths use the v2 API
+    // shape; ds=1 (mempool+kraken) keeps the catalogue. Failure is
+    // non-fatal — we keep the catalogue we seeded in InitScreenManager.
+    auto fetched = FetchAvailableCurrencies(uri);
+    if (!fetched.empty()) {
+      ctx.available_currencies = std::move(fetched);
+      // Filter the user's persisted active list to codes the upstream
+      // can actually serve. Without this, a code dropped by upstream
+      // would show in the rotation but never get a price tick. If the
+      // intersection is empty, fall back to the first available code so
+      // the rotation still has *something* to render.
+      std::vector<std::string> filtered;
+      filtered.reserve(ctx.currencies.size());
+      for (const auto& code : ctx.currencies) {
+        for (const auto& avail : ctx.available_currencies) {
+          if (code == avail) {
+            filtered.push_back(code);
+            break;
+          }
+        }
+      }
+      if (filtered.empty() && !ctx.available_currencies.empty()) {
+        filtered.push_back(ctx.available_currencies.front());
+      }
+      if (filtered != ctx.currencies) {
+        ESP_LOGI(kTag,
+                 "actCurrencies pruned to upstream catalogue (was %u, now %u)",
+                 static_cast<unsigned>(ctx.currencies.size()),
+                 static_cast<unsigned>(filtered.size()));
+        ctx.currencies = std::move(filtered);
+        if (ctx.sm) ctx.sm->SetCurrencies(ctx.currencies);
+      }
+    }
 
     // Keep a non-owning back-ref to the v2 WS source so the
     // on_screens_changed hook in init_control_api can refresh its

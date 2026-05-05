@@ -889,6 +889,49 @@ TEST_CASE("panel_texts — mowMode overflow: CHF keeps ISO-code cell") {
   CHECK(out[6] == "M");
 }
 
+TEST_CASE("panel_texts — mowMode overflow: unknown ISO falls back to code") {
+  // Runtime-fetched catalogues from /api/v2/currencies can include codes
+  // the firmware has no dedicated glyph for (BRL, INR, …). Same shape as
+  // CHF: CurrencySymbolLocal returns the ISO code itself, and the layout
+  // emits one cell holding that code so the mirror still agrees with
+  // what the on-device renderer paints.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "BRL";
+  in.price = "78280";
+  in.suffix_price = true;
+  in.mow_mode = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BRL");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — market cap small chars: unknown code in separator") {
+  // The small-chars market-cap separator cell is " <glyph> ". For a code
+  // without a hardcoded glyph (e.g. NOK), CurrencySymbolLocal falls back
+  // to the ISO code so users see " NOK " instead of " " (which would
+  // misleadingly suggest no currency).
+  PanelTextInputs in;
+  in.kind = ScreenType::kMarketCap;
+  in.currency = "NOK";
+  in.price = "78280";
+  in.block_height = 800000;
+  in.mcap_big_chars = false;  // small-chars path
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "NOK/MCAP");
+  // One of the inner slots carries the " NOK " separator. Find it.
+  bool saw_sep = false;
+  for (std::size_t i = 1; i < out.size(); ++i) {
+    if (out[i] == " NOK ") {
+      saw_sep = true;
+      break;
+    }
+  }
+  CHECK(saw_sep);
+}
+
 TEST_CASE("panel_texts — EUR suffix non-overflow keeps BTC/EUR label") {
   // Short prices where priceString fits with the label still emit the
   // BTC/<CCY> label in slot 0 (parity with v3's firstIndex=1 branch).

@@ -124,6 +124,10 @@ add_executable(btclock_host_tests
     test_sources_uri.cpp
     test_btclock_lastblock_uri.cpp
     ../components/btclock_data/btclock_lastblock_uri.cpp
+    test_btclock_currencies_uri.cpp
+    test_btclock_currencies_parse.cpp
+    ../components/btclock_data/btclock_currencies_uri.cpp
+    ../components/btclock_data/btclock_currencies_parse.cpp
     ../main/sources/sources_uri.cpp
     ../main/app/refresh_policy.cpp
     ../main/io/frontlight_fader.cpp
