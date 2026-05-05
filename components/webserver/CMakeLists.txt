@@ -18,20 +18,36 @@ idf_component_register(
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
 
-# Stamp the firmware's PROJECT_VER as `fsRev` so the WebUI bundle built
-# alongside this firmware reports a matching value to `gitRev`. The
-# previous source (`git describe` of the WebUI submodule) paced
-# independently of the firmware repo, so the two values almost never
-# lined up — every release built in the same CI workflow tripped the
-# SystemInfo mismatch banner. PROJECT_VER is set in the project root
-# CMakeLists from `git describe --tags --always --dirty --match
-# "[0-9]*"` of the firmware repo; sourcing fsRev from the same value
-# means a CI build of firmware + WebUI from one tree always reports
-# fsRev == gitRev. Empty when PROJECT_VER itself is empty (sparse
-# checkout / source tarball), in which case settings_api.cpp's
-# emit-only-if-non-empty rule suppresses the field.
+# `fsRev` (the SystemInfo "WebUI commit" field) is sourced at runtime from
+# /lfs/www/commit.txt — written by data/gzip_build.py from the WebUI
+# submodule's git rev. See ctx.fs_rev in control_server.cpp.
+
+# `gitTag` is non-empty only when the firmware repo's HEAD is exactly on a
+# release tag matching the semver pattern (the same `[0-9]*` shape
+# release.yaml triggers off). Dev / between-release builds emit an empty
+# string and the WebUI hides the row. Note: CMake re-runs configure on
+# git index changes, so a `git checkout <tag>` followed by a build will
+# pick up the new tag — but a forced rebuild on the *same* worktree after
+# tagging may need an explicit `idf.py reconfigure`.
+set(_BTCLOCK_GIT_EXACT_TAG "")
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    find_package(Git QUIET)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} describe --tags --exact-match
+                    --match "[0-9]*" HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE _BTCLOCK_GIT_EXACT_TAG
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+            RESULT_VARIABLE _BTCLOCK_GIT_EXACT_TAG_RC)
+        if(NOT _BTCLOCK_GIT_EXACT_TAG_RC EQUAL 0)
+            set(_BTCLOCK_GIT_EXACT_TAG "")
+        endif()
+    endif()
+endif()
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    WEBUI_FS_REV="${PROJECT_VER}")
+    BTCLOCK_GIT_TAG="${_BTCLOCK_GIT_EXACT_TAG}")
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     # Serve portal with Content-Encoding: gzip — ~65 % flash saving vs raw.

@@ -2101,6 +2101,60 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
 
 namespace {
 
+// Trim ASCII whitespace from a string in-place. Used after reading
+// commit.txt — the WebUI's gzip_build.py appends a trailing newline.
+void RtrimWhitespace(std::string* s) {
+  while (!s->empty() && (s->back() == '\n' || s->back() == '\r' ||
+                         s->back() == ' ' || s->back() == '\t')) {
+    s->pop_back();
+  }
+}
+
+// Read /lfs/www/manifest.json and return its `commit` field, or empty
+// on parse failure. Format produced by data/gzip_build.py:
+//   {"commit": "<sha>", "minFirmware": "X.Y.Z", "buildTime": <unix>}
+std::string ReadCommitFromManifest() {
+  FILE* f = std::fopen("/lfs/www/manifest.json", "rb");
+  if (!f) return "";
+  // 256 bytes is well above the actual manifest size (~120) and stays
+  // off the FreeRTOS task stack — webserver task budget is tight.
+  char buf[256];
+  const size_t n = std::fread(buf, 1, sizeof(buf) - 1, f);
+  std::fclose(f);
+  buf[n] = '\0';
+  cJSON* root = cJSON_Parse(buf);
+  if (!root) return "";
+  std::string out;
+  const cJSON* commit = cJSON_GetObjectItemCaseSensitive(root, "commit");
+  if (cJSON_IsString(commit) && commit->valuestring != nullptr) {
+    out = commit->valuestring;
+  }
+  cJSON_Delete(root);
+  RtrimWhitespace(&out);
+  return out;
+}
+
+// Backwards-compat: older WebUI images shipped a plain commit.txt at
+// the LittleFS root (under /lfs/www/) instead of a manifest.json.
+std::string ReadCommitFromCommitTxt() {
+  FILE* f = std::fopen("/lfs/www/commit.txt", "rb");
+  if (!f) return "";
+  char buf[64];
+  const size_t n = std::fread(buf, 1, sizeof(buf) - 1, f);
+  std::fclose(f);
+  std::string out(buf, n);
+  RtrimWhitespace(&out);
+  return out;
+}
+
+// Prefer manifest.json; fall back to commit.txt for older LittleFS
+// images flashed against newer firmware.
+std::string ReadWebuiCommitFromLittleFs() {
+  std::string c = ReadCommitFromManifest();
+  if (!c.empty()) return c;
+  return ReadCommitFromCommitTxt();
+}
+
 // Populate a settings::DeviceContext from runtime state. Kept small
 // and side-effect free so the GET path doesn't have to touch NVS for
 // facts like hwRev or firmware git info.
@@ -2139,17 +2193,23 @@ btclock::settings::DeviceContext BuildDeviceContext(
   // firmwareBinaryMap / webuiBinaryMap keys); fall back to the
   // display name only when the call site forgot to populate it.
   ctx.hw_rev = cfg.hw_id.empty() ? cfg.hw_name : cfg.hw_id;
-  // Mirrors PROJECT_VER (the firmware's `git describe`), baked in by
-  // the webserver component's CMakeLists at configure time. Stamping
-  // the same value ensures a CI build that produces firmware + WebUI
-  // from one tree reports fsRev == gitRev, so the SystemInfo mismatch
-  // banner only fires when the two halves actually diverge. Empty when
-  // PROJECT_VER itself is empty (sparse checkout / source tarball);
-  // settings_api.cpp suppresses the field on empty.
-#ifdef WEBUI_FS_REV
-  ctx.fs_rev = WEBUI_FS_REV;
-#else
-  ctx.fs_rev = "";
+  // Read the WebUI's git rev from /lfs/www/. Prefer manifest.json (the
+  // new format — also carries the WebUI/firmware compatibility contract
+  // via `minFirmware`), fall back to commit.txt for older LittleFS
+  // images. Both are written by data/gzip_build.py. Reading on every
+  // GET rather than caching at boot means an OTA-flashed LittleFS
+  // image is reflected immediately without a reboot. Files are ~120
+  // bytes and live in the same partition the static handler is already
+  // hitting, so the cost is negligible. Empty when both files are
+  // missing; settings_api.cpp suppresses the field on empty so the
+  // WebUI renders a skeleton rather than a stale value.
+  ctx.fs_rev = ReadWebuiCommitFromLittleFs();
+  // `gitTag` is non-empty only when the firmware repo's HEAD is exactly
+  // on a release tag (see components/webserver/CMakeLists.txt). v3
+  // surfaced this as the SystemInfo "Version" row; dev builds get an
+  // empty string and the WebUI hides the row entirely.
+#ifdef BTCLOCK_GIT_TAG
+  ctx.git_tag = BTCLOCK_GIT_TAG;
 #endif
   const esp_app_desc_t* desc = esp_app_get_description();
   if (desc) {
