@@ -57,7 +57,7 @@ idf_component_register(
              mining_pool_viabtc
              pool_logo_fetcher
              bitaxe mdns net_util esp_websocket_client esp-tls cjson
-             espcoredump queue_metrics
+             espcoredump queue_metrics tcp_transport proxy_transport
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

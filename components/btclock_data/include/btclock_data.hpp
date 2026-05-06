@@ -18,6 +18,7 @@
 
 #include "data_core/source.hpp"
 #include "esp_err.h"
+#include "esp_transport.h"
 #include "esp_websocket_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/timers.h"
@@ -108,6 +109,12 @@ class BtclockDataSource : public DataSource {
   bool block_fee_dec_ = true;
   DataHub* hub_ = nullptr;  // set in Start(); nulled in Stop()
   esp_websocket_client_handle_t client_ = nullptr;
+  // Proxy chain handed to client_ via cfg.ext_transport. The WS client
+  // doesn't own ext_transport (esp_websocket_client.c skips its
+  // transport_list build when ext_transport is set), so we destroy
+  // both handles in Stop() in reverse-construction order.
+  esp_transport_handle_t proxy_inner_ = nullptr;
+  esp_transport_handle_t proxy_ws_ = nullptr;
 
   // Watchdog state. `last_height_` tracks the most recent value we
   // accepted off the wire; we only bump `last_change_tick_` when the

@@ -10,6 +10,9 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "prefs.hpp"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 
 namespace btclock {
@@ -172,6 +175,17 @@ void BitaxeSource::PollOnce() {
 
   FetchContext ctx;
 
+  // Custom transport routes the connection through a SOCKS/HTTP proxy
+  // when one is configured. With proxyEnabled=false the helper returns
+  // a transport that does a direct TCP connect — same wire behaviour
+  // as before this migration. AxeOS is plain HTTP on the LAN, so
+  // ParamsForUrl picks use_tls=false here and the proxy stays in
+  // bypass mode for any LAN destination via the default bypass globs.
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &http_event_handler;
@@ -179,6 +193,7 @@ void BitaxeSource::PollOnce() {
   cfg.timeout_ms = 5000;
   cfg.buffer_size = 1024;  // rx header buffer
   cfg.buffer_size_tx = 512;
+  cfg.transport = proxy_t.get();
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (client == nullptr) {

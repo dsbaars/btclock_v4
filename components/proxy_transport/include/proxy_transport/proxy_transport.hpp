@@ -7,10 +7,13 @@
 // esp_http_client_config_t.transport or esp_websocket_client_config_t
 // .ext_transport.
 
+#include <string_view>
+
 #include "esp_err.h"
 #include "esp_transport.h"
 
 #include "proxy_transport/proxy_config.hpp"
+#include "proxy_transport/proxy_url.hpp"
 
 namespace btclock {
 namespace proxy {
@@ -51,6 +54,55 @@ struct TransportParams {
 };
 esp_transport_handle_t MakeProxyTransport(const Config& cfg,
                                           const TransportParams& params);
+
+// RAII wrapper around `esp_transport_handle_t` for call sites that
+// have many early-return paths (OTA, currencies, etc.). Holds the
+// handle non-owning while the upper-layer client uses it; destroys it
+// on scope exit. Caller passes `.get()` into cfg.transport /
+// cfg.ext_transport.
+class OwnedTransport {
+ public:
+  OwnedTransport() = default;
+  explicit OwnedTransport(esp_transport_handle_t h) : h_(h) {}
+  OwnedTransport(OwnedTransport&& o) noexcept : h_(o.h_) { o.h_ = nullptr; }
+  OwnedTransport& operator=(OwnedTransport&& o) noexcept {
+    Reset();
+    h_ = o.h_;
+    o.h_ = nullptr;
+    return *this;
+  }
+  OwnedTransport(const OwnedTransport&) = delete;
+  OwnedTransport& operator=(const OwnedTransport&) = delete;
+  ~OwnedTransport() { Reset(); }
+
+  esp_transport_handle_t get() const { return h_; }
+  esp_transport_handle_t release() {
+    auto* t = h_;
+    h_ = nullptr;
+    return t;
+  }
+  void Reset() {
+    if (h_) {
+      esp_transport_destroy(h_);
+      h_ = nullptr;
+    }
+  }
+
+ private:
+  esp_transport_handle_t h_ = nullptr;
+};
+
+// Picks `use_tls` from the URL/URI scheme. Used by the call-site
+// migration so each site can write
+//   ParamsForUrl(my_url, esp_crt_bundle_attach)
+// without re-encoding the wss/https knowledge in C++ everywhere.
+inline TransportParams ParamsForUrl(
+    std::string_view url, esp_err_t (*crt_bundle_attach)(void*) = nullptr) {
+  TransportParams p{};
+  p.use_tls = UrlImpliesTls(url);
+  p.crt_bundle_attach = crt_bundle_attach;
+  return p;
+}
 
 }  // namespace proxy
 }  // namespace btclock

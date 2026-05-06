@@ -5,6 +5,11 @@
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "esp_transport_ws.h"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace nostr {
@@ -21,6 +26,31 @@ RelayClient::~RelayClient() {
 esp_err_t RelayClient::Start() {
   if (client_ != nullptr) return ESP_OK;
 
+  // Build the proxy-aware ext_transport. Mirrors the pattern used by
+  // BtclockDataSource — both inner + ws handles are class members so
+  // Stop() can destroy them after the WS client.
+  {
+    btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+    const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    proxy_inner_ = btclock::proxy::MakeProxyTransport(
+        proxy_cfg, btclock::proxy::ParamsForUrl(url_, esp_crt_bundle_attach));
+    proxy_ws_ = esp_transport_ws_init(proxy_inner_);
+  }
+  if (!proxy_ws_) {
+    if (proxy_inner_) {
+      esp_transport_destroy(proxy_inner_);
+      proxy_inner_ = nullptr;
+    }
+    return ESP_FAIL;
+  }
+  // ext_transport bypasses the WS client's internal apply
+  // (esp_websocket_client.c:582,647), so push the path explicitly.
+  const std::string ws_path = btclock::proxy::PathFromUri(url_);
+  esp_transport_ws_config_t ws_cfg = {};
+  ws_cfg.ws_path = ws_path.c_str();
+  ws_cfg.propagate_control_frames = true;
+  esp_transport_ws_set_config(proxy_ws_, &ws_cfg);
+
   esp_websocket_client_config_t cfg = {};
   cfg.uri = url_.c_str();
   cfg.reconnect_timeout_ms = 5000;
@@ -34,10 +64,16 @@ esp_err_t RelayClient::Start() {
   // Sha256Ctx frame. 12 KB is the measured-safe threshold; 6 KB caused
   // a hard stack-overflow boot-loop in production.
   cfg.task_stack = 12288;
-  cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  cfg.ext_transport = proxy_ws_;
 
   client_ = esp_websocket_client_init(&cfg);
-  if (client_ == nullptr) return ESP_FAIL;
+  if (client_ == nullptr) {
+    esp_transport_destroy(proxy_ws_);
+    proxy_ws_ = nullptr;
+    esp_transport_destroy(proxy_inner_);
+    proxy_inner_ = nullptr;
+    return ESP_FAIL;
+  }
 
   ESP_RETURN_ON_FALSE(
       esp_websocket_register_events(client_, WEBSOCKET_EVENT_ANY,
@@ -49,10 +85,28 @@ esp_err_t RelayClient::Start() {
 }
 
 esp_err_t RelayClient::Stop() {
-  if (client_ == nullptr) return ESP_OK;
+  if (client_ == nullptr) {
+    if (proxy_ws_) {
+      esp_transport_destroy(proxy_ws_);
+      proxy_ws_ = nullptr;
+    }
+    if (proxy_inner_) {
+      esp_transport_destroy(proxy_inner_);
+      proxy_inner_ = nullptr;
+    }
+    return ESP_OK;
+  }
   esp_websocket_client_stop(client_);
   esp_websocket_client_destroy(client_);
   client_ = nullptr;
+  if (proxy_ws_) {
+    esp_transport_destroy(proxy_ws_);
+    proxy_ws_ = nullptr;
+  }
+  if (proxy_inner_) {
+    esp_transport_destroy(proxy_inner_);
+    proxy_inner_ = nullptr;
+  }
   connected_ = false;
   return ESP_OK;
 }

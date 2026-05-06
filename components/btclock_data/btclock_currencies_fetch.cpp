@@ -8,6 +8,10 @@
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -51,6 +55,11 @@ std::vector<std::string> FetchAvailableCurrencies(const std::string& ws_uri) {
   }
 
   FetchCtx ctx;
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &HttpEvent;
@@ -59,6 +68,7 @@ std::vector<std::string> FetchAvailableCurrencies(const std::string& ws_uri) {
   cfg.buffer_size = 1024;
   cfg.buffer_size_tx = 512;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  cfg.transport = proxy_t.get();
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (client == nullptr) {

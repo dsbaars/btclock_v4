@@ -23,6 +23,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "mbedtls/md.h"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -68,6 +72,11 @@ esp_err_t HttpGetString(const std::string& url, size_t cap, std::string* out) {
   FetchCtx ctx;
   ctx.cap = cap;
 
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &FetchEventHandler;
@@ -84,6 +93,7 @@ esp_err_t HttpGetString(const std::string& url, size_t cap, std::string* out) {
   // rather take the handshake hit than carry session state across
   // boots / sleep transitions.
   cfg.is_async = false;
+  cfg.transport = proxy_t.get();
 
   ESP_LOGW(kTag, "http GET begin: %s", url.c_str());
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
@@ -357,6 +367,16 @@ void OtaManager::RunAutoUpdate() {
     if (hook) hook();
   }
 
+  // esp_https_ota wraps esp_http_client_config_t.transport — assigning
+  // it propagates the proxy through the OTA download. The OwnedTransport
+  // RAII wrapper destroys the handle on scope exit so we don't leak on
+  // any of the function's many early-return paths.
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg,
+      btclock::proxy::ParamsForUrl(info.file_url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t http_cfg = {};
   http_cfg.url = info.file_url.c_str();
   http_cfg.crt_bundle_attach = esp_crt_bundle_attach;
@@ -372,6 +392,7 @@ void OtaManager::RunAutoUpdate() {
   // risk fragmentation when the cert bundle, OTA buffer, and the EPD
   // framebuffers all want internal DRAM at once.
   http_cfg.buffer_size = 8192;
+  http_cfg.transport = proxy_t.get();
 
   esp_https_ota_config_t ota_cfg = {};
   ota_cfg.http_config = &http_cfg;

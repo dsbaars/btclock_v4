@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 #include "proxy_transport/proxy_framing.hpp"
+#include "proxy_transport/proxy_url.hpp"
 
 using btclock::proxy::framing::BuildHttpConnectRequest;
 using btclock::proxy::framing::BuildSocks4aRequest;
@@ -233,4 +234,27 @@ TEST_CASE("Base64 encoder covers RFC 4648 padding cases") {
   CHECK(Base64Encode("foob") == "Zm9vYg==");
   CHECK(Base64Encode("fooba") == "Zm9vYmE=");
   CHECK(Base64Encode("foobar") == "Zm9vYmFy");
+}
+
+// ---- URL helpers used by the call-site migration --------------------
+
+TEST_CASE("UrlImpliesTls flags https/wss but not http/ws/empty") {
+  using btclock::proxy::UrlImpliesTls;
+  CHECK(UrlImpliesTls("https://api.coinbase.com/v2/time"));
+  CHECK(UrlImpliesTls("wss://relay.damus.io/"));
+  CHECK(!UrlImpliesTls("http://192.168.1.42/api/system/info"));
+  CHECK(!UrlImpliesTls("ws://localhost/foo"));
+  CHECK(!UrlImpliesTls(""));
+  CHECK(!UrlImpliesTls("https"));  // too short for the prefix
+}
+
+TEST_CASE("PathFromUri extracts path with default '/' fallback") {
+  using btclock::proxy::PathFromUri;
+  CHECK(PathFromUri("wss://relay.damus.io/") == "/");
+  CHECK(PathFromUri("wss://relay.damus.io") == "/");
+  CHECK(PathFromUri("wss://mempool.space/api/v1/ws") == "/api/v1/ws");
+  CHECK(PathFromUri("https://api.coinbase.com/v2/time?x=1") == "/v2/time?x=1");
+  CHECK(PathFromUri("https://example.com:8443/foo") == "/foo");
+  CHECK(PathFromUri("/no-scheme/path") == "/no-scheme/path");
+  CHECK(PathFromUri("") == "/");
 }

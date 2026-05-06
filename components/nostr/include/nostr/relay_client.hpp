@@ -17,6 +17,7 @@
 #include <string>
 
 #include "esp_err.h"
+#include "esp_transport.h"
 #include "esp_websocket_client.h"
 
 namespace btclock {
@@ -54,6 +55,11 @@ class RelayClient {
 
   std::string url_;
   esp_websocket_client_handle_t client_ = nullptr;
+  // Proxy chain handed to client_ via cfg.ext_transport. The WS client
+  // does not own ext_transport when it is set, so we destroy both
+  // handles in Stop() in reverse-construction order.
+  esp_transport_handle_t proxy_inner_ = nullptr;
+  esp_transport_handle_t proxy_ws_ = nullptr;
   TextCallback on_frame_;
   ConnectCallback on_connect_;
   volatile bool connected_ = false;

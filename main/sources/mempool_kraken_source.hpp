@@ -31,6 +31,7 @@
 
 #include "data_core/source.hpp"
 #include "esp_err.h"
+#include "esp_transport.h"
 #include "esp_websocket_client.h"
 
 namespace btclock {
@@ -83,6 +84,13 @@ class MempoolKrakenSource : public DataSource {
 
   esp_websocket_client_handle_t mempool_client_ = nullptr;
   esp_websocket_client_handle_t kraken_client_ = nullptr;
+  // Proxy chain handed to *_client_ via cfg.ext_transport. Two pairs
+  // because each WS client needs its own chain (one fd, one esp_tls_t
+  // each). Destroyed in Stop() in reverse-construction order.
+  esp_transport_handle_t mempool_proxy_inner_ = nullptr;
+  esp_transport_handle_t mempool_proxy_ws_ = nullptr;
+  esp_transport_handle_t kraken_proxy_inner_ = nullptr;
+  esp_transport_handle_t kraken_proxy_ws_ = nullptr;
 
   // Frame fragmentation buffers — both APIs send small JSON payloads,
   // but the websocket library can split them across WEBSOCKET_EVENT_DATA

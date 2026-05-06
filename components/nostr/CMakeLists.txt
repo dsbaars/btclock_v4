@@ -9,5 +9,6 @@ idf_component_register(
         "src/nostr_data_source.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_websocket_client esp-tls data_core cjson secp256k1
+             tcp_transport proxy_transport prefs settings
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

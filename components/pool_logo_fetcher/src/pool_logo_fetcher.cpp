@@ -20,6 +20,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "prefs.hpp"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
 #include "tls_gate/tls_gate.hpp"
@@ -242,6 +245,11 @@ FetchResult DoFetch(const PoolLogoMeta& meta) {
   // file the renderer would mis-decode.
   ctx.cap = expected;
 
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &HttpEvent;
@@ -252,6 +260,7 @@ FetchResult DoFetch(const PoolLogoMeta& meta) {
   cfg.max_redirection_count = 5;
   cfg.buffer_size = 2048;
   cfg.buffer_size_tx = 1024;
+  cfg.transport = proxy_t.get();
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (!client) {

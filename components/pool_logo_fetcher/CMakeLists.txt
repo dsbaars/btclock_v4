@@ -12,6 +12,6 @@ idf_component_register(
     SRCS "src/pool_logo_fetcher.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_http_client esp-tls tls_gate
-    PRIV_REQUIRES prefs settings esp_psram
+    PRIV_REQUIRES prefs settings esp_psram proxy_transport
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

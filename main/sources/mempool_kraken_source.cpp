@@ -12,6 +12,11 @@
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "esp_transport_ws.h"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -65,6 +70,27 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
 
   // --- mempool.space client ---------------------------------------------
   {
+    btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+    const auto proxy_cfg =
+        btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    mempool_proxy_inner_ = btclock::proxy::MakeProxyTransport(
+        proxy_cfg,
+        btclock::proxy::ParamsForUrl(kMempoolUri, esp_crt_bundle_attach));
+    mempool_proxy_ws_ = esp_transport_ws_init(mempool_proxy_inner_);
+    if (!mempool_proxy_ws_) {
+      if (mempool_proxy_inner_) {
+        esp_transport_destroy(mempool_proxy_inner_);
+        mempool_proxy_inner_ = nullptr;
+      }
+      ESP_LOGE(kTag, "mempool proxy ws init failed");
+      return ESP_FAIL;
+    }
+    const std::string ws_path = btclock::proxy::PathFromUri(kMempoolUri);
+    esp_transport_ws_config_t ws_cfg = {};
+    ws_cfg.ws_path = ws_path.c_str();
+    ws_cfg.propagate_control_frames = true;
+    esp_transport_ws_set_config(mempool_proxy_ws_, &ws_cfg);
+
     esp_websocket_client_config_t cfg = {};
     cfg.uri = kMempoolUri;
     cfg.reconnect_timeout_ms = 5000;
@@ -78,11 +104,15 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
     // the v3 firmware patched ArduinoWebsockets for.
     cfg.buffer_size = 16384;
     cfg.task_stack = 6144;
-    cfg.crt_bundle_attach = esp_crt_bundle_attach;
+    cfg.ext_transport = mempool_proxy_ws_;
 
     mempool_client_ = esp_websocket_client_init(&cfg);
     if (mempool_client_ == nullptr) {
       ESP_LOGE(kTag, "mempool client init failed");
+      esp_transport_destroy(mempool_proxy_ws_);
+      mempool_proxy_ws_ = nullptr;
+      esp_transport_destroy(mempool_proxy_inner_);
+      mempool_proxy_inner_ = nullptr;
       return ESP_FAIL;
     }
     if (esp_websocket_register_events(mempool_client_, WEBSOCKET_EVENT_ANY,
@@ -101,6 +131,24 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
 
   // --- kraken v2 client -------------------------------------------------
   {
+    btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+    const auto proxy_cfg =
+        btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    kraken_proxy_inner_ = btclock::proxy::MakeProxyTransport(
+        proxy_cfg,
+        btclock::proxy::ParamsForUrl(kKrakenUri, esp_crt_bundle_attach));
+    kraken_proxy_ws_ = esp_transport_ws_init(kraken_proxy_inner_);
+    if (kraken_proxy_ws_) {
+      const std::string ws_path = btclock::proxy::PathFromUri(kKrakenUri);
+      esp_transport_ws_config_t ws_cfg = {};
+      ws_cfg.ws_path = ws_path.c_str();
+      ws_cfg.propagate_control_frames = true;
+      esp_transport_ws_set_config(kraken_proxy_ws_, &ws_cfg);
+    } else if (kraken_proxy_inner_) {
+      esp_transport_destroy(kraken_proxy_inner_);
+      kraken_proxy_inner_ = nullptr;
+    }
+
     esp_websocket_client_config_t cfg = {};
     cfg.uri = kKrakenUri;
     cfg.reconnect_timeout_ms = 5000;
@@ -112,11 +160,19 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
     // depth — 4 KB is comfortable.
     cfg.buffer_size = 4096;
     cfg.task_stack = 6144;
-    cfg.crt_bundle_attach = esp_crt_bundle_attach;
+    cfg.ext_transport = kraken_proxy_ws_;
 
     kraken_client_ = esp_websocket_client_init(&cfg);
     if (kraken_client_ == nullptr) {
       ESP_LOGE(kTag, "kraken client init failed");
+      if (kraken_proxy_ws_) {
+        esp_transport_destroy(kraken_proxy_ws_);
+        kraken_proxy_ws_ = nullptr;
+      }
+      if (kraken_proxy_inner_) {
+        esp_transport_destroy(kraken_proxy_inner_);
+        kraken_proxy_inner_ = nullptr;
+      }
       // Mempool keeps running even if kraken init fails.
     } else {
       if (esp_websocket_register_events(kraken_client_, WEBSOCKET_EVENT_ANY,
@@ -141,10 +197,26 @@ esp_err_t MempoolKrakenSource::Stop() {
     esp_websocket_client_destroy(mempool_client_);
     mempool_client_ = nullptr;
   }
+  if (mempool_proxy_ws_) {
+    esp_transport_destroy(mempool_proxy_ws_);
+    mempool_proxy_ws_ = nullptr;
+  }
+  if (mempool_proxy_inner_) {
+    esp_transport_destroy(mempool_proxy_inner_);
+    mempool_proxy_inner_ = nullptr;
+  }
   if (kraken_client_ != nullptr) {
     esp_websocket_client_stop(kraken_client_);
     esp_websocket_client_destroy(kraken_client_);
     kraken_client_ = nullptr;
+  }
+  if (kraken_proxy_ws_) {
+    esp_transport_destroy(kraken_proxy_ws_);
+    kraken_proxy_ws_ = nullptr;
+  }
+  if (kraken_proxy_inner_) {
+    esp_transport_destroy(kraken_proxy_inner_);
+    kraken_proxy_inner_ = nullptr;
   }
   mempool_connected_.store(false);
   kraken_connected_.store(false);

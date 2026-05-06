@@ -12,6 +12,9 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "prefs.hpp"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "tls_gate/tls_gate.hpp"
 
@@ -177,6 +180,13 @@ void PoolDataSource::PollOnce() {
   FetchContext ctx;
   ctx.cap = max_response_bytes();
 
+  // OwnedTransport drops on scope exit, covering all early-return
+  // paths in PollOnce without needing destroy on each cleanup site.
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &http_event_handler;
@@ -185,6 +195,7 @@ void PoolDataSource::PollOnce() {
   cfg.timeout_ms = 10000;
   cfg.buffer_size = 2048;  // rx header buffer
   cfg.buffer_size_tx = 1024;
+  cfg.transport = proxy_t.get();
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (client == nullptr) {

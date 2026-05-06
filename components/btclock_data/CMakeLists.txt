@@ -4,5 +4,6 @@ idf_component_register(
          "btclock_currencies_fetch.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_websocket_client esp-tls esp_http_client data_core cjson
+             tcp_transport proxy_transport prefs settings
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)

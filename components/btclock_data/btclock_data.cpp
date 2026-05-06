@@ -14,7 +14,12 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_transport_ws.h"
 #include "freertos/task.h"
+#include "proxy_transport/proxy_prefs.hpp"
+#include "proxy_transport/proxy_transport.hpp"
+#include "settings/nvs_store.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -75,6 +80,36 @@ BtclockDataSource::~BtclockDataSource() {
 esp_err_t BtclockDataSource::Start(DataHub& hub) {
   hub_ = &hub;
 
+  // Build the proxy-aware ext_transport chain. With proxyEnabled=false
+  // the inner transport bypasses straight to a direct TCP+TLS connect
+  // to the destination, so behaviour matches the pre-migration path
+  // byte-for-byte. When proxyEnabled=true the inner transport runs the
+  // SOCKS/HTTP CONNECT handshake first, then esp_tls handshakes against
+  // the *real* destination's cert (SNI = uri_).
+  {
+    btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+    const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    proxy_inner_ = btclock::proxy::MakeProxyTransport(
+        proxy_cfg, btclock::proxy::ParamsForUrl(uri_, esp_crt_bundle_attach));
+    proxy_ws_ = esp_transport_ws_init(proxy_inner_);
+  }
+  if (!proxy_ws_) {
+    if (proxy_inner_) {
+      esp_transport_destroy(proxy_inner_);
+      proxy_inner_ = nullptr;
+    }
+    return ESP_FAIL;
+  }
+  // The WS client skips its internal optional-settings apply when
+  // ext_transport is non-null (esp_websocket_client.c:582,647), so push
+  // the path explicitly. propagate_control_frames mirrors the value the
+  // client would have set on the auto-built path.
+  const std::string ws_path = btclock::proxy::PathFromUri(uri_);
+  esp_transport_ws_config_t ws_cfg = {};
+  ws_cfg.ws_path = ws_path.c_str();
+  ws_cfg.propagate_control_frames = true;
+  esp_transport_ws_set_config(proxy_ws_, &ws_cfg);
+
   esp_websocket_client_config_t cfg = {};
   cfg.uri = uri_.c_str();
   cfg.reconnect_timeout_ms = 5000;  // linear backoff, 5 s between retries
@@ -83,10 +118,16 @@ esp_err_t BtclockDataSource::Start(DataHub& hub) {
   cfg.pingpong_timeout_sec = 15;
   cfg.buffer_size = 4096;  // headroom for price map frames
   cfg.task_stack = 6144;
-  cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  cfg.ext_transport = proxy_ws_;
 
   client_ = esp_websocket_client_init(&cfg);
-  if (client_ == nullptr) return ESP_FAIL;
+  if (client_ == nullptr) {
+    esp_transport_destroy(proxy_ws_);
+    proxy_ws_ = nullptr;
+    esp_transport_destroy(proxy_inner_);
+    proxy_inner_ = nullptr;
+    return ESP_FAIL;
+  }
 
   ESP_RETURN_ON_FALSE(
       esp_websocket_register_events(client_, WEBSOCKET_EVENT_ANY,
@@ -173,6 +214,14 @@ esp_err_t BtclockDataSource::Stop() {
   esp_websocket_client_stop(client_);
   esp_websocket_client_destroy(client_);
   client_ = nullptr;
+  if (proxy_ws_) {
+    esp_transport_destroy(proxy_ws_);
+    proxy_ws_ = nullptr;
+  }
+  if (proxy_inner_) {
+    esp_transport_destroy(proxy_inner_);
+    proxy_inner_ = nullptr;
+  }
   hub_ = nullptr;
   return ESP_OK;
 }
@@ -405,6 +454,11 @@ bool BtclockDataSource::FetchUpstreamHeight(uint32_t& out) const {
   if (url.empty()) return false;
 
   LastblockFetchCtx ctx;
+  btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
+  const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+  btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
+      proxy_cfg, btclock::proxy::ParamsForUrl(url, esp_crt_bundle_attach)));
+
   esp_http_client_config_t cfg = {};
   cfg.url = url.c_str();
   cfg.event_handler = &LastblockHttpEvent;
@@ -413,6 +467,7 @@ bool BtclockDataSource::FetchUpstreamHeight(uint32_t& out) const {
   cfg.buffer_size = 1024;
   cfg.buffer_size_tx = 512;
   cfg.crt_bundle_attach = esp_crt_bundle_attach;
+  cfg.transport = proxy_t.get();
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (client == nullptr) return false;
