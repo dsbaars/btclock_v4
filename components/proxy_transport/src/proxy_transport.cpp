@@ -56,6 +56,19 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
   // destinations and bypass works correctly per-connection.
   ctx->bypassed = ShouldBypass(ctx->cfg, host ? host : "");
 
+  // Defensive: when esp_websocket_client reconnects internally and the
+  // URI didn't carry an explicit port (the common wss://host/ case),
+  // it can call into the parent transport with port=0 expecting the
+  // transport's `default_port` to fill it in. We set that in
+  // MakeProxyTransport, but also fall back here so a missed call site
+  // doesn't manifest as a silent EHOSTUNREACH on every reconnect.
+  // Without this guard, every wss:// site would die after its first
+  // disconnect and never come back until reboot (observed on Rev B
+  // 2026-05-06 — see btclock_v4-apr).
+  if (port == 0) {
+    port = ctx->use_tls ? 443 : 80;
+  }
+
   if (ctx->bypassed) {
     ctx->fd = internal::OpenTcpSocket(host, static_cast<uint16_t>(port),
                                        timeout_ms);
@@ -233,6 +246,13 @@ esp_transport_handle_t MakeProxyTransport(const Config& cfg,
   esp_transport_set_context_data(t, ctx);
   esp_transport_set_func(t, Connect, Read, Write, Close, PollRead, PollWrite,
                           Destroy);
+  // Without a default port, esp_websocket_client passes port=0 to the
+  // transport on reconnect when the URI didn't include one. The
+  // built-in `esp_transport_ssl_init` path sets this for the WS client
+  // (esp_websocket_client.c:587 — WEBSOCKET_SSL_DEFAULT_PORT); when
+  // ext_transport replaces that path the user has to set it. Setting
+  // it here covers both HTTP and WS sites with one call.
+  esp_transport_set_default_port(t, params.use_tls ? 443 : 80);
   return t;
 }
 

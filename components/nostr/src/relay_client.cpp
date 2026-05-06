@@ -35,6 +35,10 @@ esp_err_t RelayClient::Start() {
     proxy_inner_ = btclock::proxy::MakeProxyTransport(
         proxy_cfg, btclock::proxy::ParamsForUrl(url_, esp_crt_bundle_attach));
     proxy_ws_ = esp_transport_ws_init(proxy_inner_);
+    if (proxy_ws_) {
+      esp_transport_set_default_port(
+          proxy_ws_, btclock::proxy::UrlImpliesTls(url_) ? 443 : 80);
+    }
   }
   if (!proxy_ws_) {
     if (proxy_inner_) {

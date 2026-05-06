@@ -92,6 +92,14 @@ esp_err_t BtclockDataSource::Start(DataHub& hub) {
     proxy_inner_ = btclock::proxy::MakeProxyTransport(
         proxy_cfg, btclock::proxy::ParamsForUrl(uri_, esp_crt_bundle_attach));
     proxy_ws_ = esp_transport_ws_init(proxy_inner_);
+    if (proxy_ws_) {
+      // Mirrors esp_websocket_client_create_transport's default-port
+      // call on the auto-built path; required because ext_transport
+      // skips that wiring and the reconnect logic uses default_port to
+      // fill in port=0 for URIs without an explicit port.
+      esp_transport_set_default_port(
+          proxy_ws_, btclock::proxy::UrlImpliesTls(uri_) ? 443 : 80);
+    }
   }
   if (!proxy_ws_) {
     if (proxy_inner_) {

@@ -77,6 +77,11 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
         proxy_cfg,
         btclock::proxy::ParamsForUrl(kMempoolUri, esp_crt_bundle_attach));
     mempool_proxy_ws_ = esp_transport_ws_init(mempool_proxy_inner_);
+    if (mempool_proxy_ws_) {
+      esp_transport_set_default_port(
+          mempool_proxy_ws_,
+          btclock::proxy::UrlImpliesTls(kMempoolUri) ? 443 : 80);
+    }
     if (!mempool_proxy_ws_) {
       if (mempool_proxy_inner_) {
         esp_transport_destroy(mempool_proxy_inner_);
@@ -139,6 +144,9 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
         btclock::proxy::ParamsForUrl(kKrakenUri, esp_crt_bundle_attach));
     kraken_proxy_ws_ = esp_transport_ws_init(kraken_proxy_inner_);
     if (kraken_proxy_ws_) {
+      esp_transport_set_default_port(
+          kraken_proxy_ws_,
+          btclock::proxy::UrlImpliesTls(kKrakenUri) ? 443 : 80);
       const std::string ws_path = btclock::proxy::PathFromUri(kKrakenUri);
       esp_transport_ws_config_t ws_cfg = {};
       ws_cfg.ws_path = ws_path.c_str();
