@@ -3,22 +3,49 @@
 # Sourced, not executed. Each flash-<variant>.sh picks its BTCLOCK_BOARD,
 # build dir, mDNS name, and calls build_and_flash.
 
-# shellcheck disable=SC2034
-IDF_EXPORT="/Users/padjuri/esp/v5.5.4/esp-idf/export.sh"
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Resolve the ESP-IDF export.sh path. Precedence:
+#   1. $IDF_EXPORT — explicit override
+#   2. $IDF_PATH/export.sh — already-active IDF install
+#   3. ~/esp/v6.0/esp-idf/export.sh — project's supported toolchain
+#   4. ~/esp/v5.5.4/esp-idf/export.sh — fallback
+resolve_idf_export() {
+  if [[ -n "${IDF_EXPORT:-}" && -f "${IDF_EXPORT}" ]]; then
+    echo "${IDF_EXPORT}"
+    return 0
+  fi
+  if [[ -n "${IDF_PATH:-}" && -f "${IDF_PATH}/export.sh" ]]; then
+    echo "${IDF_PATH}/export.sh"
+    return 0
+  fi
+  local candidate
+  for candidate in \
+    "${HOME}/esp/v6.0/esp-idf/export.sh" \
+    "${HOME}/esp/v5.5.4/esp-idf/export.sh"; do
+    if [[ -f "${candidate}" ]]; then
+      echo "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
 
 # Source the ESP-IDF env into the current shell. Noisy on first run
 # because idf.py bootstrap prints a banner; silenced here so the
 # build output stays readable.
 source_idf() {
-  if [[ ! -f "${IDF_EXPORT}" ]]; then
-    echo "error: IDF_EXPORT not found at ${IDF_EXPORT}" >&2
+  local idf_export
+  if ! idf_export="$(resolve_idf_export)"; then
+    echo "error: ESP-IDF export.sh not found." >&2
+    echo "  set IDF_EXPORT=/path/to/esp-idf/export.sh, or" >&2
+    echo "  set IDF_PATH=/path/to/esp-idf, or" >&2
+    echo "  install IDF at ~/esp/v6.0/esp-idf or ~/esp/v5.5.4/esp-idf" >&2
     exit 1
   fi
   # export.sh writes to stdout/stderr; swallow but keep failure visible.
   # shellcheck disable=SC1090
-  source "${IDF_EXPORT}" >/dev/null
+  source "${idf_export}" >/dev/null
 }
 
 # Build one variant. Args: btclock_board, build_dir, [btclock_panel].

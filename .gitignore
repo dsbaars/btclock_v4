@@ -15,6 +15,10 @@ site/
 # Local photos / captures from the hardware-operator agents.
 photos/
 
+# On-device diagnostic dumps (heap traces, coredumps, addr2line output).
+# Build-environment-specific and not useful in version control.
+docs/diag/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
