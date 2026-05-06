@@ -139,6 +139,13 @@ Display-related special keys:
 | `wpTimeout` | uint | `900` (15 min) | WiFiManager captive-portal timeout (seconds). | Range 0..3600. Reboot required. After this many seconds in AP-provisioning mode the device reboots so the next boot retries STA — gated on `wifiConfigured` being true (set once the user submits creds), so a never-provisioned device sits in the portal indefinitely. |
 | `txPower` | int | device default | WiFi TX power in quarter-dBm. `-1..78` valid; `80` is a sentinel that clears the override. | Live. Applied via `esp_wifi_set_max_tx_power`. Re-applied at boot in `init_network.cpp` between `esp_wifi_start` and `Connect`, mirroring the same `IsValidWifiTxPower` range gate. Queried back on `/api/status` via `esp_wifi_get_max_tx_power`. |
 | `wifiConfigured` | bool | `false` | Set by the provisioning flow once STA credentials are captured. | Not PATCH-settable in practice — internal flag. |
+| `proxyEnabled` | bool | `false` | Master toggle for the outbound HTTP CONNECT / SOCKS proxy. | All proxy fields are live — a PATCH applies to the next outbound connection and existing WS sessions reconnect automatically. See [Proxy](PROXY.md) for the full reference. |
+| `proxyType` | uchar | `0` | `0`=none, `1`=HTTP CONNECT, `2`=SOCKS4, `3`=SOCKS4a, `4`=SOCKS5. | Bounded 0..4; the fixed-bound enum mapping is documented in [Proxy](PROXY.md). |
+| `proxyHost` | string | `""` | Proxy hostname or IP. | Required when `proxyEnabled` is true. |
+| `proxyPort` | uint | `1080` | Proxy port, 1..65535. | Default `1080` matches the SOCKS convention. |
+| `proxyUser` | string | `""` | Username for SOCKS5 / HTTP CONNECT auth. | SOCKS4/4a have no auth frame — ignored for those types. |
+| `proxyPass` | string | `""` | Password for SOCKS5 / HTTP CONNECT auth. | Suppressed in GET (mirrors `httpAuthPass`); `proxyPassSet: bool` indicates whether one is stored. |
+| `proxyBypass` | string | `"*.local,192.168.*,10.*,127.0.0.1"` | Comma-separated host globs that skip the proxy and connect directly. | Glob syntax: exact, `*.suffix`, or `prefix.*`. Case-insensitive. |
 
 ---
 

@@ -124,6 +124,7 @@ plugins:
             Quickstart: Snelstartgids
             Handbook: Handboek
             Settings: Instellingen
+            Proxy: Proxy
             Architecture: Architectuur
             Build from source: Bouwen vanuit de broncode
             Mining-pool fields: Mining-pool velden
@@ -135,6 +136,7 @@ plugins:
             Quickstart: Schnellstart
             Handbook: Handbuch
             Settings: Einstellungen
+            Proxy: Proxy
             Architecture: Architektur
             Build from source: Aus Quellcode bauen
             Mining-pool fields: Mining-Pool-Felder
@@ -146,6 +148,7 @@ plugins:
             Quickstart: Guía rápida
             Handbook: Manual
             Settings: Configuración
+            Proxy: Proxy
             Architecture: Arquitectura
             Build from source: Compilar desde el código
             Mining-pool fields: Campos de mining-pool
@@ -191,6 +194,7 @@ nav:
   - Quickstart: QUICKSTART.md
   - Handbook: HANDBOOK.md
   - Settings: SETTINGS.md
+  - Proxy: PROXY.md
   - Architecture: ARCHITECTURE.md
   - Build from source: BUILD_FROM_SOURCE.md
   - Mining-pool fields: WEBUI_MINING_POOL_FIELDS.md
