@@ -15,7 +15,9 @@ void Append(std::vector<uint8_t>* v, std::string_view s) {
   v->insert(v->end(), s.begin(), s.end());
 }
 
-void AppendByte(std::vector<uint8_t>* v, uint8_t b) { v->push_back(b); }
+void AppendByte(std::vector<uint8_t>* v, uint8_t b) {
+  v->push_back(b);
+}
 
 }  // namespace
 
@@ -88,13 +90,18 @@ int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
   const uint8_t atyp = buf[3];
   size_t addr_len = 0;
   switch (atyp) {
-    case 0x01: addr_len = 4; break;        // IPv4
-    case 0x03:                             // domain
+    case 0x01:
+      addr_len = 4;
+      break;    // IPv4
+    case 0x03:  // domain
       if (len < 5) return -1;
       addr_len = 1 + buf[4];
       break;
-    case 0x04: addr_len = 16; break;       // IPv6
-    default: return -2;
+    case 0x04:
+      addr_len = 16;
+      break;  // IPv6
+    default:
+      return -2;
   }
   const size_t total = 4 + addr_len + 2;
   if (len < total) return -1;
@@ -106,7 +113,8 @@ int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
 
 std::vector<uint8_t> BuildSocks4aRequest(std::string_view host, uint16_t port,
                                          std::string_view user_id) {
-  const uint8_t ulen = static_cast<uint8_t>(std::min<size_t>(user_id.size(), 255));
+  const uint8_t ulen =
+      static_cast<uint8_t>(std::min<size_t>(user_id.size(), 255));
   std::vector<uint8_t> out;
   out.reserve(9 + ulen + host.size() + 1);
   out.push_back(0x04);  // VN
@@ -140,13 +148,12 @@ std::vector<uint8_t> BuildHttpConnectRequest(std::string_view host,
   // 4063 chars), but we cap to a generous 256 anyway to match the SNI
   // sanity limit elsewhere in the firmware.
   char line[512];
-  int n = std::snprintf(
-      line, sizeof(line),
-      "CONNECT %.*s:%u HTTP/1.1\r\nHost: %.*s:%u\r\n",
-      static_cast<int>(std::min<size_t>(host.size(), 256)), host.data(),
-      static_cast<unsigned>(port),
-      static_cast<int>(std::min<size_t>(host.size(), 256)), host.data(),
-      static_cast<unsigned>(port));
+  int n = std::snprintf(line, sizeof(line),
+                        "CONNECT %.*s:%u HTTP/1.1\r\nHost: %.*s:%u\r\n",
+                        static_cast<int>(std::min<size_t>(host.size(), 256)),
+                        host.data(), static_cast<unsigned>(port),
+                        static_cast<int>(std::min<size_t>(host.size(), 256)),
+                        host.data(), static_cast<unsigned>(port));
   std::vector<uint8_t> out;
   if (n <= 0) return out;
   out.reserve(static_cast<size_t>(n) + basic_auth_b64.size() + 32);
@@ -179,8 +186,8 @@ int ParseHttpConnectStatus(const uint8_t* buf, size_t len,
       !std::isdigit(buf[i + 2])) {
     return -2;
   }
-  const int status = (buf[i] - '0') * 100 + (buf[i + 1] - '0') * 10 +
-                     (buf[i + 2] - '0');
+  const int status =
+      (buf[i] - '0') * 100 + (buf[i + 1] - '0') * 10 + (buf[i + 2] - '0');
 
   // Find end of headers.
   for (size_t j = i + 3; j + 3 < len; ++j) {

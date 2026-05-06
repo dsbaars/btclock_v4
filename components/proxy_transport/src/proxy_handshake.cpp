@@ -3,7 +3,6 @@
 #include <cstring>
 
 #include "esp_log.h"
-
 #include "proxy_socket_io.hpp"
 #include "proxy_transport/proxy_framing.hpp"
 
@@ -51,8 +50,12 @@ int RunSocks5(int fd, const Config& cfg, const char* dest_host,
   }
   size_t addr_len = 0;
   switch (hdr[3]) {
-    case 0x01: addr_len = 4; break;
-    case 0x04: addr_len = 16; break;
+    case 0x01:
+      addr_len = 4;
+      break;
+    case 0x04:
+      addr_len = 16;
+      break;
     case 0x03:
       if (RecvAll(fd, hdr + 4, 1, timeout_ms) < 0) return -1;
       addr_len = hdr[4];
@@ -108,8 +111,7 @@ int RunHttpConnect(int fd, const Config& cfg, const char* dest_host,
     creds.append(cfg.pass);
     auth_b64 = framing::Base64Encode(creds);
   }
-  auto req =
-      framing::BuildHttpConnectRequest(dest_host, dest_port, auth_b64);
+  auto req = framing::BuildHttpConnectRequest(dest_host, dest_port, auth_b64);
   if (SendAll(fd, req.data(), req.size(), timeout_ms) < 0) return -1;
   uint8_t buf[1024];
   size_t consumed = 0;
@@ -128,8 +130,7 @@ int RunHttpConnect(int fd, const Config& cfg, const char* dest_host,
              dest_host, dest_port);
     return -1;
   }
-  if (consumed != static_cast<size_t>(status == 200 ? consumed : 0) ||
-      false) {
+  if (consumed != static_cast<size_t>(status == 200 ? consumed : 0) || false) {
     // Defensive: parse function reports consumed bytes; anything past
     // that is the start of the relayed stream which we cannot retain.
     // In practice 3proxy returns just the headers and stops; if we

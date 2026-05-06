@@ -8,14 +8,15 @@ using btclock::proxy::MatchesGlob;
 using btclock::proxy::ShouldBypass;
 using btclock::proxy::SplitBypassList;
 
-TEST_CASE("MatchesGlob — literal, leading-star, trailing-star, case insensitive") {
+TEST_CASE(
+    "MatchesGlob — literal, leading-star, trailing-star, case insensitive") {
   CHECK(MatchesGlob("foo.local", "foo.local"));
   CHECK(MatchesGlob("FOO.LOCAL", "foo.local"));
   CHECK(!MatchesGlob("foo.local", "bar.local"));
 
   CHECK(MatchesGlob("*.local", "foo.local"));
   CHECK(MatchesGlob("*.local", "x.y.local"));
-  CHECK(!MatchesGlob("*.local", "local"));     // star matches at least the dot
+  CHECK(!MatchesGlob("*.local", "local"));  // star matches at least the dot
   CHECK(!MatchesGlob("*.local", "myhost"));
 
   CHECK(MatchesGlob("192.168.*", "192.168.1.4"));

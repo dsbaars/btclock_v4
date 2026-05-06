@@ -7,12 +7,12 @@
 #include "proxy_transport/proxy_framing.hpp"
 #include "proxy_transport/proxy_url.hpp"
 
+using btclock::proxy::framing::Base64Encode;
 using btclock::proxy::framing::BuildHttpConnectRequest;
 using btclock::proxy::framing::BuildSocks4aRequest;
 using btclock::proxy::framing::BuildSocks5Connect;
 using btclock::proxy::framing::BuildSocks5Greeting;
 using btclock::proxy::framing::BuildSocks5UserPass;
-using btclock::proxy::framing::Base64Encode;
 using btclock::proxy::framing::ParseHttpConnectStatus;
 using btclock::proxy::framing::ParseSocks4Reply;
 using btclock::proxy::framing::ParseSocks5ConnectReply;
@@ -78,12 +78,12 @@ TEST_CASE("SOCKS5 user/pass framing matches RFC 1929 byte-for-byte") {
   auto bytes = BuildSocks5UserPass("alice", "hunter2");
   // 01 ULEN U... PLEN P...
   CHECK(Hex(bytes) ==
-        "010561"      // 01 05 'a'
-        "6c6963"      //       'l' 'i' 'c'
-        "6507"        //       'e' (PLEN=7)
-        "68756e"      // 'h' 'u' 'n'
-        "746572"      // 't' 'e' 'r'
-        "32");        // '2'
+        "010561"  // 01 05 'a'
+        "6c6963"  //       'l' 'i' 'c'
+        "6507"    //       'e' (PLEN=7)
+        "68756e"  // 'h' 'u' 'n'
+        "746572"  // 't' 'e' 'r'
+        "32");    // '2'
 }
 
 TEST_CASE("SOCKS5 user/pass reply parser") {
@@ -123,7 +123,7 @@ TEST_CASE("SOCKS5 CONNECT reply parses each ATYP correctly") {
   CHECK(consumed == 10);
 
   uint8_t domain_ok[] = {0x05, 0x00, 0x00, 0x03, 0x03,
-                         'a', 'b', 'c', 0x00, 0x50};
+                         'a',  'b',  'c',  0x00, 0x50};
   CHECK(ParseSocks5ConnectReply(domain_ok, sizeof(domain_ok), &consumed) == 0);
   CHECK(consumed == 10);
 
@@ -137,8 +137,7 @@ TEST_CASE("SOCKS5 CONNECT reply parses each ATYP correctly") {
 
 TEST_CASE("SOCKS5 CONNECT reply propagates REP byte and incompleteness") {
   size_t consumed = 0;
-  uint8_t rejected[] = {0x05, 0x05, 0x00, 0x01,
-                        0, 0, 0, 0, 0, 0};
+  uint8_t rejected[] = {0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0};
   // 0x05 == "Connection refused"
   CHECK(ParseSocks5ConnectReply(rejected, sizeof(rejected), &consumed) == 5);
 

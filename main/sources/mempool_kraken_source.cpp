@@ -71,8 +71,7 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
   // --- mempool.space client ---------------------------------------------
   {
     btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
-    const auto proxy_cfg =
-        btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
     mempool_proxy_inner_ = btclock::proxy::MakeProxyTransport(
         proxy_cfg,
         btclock::proxy::ParamsForUrl(kMempoolUri, esp_crt_bundle_attach));
@@ -137,8 +136,7 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
   // --- kraken v2 client -------------------------------------------------
   {
     btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
-    const auto proxy_cfg =
-        btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
+    const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
     kraken_proxy_inner_ = btclock::proxy::MakeProxyTransport(
         proxy_cfg,
         btclock::proxy::ParamsForUrl(kKrakenUri, esp_crt_bundle_attach));

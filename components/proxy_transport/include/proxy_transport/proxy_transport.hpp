@@ -11,7 +11,6 @@
 
 #include "esp_err.h"
 #include "esp_transport.h"
-
 #include "proxy_transport/proxy_config.hpp"
 #include "proxy_transport/proxy_url.hpp"
 

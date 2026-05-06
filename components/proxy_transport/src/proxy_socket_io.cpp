@@ -101,8 +101,8 @@ int RecvAll(int fd, uint8_t* buf, size_t want, int /*timeout_ms*/) {
 }
 
 int RecvUntilParsed(int fd, uint8_t* buf, size_t cap,
-                     int (*parse)(const uint8_t*, size_t, size_t*),
-                     size_t* out_consumed, int /*timeout_ms*/) {
+                    int (*parse)(const uint8_t*, size_t, size_t*),
+                    size_t* out_consumed, int /*timeout_ms*/) {
   size_t have = 0;
   while (have < cap) {
     ssize_t n = recv(fd, buf + have, cap - have, 0);

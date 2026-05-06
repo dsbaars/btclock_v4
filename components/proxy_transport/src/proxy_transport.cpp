@@ -25,7 +25,6 @@
 #include "esp_log.h"
 #include "esp_tls.h"
 #include "esp_transport.h"
-
 #include "proxy_handshake.hpp"
 #include "proxy_socket_io.hpp"
 #include "proxy_transport/proxy_bypass.hpp"
@@ -38,7 +37,7 @@ namespace {
 constexpr const char* kTag = "proxy_transport";
 
 struct Ctx {
-  Config cfg;                 // copy so settings reload after init still works
+  Config cfg;  // copy so settings reload after init still works
   bool use_tls = false;
   esp_err_t (*crt_bundle_attach)(void* conf) = nullptr;
   int fd = -1;
@@ -51,7 +50,7 @@ extern "C" int PollRead(esp_transport_handle_t t, int timeout_ms);
 extern "C" int PollWrite(esp_transport_handle_t t, int timeout_ms);
 
 extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
-                        int timeout_ms) {
+                       int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
   // Bypass is evaluated against whatever destination the upper layer
   // hands us — esp_http_client / esp_websocket_client parse cfg.url /
@@ -74,20 +73,20 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
   }
 
   if (ctx->bypassed) {
-    ctx->fd = internal::OpenTcpSocket(host, static_cast<uint16_t>(port),
-                                       timeout_ms);
+    ctx->fd =
+        internal::OpenTcpSocket(host, static_cast<uint16_t>(port), timeout_ms);
     if (ctx->fd < 0) return -1;
   } else {
     ctx->fd = internal::OpenTcpSocket(ctx->cfg.host.c_str(), ctx->cfg.port,
-                                       timeout_ms);
+                                      timeout_ms);
     if (ctx->fd < 0) {
       ESP_LOGW(kTag, "proxy connect to %s:%u failed", ctx->cfg.host.c_str(),
                ctx->cfg.port);
       return -1;
     }
     if (internal::RunProxyHandshake(ctx->fd, ctx->cfg, host,
-                                     static_cast<uint16_t>(port),
-                                     timeout_ms) != 0) {
+                                    static_cast<uint16_t>(port),
+                                    timeout_ms) != 0) {
       close(ctx->fd);
       ctx->fd = -1;
       return -1;
@@ -126,7 +125,7 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
   tls_cfg.timeout_ms = timeout_ms > 0 ? timeout_ms : 10000;
   tls_cfg.crt_bundle_attach = ctx->crt_bundle_attach;
   int rc = esp_tls_conn_new_sync(host, static_cast<int>(strlen(host)), port,
-                                  &tls_cfg, ctx->tls);
+                                 &tls_cfg, ctx->tls);
   if (rc != 1) {
     ESP_LOGW(kTag, "esp_tls handshake failed (rc=%d) for %s:%d", rc, host,
              port);
@@ -231,8 +230,7 @@ extern "C" int PollWrite(esp_transport_handle_t t, int timeout_ms) {
   FD_ZERO(&ws);
   FD_SET(fd, &ws);
   struct timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-  return select(fd + 1, nullptr, &ws, nullptr,
-                timeout_ms < 0 ? nullptr : &tv);
+  return select(fd + 1, nullptr, &ws, nullptr, timeout_ms < 0 ? nullptr : &tv);
 }
 
 extern "C" int Close(esp_transport_handle_t t) {
@@ -254,8 +252,10 @@ extern "C" int Destroy(esp_transport_handle_t t) {
   if (!t) return ESP_OK;
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
   if (!ctx) return ESP_OK;
-  if (ctx->tls) esp_tls_conn_destroy(ctx->tls);
-  else if (ctx->fd >= 0) close(ctx->fd);
+  if (ctx->tls)
+    esp_tls_conn_destroy(ctx->tls);
+  else if (ctx->fd >= 0)
+    close(ctx->fd);
   delete ctx;
   return ESP_OK;
 }
@@ -276,7 +276,7 @@ esp_transport_handle_t MakeProxyTransport(const Config& cfg,
   ctx->crt_bundle_attach = params.crt_bundle_attach;
   esp_transport_set_context_data(t, ctx);
   esp_transport_set_func(t, Connect, Read, Write, Close, PollRead, PollWrite,
-                          Destroy);
+                         Destroy);
   // Without a default port, esp_websocket_client passes port=0 to the
   // transport on reconnect when the URI didn't include one. The
   // built-in `esp_transport_ssl_init` path sets this for the WS client

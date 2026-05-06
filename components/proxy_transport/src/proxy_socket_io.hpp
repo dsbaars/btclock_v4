@@ -38,8 +38,8 @@ int RecvAll(int fd, uint8_t* buf, size_t want, int timeout_ms);
 // Returns the parser's terminal status, or -1 on socket / over-budget
 // failure.
 int RecvUntilParsed(int fd, uint8_t* buf, size_t cap,
-                     int (*parse)(const uint8_t*, size_t, size_t*),
-                     size_t* out_consumed, int timeout_ms);
+                    int (*parse)(const uint8_t*, size_t, size_t*),
+                    size_t* out_consumed, int timeout_ms);
 
 }  // namespace internal
 }  // namespace proxy
