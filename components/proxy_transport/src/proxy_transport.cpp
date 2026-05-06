@@ -46,6 +46,10 @@ struct Ctx {
   bool bypassed = false;
 };
 
+// Read/Write call into PollRead/PollWrite below, so forward-declare.
+extern "C" int PollRead(esp_transport_handle_t t, int timeout_ms);
+extern "C" int PollWrite(esp_transport_handle_t t, int timeout_ms);
+
 extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
                         int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
@@ -134,39 +138,66 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
   return 0;
 }
 
+// Return-code contract for esp_transport read/write callbacks (see
+// esp_tcp_transport_err_t in esp_transport.h):
+//   > 0  bytes transferred
+//     0  timeout — no data this round, caller polls again (NOT an error)
+//    -1  connection closed by FIN
+//    -2  connection failed
+//
+// Critical for esp_websocket_client: it treats 0 as "keep polling" but
+// any negative value as fatal → tear-down + reconnect. Mapping every
+// transient mbedtls condition to -1 (the previous bug) caused the WS
+// to reconnect on every idle period > network_timeout_ms, restarting
+// the TLS handshake from scratch each time. Symptom on Rev B was
+// 50–80 s to first populated panel after reboot. Mirrors the
+// transport_ssl.c:ssl_read pattern from the IDF tcp_transport.
+
 extern "C" int Read(esp_transport_handle_t t, char* buf, int len,
                     int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
+  // Wait for readable — without this, the recv()/mbedtls_ssl_read()
+  // below would block / time out on its own and surface a transient
+  // EAGAIN that we'd have no way to distinguish from a hard error.
+  const int p = PollRead(t, timeout_ms);
+  if (p < 0) return -1;
+  if (p == 0) return 0;  // timeout — no data this round
   if (ctx->tls) {
     ssize_t n = esp_tls_conn_read(ctx->tls, buf, static_cast<size_t>(len));
-    return n < 0 ? -1 : static_cast<int>(n);
+    if (n > 0) return static_cast<int>(n);
+    if (n == 0) return 0;
+    if (n == ESP_TLS_ERR_SSL_WANT_READ || errno == EAGAIN) return 0;
+    return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
   }
-  // Plain TCP. Honour timeout via select() before recv() — recv with
-  // SO_RCVTIMEO would also work but we already use select in PollRead.
-  if (ctx->fd < 0) return -1;
-  if (timeout_ms >= 0) {
-    fd_set rs;
-    FD_ZERO(&rs);
-    FD_SET(ctx->fd, &rs);
-    struct timeval tv = {timeout_ms / 1000, (timeout_ms % 1000) * 1000};
-    int s = select(ctx->fd + 1, &rs, nullptr, nullptr, &tv);
-    if (s == 0) return 0;
-    if (s < 0) return -1;
-  }
+  if (ctx->fd < 0) return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
   ssize_t n = recv(ctx->fd, buf, len, 0);
-  return n < 0 ? -1 : static_cast<int>(n);
+  if (n > 0) return static_cast<int>(n);
+  if (n == 0) return ERR_TCP_TRANSPORT_CONNECTION_CLOSED_BY_FIN;
+  if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+  return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
 }
 
 extern "C" int Write(esp_transport_handle_t t, const char* buf, int len,
-                     int /*timeout_ms*/) {
+                     int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
+  // Mirror Read's pattern: poll for writability first so a transient
+  // would-block doesn't surface as a fatal error to the WS client.
+  const int p = PollWrite(t, timeout_ms);
+  if (p < 0) return -1;
+  if (p == 0) return 0;
   if (ctx->tls) {
     ssize_t n = esp_tls_conn_write(ctx->tls, buf, static_cast<size_t>(len));
-    return n < 0 ? -1 : static_cast<int>(n);
+    if (n > 0) return static_cast<int>(n);
+    if (n == 0) return 0;
+    if (n == ESP_TLS_ERR_SSL_WANT_WRITE || errno == EAGAIN) return 0;
+    return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
   }
-  if (ctx->fd < 0) return -1;
+  if (ctx->fd < 0) return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
   ssize_t n = send(ctx->fd, buf, len, 0);
-  return n < 0 ? -1 : static_cast<int>(n);
+  if (n > 0) return static_cast<int>(n);
+  if (n == 0) return 0;
+  if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+  return ERR_TCP_TRANSPORT_CONNECTION_FAILED;
 }
 
 extern "C" int PollRead(esp_transport_handle_t t, int timeout_ms) {
