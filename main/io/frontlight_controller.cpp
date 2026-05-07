@@ -208,10 +208,10 @@ void FrontlightController::OnAmbientLux(float lux) {
 }
 
 void FrontlightController::SetChannelDuties(const uint16_t* duties,
-                                             uint8_t count) {
+                                            uint8_t count) {
   if (queue_ == nullptr || duties == nullptr) return;
-  const uint8_t cap = sizeof(pending_manual_duties_) /
-                      sizeof(pending_manual_duties_[0]);
+  const uint8_t cap =
+      sizeof(pending_manual_duties_) / sizeof(pending_manual_duties_[0]);
   const uint8_t clamped = (count < cap) ? count : cap;
   {
     std::lock_guard<std::mutex> lk(manual_mu_);
@@ -244,9 +244,8 @@ void FrontlightController::OnDndStateMaybeChanged() {
   // symmetric and not subject to anything else; the task gates on the
   // user-off latch internally so a previous explicit Off is honoured.
   const FrontlightCommand cmd =
-      currently_suppressed
-          ? FrontlightCommand{FrontlightEvent::kAmbientOff, 0}
-          : FrontlightCommand{FrontlightEvent::kAmbientOn, 0};
+      currently_suppressed ? FrontlightCommand{FrontlightEvent::kAmbientOff, 0}
+                           : FrontlightCommand{FrontlightEvent::kAmbientOn, 0};
   SendOrDrop(queue_, cmd);
 }
 
@@ -432,7 +431,8 @@ void FrontlightController::TaskLoop() {
           {
             std::lock_guard<std::mutex> lk(manual_mu_);
             n = pending_manual_count_;
-            for (uint8_t i = 0; i < n; ++i) local[i] = pending_manual_duties_[i];
+            for (uint8_t i = 0; i < n; ++i)
+              local[i] = pending_manual_duties_[i];
           }
           cancel_pulse();
           // Bypass WriteAllChannels because the duties are per-channel.
@@ -443,8 +443,7 @@ void FrontlightController::TaskLoop() {
           bool any_on = false;
           const uint8_t cap =
               sizeof(channel_duties_) / sizeof(channel_duties_[0]);
-          for (uint8_t i = 0;
-               i < channel_count_ && i < cap && i < n; ++i) {
+          for (uint8_t i = 0; i < channel_count_ && i < cap && i < n; ++i) {
             pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), local[i]);
             channel_duties_[i] = local[i];
             if (local[i] > 0) any_on = true;

@@ -1506,10 +1506,9 @@ esp_err_t ControlServer::HandleFrontlightSet(httpd_req_t* req) {
     // Empty array -> all off, mirrors /api/lights/set's empty-array
     // semantics.
     uint16_t zeros[8] = {0};
-    cfg_.frontlight->SetChannelDuties(zeros, static_cast<uint8_t>(
-                                                 cfg_.num_screens > 8
-                                                     ? 8
-                                                     : cfg_.num_screens));
+    cfg_.frontlight->SetChannelDuties(
+        zeros,
+        static_cast<uint8_t>(cfg_.num_screens > 8 ? 8 : cfg_.num_screens));
     BroadcastStatus();
     return SendEmptyOk(req);
   }
