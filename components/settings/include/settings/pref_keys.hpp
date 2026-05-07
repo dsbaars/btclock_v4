@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <cstring>
 
 namespace btclock {
@@ -158,6 +159,16 @@ inline constexpr const char* kSuffixShareDot_Legacy = "suffixShareDot";
 inline constexpr const char* kSupplyPercent = "supplyPercent";
 inline constexpr const char* kTimerActive = "timerActive";
 inline constexpr const char* kTimerSeconds = "timerSeconds";
+// Single source of truth for the auto-rotate cadence default. The
+// firmware stores seconds in NVS (kTimerSeconds); the WebUI presents
+// minutes via the derived `timePerScreen` field that BuildGetResponse
+// emits alongside it. This default fires when NVS has nothing yet —
+// every read site that wants "a sensible cadence on a fresh device"
+// MUST use this constant rather than inventing a number. The zap-
+// overlay path is the documented exception: it reuses kTimerSeconds
+// but falls back to ZapOverlayPolicy::kFallbackMs (8 s), since a 10-
+// minute zap notification would block the carousel.
+inline constexpr uint32_t kDefaultTimerSeconds = 600u;
 inline constexpr const char* kTxPower = "txPower";
 inline constexpr const char* kTzString = "tzString";
 inline constexpr const char* kUseBlkCountdown = "useBlkCountdown";

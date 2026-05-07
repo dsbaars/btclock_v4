@@ -121,8 +121,19 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   // case where a future special-case wants to override after the loop.
 
   // timerSeconds isn't PATCHed directly — the WebUI sends
-  // `timePerScreen` (minutes) and the server multiplies by 60.
-  AddU32(root, "timerSeconds", prefs.GetU32(prefs::kTimerSeconds, 1800));
+  // `timePerScreen` (minutes) and the server multiplies by 60. The
+  // canonical default lives in pref_keys.hpp (`kDefaultTimerSeconds`)
+  // and is also consumed by event_loop.cpp's auto-rotate read, so a
+  // fresh-NVS device reports here exactly the cadence the loop
+  // actually uses. Both `timerSeconds` (raw NVS value) and
+  // `timePerScreen` (integer minutes, ceiling-divided) are emitted so
+  // the WebUI can bind directly without inventing its own conversion
+  // — the only sec↔min conversion in the system happens here, against
+  // the stored value.
+  const uint32_t timer_s =
+      prefs.GetU32(prefs::kTimerSeconds, prefs::kDefaultTimerSeconds);
+  AddU32(root, "timerSeconds", timer_s);
+  AddU32(root, "timePerScreen", (timer_s + 59u) / 60u);
   AddBool(root, "timerRunning", true);  // runtime flag, not stored in NVS
 
   // Catalogue arrays — available fonts / pools / currencies are

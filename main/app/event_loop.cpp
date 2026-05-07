@@ -252,9 +252,12 @@ constexpr const char* kTag = "btclock";
     // timerSeconds drives auto-rotate cadence. Read per iteration so a
     // live PATCH lands without reboot (same pattern as kStealFocus
     // below). Zero disables rotation entirely — ShouldAdvance with
-    // period_ms=0 would otherwise fire on every tick.
+    // period_ms=0 would otherwise fire on every tick. Default lives in
+    // pref_keys.hpp (`kDefaultTimerSeconds`); BuildGetResponse uses the
+    // same constant so /api/settings can't drift from runtime behaviour.
     Prefs rotate_prefs(prefs::kSettingsNs);
-    const uint32_t timer_s = rotate_prefs.GetU32(prefs::kTimerSeconds, 30);
+    const uint32_t timer_s =
+        rotate_prefs.GetU32(prefs::kTimerSeconds, prefs::kDefaultTimerSeconds);
     const int64_t auto_rotate_ms = static_cast<int64_t>(timer_s) * 1000;
     if (auto_rotate_ms > 0 && sm.MaybeAutoRotate(now_ms, auto_rotate_ms) &&
         hub) {
