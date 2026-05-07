@@ -1,11 +1,10 @@
-// Globals shared across every concrete driver: the EpdSetGlobalInverted
+// Globals shared across every concrete driver: the inverted-color
 // polarity flag. Lifted out of the old monolithic epd_ssd1680.cpp so
 // the per-IC driver TUs stay narrow.
 
 #include <atomic>
 
 #include "epd/panel.hpp"
-#include "epd_ssd1680.hpp"
 
 namespace btclock {
 namespace epd {
@@ -31,16 +30,4 @@ bool InvertedNow() {
 }
 
 }  // namespace epd
-
-// Legacy free-function wrappers — kept so existing call sites
-// (init_storage, init_control_api, init_panels, control_server,
-// test_settings_api) compile without churn. New code should reach
-// for epd::SetGlobalInverted directly.
-void EpdSetGlobalInverted(bool inverted) {
-  epd::SetGlobalInverted(inverted);
-}
-bool EpdGetGlobalInverted() {
-  return epd::GetGlobalInverted();
-}
-
 }  // namespace btclock

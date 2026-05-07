@@ -21,14 +21,13 @@ namespace btclock {
 // digit), which is what V8 hardware needs to look like.
 
 template <size_t N>
-void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                            uint8_t (&fb_storage)[N][16 * 296],
-                            const AppFonts& fonts, const std::string& currency,
-                            const std::string& price,
-                            const std::string& prev_price, uint8_t sats_variant,
-                            bool use_sats_symbol, bool use_mscw_time,
-                            bool share_dot, bool full_refresh_mode,
-                            bool vertical_desc) {
+void RenderMoscowTimeScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    const std::string& prev_price, uint8_t sats_variant, bool use_sats_symbol,
+    bool use_mscw_time, bool share_dot, bool full_refresh_mode,
+    bool vertical_desc) {
   static_assert(N >= 7, "Moscow-time layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
   // `cell_diff_reset` forces every cell to repaint; `full_refresh_mode`
@@ -99,11 +98,11 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }
 
 template void RenderMoscowTimeScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
     uint8_t, bool, bool, bool, bool, bool);
 template void RenderMoscowTimeScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
     uint8_t, bool, bool, bool, bool, bool);
 

@@ -42,7 +42,7 @@
 #include "app/refresh_policy.hpp"
 #include "app/rotation_timer.hpp"
 #include "data_core/snapshot.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "fonts_app.hpp"
 #include "screens/screens.hpp"
 
@@ -255,7 +255,7 @@ class ScreenManager {
   // No-op while IsDebug() — callers should use RenderDebug() in that
   // mode, so the debug overlay isn't stomped on a data push.
   template <size_t N>
-  void Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+  void Render(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
               uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
               const DataSnapshot& snap);
 
@@ -265,7 +265,7 @@ class ScreenManager {
   // mandatory fullRefreshMin-driven full clears. Sets last_panel_texts_
   // to the debug mirror so /api/status `data[]` reflects the overlay.
   template <size_t N>
-  void RenderDebug(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+  void RenderDebug(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                    uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
                    const DebugScreenInfo& info, int64_t now_ms,
                    bool force_full);

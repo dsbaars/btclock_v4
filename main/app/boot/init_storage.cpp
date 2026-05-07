@@ -3,7 +3,7 @@
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
 #include "dnd/dnd.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "littlefs.hpp"
@@ -40,7 +40,8 @@ void InitStorage(AppCtx& /*ctx*/) {
   // default is a one-line edit in schema.hpp.
   {
     Prefs p(prefs::kSettingsNs);
-    EpdSetGlobalInverted(btclock::settings::ReadBool(p, prefs::kInvertedColor));
+    epd::SetGlobalInverted(
+        btclock::settings::ReadBool(p, prefs::kInvertedColor));
   }
 
   // Force the DND singleton to (re-)Load now that NVS is up. Without

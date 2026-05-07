@@ -111,13 +111,13 @@ void LayoutMarketCapBigChars(uint64_t cap, char currency_byte, bool share_dot,
 }  // namespace
 
 template <size_t N>
-void RenderMarketCapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb_storage)[N][16 * 296],
-                           const AppFonts& fonts, const std::string& currency,
-                           const std::string& price, uint32_t block_height,
-                           const std::string& prev_price, uint32_t prev_height,
-                           bool big_chars, bool share_dot,
-                           bool full_refresh_mode, bool vertical_desc) {
+void RenderMarketCapScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    uint32_t block_height, const std::string& prev_price, uint32_t prev_height,
+    bool big_chars, bool share_dot, bool full_refresh_mode,
+    bool vertical_desc) {
   static_assert(N >= 7, "market-cap layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -231,11 +231,11 @@ void RenderMarketCapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }
 
 template void RenderMarketCapScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&, uint32_t,
     const std::string&, uint32_t, bool, bool, bool, bool);
 template void RenderMarketCapScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&, uint32_t,
     const std::string&, uint32_t, bool, bool, bool, bool);
 

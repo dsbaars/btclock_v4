@@ -48,7 +48,7 @@ void FormatUptime(uint32_t seconds, char* out, size_t n) {
 }  // namespace
 
 template <size_t N>
-void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderDebugScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                        uint8_t (&fb_storage)[N][16 * 296],
                        const AppFonts& fonts, const DebugScreenInfo& info,
                        bool full_refresh) {
@@ -158,11 +158,11 @@ void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   }
 }
 
-template void RenderDebugScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                   uint8_t (&)[7][16 * 296], const AppFonts&,
-                                   const DebugScreenInfo&, bool);
-template void RenderDebugScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                   uint8_t (&)[8][16 * 296], const AppFonts&,
-                                   const DebugScreenInfo&, bool);
+template void RenderDebugScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const DebugScreenInfo&, bool);
+template void RenderDebugScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, const DebugScreenInfo&, bool);
 
 }  // namespace btclock

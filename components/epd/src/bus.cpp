@@ -35,7 +35,7 @@ void ConfigureNativeInput(gpio_num_t pin) {
 const char* EpdIoPin::Describe() const {
   // Rotating small buffer pool so multiple Describe() calls in the
   // same printf statement don't clobber one another. Single-task
-  // caller (EpdPanel boot logs), so no thread-safety story needed.
+  // caller (epd::IEpdPanel boot logs), so no thread-safety story needed.
   static char bufs[4][16];
   static unsigned idx = 0;
   char* b = bufs[idx++ & 3];

@@ -15,7 +15,7 @@
 
 #include "driver/gpio.h"
 #include "epd/factory.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -42,11 +42,11 @@ constexpr gpio_num_t kEpdDc = GPIO_NUM_14;
 
 constexpr int kNumPanels = 7;
 constexpr gpio_num_t kEpdCs[kNumPanels] = {
-    GPIO_NUM_2, GPIO_NUM_4,  GPIO_NUM_6,  GPIO_NUM_10,
+    GPIO_NUM_2,  GPIO_NUM_4,  GPIO_NUM_6,  GPIO_NUM_10,
     GPIO_NUM_38, GPIO_NUM_21, GPIO_NUM_17,
 };
 constexpr gpio_num_t kEpdBusy[kNumPanels] = {
-    GPIO_NUM_3, GPIO_NUM_5,  GPIO_NUM_7,  GPIO_NUM_9,
+    GPIO_NUM_3,  GPIO_NUM_5,  GPIO_NUM_7,  GPIO_NUM_9,
     GPIO_NUM_37, GPIO_NUM_18, GPIO_NUM_16,
 };
 constexpr uint8_t kEpdResetMcp[kNumPanels] = {8, 9, 10, 11, 12, 13, 14};
@@ -101,8 +101,7 @@ void DrawDigit(uint8_t* fb, int x0, int y0, int scale, int digit,
     const uint8_t row = rows[r];
     for (int c = 0; c < 5; ++c) {
       if (row & (0x80 >> c)) {
-        FillRect(fb, x0 + c * scale, y0 + r * scale, scale, scale,
-                 fg_white);
+        FillRect(fb, x0 + c * scale, y0 + r * scale, scale, scale, fg_white);
       }
     }
   }
@@ -156,7 +155,7 @@ extern "C" void app_main() {
   ESP_LOGI(kTag, "spi + panels up");
   btclock::EpdBus bus(SPI2_HOST, kEpdSpiSclk, kEpdSpiMosi, kEpdDc,
                       4 * 1000 * 1000, 16 * 296 + 64);
-  std::array<std::unique_ptr<btclock::EpdPanel>, kNumPanels> panels;
+  std::array<std::unique_ptr<btclock::epd::IEpdPanel>, kNumPanels> panels;
   for (int i = 0; i < kNumPanels; ++i) {
     btclock::epd::PanelConfig cfg = {};
     cfg.bus = &bus;

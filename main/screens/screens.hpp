@@ -28,13 +28,13 @@
 #include <optional>
 #include <string>
 
-// Under the WASM preview build the real EpdPanel/RefreshKind defs come
+// Under the WASM preview build the real epd::IEpdPanel/RefreshKind defs come
 // from tools/wasm/wasm_panel.hpp (a shim the build script puts on the
 // include path). On device we use the real driver header.
 #ifdef BTCLOCK_WASM_BUILD
 #include "wasm_panel.hpp"
 #else
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #endif
 #include "data_core/snapshot.hpp"
 #include "fonts_app.hpp"
@@ -48,12 +48,11 @@ namespace btclock {
 // along the longer physical edge of the panel (ports the v3 verticalDesc
 // pref — see the v3 firmware's src/lib/drivers/epd/epd.cpp splitText).
 template <size_t N>
-void RenderBlockHeightScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                             uint8_t (&fb_storage)[N][16 * 296],
-                             const AppFonts& fonts, uint32_t block_height,
-                             uint32_t prev_height = 0,
-                             bool full_refresh_mode = true,
-                             bool vertical_desc = false);
+void RenderBlockHeightScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    uint32_t block_height, uint32_t prev_height = 0,
+    bool full_refresh_mode = true, bool vertical_desc = false);
 
 // --- Moscow time (sats/USD as HH:MM-style digits) ---
 // `price` and `prev_price` are the raw price strings from the data
@@ -66,20 +65,18 @@ void RenderBlockHeightScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // =false` forces the label to SATS/<CCY> even for USD in the classic
 // Moscow-time range. Defaults keep the documented legacy layout.
 template <size_t N>
-void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                            uint8_t (&fb_storage)[N][16 * 296],
-                            const AppFonts& fonts, const std::string& currency,
-                            const std::string& price,
-                            const std::string& prev_price = "",
-                            uint8_t sats_variant = kSatsVariantDefault,
-                            bool use_sats_symbol = true,
-                            bool use_mscw_time = true,
-                            // share_dot mirrors the global decimalShareDot
-                            // pref. Only meaningful on the sub-1 fractional
-                            // path; integer-sats path ignores it.
-                            bool share_dot = false,
-                            bool full_refresh_mode = true,
-                            bool vertical_desc = false);
+void RenderMoscowTimeScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    const std::string& prev_price = "",
+    uint8_t sats_variant = kSatsVariantDefault, bool use_sats_symbol = true,
+    bool use_mscw_time = true,
+    // share_dot mirrors the global decimalShareDot
+    // pref. Only meaningful on the sub-1 fractional
+    // path; integer-sats path ignores it.
+    bool share_dot = false, bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- BTC price ---
 // Panel 0 = "BTC/<CCY>" label (or "MOW/UNITS" when `mow_mode` is on and
@@ -97,15 +94,13 @@ void RenderMoscowTimeScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // — the suffix branch only fires when `suffix_price=true` or the
 // integer price itself is wide enough (digit count >= N).
 template <size_t N>
-void RenderBtcPriceScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                          uint8_t (&fb_storage)[N][16 * 296],
-                          const AppFonts& fonts, const std::string& currency,
-                          const std::string& price,
-                          const std::string& prev_price = "",
-                          const char* symbol_utf8 = "",
-                          bool suffix_price = false, bool mow_mode = false,
-                          bool share_dot = false, bool full_refresh_mode = true,
-                          bool vertical_desc = false);
+void RenderBtcPriceScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    const std::string& prev_price = "", const char* symbol_utf8 = "",
+    bool suffix_price = false, bool mow_mode = false, bool share_dot = false,
+    bool full_refresh_mode = true, bool vertical_desc = false);
 
 // --- Block fee rate ---
 // Panel 0 = "FEE/RATE" split-text label, panels 1..N-2 = median-mempool-
@@ -117,7 +112,7 @@ void RenderBtcPriceScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // value has been received yet — the digit panels paint blank rather
 // than '0'.
 template <size_t N>
-void RenderFeeRateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, double fee_sats_vb,
                          double prev_fee_sats_vb = -1.0,
@@ -132,7 +127,7 @@ void RenderFeeRateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // `prev_*` arguments drive the partial-refresh diff; pass
 // `prev_valid=false` to force a full refresh.
 template <size_t N>
-void RenderClockScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderClockScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                        uint8_t (&fb_storage)[N][16 * 296],
                        const AppFonts& fonts, bool valid, int hour, int minute,
                        int mday, int month, bool prev_valid, int prev_hour,
@@ -150,7 +145,7 @@ void RenderClockScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // lib/btclock/data_handler.cpp::parseHalvingCountdown(asBlocks).
 // `prev_height == 0` forces a full refresh.
 template <size_t N>
-void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderHalvingScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, uint32_t block_height,
                          uint32_t prev_height = 0, bool as_blocks = true,
@@ -169,13 +164,12 @@ void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // `prev_height == 0` forces a full refresh; the digit diff handles the
 // low-frequency change rate.
 template <size_t N>
-void RenderBitcoinSupplyScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                               uint8_t (&fb_storage)[N][16 * 296],
-                               const AppFonts& fonts, uint32_t block_height,
-                               uint32_t prev_height = 0, bool big_chars = true,
-                               bool show_percent = false,
-                               bool full_refresh_mode = true,
-                               bool vertical_desc = false);
+void RenderBitcoinSupplyScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    uint32_t block_height, uint32_t prev_height = 0, bool big_chars = true,
+    bool show_percent = false, bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // --- Mining pool hashrate ---
 // Panels 0+1 = pool identity area: a vendored 1-bpp logo bitmap painted
@@ -187,7 +181,7 @@ void RenderBitcoinSupplyScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // default-constructed PoolStats) to force a full refresh.
 template <size_t N>
 void RenderMiningPoolHashrateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
     const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode = true,
@@ -202,7 +196,7 @@ void RenderMiningPoolHashrateScreen(
 // paint when the pool has no daily_sats.
 template <size_t N>
 void RenderMiningPoolEarningsScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
     const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode = true,
@@ -224,7 +218,7 @@ void RenderMiningPoolEarningsScreen(
 // refresh; subsequent paints diff against `prev_cells` and only repaint
 // panels whose string changed.
 template <size_t N>
-void RenderCustomScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderCustomScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                         uint8_t (&fb_storage)[N][16 * 296],
                         const AppFonts& fonts,
                         const std::array<std::string, N>& cells,
@@ -251,7 +245,7 @@ struct DebugScreenInfo {
 // flashes); false uses kPartial (silent, fast — used by the auto-tick
 // to keep uptime/heap live without visible flicker).
 template <size_t N>
-void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderDebugScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                        uint8_t (&fb_storage)[N][16 * 296],
                        const AppFonts& fonts, const DebugScreenInfo& info,
                        bool full_refresh = true);
@@ -266,7 +260,7 @@ void RenderDebugScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // slow enough that a per-cell diff wouldn't buy visible latency).
 template <size_t N>
 void RenderBitaxeHashrateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& hostname, const std::optional<double>& hashrate_ghs,
     bool full_refresh_mode, const std::string& prev_value,
@@ -278,7 +272,7 @@ void RenderBitaxeHashrateScreen(
 // Same OFFLINE and refresh semantics as the hashrate screen above.
 template <size_t N>
 void RenderBitaxeBestDiffScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& hostname, const std::optional<std::string>& best_diff,
     bool full_refresh_mode, const std::string& prev_value,
@@ -301,14 +295,12 @@ void RenderBitaxeBestDiffScreen(
 // up for a few seconds before ScreenManager restores the prior slot,
 // so diff bookkeeping would add no value.
 template <size_t N>
-void RenderNostrZapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                          uint8_t (&fb_storage)[N][16 * 296],
-                          const AppFonts& fonts,
-                          const DataSnapshot::LatestZap& zap,
-                          bool use_sats_symbol = false,
-                          uint8_t sats_variant = kSatsVariantDefault,
-                          bool full_refresh_mode = true,
-                          bool vertical_desc = false);
+void RenderNostrZapScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::LatestZap& zap, bool use_sats_symbol = false,
+    uint8_t sats_variant = kSatsVariantDefault, bool full_refresh_mode = true,
+    bool vertical_desc = false);
 
 // Format a zap amount (sats) into the string painted on the trailing
 // panels. `max_int_cells` is the panel-tail budget for an integer
@@ -334,9 +326,9 @@ std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
 // short-circuits via ScreenManager::IsOtaActive() so a concurrent
 // data push can't stomp the overlay.
 template <size_t N>
-void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb_storage)[N][16 * 296],
-                           const AppFonts& fonts);
+void RenderOtaUpdateScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts);
 
 // --- Market cap (price × supply) ---
 // Panel 0 = "<CCY>/MCAP" label. Mode selection mirrors old-firmware
@@ -349,14 +341,12 @@ void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 // uses. Mirrored by panel_texts BuildMarketCap so /api/status agrees.
 // `prev_price.empty()` or `prev_height == 0` forces a full refresh.
 template <size_t N>
-void RenderMarketCapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb_storage)[N][16 * 296],
-                           const AppFonts& fonts, const std::string& currency,
-                           const std::string& price, uint32_t block_height,
-                           const std::string& prev_price = "",
-                           uint32_t prev_height = 0, bool big_chars = true,
-                           bool share_dot = false,
-                           bool full_refresh_mode = true,
-                           bool vertical_desc = false);
+void RenderMarketCapScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    uint32_t block_height, const std::string& prev_price = "",
+    uint32_t prev_height = 0, bool big_chars = true, bool share_dot = false,
+    bool full_refresh_mode = true, bool vertical_desc = false);
 
 }  // namespace btclock

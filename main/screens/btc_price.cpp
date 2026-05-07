@@ -59,14 +59,12 @@ bool ShouldUseSuffixPath(int64_t price_int, bool suffix_price) {
 // previous frame and repaint only the cells that changed.
 
 template <size_t N>
-void RenderBtcPriceScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                          uint8_t (&fb_storage)[N][16 * 296],
-                          const AppFonts& fonts, const std::string& currency,
-                          const std::string& price,
-                          const std::string& prev_price,
-                          const char* symbol_utf8, bool suffix_price,
-                          bool mow_mode, bool share_dot, bool full_refresh_mode,
-                          bool vertical_desc) {
+void RenderBtcPriceScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& currency, const std::string& price,
+    const std::string& prev_price, const char* symbol_utf8, bool suffix_price,
+    bool mow_mode, bool share_dot, bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Price layout needs at least 7 panels");
   // `cell_diff_reset` forces every cell to repaint (sentinel prev_price);
   // `full_refresh_mode` drives the EPD refresh kind. See screens.hpp.
@@ -191,15 +189,13 @@ void RenderBtcPriceScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                   vertical_desc);
 }
 
-template void RenderBtcPriceScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                      uint8_t (&)[7][16 * 296], const AppFonts&,
-                                      const std::string&, const std::string&,
-                                      const std::string&, const char*, bool,
-                                      bool, bool, bool, bool);
-template void RenderBtcPriceScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                      uint8_t (&)[8][16 * 296], const AppFonts&,
-                                      const std::string&, const std::string&,
-                                      const std::string&, const char*, bool,
-                                      bool, bool, bool, bool);
+template void RenderBtcPriceScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const std::string&, const std::string&, const std::string&,
+    const char*, bool, bool, bool, bool, bool);
+template void RenderBtcPriceScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, const std::string&, const std::string&, const std::string&,
+    const char*, bool, bool, bool, bool, bool);
 
 }  // namespace btclock

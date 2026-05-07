@@ -92,7 +92,7 @@ PaintSlot BuildTailCell(const std::string& cell, const char* ref) {
 
 template <size_t N>
 void RenderBitaxeHashrateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& hostname, const std::optional<double>& hashrate_ghs,
     bool full_refresh_mode, const std::string& prev_value, bool vertical_desc) {
@@ -163,7 +163,7 @@ void RenderBitaxeHashrateScreen(
 
 template <size_t N>
 void RenderBitaxeBestDiffScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& hostname, const std::optional<std::string>& best_diff,
     bool full_refresh_mode, const std::string& prev_value, bool vertical_desc) {
@@ -201,19 +201,19 @@ void RenderBitaxeBestDiffScreen(
 }
 
 template void RenderBitaxeHashrateScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::optional<double>&, bool,
     const std::string&, bool);
 template void RenderBitaxeHashrateScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::optional<double>&, bool,
     const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::optional<std::string>&,
     bool, const std::string&, bool);
 template void RenderBitaxeBestDiffScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::optional<std::string>&,
     bool, const std::string&, bool);
 

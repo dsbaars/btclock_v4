@@ -26,7 +26,7 @@
 #include "board/board.hpp"
 #include "buttons.hpp"
 #include "data_core/hub.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -85,7 +85,8 @@ struct AppCtx {
   // Panels + framebuffer storage. fb_storage lives inline because it
   // needs a fixed address passed by reference into Render().
   std::optional<EpdBus> epd_bus;
-  std::array<std::unique_ptr<EpdPanel>, btclock::board::kNumPanels> panels;
+  std::array<std::unique_ptr<epd::IEpdPanel>, btclock::board::kNumPanels>
+      panels;
   // Framebuffer storage must be static so its address stays valid for
   // the life of the program. Defined in app_ctx_storage.cpp (one .o)
   // so multiple TUs can take its address.

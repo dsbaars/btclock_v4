@@ -41,7 +41,7 @@ constexpr const char* kUnitRef = "Bastv";
 // the digit panels with a glyph change get flagged for repaint.
 
 template <size_t N>
-void RenderFeeRateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, double fee_sats_vb,
                          double prev_fee_sats_vb, bool full_refresh_mode,
@@ -98,11 +98,11 @@ void RenderFeeRateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                   vertical_desc);
 }
 
-template void RenderFeeRateScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                     uint8_t (&)[7][16 * 296], const AppFonts&,
-                                     double, double, bool, bool);
-template void RenderFeeRateScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                     uint8_t (&)[8][16 * 296], const AppFonts&,
-                                     double, double, bool, bool);
+template void RenderFeeRateScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, double, double, bool, bool);
+template void RenderFeeRateScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, double, double, bool, bool);
 
 }  // namespace btclock

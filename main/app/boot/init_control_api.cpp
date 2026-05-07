@@ -22,7 +22,7 @@
 #include "control_server.hpp"
 #include "data_core/hub.hpp"
 #include "dnd/dnd.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -156,7 +156,7 @@ void InitControlApi(AppCtx& ctx) {
     ScreenManager* sm_ptr = ctx.sm.get();
     TaskHandle_t main_task_for_hooks = ctx.main_task;
     ccfg.on_inverted_color_changed = [sm_ptr, main_task_for_hooks](bool v) {
-      EpdSetGlobalInverted(v);
+      epd::SetGlobalInverted(v);
       sm_ptr->MarkDirty();
       if (main_task_for_hooks) xTaskNotifyGive(main_task_for_hooks);
     };

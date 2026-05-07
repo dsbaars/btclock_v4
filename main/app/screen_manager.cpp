@@ -634,9 +634,10 @@ bool ScreenManager::ConsumeNewBlock(const DataSnapshot& snap,
 }
 
 template <size_t N>
-void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
-                           const DataSnapshot& snap) {
+void ScreenManager::Render(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot& snap) {
   // OTA overlay: the HTTP worker painted via RenderOtaUpdateScreen and
   // owns the panels until esp_restart. Bail so the main loop can't
   // stomp the overlay on a data push that slipped through.
@@ -958,10 +959,10 @@ void ScreenManager::Render(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }
 
 template void ScreenManager::Render<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DataSnapshot&);
 template void ScreenManager::Render<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot&);
 
 void ScreenManager::EnterDebug(int64_t /*now_ms*/) {
@@ -989,7 +990,7 @@ bool ScreenManager::ToggleDebug(int64_t now_ms) {
 
 template <size_t N>
 void ScreenManager::RenderDebug(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb)[N][16 * 296], const AppFonts& fonts,
     const DebugScreenInfo& info, int64_t now_ms, bool force_full) {
   // Consult the shared RefreshPolicy so the overlay's auto-refresh
@@ -1026,10 +1027,10 @@ void ScreenManager::RenderDebug(
 }
 
 template void ScreenManager::RenderDebug<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DebugScreenInfo&, int64_t, bool);
 template void ScreenManager::RenderDebug<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DebugScreenInfo&, int64_t, bool);
 
 }  // namespace btclock

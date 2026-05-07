@@ -47,7 +47,7 @@ void ClearFb(LandscapeFb& fb, bool white);
 // SetPixelLandscape — see font.cpp lines 137-147 for the per-case
 // (lx, ly) -> (nx, ny) mapping. Each case clamps against
 // `native_width` / `native_height` (the *visible* extents from
-// EpdPanel::Width/Height — 122 x 250 for the 2.13"), NOT against the
+// epd::IEpdPanel::Width/Height — 122 x 250 for the 2.13"), NOT against the
 // 128-bit row stride. The 6 addressable-but-invisible source-driver
 // columns (122..127 on each row) are never written.
 // white=true sets the bit (white), white=false clears it (black).

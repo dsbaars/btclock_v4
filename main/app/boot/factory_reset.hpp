@@ -20,7 +20,7 @@
 
 #include "board/board.hpp"
 #include "data_core/hub.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "fonts_app.hpp"
 
 namespace btclock {
@@ -32,7 +32,8 @@ class ScreenManager;
 // must be the corresponding kNumPanels × 16·296 buffer.
 [[noreturn]] void DoFactoryReset(
     ScreenManager& sm,
-    std::array<std::unique_ptr<EpdPanel>, btclock::board::kNumPanels>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, btclock::board::kNumPanels>&
+        panels,
     uint8_t (&fb_storage)[btclock::board::kNumPanels][16 * 296],
     const AppFonts& fonts, DataHub* hub);
 

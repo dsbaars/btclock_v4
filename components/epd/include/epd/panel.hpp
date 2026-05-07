@@ -45,7 +45,7 @@ class IEpdPanel {
 
   // Block on BUSY going idle. Returns ESP_ERR_TIMEOUT if the panel
   // doesn't finish within `timeout_ms`. Default mirrors the legacy
-  // EpdPanel API the boot/provisioning UI calls without an arg.
+  // epd::IEpdPanel API the boot/provisioning UI calls without an arg.
   virtual esp_err_t WaitForRefresh(uint32_t timeout_ms = 10'000) = 0;
 
   // Non-blocking BUSY check. False while the panel is refreshing.

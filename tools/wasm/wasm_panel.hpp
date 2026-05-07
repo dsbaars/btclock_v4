@@ -1,13 +1,15 @@
-// Minimal emscripten-side stand-in for btclock::EpdPanel.
+// Minimal emscripten-side stand-in for btclock::epd::IEpdPanel.
 //
-// The real EpdPanel lives in components/epd_ssd1680 and pulls ESP-IDF
-// GPIO/SPI + mcp23017 headers — none of which compile with em++. The
-// screen renderers (main/screens/*.cpp) only touch an EpdPanel* via
-//   - EpdPanel::kStride (constexpr)
-//   - EpdPanel::Width() / Height()
-//   - EpdPanel::DrawFramebufferStart(fb, kind)
-//   - EpdPanel::WaitForRefresh()
+// The real driver under components/epd/ pulls ESP-IDF GPIO/SPI + the
+// mcp23017 headers — none of which compile with em++. The screen
+// renderers (main/screens/*.cpp) only touch a panel through
+//   - epd::IEpdPanel::kStride (constexpr)
+//   - epd::IEpdPanel::Width() / Height()
+//   - epd::IEpdPanel::DrawFramebufferStart(fb, kind)
+//   - epd::IEpdPanel::WaitForRefresh()
 // so this shim provides exactly that surface, backed by plain memory.
+// Class lives in btclock::epd:: with the same name as the device-side
+// interface so the renderers reference one type-name in both worlds.
 //
 // DrawFramebufferStart / WaitForRefresh are no-ops here — the renderer
 // already wrote to the caller-provided `fb_storage[N][16*296]`, and the
@@ -16,9 +18,17 @@
 #pragma once
 
 #include <cstdint>
+
 #include "font.hpp"  // for Rotation (re-used by PrepFb)
 
 namespace btclock {
+
+enum class RefreshKind : uint8_t {
+  kFull,
+  kPartial,
+};
+
+namespace epd {
 
 // Mirror the subset of the device enums the renderers reference.
 enum class PanelKind : uint8_t {
@@ -26,18 +36,13 @@ enum class PanelKind : uint8_t {
   k2_9,   // 128 x 296 — follow-up.
 };
 
-enum class RefreshKind : uint8_t {
-  kFull,
-  kPartial,
-};
-
-class EpdPanel {
+class IEpdPanel {
  public:
-  explicit EpdPanel(PanelKind kind = PanelKind::k2_13) : kind_(kind) {}
+  explicit IEpdPanel(PanelKind kind = PanelKind::k2_13) : kind_(kind) {}
 
   // Match the device class' no-copy contract so code patterns port over.
-  EpdPanel(const EpdPanel&) = delete;
-  EpdPanel& operator=(const EpdPanel&) = delete;
+  IEpdPanel(const IEpdPanel&) = delete;
+  IEpdPanel& operator=(const IEpdPanel&) = delete;
 
   int Width() const { return kind_ == PanelKind::k2_13 ? 122 : 128; }
   int Height() const { return kind_ == PanelKind::k2_13 ? 250 : 296; }
@@ -59,7 +64,7 @@ class EpdPanel {
   int WaitForRefresh(uint32_t /*timeout_ms*/ = 10'000) { return 0; }
 
   // Host-only accessors for the refresh-kind sidechannel. Unused on
-  // device (the real EpdPanel doesn't expose these).
+  // device (the real epd::IEpdPanel doesn't expose these).
   RefreshKind last_refresh_kind() const { return last_refresh_kind_; }
   int refresh_count() const { return refresh_count_; }
   void reset_refresh_state() {
@@ -76,4 +81,5 @@ class EpdPanel {
   int refresh_count_ = 0;
 };
 
+}  // namespace epd
 }  // namespace btclock

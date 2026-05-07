@@ -111,12 +111,11 @@ ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
 }  // namespace
 
 template <size_t N>
-void RenderNostrZapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                          uint8_t (&fb_storage)[N][16 * 296],
-                          const AppFonts& fonts,
-                          const DataSnapshot::LatestZap& zap,
-                          bool use_sats_symbol, uint8_t sats_variant,
-                          bool full_refresh_mode, bool vertical_desc) {
+void RenderNostrZapScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::LatestZap& zap, bool use_sats_symbol,
+    uint8_t sats_variant, bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Zap layout needs at least 7 panels");
 
   // Budget = tail cells excluding ZAP + bolt. The glyph isn't reserved
@@ -188,13 +187,11 @@ void RenderNostrZapScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                   /*full_refresh=*/full_refresh_mode, vertical_desc);
 }
 
-template void RenderNostrZapScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                      uint8_t (&)[7][16 * 296], const AppFonts&,
-                                      const DataSnapshot::LatestZap&, bool,
-                                      uint8_t, bool, bool);
-template void RenderNostrZapScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                      uint8_t (&)[8][16 * 296], const AppFonts&,
-                                      const DataSnapshot::LatestZap&, bool,
-                                      uint8_t, bool, bool);
+template void RenderNostrZapScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool, bool);
+template void RenderNostrZapScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool, bool);
 
 }  // namespace btclock

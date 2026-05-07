@@ -678,7 +678,7 @@ TEST_CASE(
   // criterion is that WiFi/provisioning-adjacent settings trigger
   // reboot. Check the ones an end-user would expect. `invertedColor`
   // is intentionally absent — bd btclock_v4-5wj flipped it to runtime
-  // now that EpdSetGlobalInverted lets the driver swap polarity live.
+  // now that epd::SetGlobalInverted lets the driver swap polarity live.
   // `hostnamePrefix` and `mdnsEnabled` are also absent — bd
   // btclock_v4-9ut wired on_mdns_changed so the advert re-publishes
   // live without a reboot.

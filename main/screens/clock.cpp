@@ -22,7 +22,7 @@ namespace btclock {
 // between the digit rows at the digit baseline.
 
 template <size_t N>
-void RenderClockScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderClockScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                        uint8_t (&fb_storage)[N][16 * 296],
                        const AppFonts& fonts, bool valid, int hour, int minute,
                        int mday, int month, bool prev_valid, int prev_hour,
@@ -85,13 +85,13 @@ void RenderClockScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
                   vertical_desc);
 }
 
-template void RenderClockScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                   uint8_t (&)[7][16 * 296], const AppFonts&,
-                                   bool, int, int, int, int, bool, int, int,
-                                   int, int, bool, bool, bool);
-template void RenderClockScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                   uint8_t (&)[8][16 * 296], const AppFonts&,
-                                   bool, int, int, int, int, bool, int, int,
-                                   int, int, bool, bool, bool);
+template void RenderClockScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, bool, int, int, int, int, bool, int, int, int, int, bool,
+    bool, bool);
+template void RenderClockScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, bool, int, int, int, int, bool, int, int, int, int, bool,
+    bool, bool);
 
 }  // namespace btclock

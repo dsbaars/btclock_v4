@@ -17,7 +17,7 @@
 #include "auth_gate.hpp"
 #include "cJSON.h"
 #include "control_validators.hpp"
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_heap_caps.h"
@@ -687,7 +687,7 @@ std::string ControlServer::BuildStatusJson() const {
 
   const int64_t uptime_s = esp_timer_get_time() / 1000000;
   cJSON_AddNumberToObject(root, "espUptime", static_cast<double>(uptime_s));
-  cJSON_AddBoolToObject(root, "epdInverted", btclock::EpdGetGlobalInverted());
+  cJSON_AddBoolToObject(root, "epdInverted", btclock::epd::GetGlobalInverted());
   // "espFreeHeap"/"espHeapSize" describe INTERNAL SRAM only; PSRAM is
   // split into espFreePsram/espPsramSize so the free <= size invariant
   // holds. See heap_metrics.hpp for the full field contract.

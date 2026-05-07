@@ -17,7 +17,7 @@ constexpr const char* kTag = "prov-ui";
 constexpr const char* kRef = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 template <size_t N>
-LandscapeFb PrepFb(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+LandscapeFb PrepFb(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                    uint8_t (&fb_storage)[N][16 * 296], int i) {
   LandscapeFb lfb = {};
   lfb.native_fb = fb_storage[i];
@@ -84,10 +84,10 @@ std::string WrapGitDescribe(const char* v) {
 }  // namespace
 
 template <size_t N>
-void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                              uint8_t (&fb_storage)[N][16 * 296],
-                              const AppFonts& fonts, const std::string& ap_ssid,
-                              const std::string& ap_pw) {
+void RenderProvisioningScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::string& ap_ssid, const std::string& ap_pw) {
   static_assert(N >= 7, "provisioning layout needs at least 7 panels");
 
   const Font& reg = fonts.atkinson();
@@ -186,10 +186,10 @@ void RenderProvisioningScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 
 // Explicit instantiations — one per panel count we support.
 template void RenderProvisioningScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&);
 template void RenderProvisioningScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&);
 
 }  // namespace btclock

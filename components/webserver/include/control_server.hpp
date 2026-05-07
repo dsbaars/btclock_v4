@@ -272,7 +272,7 @@ class ControlServer {
 
     // Fires when PATCH /api/settings writes `invertedColor`. The
     // callback receives the stored bool; main installs it on the EPD
-    // driver (`EpdSetGlobalInverted`) and marks the screen dirty so the
+    // driver (`epd::SetGlobalInverted`) and marks the screen dirty so the
     // next frame repaints with the new polarity. Nullable — an unwired
     // callback leaves the change deferred to reboot (main.cpp reads the
     // pref once at InitOnce + first Render).

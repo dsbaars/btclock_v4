@@ -24,7 +24,7 @@ namespace {
 constexpr const char* kAnyRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 template <size_t N>
-void PaintUpdatePanel(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void PaintUpdatePanel(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                       uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
                       size_t i) {
   auto lfb = PrepFb(panels, fb_storage, i);
@@ -47,9 +47,9 @@ void PaintUpdatePanel(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }  // namespace
 
 template <size_t N>
-void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                           uint8_t (&fb_storage)[N][16 * 296],
-                           const AppFonts& fonts) {
+void RenderOtaUpdateScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts) {
   for (size_t i = 0; i < N; ++i) {
     PaintUpdatePanel(panels, fb_storage, fonts, i);
   }
@@ -62,10 +62,10 @@ void RenderOtaUpdateScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }
 
 template void RenderOtaUpdateScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&);
 template void RenderOtaUpdateScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&);
 
 }  // namespace btclock

@@ -9,13 +9,13 @@
 #include <cstddef>
 #include <memory>
 
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "fonts_app.hpp"
 
 namespace btclock {
 
 template <size_t N>
-void RenderSplashScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                         uint8_t (&fb_storage)[N][16 * 296],
                         const AppFonts& fonts);
 

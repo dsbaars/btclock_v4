@@ -10,11 +10,11 @@
 
 namespace btclock {
 
-void DoFactoryReset(
-    ScreenManager& sm,
-    std::array<std::unique_ptr<EpdPanel>, btclock::board::kNumPanels>& panels,
-    uint8_t (&fb_storage)[btclock::board::kNumPanels][16 * 296],
-    const AppFonts& fonts, DataHub* hub) {
+void DoFactoryReset(ScreenManager& sm,
+                    std::array<std::unique_ptr<epd::IEpdPanel>,
+                               btclock::board::kNumPanels>& panels,
+                    uint8_t (&fb_storage)[btclock::board::kNumPanels][16 * 296],
+                    const AppFonts& fonts, DataHub* hub) {
   const std::size_t n = static_cast<std::size_t>(btclock::board::kNumPanels);
   std::vector<std::string> cells(n, std::string(" "));
   // "ERASING" fits 7-panel boards exactly and centers with one right

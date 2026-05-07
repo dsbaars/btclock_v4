@@ -28,12 +28,11 @@ namespace btclock {
 //                     mirror for /api/status data[].
 
 template <size_t N>
-void RenderBitcoinSupplyScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
-                               uint8_t (&fb_storage)[N][16 * 296],
-                               const AppFonts& fonts, uint32_t block_height,
-                               uint32_t prev_height, bool big_chars,
-                               bool show_percent, bool full_refresh_mode,
-                               bool vertical_desc) {
+void RenderBitcoinSupplyScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    uint32_t block_height, uint32_t prev_height, bool big_chars,
+    bool show_percent, bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "supply layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
 
@@ -151,10 +150,10 @@ void RenderBitcoinSupplyScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }
 
 template void RenderBitcoinSupplyScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, uint32_t, uint32_t, bool, bool, bool, bool);
 template void RenderBitcoinSupplyScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, uint32_t, uint32_t, bool, bool, bool, bool);
 
 }  // namespace btclock

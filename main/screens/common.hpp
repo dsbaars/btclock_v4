@@ -15,8 +15,8 @@
 #include <string>
 
 // Under the emscripten/WASM preview build (tools/wasm/build.sh) the
-// real epd_ssd1680.hpp can't be pulled in — it pulls driver/gpio.h,
-// driver/spi_master.h, mcp23017.hpp. We substitute a minimal EpdPanel
+// real epd/panel.hpp can't be pulled in — it pulls driver/gpio.h,
+// driver/spi_master.h, mcp23017.hpp. We substitute a minimal epd::IEpdPanel
 // shim (wasm_panel.hpp) that exposes just the Width/Height/kStride
 // surface and stubs out DrawFramebufferStart/WaitForRefresh. font.hpp
 // itself is pure (cstdint/cstddef only) so it's the same in both
@@ -26,7 +26,7 @@
 #include "font.hpp"
 #include "wasm_panel.hpp"
 #else
-#include "epd_ssd1680.hpp"
+#include "epd/panel.hpp"
 #include "font.hpp"
 #endif
 
@@ -45,11 +45,11 @@ inline constexpr const char* kDigitRef = "0123456789";
 
 // Build a LandscapeFb view over panel `i`'s framebuffer. Templated on N
 // so the array-of-arrays type propagates naturally; there's no allocation.
-// Compiles against either the real EpdPanel (components/epd_ssd1680) or
+// Compiles against either the real epd::IEpdPanel (components/epd) or
 // the WASM shim (tools/wasm/wasm_panel.hpp) — both expose the same
 // kStride/Width/Height surface.
 template <size_t N>
-LandscapeFb PrepFb(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+LandscapeFb PrepFb(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                    uint8_t (&fb_storage)[N][16 * 296], size_t i) {
   LandscapeFb lfb = {};
   lfb.native_fb = fb_storage[i];
@@ -260,7 +260,7 @@ struct PaintSlot {
 };
 
 // Runtime-mutable digit pixel height for the kDigit / kCurrencyGlyph
-// PaintSlot kinds. Mirrors EpdSetGlobalInverted's global-toggle pattern —
+// PaintSlot kinds. Mirrors epd::SetGlobalInverted's global-toggle pattern —
 // ScreenManager::Render pushes the live `digitFontPx` settings value here
 // before painting, so the per-screen renderers' constructed PaintSlots
 // pick up the new size on the next frame without changing every renderer
@@ -271,7 +271,7 @@ void SetGlobalDigitPx(float px);
 float GetGlobalDigitPx();
 
 // Non-template paint-one-panel helper. Declared here so the template
-// wrapper below stays header-only (it references EpdPanel whose type
+// wrapper below stays header-only (it references epd::IEpdPanel whose type
 // differs between device / WASM builds) without pulling the paint
 // primitives into the template body.
 //
@@ -284,7 +284,7 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                      const PaintSlot& slot, bool vertical_desc = false);
 
 template <std::size_t N>
-void PaintDataScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void PaintDataScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                      uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
                      const std::array<PaintSlot, N>& slots,
                      const std::array<bool, N>& update, bool full_refresh,

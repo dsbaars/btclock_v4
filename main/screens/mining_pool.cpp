@@ -157,7 +157,7 @@ constexpr const char* kEarnDigitRef = "0123456789.KMB";
 
 template <size_t N>
 void RenderMiningPoolHashrateScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
     const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
@@ -227,7 +227,7 @@ void RenderMiningPoolHashrateScreen(
 
 template <size_t N>
 void RenderMiningPoolEarningsScreen(
-    std::array<std::unique_ptr<EpdPanel>, N>& panels,
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
     const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
@@ -294,19 +294,19 @@ void RenderMiningPoolEarningsScreen(
 }
 
 template void RenderMiningPoolHashrateScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
     const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolHashrateScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
     const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<7>(
-    std::array<std::unique_ptr<EpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
     const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<8>(
-    std::array<std::unique_ptr<EpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
     const DataSnapshot::PoolStats&, bool, bool);
 

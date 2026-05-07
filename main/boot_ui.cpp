@@ -10,7 +10,7 @@ constexpr const char* kSplashLetters = "BTCLOCK!";
 }  // namespace
 
 template <size_t N>
-void RenderSplashScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                         uint8_t (&fb_storage)[N][16 * 296],
                         const AppFonts& fonts) {
   static_assert(N <= 8, "kSplashLetters only spells out eight glyphs");
@@ -44,9 +44,11 @@ void RenderSplashScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   }
 }
 
-template void RenderSplashScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                    uint8_t (&)[7][16 * 296], const AppFonts&);
-template void RenderSplashScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                    uint8_t (&)[8][16 * 296], const AppFonts&);
+template void RenderSplashScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&);
+template void RenderSplashScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&);
 
 }  // namespace btclock

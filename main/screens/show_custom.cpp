@@ -33,7 +33,7 @@ float PickPixelHeight(const char* text, int panel_w, const Font& font) {
 }
 
 template <size_t N>
-void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void PaintOne(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
               uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
               size_t i, const std::string& cell) {
   auto lfb = PrepFb(panels, fb_storage, i);
@@ -73,7 +73,7 @@ void PaintOne(std::array<std::unique_ptr<EpdPanel>, N>& panels,
 }  // namespace
 
 template <size_t N>
-void RenderCustomScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderCustomScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                         uint8_t (&fb_storage)[N][16 * 296],
                         const AppFonts& fonts,
                         const std::array<std::string, N>& cells,
@@ -104,15 +104,13 @@ void RenderCustomScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   }
 }
 
-template void RenderCustomScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                    uint8_t (&)[7][16 * 296], const AppFonts&,
-                                    const std::array<std::string, 7>&,
-                                    const std::array<std::string, 7>&, bool,
-                                    bool);
-template void RenderCustomScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                    uint8_t (&)[8][16 * 296], const AppFonts&,
-                                    const std::array<std::string, 8>&,
-                                    const std::array<std::string, 8>&, bool,
-                                    bool);
+template void RenderCustomScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const std::array<std::string, 7>&,
+    const std::array<std::string, 7>&, bool, bool);
+template void RenderCustomScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, const std::array<std::string, 8>&,
+    const std::array<std::string, 8>&, bool, bool);
 
 }  // namespace btclock

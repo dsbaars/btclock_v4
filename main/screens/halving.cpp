@@ -69,7 +69,7 @@ void DrawSlashSplit(auto& lfb, const AppFonts& fonts, const std::string& cell) {
 }  // namespace
 
 template <size_t N>
-void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
+void RenderHalvingScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, uint32_t block_height,
                          uint32_t prev_height, bool as_blocks,
@@ -162,11 +162,11 @@ void RenderHalvingScreen(std::array<std::unique_ptr<EpdPanel>, N>& panels,
   }
 }
 
-template void RenderHalvingScreen<7>(std::array<std::unique_ptr<EpdPanel>, 7>&,
-                                     uint8_t (&)[7][16 * 296], const AppFonts&,
-                                     uint32_t, uint32_t, bool, bool, bool);
-template void RenderHalvingScreen<8>(std::array<std::unique_ptr<EpdPanel>, 8>&,
-                                     uint8_t (&)[8][16 * 296], const AppFonts&,
-                                     uint32_t, uint32_t, bool, bool, bool);
+template void RenderHalvingScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
+template void RenderHalvingScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
+    const AppFonts&, uint32_t, uint32_t, bool, bool, bool);
 
 }  // namespace btclock

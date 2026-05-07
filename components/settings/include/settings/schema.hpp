@@ -73,7 +73,7 @@ struct FieldSpec {
 //     only runs at boot (it's legal to call again, but it leaves
 //     dangling tasks in practice).
 //   - invertedColor used to be in this set (EPD driver init) but
-//     bd btclock_v4-5wj wired EpdSetGlobalInverted so it applies live.
+//     bd btclock_v4-5wj wired epd::SetGlobalInverted so it applies live.
 //     fontName likewise: bd btclock_v4-5az dispatches kSetFont through
 //     the ControlCommand queue (see main/app/event_loop.cpp), so the
 //     four-pointer AppFonts swap happens on the main task without a
@@ -212,7 +212,7 @@ inline constexpr std::array<FieldSpec, 81> kFields = {{
     // v3 DEFAULT_INVERSE_BUTTONS=false.
     {prefs::kInverseButtons, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // invertedColor: runtime — the EPD driver toggles a global polarity
-    // flag (EpdSetGlobalInverted) and main's on_inverted_color_changed
+    // flag (epd::SetGlobalInverted) and main's on_inverted_color_changed
     // hook marks the screen dirty so the next paint repaints with the
     // new polarity. No reboot required. Default is handled in
     // BuildGetResponse (device-dependent: true == white-on-black).
