@@ -444,7 +444,7 @@ constexpr const char* kTag = "btclock";
       const bool catch_up =
           BlockEventPolicy::IsCatchUpJump(prev_block_height, new_block_height);
       if (!catch_up) {
-        PostLedEvent(LedEvent::kBlockFlash);
+        PostLedEffect(LedEffect::kBlockFlash);
         if (frontlight) frontlight->Flash();
         // stealFocus: when enabled, a new block jumps the display to the
         // block-height screen so the viewer sees the fresh height without

@@ -7,7 +7,7 @@
 // Schnorr-verifies every kind 9735 event via VerifyEvent before
 // firing the callback (relays are not trusted). No invoice parsing —
 // the caller decides what to do with the verified event, typically a
-// LedEvent::kZapFlash plus optional on-screen amount.
+// LedEffect::kZapFlash plus optional on-screen amount.
 
 #pragma once
 

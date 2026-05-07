@@ -104,16 +104,7 @@ void InitLeds(gpio_num_t pin, uint32_t count);
 // Post an effect to the LED task. Thread-safe. Non-blocking; drops if
 // the queue is full (8 slots). No-op when the `disable` pref is true
 // (effect is simply swallowed; the task checks per-frame).
-//
-// Backwards-compat shim: accepts a LedEvent alias so existing call
-// sites in main.cpp keep compiling. Prefer LedEffect for new code.
 void PostLedEffect(LedEffect ev);
-
-// Alias — kept for the 3-event API in main.cpp / existing call sites.
-using LedEvent = LedEffect;
-inline void PostLedEvent(LedEffect ev) {
-  PostLedEffect(ev);
-}
 
 // --- State + prefs API for the control server ---
 // All setters persist to NVS and apply to the runtime state on the

@@ -237,7 +237,7 @@ void WireDataSources(AppCtx& ctx) {
   }
   ESP_ERROR_CHECK(ctx.buttons->Start());
 
-  PostLedEvent(LedEvent::kSetIdle);
+  PostLedEffect(LedEffect::kSetIdle);
 }
 
 }  // namespace btclock

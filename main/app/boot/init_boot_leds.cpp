@@ -44,9 +44,9 @@ void InitBootLeds() {
   // (STA mode).
   Prefs settings(prefs::kSettingsNs);
   if (btclock::settings::ReadBool(settings, prefs::kLedTestOnPower)) {
-    PostLedEvent(LedEvent::kPowerTest);
+    PostLedEffect(LedEffect::kPowerTest);
   } else {
-    PostLedEvent(LedEvent::kSetIdle);
+    PostLedEffect(LedEffect::kSetIdle);
   }
 }
 
