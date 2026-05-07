@@ -1,6 +1,3 @@
-// Registered by mining_pool_stats_handler once pool-selection NVS pref
-// lands (follow-up).
-
 #include "mining_pool_public_pool/public_pool.hpp"
 
 #include "mining_pool_public_pool/public_pool_parser.hpp"

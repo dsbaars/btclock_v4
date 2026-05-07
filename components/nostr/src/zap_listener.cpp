@@ -20,9 +20,11 @@ ZapListener::ZapListener(SubscriptionManager& subs, std::string sub_id,
       sub_id_(std::move(sub_id)),
       recipient_(std::move(recipient_pubkey_hex)) {
   // We install a manager-level event callback that dispatches by sub_id
-  // here. Callers that need multiple ZapListeners per manager should
-  // fan out from one top-level event handler themselves; for now the
-  // firmware runs one listener.
+  // here. SubscriptionManager holds exactly one callback, so this
+  // overwrites any previously installed listener — by design: the
+  // firmware has one ZapListener (one zap recipient pubkey per
+  // BTClock). Multiple listeners on the same manager would need a
+  // caller-side dispatcher.
   subs_.SetOnEvent([this](const std::string& sid, const Event& ev) {
     if (sid == sub_id_) Handle(sid, ev);
   });

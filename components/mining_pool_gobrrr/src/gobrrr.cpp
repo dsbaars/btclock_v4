@@ -1,6 +1,3 @@
-// Registered by mining_pool_stats_handler once pool-selection NVS pref
-// lands (follow-up).
-
 #include "mining_pool_gobrrr/gobrrr.hpp"
 
 #include "prefs.hpp"

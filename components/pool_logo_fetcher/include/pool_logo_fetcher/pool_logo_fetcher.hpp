@@ -50,9 +50,9 @@ void SetOnFetchComplete(std::function<void(const std::string& pool_name)> cb);
 // name. Cheap to call from the rendering path — never blocks.
 esp_err_t EnqueueFetch(const std::string& pool_name);
 
-// Synchronous variant — runs on the caller's task. Used by the
-// `POST /api/action/clear_pool_logos` follow-up so the user can ask
-// for a forced re-download. Most callers should prefer EnqueueFetch.
+// Synchronous variant — runs on the caller's task. Used by
+// `POST /api/action/clear_pool_logos` so the user can ask for a forced
+// re-download. Most callers should prefer EnqueueFetch.
 esp_err_t FetchNow(const std::string& pool_name);
 
 // Delete every cached `.bin` under `/lfs/pool_logos/`. Called by

@@ -1,6 +1,3 @@
-// Registered by mining_pool_stats_handler once pool-selection NVS pref
-// lands (follow-up).
-
 #include "mining_pool_ocean/ocean.hpp"
 
 #include "mining_pool_ocean/ocean_parser.hpp"
