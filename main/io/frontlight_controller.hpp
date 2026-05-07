@@ -215,6 +215,16 @@ class FrontlightController {
   // would otherwise turn the backlight on.
   void OnAmbientLux(float lux);
 
+  // Edge-triggered DND re-evaluation. Post() only gates *new* commands
+  // when DND is active; an already-on backlight stays on until something
+  // pushes a new event. Call this on a periodic tick (1 Hz from the
+  // main loop is enough for time-based DND minute boundaries) so the
+  // panel fades off when DND turns on and resumes when it turns off,
+  // even with no other events flowing. Tracks both the suppressor's
+  // value and `flOffOnDnd` so toggling the opt-out also lifts/applies
+  // suppression without a reboot.
+  void OnDndStateMaybeChanged();
+
   // --- Status surface for future /api/frontlight/status wiring ---
   struct Status {
     bool enabled;
@@ -276,6 +286,14 @@ class FrontlightController {
   // DND predicate. Set once at boot, read from both the caller thread
   // (inside Post) and the controller task. Nullptr = no gating.
   std::function<bool()> suppressor_;
+
+  // Last seen "suppressed" state — `dnd_active && off_on_dnd_`.
+  // Drives OnDndStateMaybeChanged()'s edge detection. Initial value
+  // false matches boot reality: at startup the panel is dark and DND
+  // can't yet have been entered; the first periodic tick catches up
+  // (no transient if both flags are false; correct fade-off if DND
+  // was already active at boot and `flOffOnDnd` is on).
+  volatile bool last_dnd_suppressed_ = false;
 };
 
 }  // namespace btclock

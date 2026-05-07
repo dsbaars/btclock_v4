@@ -207,6 +207,32 @@ void FrontlightController::OnAmbientLux(float lux) {
   }
 }
 
+void FrontlightController::OnDndStateMaybeChanged() {
+  // Compute the effective suppression bit: DND is active AND the user
+  // hasn't opted out via flOffOnDnd. Edge-triggered so we only push an
+  // event when the suppression bit actually flips. Cheap on the steady
+  // path: a function-call + std::time() through dnd::IsActive().
+  if (queue_ == nullptr) return;
+  const bool dnd_active = (suppressor_ && suppressor_());
+  const bool currently_suppressed = dnd_active && off_on_dnd_;
+  const bool was_suppressed = last_dnd_suppressed_;
+  last_dnd_suppressed_ = currently_suppressed;
+  if (currently_suppressed == was_suppressed) return;
+  // Bypass Post()'s always_on gate by enqueueing directly: when DND is
+  // active we want the panel dark, period — flAlwaysOn is a secondary
+  // ambient-loop preference and DND is a higher-priority user policy.
+  // (Routing through Post() would silently drop kAmbientOff because of
+  // the always_on check that lives above the suppressor branch.) For
+  // the DND-lifts edge we still send kAmbientOn directly so it is
+  // symmetric and not subject to anything else; the task gates on the
+  // user-off latch internally so a previous explicit Off is honoured.
+  const FrontlightCommand cmd =
+      currently_suppressed
+          ? FrontlightCommand{FrontlightEvent::kAmbientOff, 0}
+          : FrontlightCommand{FrontlightEvent::kAmbientOn, 0};
+  SendOrDrop(queue_, cmd);
+}
+
 FrontlightController::Status FrontlightController::GetStatus() const {
   Status s{};
   s.enabled = logical_on_;

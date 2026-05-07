@@ -785,6 +785,23 @@ std::string ControlServer::BuildStatusJson() const {
     cJSON_AddItemToObject(root, "leds", cJSON_CreateArray());
   }
 
+  // Compact frontlight snapshot — at-a-glance "is the panel lit?" so
+  // tests / monitoring can observe DND-suppression and the lux gate
+  // without polling /api/frontlight/status. Suppressed when the board
+  // has no frontlight (Rev A / V8 pass nullptr) so the WebUI can hide
+  // the row entirely on those variants.
+  if (cfg_.frontlight) {
+    const FrontlightIface::Status fls = cfg_.frontlight->GetStatus();
+    cJSON* fl = cJSON_AddObjectToObject(root, "frontlight");
+    cJSON_AddBoolToObject(fl, "on", fls.enabled);
+    cJSON_AddNumberToObject(fl, "currentDuty",
+                            static_cast<double>(fls.current_duty));
+    cJSON_AddNumberToObject(fl, "targetDuty",
+                            static_cast<double>(fls.target_duty));
+    cJSON_AddNumberToObject(fl, "configuredBrightness",
+                            static_cast<double>(fls.configured_brightness));
+  }
+
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
   if (!txt) return {};

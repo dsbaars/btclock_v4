@@ -173,6 +173,14 @@ constexpr const char* kTag = "btclock";
       }
     }
 
+    // DND edge detection for the frontlight: Post()'s suppressor gate
+    // only catches new commands, so an already-on backlight stays lit
+    // when DND turns on (manual toggle or time-based crossing) until
+    // something else nudges the queue. Driving this from the 1 Hz
+    // wake-up gives a worst-case 1 s lag on minute-aligned time-based
+    // DND boundaries, and near-immediate response on manual toggles.
+    if (frontlight) frontlight->OnDndStateMaybeChanged();
+
     if (now_ms - last_heartbeat_ms >= 10'000) {
       uint16_t port = 0;
       mcp.ReadPort(&port);
