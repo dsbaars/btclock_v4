@@ -15,7 +15,7 @@ namespace btclock {
 //   GET /api/scan      → JSON array of nearby networks
 //   GET /api/version   → {"hw":"...","version":"...","built":"..."}
 //   POST /api/wifi     → body "ssid=...&pw=...", save, schedule reboot
-//   * (any other path) → 302 → /  (captive-portal bounce)
+//   * (any other path) → portal.html 200 (CNA trigger; see HandleAny)
 //
 // The portal is designed for AP-only use (not reachable in STA mode).
 class ProvisioningServer {

@@ -280,14 +280,13 @@ esp_err_t ProvisioningServer::HandleWifi(httpd_req_t* req) {
 }
 
 esp_err_t ProvisioningServer::HandleAny(httpd_req_t* req) {
-  // Captive-portal bounce. 302 any unknown path to "/" so Android/iOS
-  // "connectivity check" URLs land on the portal.
-  auto* self = static_cast<ProvisioningServer*>(req->user_ctx);
-  const std::string location = "http://" + self->wifi_->ap_ip() + "/";
-  httpd_resp_set_status(req, "302 Found");
-  httpd_resp_set_hdr(req, "Location", location.c_str());
-  httpd_resp_set_type(req, "text/plain");
-  return httpd_resp_send(req, "portal", 6);
+  // Serve the portal HTML at 200 on every unknown path — OS captive-net
+  // probes (iOS hotspot-detect.html, Android generate_204, Windows
+  // ncsi.txt) are body-content keyed and only open the CNA sheet when
+  // the response *body* doesn't match the expected canary. 302 bounces
+  // are inconsistent on iOS CNA — that's why the portal previously only
+  // appeared after the user manually opened Safari.
+  return HandlePortal(req);
 }
 
 }  // namespace btclock
