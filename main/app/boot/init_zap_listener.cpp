@@ -32,61 +32,53 @@ constexpr const char* kTag = "btclock";
 // callback shape without duplicating the captures.
 void BindOnZap(AppCtx& ctx) {
   if (!ctx.zap_listener) return;
-  // Frontlight + flFlashOnZap pref are intentionally NOT captured: the
-  // ZapFlash() pulse is fired from event_loop.cpp's zap-notify branch
-  // after sm.Render() so the staggered fade-up doesn't start before the
-  // EPDs paint the zap overlay. See the matching comment below.
+  // Neither LED nor frontlight effects are fired from the relay-worker
+  // callback. Both are dispatched from event_loop.cpp's zap-notify
+  // branch AFTER sm.Render() paints the zap overlay, so the user sees
+  // the screen change first and the LED ring + staggered frontlight
+  // pulse fire together (mirrors the new-block notification timing).
+  // Only the snapshot update + the zap-pending flag stay here — those
+  // need to land before the main loop wakes.
   DataHub* hub_ptr = ctx.hub.get();
   TaskHandle_t main_task = ctx.main_task;
-  auto* flash_on_zap_ptr = &ctx.flash_on_zap_enabled;
   auto* zap_notify_ptr = &ctx.zap_notify_screen_enabled;
   auto* zap_pending_ptr = &ctx.zap_notify_pending;
 
-  ctx.zap_listener->SetOnZap([hub_ptr, main_task, flash_on_zap_ptr,
-                              zap_notify_ptr, zap_pending_ptr](
-                                 const nostr::ZapListener::ZapInfo& z) {
-    const uint64_t sats = z.amount_msat / 1000ULL;
-    const std::string eid = z.raw ? z.raw->id.substr(0, 8) : std::string("?");
-    ESP_LOGI(kTag, "zap: %llu sats id=%s…",
-             static_cast<unsigned long long>(sats), eid.c_str());
-    ESP_LOGD(kTag, "zap bolt11: %s", z.bolt11.c_str());
-    // Always update the snapshot so /api/status can echo the
-    // latest receipt regardless of whether we pop the screen —
-    // matches the spec choice of "nostrZapNotify gates the
-    // override + LED flash only, not the data side".
-    if (hub_ptr) {
-      DataSnapshot patch;
-      patch.latest_zap.amount_sats = static_cast<int64_t>(sats);
-      patch.latest_zap.message = z.content;
-      patch.latest_zap.received_ms = MsNow();
-      hub_ptr->Report(patch);
-    }
-    // Notify + LED flash only fire when the user hasn't
-    // disabled them. Keep both gated by the same pref so a
-    // "quiet" user experience is opt-in via a single toggle.
-    if (zap_notify_ptr->load()) {
-      if (flash_on_zap_ptr->load()) {
-        PostLedEffect(LedEffect::kZap);
-      }
-      // Frontlight ZapFlash is intentionally NOT fired here.
-      // The relay-worker callback runs before the main loop has
-      // had a chance to flip ScreenManager into the zap overlay,
-      // so a Flash() here would start the staggered fade-up
-      // animation while the EPDs still show the prior screen.
-      // event_loop.cpp's zap-notify branch fires ZapFlash() AFTER
-      // sm.Render() returns (PaintDataScreen is synchronous), so
-      // the animation lines up with the user-visible "zap screen
-      // appears, then the panel pulses" sequence. Mirrors the
-      // block-flash deferral already in place for new-block events.
-
-      // Signal the main loop to flip ScreenManager into the
-      // zap overlay. The hub Report above also wakes main_task
-      // via the on-update callback; the pending flag picks
-      // that wake up and dispatches SetZapNotify.
-      zap_pending_ptr->store(true);
-      xTaskNotifyGive(main_task);
-    }
-  });
+  ctx.zap_listener->SetOnZap(
+      [hub_ptr, main_task, zap_notify_ptr, zap_pending_ptr](
+          const nostr::ZapListener::ZapInfo& z) {
+        const uint64_t sats = z.amount_msat / 1000ULL;
+        const std::string eid =
+            z.raw ? z.raw->id.substr(0, 8) : std::string("?");
+        ESP_LOGI(kTag, "zap: %llu sats id=%s…",
+                 static_cast<unsigned long long>(sats), eid.c_str());
+        ESP_LOGD(kTag, "zap bolt11: %s", z.bolt11.c_str());
+        // Always update the snapshot so /api/status can echo the
+        // latest receipt regardless of whether we pop the screen —
+        // matches the spec choice of "nostrZapNotify gates the
+        // override + LED flash only, not the data side".
+        if (hub_ptr) {
+          DataSnapshot patch;
+          patch.latest_zap.amount_sats = static_cast<int64_t>(sats);
+          patch.latest_zap.message = z.content;
+          patch.latest_zap.received_ms = MsNow();
+          hub_ptr->Report(patch);
+        }
+        // nostrZapNotify gates the screen override (and, transitively,
+        // the LED + frontlight effects fired from the dispatcher when
+        // the overlay paints). The per-effect gates ledFlashOnZap and
+        // flFlashOnZap are evaluated at the dispatcher site so a live
+        // PATCH lands without a reboot — see event_loop.cpp's zap-
+        // notify branch.
+        if (zap_notify_ptr->load()) {
+          // Signal the main loop to flip ScreenManager into the
+          // zap overlay. The hub Report above also wakes main_task
+          // via the on-update callback; the pending flag picks
+          // that wake up and dispatches SetZapNotify.
+          zap_pending_ptr->store(true);
+          xTaskNotifyGive(main_task);
+        }
+      });
 }
 }  // namespace
 

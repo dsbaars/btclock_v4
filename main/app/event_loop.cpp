@@ -54,6 +54,7 @@ constexpr const char* kTag = "btclock";
   auto& zap_notify_pending = ctx.zap_notify_pending;
   auto& zap_screen_auto_restore = ctx.zap_screen_auto_restore;
   auto& flash_frontlight_on_zap_enabled = ctx.flash_frontlight_on_zap_enabled;
+  auto& flash_on_zap_enabled = ctx.flash_on_zap_enabled;
   const std::string& ssid = ctx.sta_ssid;
   auto publish_status = [&ctx]() { PublishStatus(ctx); };
 
@@ -84,11 +85,18 @@ constexpr const char* kTag = "btclock";
 
   while (true) {
     // Per-iteration latch: the new-block decision sets this true, the
-    // render path that paints the new height kicks the staggered flash
-    // afterwards. Reset at the top of every iteration so a `continue`
-    // mid-iteration can't carry the flag forward and fire spuriously
-    // next time around.
-    bool pending_frontlight_flash = false;
+    // render path that paints the new height kicks BOTH the LED block-
+    // flash effect AND the frontlight staggered pulse afterwards (in
+    // that order, but as close together as the queue dispatch allows).
+    // Coordinating the two effects post-render means the user perceives
+    // a single "new block!" notification — digits appear, panels pulse,
+    // LED ring strobes — instead of an LED-leads-EPD stagger that was
+    // most jarring on partial refreshes (1-digit increment is just
+    // ~120 ms of EPD work, but the LED firing first stretched the
+    // perceived gap). Reset at the top of every iteration so a
+    // `continue` mid-iteration can't carry the flag forward and fire
+    // spuriously next time around.
+    bool pending_block_notify = false;
 
     // Drain control-API commands first. These ride in on the httpd
     // worker task via the ControlServer's queue, not the button queue,
@@ -237,12 +245,18 @@ constexpr const char* kTag = "btclock";
       sm.SetZapNotify(now_ms, zap_screen_auto_restore.load(), timeout_ms);
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
-      // Frontlight zap-flash fires AFTER the overlay paints. Render() is
-      // synchronous (PaintDataScreen waits per panel), so by the time we
-      // get here the user sees the zap screen and the staggered fade-up
-      // pulse can begin without overlapping the prior-screen ink. The
-      // relay-worker callback that raised zap_notify_pending intentionally
-      // skipped ZapFlash() — see init_zap_listener.cpp BindOnZap.
+      // LED + frontlight zap notification fires AFTER the overlay paints
+      // — same coordination rule as the new-block path above. Render()
+      // is synchronous (PaintDataScreen waits per panel), so by the time
+      // we get here the user sees the zap screen, then the LED ring +
+      // staggered frontlight pulse fire together. The relay-worker
+      // callback that raised zap_notify_pending intentionally skips both
+      // effects — see init_zap_listener.cpp BindOnZap. Per-effect gates
+      // (ledFlashOnZap / flFlashOnZap) are evaluated here so a live
+      // PATCH lands without a reboot.
+      if (flash_on_zap_enabled.load()) {
+        PostLedEffect(LedEffect::kZap);
+      }
       if (frontlight && flash_frontlight_on_zap_enabled.load()) {
         frontlight->ZapFlash();
       }
@@ -296,16 +310,15 @@ constexpr const char* kTag = "btclock";
       const bool catch_up =
           BlockEventPolicy::IsCatchUpJump(prev_block_height, new_block_height);
       if (!catch_up) {
-        PostLedEffect(LedEffect::kBlockFlash);
-        // Frontlight flash is deferred until AFTER the render that paints
-        // the new height: the staggered fade-up animation should only
-        // start once the EPDs have inked the new digits. PaintDataScreen
-        // is synchronous (WaitForRefresh per panel), so completing
-        // sm.Render() is sufficient — no manual delay needed. v3 used
-        // partial_refresh_time × NUM_SCREENS + an MCP23017 fudge; that
-        // arithmetic collapses here because the panel driver already
-        // blocks on the BUSY line.
-        pending_frontlight_flash = (frontlight != nullptr);
+        // Both the LED block-flash effect and the frontlight staggered
+        // pulse are deferred until AFTER the render that paints the new
+        // height — see the latch comment above the loop for the
+        // coordination rationale. PaintDataScreen is synchronous
+        // (WaitForRefresh per panel), so completing sm.Render() is
+        // sufficient; v3 firmware's `partial_refresh_time × NUM_SCREENS
+        // + MCP23017 fudge` delay collapses here because the panel
+        // driver already blocks on the BUSY line.
+        pending_block_notify = true;
         // stealFocus: when enabled, a new block jumps the display to the
         // block-height screen so the viewer sees the fresh height without
         // waiting for rotation. Pref read per-event so a live PATCH lands
@@ -318,7 +331,10 @@ constexpr const char* kTag = "btclock";
           if (sm.SetKind(ScreenType::kBlockHeight, now_ms)) {
             sm.Render(panels, fb_storage, fonts, snap);
             publish_status();
-            if (pending_frontlight_flash) frontlight->Flash();
+            if (pending_block_notify) {
+              PostLedEffect(LedEffect::kBlockFlash);
+              if (frontlight) frontlight->Flash();
+            }
             continue;
           }
         }
@@ -338,15 +354,18 @@ constexpr const char* kTag = "btclock";
     }
     // Non-steal-focus path of a new-block event lands here: the render
     // above (if it ran) just painted the new height on whatever screen
-    // is current (typically kBlockHeight if it was already showing).
-    // Either way, the EPD refresh has completed by the time Render()
-    // returns, so kicking the staggered flash now matches the user-
-    // visible "new digits, then the panel pulses" sequence. If there
-    // was no render (current screen unaffected by the new height), we
-    // still flash — the user opted into "alert me on every block".
-    if (pending_frontlight_flash) {
-      frontlight->Flash();
-      pending_frontlight_flash = false;
+    // is current (typically kBlockHeight if it was already showing,
+    // where only one or two digit panels actually need a partial
+    // refresh — fast). Either way, the EPD refresh has completed by
+    // the time Render() returns, so kicking the LED + frontlight flash
+    // now matches the user-visible "new digits, then the notification
+    // fires" sequence. If there was no render (current screen
+    // unaffected by the new height), we still notify — the user opted
+    // into "alert me on every block".
+    if (pending_block_notify) {
+      PostLedEffect(LedEffect::kBlockFlash);
+      if (frontlight) frontlight->Flash();
+      pending_block_notify = false;
     }
   }
 }
