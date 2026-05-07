@@ -24,6 +24,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "settings/api.hpp"
 
@@ -43,16 +44,27 @@ struct NostrSourceConfig {
   std::string author_pubkey_hex;  // kNostrPubKey (lowercase hex, 64 chars)
 };
 
+// Cap on the number of zap-recipient pubkeys a single REQ filter can
+// carry. Each entry adds 64 hex chars + quote/comma overhead (~67 B)
+// to the JSON-serialised filter and one extra `#p` value the relay
+// matches against; eight is generous for a personal device while
+// keeping the filter under 600 B.
+constexpr std::size_t kMaxZapPubkeys = 8;
+
 // Snapshot of the nostr-relevant settings the zap listener consumes.
 // The flash gates (LED + frontlight) live alongside so init_zap_listener
 // can stash them in atomics in a single read pass.
 struct ZapListenerConfig {
   // True when nostrZapNotify is set. The listener is wired iff this is
-  // true AND the relay URL + zap pubkey are valid.
+  // true AND the relay URL + zap_pubkeys are valid.
   bool enabled = true;
-  std::string relay_url;          // kNostrRelay (shared with the data source)
-  std::string zap_pubkey;         // kNostrZapPubkey (lowercase hex, 64 chars)
-  bool zap_screen_notify = true;  // kNostrZapNotify
+  std::string relay_url;  // kNostrRelay (shared with the data source)
+  // Recipient pubkeys (lowercase hex, 64 chars each). Source of truth
+  // is kNostrZapPubkeys (CSV in NVS); reader falls back to the legacy
+  // singular kNostrZapPubkey when the plural slot is empty so existing
+  // installs keep working without an explicit migration step.
+  std::vector<std::string> zap_pubkeys;
+  bool zap_screen_notify = true;         // kNostrZapNotify
   bool zap_screen_auto_restore = true;   // kScrnRestoreZap
   bool led_flash_on_zap = true;          // kLedFlashOnZap
   bool frontlight_flash_on_zap = false;  // kFlFlashOnZap

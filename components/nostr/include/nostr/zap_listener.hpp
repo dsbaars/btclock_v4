@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "nostr/event.hpp"
 #include "nostr/subscription_manager.hpp"
@@ -68,11 +69,14 @@ class ZapListener {
   };
   using Callback = std::function<void(const ZapInfo& z)>;
 
-  // `recipient_pubkey_hex` is the pubkey whose zaps we want to hear; the
-  // listener filters on `#p == [recipient_pubkey_hex]`. `sub_id` is the
-  // NIP-01 subscription identifier — make it unique per relay.
+  // `recipient_pubkeys_hex` is the set of pubkeys whose zaps we want to
+  // hear; the listener filters on `#p` containing every entry — NIP-01
+  // permits multiple values on a single tag filter, so all recipients
+  // share one REQ (no extra WSS, no extra subscription). Empty input
+  // is treated as "no recipients" — Start() will refuse. `sub_id` is
+  // the NIP-01 subscription identifier — make it unique per relay.
   ZapListener(SubscriptionManager& subs, std::string sub_id,
-              std::string recipient_pubkey_hex);
+              std::vector<std::string> recipient_pubkeys_hex);
   ~ZapListener();
 
   void SetOnZap(Callback cb) { on_zap_ = std::move(cb); }
@@ -88,7 +92,7 @@ class ZapListener {
 
   SubscriptionManager& subs_;
   std::string sub_id_;
-  std::string recipient_;
+  std::vector<std::string> recipients_;
   Callback on_zap_;
   bool started_ = false;
   // Tracks the created_at of the last zap we passed to `on_zap_`.

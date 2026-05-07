@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 81> kFields = {{
+inline constexpr std::array<FieldSpec, 82> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -274,8 +274,22 @@ inline constexpr std::array<FieldSpec, 81> kFields = {{
     {prefs::kNostrRelay, FieldKind::kString, true, 0, 0, false, 0,
      "wss://relay.primal.net"},
     {prefs::kNostrZapNotify, FieldKind::kBool, false, 0, 0, false, 0, {}},
+    // Legacy single-pubkey slot. Carries the v3 demo-pubkey default so
+    // a fresh install still surfaces it via the read-side fallback in
+    // ReadZapListenerConfig (canonical storage is the plural slot
+    // below; the reader falls back to the legacy slot — and therefore
+    // to this default — when the plural is unset). Kept in the schema
+    // so a stale WebUI / API client that still PATCHes
+    // `nostrZapPubkey` keeps working; the PATCH bridge in
+    // settings_api routes those writes into the plural slot.
     {prefs::kNostrZapPubkey, FieldKind::kString, false, 0, 0, false, 0,
      "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422"},
+    // Canonical zap-recipient list. Stored as CSV in NVS (matches the
+    // actCurrencies pattern); settings_api emits it as a JSON array on
+    // GET and accepts a JSON array on PATCH. Default empty so the
+    // read-side fallback can detect "user has not configured the new
+    // plural slot yet" and consult the legacy singular instead.
+    {prefs::kNostrZapPubkeys, FieldKind::kString, false, 0, 0, false, 0, ""},
     // v3 DEFAULT_OTA_ENABLED=true; otaPass default is empty string in the
     // GET emitter (v3's settings.cpp echoes only `otaPassSet`).
     {prefs::kOtaEnabled, FieldKind::kBool, true, 0, 0, true, 0, {}},

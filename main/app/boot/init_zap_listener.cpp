@@ -105,16 +105,27 @@ void InitZapListener(AppCtx& ctx) {
   // from before the PATCH-side scheme guard. RelayClient would
   // otherwise log "Invalid uri" on Start() and the listener would
   // silently never connect — keep it inert so the boot path still
-  // log-explains why.
+  // log-explains why. Each pubkey must already be 64-char hex (PATCH
+  // validator enforces); recheck here so a hand-edited NVS that drops
+  // a stray space or a partial hex doesn't leak through.
   const bool relay_scheme_ok = zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
                                zap_cfg.relay_url.rfind("ws://", 0) == 0;
-  if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() &&
-        zap_cfg.zap_pubkey.size() == 64 && relay_scheme_ok)) {
-    ESP_LOGI(
-        kTag, "zap listener disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
-        zap_cfg.enabled ? 1 : 0, zap_cfg.relay_url.empty() ? "<empty>" : "set",
-        zap_cfg.zap_pubkey.size() == 64 ? "set" : "<invalid>",
-        relay_scheme_ok ? 1 : 0);
+  bool all_pubkeys_ok = !zap_cfg.zap_pubkeys.empty();
+  for (const auto& pk : zap_cfg.zap_pubkeys) {
+    if (pk.size() != 64) {
+      all_pubkeys_ok = false;
+      break;
+    }
+  }
+  if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() && all_pubkeys_ok &&
+        relay_scheme_ok)) {
+    ESP_LOGI(kTag,
+             "zap listener disabled (enable=%d relay=%s pubs=%zu/%s "
+             "scheme_ok=%d)",
+             zap_cfg.enabled ? 1 : 0,
+             zap_cfg.relay_url.empty() ? "<empty>" : "set",
+             zap_cfg.zap_pubkeys.size(), all_pubkeys_ok ? "ok" : "invalid",
+             relay_scheme_ok ? 1 : 0);
     return;
   }
 
@@ -130,16 +141,26 @@ void InitZapListener(AppCtx& ctx) {
       ShouldShareNostrRelay(ctx.nostr_source->relay_url(), zap_cfg.relay_url)) {
     shared_subs = ctx.nostr_source->subs();
   }
+  // Log helper: first pubkey's 8-char prefix + total count keeps the
+  // boot log informative without dumping all 8 hex strings on V8 boards.
+  auto pubkeys_log = [](const std::vector<std::string>& pks) {
+    std::string s =
+        pks.empty() ? std::string("<none>") : pks.front().substr(0, 8) + "…";
+    if (pks.size() > 1) s += "+" + std::to_string(pks.size() - 1);
+    return s;
+  };
+
   if (shared_subs != nullptr) {
     ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-        *shared_subs, std::string("zap"), zap_cfg.zap_pubkey);
-    ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
+        *shared_subs, std::string("zap"), zap_cfg.zap_pubkeys);
+    ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
     BindOnZap(ctx);
     ctx.zap_listener->Start();
     ESP_LOGI(kTag,
              "zap listener enabled (shared WSS via nostr data source): "
-             "relay=%s pub=%s… flashLed=%d flashFl=%d",
-             zap_cfg.relay_url.c_str(), zap_cfg.zap_pubkey.substr(0, 8).c_str(),
+             "relay=%s pubs=%s flashLed=%d flashFl=%d",
+             zap_cfg.relay_url.c_str(),
+             pubkeys_log(zap_cfg.zap_pubkeys).c_str(),
              ctx.flash_on_zap_enabled.load() ? 1 : 0,
              ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
     return;
@@ -148,8 +169,8 @@ void InitZapListener(AppCtx& ctx) {
   ctx.zap_relay = std::make_unique<nostr::RelayClient>(zap_cfg.relay_url);
   ctx.zap_subs = std::make_unique<nostr::SubscriptionManager>(*ctx.zap_relay);
   ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-      *ctx.zap_subs, std::string("zap"), zap_cfg.zap_pubkey);
-  ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
+      *ctx.zap_subs, std::string("zap"), zap_cfg.zap_pubkeys);
+  ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
 
   BindOnZap(ctx);
   if (auto err = ctx.zap_relay->Start(); err != ESP_OK) {
@@ -163,9 +184,9 @@ void InitZapListener(AppCtx& ctx) {
   }
   ctx.zap_listener->Start();
   ESP_LOGI(kTag,
-           "zap listener enabled (dedicated WSS): relay=%s pub=%s… flashLed=%d "
-           "flashFl=%d",
-           zap_cfg.relay_url.c_str(), zap_cfg.zap_pubkey.substr(0, 8).c_str(),
+           "zap listener enabled (dedicated WSS): relay=%s pubs=%s "
+           "flashLed=%d flashFl=%d",
+           zap_cfg.relay_url.c_str(), pubkeys_log(zap_cfg.zap_pubkeys).c_str(),
            ctx.flash_on_zap_enabled.load() ? 1 : 0,
            ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
 }
@@ -219,11 +240,12 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
     return;
   }
 
-  // Pubkey unchanged → toggling LED/frontlight/screen-notify only
-  // updates the atomics already done above. Stop/Start would tear
-  // down the relay subscription unnecessarily.
-  const bool pubkey_changed = (zap_cfg.zap_pubkey != ctx.zap_pubkey_current);
-  if (!pubkey_changed) {
+  // Pubkey list unchanged → toggling LED/frontlight/screen-notify only
+  // updates the atomics already done above. Stop/Start would tear down
+  // the relay subscription unnecessarily. Comparison is order-sensitive
+  // — a deliberate reorder by the user counts as a change so the REQ
+  // filter reflects the new ordering on the wire.
+  if (zap_cfg.zap_pubkeys == ctx.zap_pubkeys_current) {
     ESP_LOGI(kTag,
              "RefreshZapListenerSettings: atomics refreshed "
              "(led=%d fl=%d notify=%d)",
@@ -233,38 +255,43 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
     return;
   }
 
-  // Pubkey changed: a SubscriptionManager REQ filter is bound at
-  // construction (the recipient_pubkey_hex passed into ZapListener),
-  // so we have to drop the listener and rebuild with the new pubkey.
-  // Schema rejects bad-length / non-hex pubkeys at PATCH time so the
-  // 64-char invariant should already hold; the defensive check below
-  // catches the empty-string-clears-the-field path that ApplyPatch
-  // does allow.
-  if (zap_cfg.zap_pubkey.size() != 64) {
+  // Pubkey list changed: ZapListener binds the REQ filter at
+  // construction, so rebuild against the same SubscriptionManager.
+  // Schema rejects bad-length / non-hex / over-cap pubkeys at PATCH
+  // time so the invariants below should already hold; the defensive
+  // checks catch the empty-list and hand-edited-NVS paths.
+  if (zap_cfg.zap_pubkeys.empty()) {
     ESP_LOGW(kTag,
-             "RefreshZapListenerSettings: new pubkey invalid "
-             "(len=%zu), keeping previous subscription",
-             zap_cfg.zap_pubkey.size());
+             "RefreshZapListenerSettings: new pubkey list empty, "
+             "keeping previous subscription");
     return;
+  }
+  for (const auto& pk : zap_cfg.zap_pubkeys) {
+    if (pk.size() != 64) {
+      ESP_LOGW(kTag,
+               "RefreshZapListenerSettings: new pubkey invalid (len=%zu), "
+               "keeping previous subscription",
+               pk.size());
+      return;
+    }
   }
   ctx.zap_listener->Stop();
   ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-      *active_subs, std::string("zap"), zap_cfg.zap_pubkey);
-  ctx.zap_pubkey_current = zap_cfg.zap_pubkey;
+      *active_subs, std::string("zap"), zap_cfg.zap_pubkeys);
+  ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
   BindOnZap(ctx);
   if (!ctx.zap_listener->Start()) {
-    // Subscribe() failed at the SubscriptionManager layer (e.g. WSS
-    // disconnected mid-rotation). Leave the listener installed —
-    // started_ stays false so the next pubkey change retries cleanly,
-    // and the WSS-layer reconnect will not re-issue the REQ. Loud
-    // because losing the zap subscription is silent otherwise.
     ESP_LOGW(kTag,
-             "RefreshZapListenerSettings: Start() failed for new pubkey %s…",
-             zap_cfg.zap_pubkey.substr(0, 8).c_str());
+             "RefreshZapListenerSettings: Start() failed for %zu pubkeys "
+             "(first=%s…)",
+             zap_cfg.zap_pubkeys.size(),
+             zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
     return;
   }
-  ESP_LOGI(kTag, "RefreshZapListenerSettings: pubkey rotated to %s…",
-           zap_cfg.zap_pubkey.substr(0, 8).c_str());
+  ESP_LOGI(kTag,
+           "RefreshZapListenerSettings: rotated to %zu pubkeys (first=%s…)",
+           zap_cfg.zap_pubkeys.size(),
+           zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
 }
 
 }  // namespace btclock

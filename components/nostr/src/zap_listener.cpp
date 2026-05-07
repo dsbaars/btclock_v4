@@ -15,10 +15,10 @@ constexpr const char* kTag = "nostr-zap";
 }  // namespace
 
 ZapListener::ZapListener(SubscriptionManager& subs, std::string sub_id,
-                         std::string recipient_pubkey_hex)
+                         std::vector<std::string> recipient_pubkeys_hex)
     : subs_(subs),
       sub_id_(std::move(sub_id)),
-      recipient_(std::move(recipient_pubkey_hex)) {
+      recipients_(std::move(recipient_pubkeys_hex)) {
   // We install a manager-level event callback that dispatches by sub_id
   // here. SubscriptionManager holds exactly one callback, so this
   // overwrites any previously installed listener — by design: the
@@ -36,9 +36,14 @@ ZapListener::~ZapListener() {
 
 bool ZapListener::Start() {
   if (started_) return true;
+  if (recipients_.empty()) return false;
   Filter f;
   f.kinds.push_back(kKindZapReceipt);
-  f.p_tags.push_back(recipient_);
+  // NIP-01 §filters — `#p` accepts an array of values; the relay
+  // returns an event when any one of them matches. NIP-57 zap receipts
+  // (kind 9735) tag the recipient with `["p", <pubkey>]`, so a single
+  // REQ can cover all configured recipients without extra WSS load.
+  f.p_tags = recipients_;
   // `since` bounds stored-event replay on (re)connect to the last
   // kZapMaxAgeSeconds window, and `limit:1` asks for just the newest
   // one. Both are NIP-01 SHOULDs — the arrival-side guard in Handle()

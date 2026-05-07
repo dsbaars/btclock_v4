@@ -4,6 +4,7 @@
 #include "settings/nostr_config.hpp"
 
 #include <cstdint>
+#include <sstream>
 
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
@@ -14,6 +15,18 @@ namespace settings {
 namespace {
 // dataSource == 2 selects the Nostr source per defaults.hpp::DataSourceType.
 constexpr uint8_t kDataSourceNostr = 2;
+
+// Split a CSV pubkey list, dropping empties. Caller bounds the count
+// against kMaxZapPubkeys via a defensive cap below.
+std::vector<std::string> SplitPubkeyCsv(const std::string& csv) {
+  std::vector<std::string> out;
+  std::stringstream ss(csv);
+  std::string item;
+  while (std::getline(ss, item, ',')) {
+    if (!item.empty()) out.push_back(item);
+  }
+  return out;
+}
 }  // namespace
 
 NostrSourceConfig ReadNostrSourceConfig(const PrefsReader& prefs) {
@@ -32,7 +45,26 @@ ZapListenerConfig ReadZapListenerConfig(const PrefsReader& prefs) {
   out.zap_screen_notify = ReadBool(prefs, prefs::kNostrZapNotify);
   out.enabled = out.zap_screen_notify;
   out.relay_url = ReadString(prefs, prefs::kNostrRelay);
-  out.zap_pubkey = ReadString(prefs, prefs::kNostrZapPubkey);
+
+  // Plural slot is canonical; legacy singular is the fallback so an
+  // install that pre-dates the multi-pubkey rollout keeps listening on
+  // its existing pubkey without a rewrite step. We don't auto-migrate
+  // (write the legacy value into the plural slot) on read — the next
+  // PATCH naturally writes the plural slot, and reads stay coherent
+  // either way through this fallback.
+  const std::string csv = ReadString(prefs, prefs::kNostrZapPubkeys);
+  if (!csv.empty()) {
+    out.zap_pubkeys = SplitPubkeyCsv(csv);
+  } else {
+    const std::string legacy = ReadString(prefs, prefs::kNostrZapPubkey);
+    if (!legacy.empty()) out.zap_pubkeys.push_back(legacy);
+  }
+  // Defensive cap — the schema validator on PATCH already rejects > N,
+  // but a corrupted NVS slot or a hand-edited CSV could carry more.
+  if (out.zap_pubkeys.size() > kMaxZapPubkeys) {
+    out.zap_pubkeys.resize(kMaxZapPubkeys);
+  }
+
   out.zap_screen_auto_restore = ReadBool(prefs, prefs::kScrnRestoreZap);
   out.led_flash_on_zap = ReadBool(prefs, prefs::kLedFlashOnZap);
   out.frontlight_flash_on_zap = ReadBool(prefs, prefs::kFlFlashOnZap);

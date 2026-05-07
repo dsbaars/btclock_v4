@@ -150,11 +150,13 @@ struct AppCtx {
   std::unique_ptr<nostr::RelayClient> zap_relay;
   std::unique_ptr<nostr::SubscriptionManager> zap_subs;
   std::unique_ptr<nostr::ZapListener> zap_listener;
-  // Last-known zap recipient pubkey. RefreshZapListenerSettings
+  // Last-known zap recipient pubkey list. RefreshZapListenerSettings
   // compares against this on every PATCH so we only Stop()+Start()
-  // the listener when the pubkey actually changed (LED/frontlight
-  // toggles touch only the atomics below).
-  std::string zap_pubkey_current;
+  // the listener when the recipient set actually changed (LED /
+  // frontlight toggles touch only the atomics below). Order matters —
+  // it's the order we emit them in the REQ filter, and a user reorder
+  // counts as a change.
+  std::vector<std::string> zap_pubkeys_current;
   std::atomic<bool> flash_on_zap_enabled{true};
   std::atomic<bool> flash_frontlight_on_zap_enabled{false};
   std::atomic<bool> zap_notify_screen_enabled{true};

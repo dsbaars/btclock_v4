@@ -133,7 +133,9 @@ TEST_CASE("ReadZapListenerConfig: defaults match schema (no NVS writes)") {
   CHECK_FALSE(cfg.zap_screen_notify);  // schema kNostrZapNotify = false
   CHECK_FALSE(cfg.enabled);            // gated on zap_screen_notify
   CHECK(cfg.relay_url == "wss://relay.primal.net");
-  CHECK(cfg.zap_pubkey ==
+  // Plural slot now carries the v3 default as a 1-entry list.
+  REQUIRE(cfg.zap_pubkeys.size() == 1);
+  CHECK(cfg.zap_pubkeys[0] ==
         "b5127a08cf33616274800a4387881a9f98e04b9c37116e92de5250498635c422");
   CHECK(cfg.zap_screen_auto_restore);  // schema kScrnRestoreZap = true
   CHECK(cfg.led_flash_on_zap);         // schema kLedFlashOnZap   = true
@@ -155,13 +157,63 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "ReadZapListenerConfig: PATCH nostrZapPubkey round-trips through "
-    "schema key names") {
+    "ReadZapListenerConfig: legacy nostrZapPubkey is the read fallback "
+    "when the plural slot is empty") {
+  // bd btclock_v4-q1l: this is the main regression. Before the fix the
+  // listener opened "nostr"/"zapPubkey" while PATCH wrote
+  // "settings"/"nostrZapPubkey", so a fresh pubkey never reached the
+  // listener. After the multi-pubkey rollout the canonical slot is
+  // kNostrZapPubkeys (CSV), but installs that pre-date the rollout
+  // still have their pubkey in the legacy singular slot — make sure
+  // the reader surfaces it as a 1-element list.
   FakePrefs prefs;
   const std::string pub(64, 'a');
   prefs.SetString(btclock::prefs::kNostrZapPubkey, pub.c_str());
   const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
-  CHECK(cfg.zap_pubkey == pub);
+  REQUIRE(cfg.zap_pubkeys.size() == 1);
+  CHECK(cfg.zap_pubkeys[0] == pub);
+}
+
+TEST_CASE("ReadZapListenerConfig: plural slot is canonical, multi-pubkey CSV") {
+  FakePrefs prefs;
+  const std::string pk1(64, 'a');
+  const std::string pk2(64, 'b');
+  const std::string pk3(64, 'c');
+  prefs.SetString(btclock::prefs::kNostrZapPubkeys,
+                  (pk1 + "," + pk2 + "," + pk3).c_str());
+  const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
+  REQUIRE(cfg.zap_pubkeys.size() == 3);
+  CHECK(cfg.zap_pubkeys[0] == pk1);
+  CHECK(cfg.zap_pubkeys[1] == pk2);
+  CHECK(cfg.zap_pubkeys[2] == pk3);
+}
+
+TEST_CASE("ReadZapListenerConfig: plural wins over legacy when both are set") {
+  // The drift case: an install upgrades, the WebUI later writes the
+  // plural slot, the legacy slot still holds an old value. Reader must
+  // prefer the canonical plural and ignore the stale legacy.
+  FakePrefs prefs;
+  const std::string old_pk(64, '0');
+  const std::string new_pk(64, '1');
+  prefs.SetString(btclock::prefs::kNostrZapPubkey, old_pk.c_str());
+  prefs.SetString(btclock::prefs::kNostrZapPubkeys, new_pk.c_str());
+  const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
+  REQUIRE(cfg.zap_pubkeys.size() == 1);
+  CHECK(cfg.zap_pubkeys[0] == new_pk);
+}
+
+TEST_CASE("ReadZapListenerConfig: enforces kMaxZapPubkeys cap on read") {
+  // Hand-edited NVS or future schema drift could carry > N entries.
+  // Defensive trim keeps the REQ filter bounded.
+  FakePrefs prefs;
+  std::string csv;
+  for (std::size_t i = 0; i < btclock::settings::kMaxZapPubkeys + 4; ++i) {
+    if (!csv.empty()) csv.push_back(',');
+    csv.append(std::string(64, '0' + static_cast<char>(i % 10)));
+  }
+  prefs.SetString(btclock::prefs::kNostrZapPubkeys, csv.c_str());
+  const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
+  CHECK(cfg.zap_pubkeys.size() == btclock::settings::kMaxZapPubkeys);
 }
 
 TEST_CASE("ReadZapListenerConfig: nostrZapNotify is the master enable") {

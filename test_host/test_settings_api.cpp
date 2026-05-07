@@ -12,6 +12,7 @@
 #include "cJSON.h"
 #include "doctest.h"
 #include "settings/api.hpp"
+#include "settings/nostr_config.hpp"  // kMaxZapPubkeys
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
 
@@ -167,8 +168,9 @@ TEST_CASE("GET /api/settings surfaces every schema field") {
     REQUIRE(item != nullptr);
     // actCurrencies stores a CSV in NVS but BuildGetResponse emits the
     // filtered array shape (catalogue-validated) on the wire — schema
-    // kind is kString but the JSON value is an array.
-    if (key == "actCurrencies") {
+    // kind is kString but the JSON value is an array. nostrZapPubkeys
+    // follows the same CSV-in-NVS / array-on-wire pattern.
+    if (key == "actCurrencies" || key == "nostrZapPubkeys") {
       CHECK(cJSON_IsArray(item));
       continue;
     }
@@ -899,7 +901,7 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // proxy_transport landed 7 fields (proxyEnabled, proxyType, proxyHost,
   // proxyPort, proxyUser, proxyPass, proxyBypass); none boot_only —
   // they're re-read per request by the ApplyProxyTo* helper.
-  CHECK(btclock::settings::kFields.size() == 81);
+  CHECK(btclock::settings::kFields.size() == 82);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
@@ -1086,7 +1088,11 @@ TEST_CASE("PATCH nostrRelay empty string clears the field") {
   CHECK(prefs.str_["nostrRelay"].empty());
 }
 
-TEST_CASE("PATCH nostrRelay + nostrZapNotify + nostrZapPubkey") {
+TEST_CASE("PATCH legacy nostrZapPubkey is bridged into the plural slot") {
+  // The legacy singular field is kept in the schema for back-compat
+  // with stale WebUI/API clients. The PATCH bridge writes the value
+  // into the canonical plural NVS slot (kNostrZapPubkeys) so the
+  // listener and the next read see a coherent state.
   FakePrefs prefs;
   const std::string pk = std::string(64, 'a');
   const std::string body =
@@ -1099,11 +1105,87 @@ TEST_CASE("PATCH nostrRelay + nostrZapNotify + nostrZapPubkey") {
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrRelay"] == "wss://relay.example.com");
   CHECK(prefs.b_["nostrZapNotify"] == true);
-  CHECK(prefs.str_["nostrZapPubkey"] == pk);
+  // Bridge wrote the plural slot, not the legacy slot.
+  CHECK(prefs.str_["nostrZapPubkeys"] == pk);
   // nostrRelay is boot-only (WSS client opens at setup); nostrZapPubkey
   // is runtime (subscription filter can be updated live). The boot-only
   // one wins → reboot_required=true.
   CHECK(res.reboot_required);
+}
+
+TEST_CASE("PATCH nostrZapPubkeys array round-trips as CSV in NVS") {
+  FakePrefs prefs;
+  const std::string pk1(64, 'a');
+  const std::string pk2(64, 'b');
+  const std::string body =
+      "{\"nostrZapPubkeys\":[\"" + pk1 + "\",\"" + pk2 + "\"]}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrZapPubkeys"] == pk1 + "," + pk2);
+}
+
+TEST_CASE("PATCH nostrZapPubkeys: array wins when both keys are present") {
+  // A mixed PATCH from a transitional WebUI: array sets the plural
+  // slot to the new list; the singular's bridge would normally write
+  // a 1-element list, but the array branch processes after and wins.
+  FakePrefs prefs;
+  const std::string old_pk(64, '0');
+  const std::string new_pk(64, '1');
+  const std::string body = "{\"nostrZapPubkey\":\"" + old_pk +
+                           "\",\"nostrZapPubkeys\":[\"" + new_pk + "\"]}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrZapPubkeys"] == new_pk);
+}
+
+TEST_CASE("PATCH nostrZapPubkeys: rejects too many entries") {
+  FakePrefs prefs;
+  std::string body = "{\"nostrZapPubkeys\":[";
+  for (std::size_t i = 0; i <= btclock::settings::kMaxZapPubkeys; ++i) {
+    if (i > 0) body.push_back(',');
+    body.push_back('"');
+    body.append(64, '0' + static_cast<char>(i % 10));
+    body.push_back('"');
+  }
+  body.append("]}");
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "nostrZapPubkeys:too_many");
+}
+
+TEST_CASE("PATCH nostrZapPubkeys: rejects bad-hex / bad-length entries") {
+  {
+    FakePrefs prefs;
+    const std::string body =
+        "{\"nostrZapPubkeys\":[\"" + std::string(64, 'z') + "\"]}";
+    auto res =
+        btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+    CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+    CHECK(res.error == "nostrZapPubkeys:bad_hex");
+  }
+  {
+    FakePrefs prefs;
+    const std::string body =
+        "{\"nostrZapPubkeys\":[\"" + std::string(63, 'a') + "\"]}";
+    auto res =
+        btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+    CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+    CHECK(res.error == "nostrZapPubkeys:bad_length");
+  }
+}
+
+TEST_CASE("PATCH nostrZapPubkeys: empty array clears the slot") {
+  FakePrefs prefs;
+  prefs.SetString(btclock::prefs::kNostrZapPubkeys,
+                  std::string(64, 'a').c_str());
+  const std::string body = "{\"nostrZapPubkeys\":[]}";
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrZapPubkeys"].empty());
 }
 
 // -- verticalDesc / flFlashOnZap / ledFlashOnZap --------------------

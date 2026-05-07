@@ -102,7 +102,16 @@ inline constexpr const char* kMowMode = "mowMode";
 inline constexpr const char* kNostrPubKey = "nostrPubKey";
 inline constexpr const char* kNostrRelay = "nostrRelay";
 inline constexpr const char* kNostrZapNotify = "nostrZapNotify";
+// Legacy single-pubkey slot. Reads still consult it as a fallback so
+// existing installs keep working; new writes go to kNostrZapPubkeys
+// (plural). Kept in the schema so a stale WebUI that still PATCHes the
+// singular field doesn't 400 — its value is mirrored into the plural
+// slot on apply.
 inline constexpr const char* kNostrZapPubkey = "nostrZapPubkey";
+// Canonical zap-recipient slot. NVS storage is comma-separated 64-char
+// lowercase hex pubkeys (mirrors the actCurrencies CSV pattern); GET /
+// PATCH expose it as a JSON array of strings.
+inline constexpr const char* kNostrZapPubkeys = "nostrZapPubkeys";
 inline constexpr const char* kOtaEnabled = "otaEnabled";
 inline constexpr const char* kOtaPass = "otaPass";
 inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
@@ -258,6 +267,7 @@ BTCLOCK_PREF_KEY_ASSERT(kNostrPubKey);
 BTCLOCK_PREF_KEY_ASSERT(kNostrRelay);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapNotify);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkey);
+BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkeys);
 BTCLOCK_PREF_KEY_ASSERT(kOtaEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kOtaPass);
 BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);

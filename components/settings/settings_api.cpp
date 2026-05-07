@@ -9,6 +9,7 @@
 
 #include "cJSON.h"
 #include "settings/api.hpp"
+#include "settings/nostr_config.hpp"  // kMaxZapPubkeys
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
 
@@ -161,6 +162,27 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
       if (!valid.empty() && !valid.count(code)) continue;
       cJSON_AddItemToArray(arr, cJSON_CreateString(code.c_str()));
     }
+  }
+  {
+    // nostrZapPubkeys: stored as CSV under the canonical plural key,
+    // with a fallback to the legacy singular `nostrZapPubkey` slot for
+    // installs that pre-date the multi-pubkey rollout. Replace the
+    // schema's auto-emitted CSV string with a JSON array so the WebUI
+    // can render the field as a list. Also overwrite the legacy
+    // `nostrZapPubkey` emit with the array's first entry — keeps a
+    // stale WebUI that still binds to the singular field functional
+    // (it sees the primary pubkey) until it migrates to the plural.
+    std::string csv = ReadString(prefs, prefs::kNostrZapPubkeys);
+    if (csv.empty()) csv = ReadString(prefs, prefs::kNostrZapPubkey);
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "nostrZapPubkeys");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "nostrZapPubkey");
+    cJSON* arr = cJSON_AddArrayToObject(root, "nostrZapPubkeys");
+    std::string first;
+    for (const auto& pk : SplitCsv(csv)) {
+      cJSON_AddItemToArray(arr, cJSON_CreateString(pk.c_str()));
+      if (first.empty()) first = pk;
+    }
+    AddString(root, "nostrZapPubkey", first);
   }
 
   // Screens array. `enabled` is a per-screen bool at key
@@ -436,7 +458,8 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     const std::string key = item->string;
 
     if (key == "screens" || key == "dnd" || key == "actCurrencies" ||
-        key == "timePerScreen" || key == "txPower" || key == "invertedColor") {
+        key == "timePerScreen" || key == "txPower" || key == "invertedColor" ||
+        key == "nostrZapPubkey" || key == "nostrZapPubkeys") {
       continue;  // handled below
     }
     // tzOffset / gmtOffset are ignored — bd btclock_v4-9rx. v4 drives
@@ -524,7 +547,9 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     }
     // nostrPubKey: 64-char lowercase hex. The relay libraries reject a
     // malformed key anyway, but doing the check here keeps NVS clean.
-    if (key == "nostrPubKey" || key == "nostrZapPubkey") {
+    // (nostrZapPubkey is intercepted in the special-case block below
+    // so a legacy-singular PATCH lands in the plural slot.)
+    if (key == "nostrPubKey") {
       if (!cJSON_IsString(item) || !item->valuestring) {
         result.status = PatchStatus::kBadField;
         result.error = key + ":bad_type";
@@ -687,6 +712,95 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       if (prefs.GetString(prefs::kActCurrencies, "USD,EUR,JPY") != joined) {
         writer.SetString(prefs::kActCurrencies, joined.c_str());
         result.touched_keys.emplace_back(prefs::kActCurrencies);
+      }
+    }
+  }
+
+  // nostrZapPubkeys: WebUI sends an array of 64-char lowercase-hex
+  // pubkeys; CSV-join into the canonical plural NVS slot. Caps the
+  // count at kMaxZapPubkeys to bound the REQ filter size on the wire.
+  // Empty array clears the field.
+  //
+  // The legacy singular `nostrZapPubkey` is bridged in the same block:
+  // a PATCH carrying only the singular is treated as a 1-element
+  // assignment of the plural slot. When both keys are present the
+  // array wins (it's processed last). This avoids a drift bug where
+  // an old WebUI's singular-only PATCH would leave the plural NVS
+  // slot stale and ReadZapListenerConfig would surface the wrong
+  // pubkey to the listener.
+  {
+    cJSON* zps = cJSON_GetObjectItemCaseSensitive(root, "nostrZapPubkeys");
+    cJSON* zp_legacy = cJSON_GetObjectItemCaseSensitive(root, "nostrZapPubkey");
+    if (!cJSON_IsArray(zps) && cJSON_IsString(zp_legacy)) {
+      // Legacy singular path: validate length + hex (or empty), wrap
+      // into a single-element array, and fall through into the array
+      // handler below.
+      const char* sv = zp_legacy->valuestring ? zp_legacy->valuestring : "";
+      const std::string s = sv;
+      if (!s.empty()) {
+        if (s.size() != 64) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrZapPubkey:bad_length";
+          cJSON_Delete(root);
+          return result;
+        }
+        for (char c : s) {
+          const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                           (c >= 'A' && c <= 'F');
+          if (!hex) {
+            result.status = PatchStatus::kBadField;
+            result.error = "nostrZapPubkey:bad_hex";
+            cJSON_Delete(root);
+            return result;
+          }
+        }
+      }
+      const std::string joined = s;
+      if (prefs.GetString(prefs::kNostrZapPubkeys, "") != joined) {
+        writer.SetString(prefs::kNostrZapPubkeys, joined.c_str());
+        result.touched_keys.emplace_back(prefs::kNostrZapPubkeys);
+      }
+    }
+    if (cJSON_IsArray(zps)) {
+      std::string joined;
+      std::size_t count = 0;
+      for (cJSON* it = zps->child; it; it = it->next) {
+        if (!cJSON_IsString(it) || !it->valuestring) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrZapPubkeys:not_string";
+          cJSON_Delete(root);
+          return result;
+        }
+        const std::string s = it->valuestring;
+        if (s.empty()) continue;  // ignore blank form noise
+        if (s.size() != 64) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrZapPubkeys:bad_length";
+          cJSON_Delete(root);
+          return result;
+        }
+        for (char c : s) {
+          const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                           (c >= 'A' && c <= 'F');
+          if (!hex) {
+            result.status = PatchStatus::kBadField;
+            result.error = "nostrZapPubkeys:bad_hex";
+            cJSON_Delete(root);
+            return result;
+          }
+        }
+        if (++count > kMaxZapPubkeys) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrZapPubkeys:too_many";
+          cJSON_Delete(root);
+          return result;
+        }
+        if (!joined.empty()) joined.push_back(',');
+        joined.append(s);
+      }
+      if (prefs.GetString(prefs::kNostrZapPubkeys, "") != joined) {
+        writer.SetString(prefs::kNostrZapPubkeys, joined.c_str());
+        result.touched_keys.emplace_back(prefs::kNostrZapPubkeys);
       }
     }
   }
