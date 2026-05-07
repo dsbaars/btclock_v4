@@ -1040,6 +1040,7 @@ hidden on Rev A and V8 (no PWM channel wired).
 | **Auto toggle frontlight at lux** | The lux threshold that flips between "room bright" and "room dim". Hysteresis is ±1 lux. Set to 0 to disable the auto-off. | `luxLightToggle` |
 | **Frontlight effect speed** | Fade-step time in ms (default 15 ≈ 225 ms full fade). | `flEffectDelay` |
 | **Frontlight flash on new block** | Extra brief pulse (~150 ms) on each new block. | `flFlashOnUpd` |
+| **Frontlight off during Do Not Disturb** | Fade the panel out while DND is active. Default on (matches v3). Turn off if you want the LED ring muted by DND while keeping the panel under normal user/ambient control. | `flOffOnDnd` |
 | **Disable frontlight** | Master mute. | `flDisable` |
 
 For a bedroom: set **Off when dark = ON** and **Lux threshold = 2** —
@@ -1052,6 +1053,18 @@ the frontlight goes off the moment you turn off the bedroom light.
 curl -X POST http://btclock-xxxxxx.local/api/frontlight/on
 curl -X POST http://btclock-xxxxxx.local/api/frontlight/off
 curl -X POST http://btclock-xxxxxx.local/api/frontlight/flash
+
+# Per-channel manual override — flat array of 12-bit duties, one per
+# panel. Bypasses DND + always_on (this is an explicit user/test
+# intent). Length must equal numScreens. The next block-flash, ambient
+# transition, or brightness PATCH resumes uniform fader control.
+curl -X POST -H 'Content-Type: application/json' \
+  -d '[2048,0,2048,0,2048,0,2048]' \
+  http://btclock-xxxxxx.local/api/frontlight/set
+
+# Read current state. /api/status also embeds the same per-channel
+# duties under .frontlight.duties for at-a-glance polling.
+curl http://btclock-xxxxxx.local/api/frontlight/status
 ```
 
 ## 11. Do Not Disturb
