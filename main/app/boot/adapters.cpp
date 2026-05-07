@@ -23,15 +23,25 @@ void FrontlightAdapter::Off() {
 void FrontlightAdapter::Flash() {
   fl_->Flash();
 }
+void FrontlightAdapter::SetChannelDuties(const uint16_t* duties,
+                                         uint8_t count) {
+  fl_->SetChannelDuties(duties, count);
+}
+
 void FrontlightAdapter::SetBrightness(uint16_t duty) {
   fl_->SetBrightness(duty);
 }
 
 FrontlightAdapter::Status FrontlightAdapter::GetStatus() const {
   const auto s = fl_->GetStatus();
-  return Status{s.enabled,       s.current_duty,
-                s.target_duty,   s.configured_brightness,
-                s.lux_threshold, s.ambient_auto_off};
+  Status out{s.enabled,       s.current_duty,
+             s.target_duty,   s.configured_brightness,
+             s.lux_threshold, s.ambient_auto_off};
+  out.channel_count = s.channel_count;
+  const uint8_t cap = sizeof(out.duties) / sizeof(out.duties[0]);
+  const uint8_t n = s.channel_count < cap ? s.channel_count : cap;
+  for (uint8_t i = 0; i < n; ++i) out.duties[i] = s.duties[i];
+  return out;
 }
 
 // --- LedsAdapter ------------------------------------------------------

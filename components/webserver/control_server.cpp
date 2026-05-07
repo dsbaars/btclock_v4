@@ -400,6 +400,7 @@ esp_err_t ControlServer::Start() {
   reg("/api/frontlight/flash", HTTP_POST, TrampolineFrontlightFlash);
   reg("/api/frontlight/status", HTTP_GET, TrampolineFrontlightStatus);
   reg("/api/frontlight/brightness", HTTP_POST, TrampolineFrontlightBrightness);
+  reg("/api/frontlight/set", HTTP_POST, TrampolineFrontlightSet);
   reg("/api/wifi_set_tx_power", HTTP_POST, TrampolineWifiTxPower);
   reg("/upload/webui", HTTP_POST, TrampolineUploadWebui);
   reg("/api/lights", HTTP_GET, TrampolineLightsStatus);
@@ -527,6 +528,9 @@ esp_err_t ControlServer::TrampolineFrontlightStatus(httpd_req_t* req) {
 esp_err_t ControlServer::TrampolineFrontlightBrightness(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)
       ->HandleFrontlightBrightness(req);
+}
+esp_err_t ControlServer::TrampolineFrontlightSet(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleFrontlightSet(req);
 }
 esp_err_t ControlServer::TrampolineWifiTxPower(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleWifiTxPower(req);
@@ -787,15 +791,24 @@ std::string ControlServer::BuildStatusJson() const {
 
   // Compact frontlight snapshot — at-a-glance "is the panel lit?" so
   // tests / monitoring can observe DND-suppression and the lux gate
-  // without polling /api/frontlight/status. Suppressed when the board
-  // has no frontlight (Rev A / V8 pass nullptr) so the WebUI can hide
-  // the row entirely on those variants.
+  // without polling /api/frontlight/status. `duties` mirrors the LED
+  // ring's `pixels` array convention: one entry per panel-backlight
+  // channel so a staggered flash renders correctly. `targetDuty` is
+  // still useful as the single fader-target (where the bank is heading)
+  // and `configuredBrightness` echoes the user's "on" pref.
+  // Suppressed when the board has no frontlight (Rev A / V8 pass
+  // nullptr) so the WebUI can hide the row entirely on those variants.
   if (cfg_.frontlight) {
     const FrontlightIface::Status fls = cfg_.frontlight->GetStatus();
     cJSON* fl = cJSON_AddObjectToObject(root, "frontlight");
     cJSON_AddBoolToObject(fl, "on", fls.enabled);
-    cJSON_AddNumberToObject(fl, "currentDuty",
-                            static_cast<double>(fls.current_duty));
+    cJSON* duties = cJSON_AddArrayToObject(fl, "duties");
+    const uint8_t cap = sizeof(fls.duties) / sizeof(fls.duties[0]);
+    const uint8_t n = fls.channel_count < cap ? fls.channel_count : cap;
+    for (uint8_t i = 0; i < n; ++i) {
+      cJSON_AddItemToArray(
+          duties, cJSON_CreateNumber(static_cast<double>(fls.duties[i])));
+    }
     cJSON_AddNumberToObject(fl, "targetDuty",
                             static_cast<double>(fls.target_duty));
     cJSON_AddNumberToObject(fl, "configuredBrightness",
@@ -1407,9 +1420,11 @@ esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
   // Match the old firmware's shape: `{"flStatus":[<per-channel-duty>…]}`.
-  // The controller writes the same duty to every channel, so we echo
-  // the current duty `num_screens` times — enough to keep the WebUI's
-  // fixed-length array happy.
+  // Per-channel duties come straight from the controller's mirror so a
+  // staggered flash is rendered correctly. Pad with the aggregate
+  // `current_duty` when channel_count < num_screens (host fixtures or
+  // a partial wire-up) — keeps the array length matched to the panel
+  // count, which the WebUI uses as a fixed shape.
   const FrontlightIface::Status st = cfg_.frontlight->GetStatus();
   cJSON* root = cJSON_CreateObject();
   if (!root) {
@@ -1418,9 +1433,11 @@ esp_err_t ControlServer::HandleFrontlightStatus(httpd_req_t* req) {
   }
   cJSON* arr = cJSON_AddArrayToObject(root, "flStatus");
   const size_t count = cfg_.num_screens > 0 ? cfg_.num_screens : 1;
+  const uint8_t cap = sizeof(st.duties) / sizeof(st.duties[0]);
   for (size_t i = 0; i < count; ++i) {
-    cJSON_AddItemToArray(
-        arr, cJSON_CreateNumber(static_cast<double>(st.current_duty)));
+    const uint16_t d =
+        (i < st.channel_count && i < cap) ? st.duties[i] : st.current_duty;
+    cJSON_AddItemToArray(arr, cJSON_CreateNumber(static_cast<double>(d)));
   }
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
@@ -1450,6 +1467,76 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
     return ESP_FAIL;
   }
   cfg_.frontlight->SetBrightness(static_cast<uint16_t>(raw));
+  BroadcastStatus();
+  return SendEmptyOk(req);
+}
+
+// POST /api/frontlight/set — body is a flat JSON array of per-channel
+// 12-bit duties (0..4095). Length must equal `num_screens`. Mirrors
+// /api/lights/set's shape but with single integers per slot rather
+// than RGB objects (PCA9685 channels are scalar 12-bit duty cycles, no
+// colour channels). Used for diagnostics like a zebra-stripe pattern;
+// any subsequent block-flash or PATCH/brightness call resumes normal
+// uniform fader control.
+esp_err_t ControlServer::HandleFrontlightSet(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  if (!cfg_.frontlight) {
+    httpd_resp_set_status(req, "503 Service Unavailable");
+    httpd_resp_set_type(req, kJsonType);
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
+    return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
+  }
+  constexpr size_t kMaxBody = 256;
+  char* body = ReadFullBody(req, kMaxBody);
+  if (!body) {
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
+    return ESP_FAIL;
+  }
+  cJSON* root = cJSON_Parse(body);
+  heap_caps_free(body);
+  if (!root || !cJSON_IsArray(root)) {
+    if (root) cJSON_Delete(root);
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad json");
+    return ESP_FAIL;
+  }
+  const int n = cJSON_GetArraySize(root);
+  if (n == 0) {
+    cJSON_Delete(root);
+    // Empty array -> all off, mirrors /api/lights/set's empty-array
+    // semantics.
+    uint16_t zeros[8] = {0};
+    cfg_.frontlight->SetChannelDuties(zeros, static_cast<uint8_t>(
+                                                 cfg_.num_screens > 8
+                                                     ? 8
+                                                     : cfg_.num_screens));
+    BroadcastStatus();
+    return SendEmptyOk(req);
+  }
+  if (n != static_cast<int>(cfg_.num_screens)) {
+    cJSON_Delete(root);
+    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "channel count mismatch");
+    return ESP_FAIL;
+  }
+  uint16_t duties[8] = {0};
+  const int cap = static_cast<int>(sizeof(duties) / sizeof(duties[0]));
+  for (int i = 0; i < n && i < cap; ++i) {
+    cJSON* entry = cJSON_GetArrayItem(root, i);
+    if (!entry || !cJSON_IsNumber(entry)) {
+      cJSON_Delete(root);
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad entry");
+      return ESP_FAIL;
+    }
+    const double v = entry->valuedouble;
+    if (v < 0 || v > 4095) {
+      cJSON_Delete(root);
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "duty out of range");
+      return ESP_FAIL;
+    }
+    duties[i] = static_cast<uint16_t>(v);
+  }
+  cJSON_Delete(root);
+  cfg_.frontlight->SetChannelDuties(duties, static_cast<uint8_t>(n));
   BroadcastStatus();
   return SendEmptyOk(req);
 }

@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <mutex>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -97,6 +98,11 @@ enum class FrontlightEvent : uint8_t {
   kSetBrightness,  // fade to payload brightness, also updates configured value
   kBlockFlash,     // pulse up -> hold -> return to previous state
   kZapFlash,       // same shape, longer hold
+  kSetChannelDuties,  // manual per-channel write — payload comes from a
+                      // controller-internal staging area (kept off the
+                      // queue entry so FrontlightCommand stays compact).
+                      // Cancels any pulse + snaps the fader so the
+                      // pattern persists until the next event.
 };
 
 // Event payload. Only `kSetBrightness` uses `value`; other events
@@ -127,6 +133,13 @@ class FrontlightController {
   }
   void Flash() { Post({FrontlightEvent::kBlockFlash, 0}); }
   void ZapFlash() { Post({FrontlightEvent::kZapFlash, 0}); }
+
+  // Manual per-channel write. Cancels any in-flight pulse + snaps the
+  // fader to the first channel's value so the pattern persists until
+  // another event (kOn/kOff/kFlash/kSet/kAmbient*) overrides it. `count`
+  // is clamped to channel_count_; entries past 8 are dropped. Used by
+  // the /api/frontlight/set debug endpoint and tests.
+  void SetChannelDuties(const uint16_t* duties, uint8_t count);
 
   // --- Runtime-configurable ambient-light behaviour ---
   // Forwarded to the embedded policy. `ambient_auto_off` matches the
@@ -228,11 +241,23 @@ class FrontlightController {
   // --- Status surface for future /api/frontlight/status wiring ---
   struct Status {
     bool enabled;
+    // Aggregate fader state — useful as a single "where is the bank
+    // headed" number even though each channel can transiently differ
+    // during a staggered flash. `current_duty` matches duties[0] in
+    // steady state.
     uint16_t current_duty;
     uint16_t target_duty;
     uint16_t configured_brightness;
     uint32_t lux_threshold;
     bool ambient_auto_off;
+    // Per-channel duty mirror — one entry per panel-backlight LED.
+    // Cap matches the largest variant (V8: 8 channels). `channel_count`
+    // is the filled prefix; only the first `channel_count` entries are
+    // populated. Mirrored directly off WriteAllChannels /
+    // WriteStaggeredTick so a flash-in-progress shows the correct
+    // staggered shape rather than a single aggregate.
+    uint16_t duties[8] = {0};
+    uint8_t channel_count = 0;
   };
   Status GetStatus() const;
 
@@ -294,6 +319,19 @@ class FrontlightController {
   // (no transient if both flags are false; correct fade-off if DND
   // was already active at boot and `flOffOnDnd` is on).
   volatile bool last_dnd_suppressed_ = false;
+
+  // Per-channel duty mirror — updated alongside every PCA9685 write so
+  // GetStatus() can report the actual per-LED state, including during
+  // a staggered flash. Cap is the largest variant (V8: 8 channels).
+  uint16_t channel_duties_[8] = {0};
+
+  // Manual override staging area — written by SetChannelDuties from the
+  // caller thread, drained by the task on a kSetChannelDuties event so
+  // the array isn't torn during a partial copy. Mutex is the simplest
+  // primitive that doesn't drag a critical-section type into the API.
+  std::mutex manual_mu_;
+  uint16_t pending_manual_duties_[8] = {0};
+  uint8_t pending_manual_count_ = 0;
 };
 
 }  // namespace btclock

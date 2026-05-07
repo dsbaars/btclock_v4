@@ -207,6 +207,23 @@ void FrontlightController::OnAmbientLux(float lux) {
   }
 }
 
+void FrontlightController::SetChannelDuties(const uint16_t* duties,
+                                             uint8_t count) {
+  if (queue_ == nullptr || duties == nullptr) return;
+  const uint8_t cap = sizeof(pending_manual_duties_) /
+                      sizeof(pending_manual_duties_[0]);
+  const uint8_t clamped = (count < cap) ? count : cap;
+  {
+    std::lock_guard<std::mutex> lk(manual_mu_);
+    pending_manual_count_ = clamped;
+    for (uint8_t i = 0; i < clamped; ++i) {
+      pending_manual_duties_[i] = duties[i];
+    }
+  }
+  const FrontlightCommand cmd{FrontlightEvent::kSetChannelDuties, 0};
+  SendOrDrop(queue_, cmd);
+}
+
 void FrontlightController::OnDndStateMaybeChanged() {
   // Compute the effective suppression bit: DND is active AND the user
   // hasn't opted out via flOffOnDnd. Edge-triggered so we only push an
@@ -242,12 +259,18 @@ FrontlightController::Status FrontlightController::GetStatus() const {
   const auto& cfg = policy_.config();
   s.lux_threshold = cfg.lux_threshold;
   s.ambient_auto_off = cfg.ambient_auto_enabled;
+  s.channel_count = channel_count_;
+  const uint8_t cap = sizeof(s.duties) / sizeof(s.duties[0]);
+  const uint8_t n = channel_count_ < cap ? channel_count_ : cap;
+  for (uint8_t i = 0; i < n; ++i) s.duties[i] = channel_duties_[i];
   return s;
 }
 
 void FrontlightController::WriteAllChannels(uint16_t duty) {
+  const uint8_t cap = sizeof(channel_duties_) / sizeof(channel_duties_[0]);
   for (uint8_t i = 0; i < channel_count_; ++i) {
     pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), duty);
+    if (i < cap) channel_duties_[i] = duty;
   }
 }
 
@@ -259,11 +282,13 @@ void FrontlightController::WriteStaggeredTick(uint32_t tick,
   // maps to PCA channel `channel_first_ + i`. v3 pinned index 0 as
   // the first-to-light LED; we preserve that so the cascade direction
   // across the physical panel matches v3.
+  const uint8_t cap = sizeof(channel_duties_) / sizeof(channel_duties_[0]);
   for (uint8_t i = 0; i < channel_count_; ++i) {
     const uint16_t duty =
         ComputeStaggeredDuty(tick, i, channel_count_, max_brightness,
                              frontlight::kFadeStep, direction);
     pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), duty);
+    if (i < cap) channel_duties_[i] = duty;
   }
 }
 
@@ -399,6 +424,40 @@ void FrontlightController::TaskLoop() {
             fader_.SetTarget(configured_brightness_);
           }
           break;
+        case FrontlightEvent::kSetChannelDuties: {
+          // Manual override — drain the staged duties under the mutex
+          // so a concurrent SetChannelDuties caller can't tear the read.
+          uint16_t local[8] = {0};
+          uint8_t n = 0;
+          {
+            std::lock_guard<std::mutex> lk(manual_mu_);
+            n = pending_manual_count_;
+            for (uint8_t i = 0; i < n; ++i) local[i] = pending_manual_duties_[i];
+          }
+          cancel_pulse();
+          // Bypass WriteAllChannels because the duties are per-channel.
+          // Also clear the user-off latch: a non-zero manual write is
+          // an explicit user intent to light something, so the next
+          // ambient cycle shouldn't suppress us. logical_on_ tracks
+          // "any channel non-zero" so /api/status reflects reality.
+          bool any_on = false;
+          const uint8_t cap =
+              sizeof(channel_duties_) / sizeof(channel_duties_[0]);
+          for (uint8_t i = 0;
+               i < channel_count_ && i < cap && i < n; ++i) {
+            pca_.SetDuty(static_cast<uint8_t>(channel_first_ + i), local[i]);
+            channel_duties_[i] = local[i];
+            if (local[i] > 0) any_on = true;
+          }
+          // Snap the fader so kIdle's Step()+WriteAllChannels can't
+          // re-paint a uniform duty over our zebra. Use the first
+          // channel's value as the "global" approximation; it's the
+          // closest single number we can give the fader.
+          fader_.Snap(n > 0 ? local[0] : 0);
+          logical_on_ = any_on;
+          if (any_on) policy_.SetUserOff(false);
+          break;
+        }
         case FrontlightEvent::kBlockFlash:
         case FrontlightEvent::kZapFlash:
           start_pulse(cmd.event);

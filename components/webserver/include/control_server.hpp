@@ -51,12 +51,21 @@ class FrontlightIface {
     uint16_t configured_brightness;
     uint32_t lux_threshold;
     bool ambient_auto_off;
+    // Per-channel duty mirror — one entry per panel-backlight LED.
+    // `channel_count` is the filled prefix (0..8). Same shape as
+    // LedsIface::Status::pixels so /api/status can render them with
+    // the same `duties: [...]` array convention.
+    uint16_t duties[8] = {0};
+    uint8_t channel_count = 0;
   };
   virtual ~FrontlightIface() = default;
   virtual void On() = 0;
   virtual void Off() = 0;
   virtual void Flash() = 0;
   virtual void SetBrightness(uint16_t duty) = 0;
+  // Per-channel manual write — caller passes one duty per panel
+  // backlight, in 12-bit (0..4095) units. Wired to /api/frontlight/set.
+  virtual void SetChannelDuties(const uint16_t* duties, uint8_t count) = 0;
   virtual Status GetStatus() const = 0;
 };
 
@@ -547,6 +556,7 @@ class ControlServer {
   static esp_err_t TrampolineFrontlightFlash(httpd_req_t* req);
   static esp_err_t TrampolineFrontlightStatus(httpd_req_t* req);
   static esp_err_t TrampolineFrontlightBrightness(httpd_req_t* req);
+  static esp_err_t TrampolineFrontlightSet(httpd_req_t* req);
   static esp_err_t TrampolineWifiTxPower(httpd_req_t* req);
   static esp_err_t TrampolineUploadWebui(httpd_req_t* req);
   static esp_err_t TrampolineLightsStatus(httpd_req_t* req);
@@ -592,6 +602,7 @@ class ControlServer {
   esp_err_t HandleFrontlightFlash(httpd_req_t* req);
   esp_err_t HandleFrontlightStatus(httpd_req_t* req);
   esp_err_t HandleFrontlightBrightness(httpd_req_t* req);
+  esp_err_t HandleFrontlightSet(httpd_req_t* req);
   esp_err_t HandleWifiTxPower(httpd_req_t* req);
   esp_err_t HandleUploadWebui(httpd_req_t* req);
   esp_err_t HandleLightsStatus(httpd_req_t* req);

@@ -33,6 +33,7 @@ struct FrontlightAdapter : FrontlightIface {
   void Off() override;
   void Flash() override;
   void SetBrightness(uint16_t duty) override;
+  void SetChannelDuties(const uint16_t* duties, uint8_t count) override;
   Status GetStatus() const override;
   FrontlightController* fl_;
 };
