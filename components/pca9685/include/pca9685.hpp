@@ -14,6 +14,13 @@ namespace btclock {
 //   - SLEEP -> set PRE_SCALE -> wake with auto-increment
 //   - per-channel SetDuty(chan, 0..4095)
 //   - optional output-enable GPIO (active-low) for the whole chip
+//
+// NOT thread-safe. The frontlight task is the sole owner of all
+// I2C-touching methods (Begin / SetDuty / SetAll). SetOutputEnable
+// only flips a GPIO pin — also single-caller in practice. If a second
+// task ever needs to interleave PWM writes, add a mutex; concurrent
+// SetDuty calls would split the 5-byte auto-increment transaction
+// and glitch the LED outputs at the boundary.
 class Pca9685 {
  public:
   Pca9685(I2cBus& bus, uint16_t addr_7bit, gpio_num_t output_enable_gpio,
@@ -37,6 +44,11 @@ class Pca9685 {
 
  private:
   esp_err_t WriteReg(uint8_t reg, uint8_t val);
+  // Writes ON_L/ON_H/OFF_L/OFF_H starting at base_reg as a single
+  // 5-byte transaction (relies on MODE1.AI=1). Handles full-on /
+  // full-off encoding at duty extremes. Used for both per-channel
+  // (LED0_ON_L + 4*ch) and broadcast (ALL_LED_ON_L) writes.
+  esp_err_t WriteLedQuad(uint8_t base_reg, uint16_t duty);
 
   i2c_master_dev_handle_t dev_ = nullptr;
   I2cBus* bus_ = nullptr;

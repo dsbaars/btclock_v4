@@ -12,6 +12,10 @@ constexpr const char* kTag = "pca9685";
 constexpr uint8_t kRegMode1 = 0x00;
 constexpr uint8_t kRegMode2 = 0x01;
 constexpr uint8_t kRegLed0OnL = 0x06;
+// 0xFA..0xFD: writing to ALL_LED_* broadcasts to all 16 channels in
+// one 5-byte auto-increment transaction. ~16x faster than looping
+// per-channel for boot-time SetAll.
+constexpr uint8_t kRegAllLedOnL = 0xFA;
 constexpr uint8_t kRegPreScale = 0xFE;
 
 // MODE1 bits
@@ -49,8 +53,35 @@ Pca9685::~Pca9685() {
 }
 
 esp_err_t Pca9685::WriteReg(uint8_t reg, uint8_t val) {
+  if (dev_ == nullptr) return ESP_ERR_INVALID_STATE;
   const uint8_t buf[2] = {reg, val};
   return i2c_master_transmit(dev_, buf, 2, 50);
+}
+
+esp_err_t Pca9685::WriteLedQuad(uint8_t base_reg, uint16_t duty) {
+  if (dev_ == nullptr) return ESP_ERR_INVALID_STATE;
+  if (duty > 4095) duty = 4095;
+  // Datasheet § 7.3.3: at the duty extremes, set the FULL_ON or
+  // FULL_OFF bit (bit 12 of the high byte) instead of relying on the
+  // PWM counter to never tick — counter-only encoding leaves a
+  // single-cycle non-driven slice each PWM period.
+  uint16_t on = 0;
+  uint16_t off = duty;
+  if (duty == 4095) {
+    on = 0x1000;
+    off = 0;
+  } else if (duty == 0) {
+    on = 0;
+    off = 0x1000;
+  }
+  const uint8_t payload[5] = {
+      base_reg,
+      static_cast<uint8_t>(on & 0xFF),
+      static_cast<uint8_t>(on >> 8),
+      static_cast<uint8_t>(off & 0xFF),
+      static_cast<uint8_t>(off >> 8),
+  };
+  return i2c_master_transmit(dev_, payload, sizeof(payload), 50);
 }
 
 esp_err_t Pca9685::Begin(uint32_t pwm_hz) {
@@ -67,6 +98,11 @@ esp_err_t Pca9685::Begin(uint32_t pwm_hz) {
       "prescale");
   ESP_RETURN_ON_ERROR(WriteReg(kRegMode1, kMode1Ai | kMode1AllCall), kTag,
                       "mode1 wake");
+  // Datasheet § 7.3.1.1: after clearing SLEEP, the internal oscillator
+  // takes up to 500 µs to stabilise. Writing the RESTART bit (or any
+  // PWM channel) before that races the prescaler latch and the first
+  // few PWM cycles come out at the wrong frequency. 1 ms is the
+  // smallest tick at FreeRTOS_HZ=1000 and comfortably covers it.
   vTaskDelay(pdMS_TO_TICKS(1));
   ESP_RETURN_ON_ERROR(
       WriteReg(kRegMode1, kMode1Restart | kMode1Ai | kMode1AllCall), kTag,
@@ -85,36 +121,13 @@ void Pca9685::SetOutputEnable(bool on) {
 
 esp_err_t Pca9685::SetDuty(uint8_t channel, uint16_t duty) {
   if (channel > 15) return ESP_ERR_INVALID_ARG;
-  if (duty > 4095) duty = 4095;
-
-  const uint8_t reg = kRegLed0OnL + 4 * channel;
-  // ON=0, OFF=duty (when duty==4095 set the full-on bit; 0 → full off)
-  uint16_t on = 0;
-  uint16_t off = duty;
-  if (duty == 4095) {
-    on = 0x1000;
-    off = 0;
-  } else if (duty == 0) {
-    on = 0;
-    off = 0x1000;
-  }
-
-  const uint8_t payload[5] = {
-      reg,
-      static_cast<uint8_t>(on & 0xFF),
-      static_cast<uint8_t>(on >> 8),
-      static_cast<uint8_t>(off & 0xFF),
-      static_cast<uint8_t>(off >> 8),
-  };
-  return i2c_master_transmit(dev_, payload, sizeof(payload), 50);
+  return WriteLedQuad(kRegLed0OnL + 4 * channel, duty);
 }
 
 esp_err_t Pca9685::SetAll(uint16_t duty) {
-  for (uint8_t ch = 0; ch < 16; ++ch) {
-    esp_err_t err = SetDuty(ch, duty);
-    if (err != ESP_OK) return err;
-  }
-  return ESP_OK;
+  // Single 5-byte broadcast via ALL_LED_* registers — saves 15 I2C
+  // transactions vs looping SetDuty per channel.
+  return WriteLedQuad(kRegAllLedOnL, duty);
 }
 
 }  // namespace btclock
