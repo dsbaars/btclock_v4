@@ -10,8 +10,18 @@ constexpr const char* kTag = "mcp23017";
 
 // IOCON.BANK=0 register map.
 constexpr uint8_t kRegIodirA = 0x00;
+constexpr uint8_t kRegIocon = 0x0A;
 constexpr uint8_t kRegGppuA = 0x0C;
 constexpr uint8_t kRegGpioA = 0x12;
+
+// IOCON value we expect: BANK=0 (sequential A/B layout), SEQOP=0
+// (auto-increment so a single transaction writes both halves of a
+// 16-bit register pair), all other bits zero. This matches the
+// MCP23017 power-on default; we write it explicitly so a transient
+// bus glitch flipping BANK or SEQOP doesn't silently break our
+// 16-bit reads/writes (with BANK=1, IODIRB jumps from 0x01 to 0x10
+// and the auto-increment trick reads garbage).
+constexpr uint8_t kIoconBank0Seqon = 0x00;
 
 // Post-direction-change settle window. An MCP23017 IODIR write takes
 // effect on the next ACK but the driven pin level can slew for a few
@@ -29,6 +39,10 @@ Mcp23017::Mcp23017(I2cBus& bus, uint16_t addr_7bit, uint32_t scl_hz)
   mutex_ = xSemaphoreCreateRecursiveMutex();
   if (mutex_ == nullptr) {
     ESP_LOGE(kTag, "recursive mutex alloc failed addr=0x%02X", addr_7bit);
+  }
+  esp_err_t err = WriteReg(kRegIocon, kIoconBank0Seqon);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "iocon init failed addr=0x%02X err=%d", addr_7bit, err);
   }
   ESP_LOGI(kTag, "attached addr=0x%02X scl=%u", addr_7bit,
            static_cast<unsigned>(scl_hz));

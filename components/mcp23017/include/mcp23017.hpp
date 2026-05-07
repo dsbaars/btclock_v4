@@ -34,6 +34,11 @@ class Mcp23017 {
   Mcp23017& operator=(const Mcp23017&) = delete;
 
   esp_err_t SetDirection(uint8_t pin, PinMode mode);
+  // Bulk IODIR write: bit=1 → input, bit=0 → output. Does NOT touch
+  // GPPU — input pins land floating. Asymmetric with the single-pin
+  // SetDirection(kInputPullup) path on purpose: the bulk path is the
+  // boot-time fast path, callers that need pull-ups follow up with
+  // per-pin SetDirection (see init_hardware.cpp button setup).
   esp_err_t SetDirectionPort(uint16_t pin_mask_inputs);
   esp_err_t WritePort(uint16_t value);
   esp_err_t ReadPort(uint16_t* value);
