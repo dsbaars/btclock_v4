@@ -18,6 +18,7 @@ idf_component_register(
          "app/boot/init_storage.cpp"
          "app/boot/init_zap_listener.cpp"
          "app/event_loop.cpp"
+         "app/control_command_drain.cpp"
          "sources/sources.cpp"
          "sources/sources_uri.cpp"
          "sources/mempool_kraken_source.cpp"
