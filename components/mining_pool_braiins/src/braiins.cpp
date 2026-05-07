@@ -1,25 +1,11 @@
-// Registered by mining_pool_stats_handler once pool-selection NVS pref
-// lands (follow-up). For now the class compiles + runs but main.cpp
-// does not instantiate it; the user wires up the selection logic after
-// all seven pool sources exist.
-
 #include "mining_pool_braiins/braiins.hpp"
 
 #include "mining_pool_braiins/braiins_parser.hpp"
 #include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace mining_pools {
-
-namespace {
-// NVS key names match the old firmware's intent so an in-place upgrade
-// keeps the user's existing API token. The new prefs layer groups pool
-// keys under a dedicated "pool" namespace; the upgrade shim rewrites
-// `preferences.miningPoolUser` -> `pool.user` on first boot.
-constexpr const char* kPrefsNs = "pool";
-constexpr const char* kUserKey = "user";
-constexpr const char* kUserDefault = "";
-}  // namespace
 
 std::string BraiinsPool::api_url() const {
   // URL is constant; the account is identified by the Pool-Auth-Token
@@ -28,8 +14,11 @@ std::string BraiinsPool::api_url() const {
 }
 
 std::string BraiinsPool::auth_token() const {
-  btclock::Prefs prefs(kPrefsNs);
-  return prefs.GetString(kUserKey, kUserDefault);
+  // Shared `miningPoolUser` slot — same convention as ViaBTC / Foundry.
+  // The Braiins token is a public account ID, not a secret, so
+  // user_is_secret() stays false (no GET-side suppression).
+  btclock::Prefs settings(btclock::prefs::kSettingsNs);
+  return settings.GetString(btclock::prefs::kMiningPoolUser, "");
 }
 
 bool BraiinsPool::parse_response(const char* body, ParsedStats& out) const {

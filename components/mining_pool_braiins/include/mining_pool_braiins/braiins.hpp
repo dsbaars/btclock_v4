@@ -3,10 +3,9 @@
 // Polls pool.braiins.com every minute, parses the per-account BTC
 // endpoint, and reports hashrate + today_reward into DataSnapshot.pool.
 //
-// Auth: the user's Braiins API token is read from NVS (namespace
-// "pool", key "user" — migrated from the old firmware's
-// `miningPoolUser` key by the prefs upgrade shim). Sent in the
-// "Pool-Auth-Token" HTTP header.
+// Auth: the user's Braiins API token is read from the shared
+// `miningPoolUser` NVS key (same convention as every other pool
+// driver) and sent in the "Pool-Auth-Token" HTTP header.
 
 #pragma once
 
