@@ -16,16 +16,17 @@ std::string FoundryPool::api_url() const {
       settings.GetString(btclock::prefs::kPoolWorker, "");
   if (subacct.empty()) return "";  // base class skips the poll
 
-  // Anchor the day window at "24h ago in epoch ms". Foundry returns
-  // the daily series; the latest point is the only one we report, so
-  // the window only has to be wide enough to guarantee one sample.
-  // time(nullptr) returns seconds; * 1000 - 24h gives the lower bound
-  // in milliseconds. We avoid std::to_string on long long for portability
-  // — snprintf into a fixed buffer matches the rest of the codebase.
+  // Anchor the day window at "48h ago in epoch ms". Foundry's v2
+  // earnings endpoint returns one entry per UTC day (current day
+  // partial); the parser walks to the latest entry. A 48h window is
+  // wide enough to span a UTC midnight rollover and still surface a
+  // current-day partial sample — 24h sometimes empties the window
+  // briefly right after midnight. snprintf into a fixed buffer
+  // matches the rest of the codebase (no std::to_string for long long).
   const long long now_ms = static_cast<long long>(std::time(nullptr)) * 1000LL;
-  const long long start_ms = now_ms - 24LL * 60LL * 60LL * 1000LL;
+  const long long start_ms = now_ms - 48LL * 60LL * 60LL * 1000LL;
 
-  std::string url = "https://api.foundryusapool.com/subaccount_hashrate_day/";
+  std::string url = "https://api.foundryusapool.com/v2/earnings/";
   url += subacct;
   url += "?coin=BTC&startDateUnixMs=";
   char buf[32];
