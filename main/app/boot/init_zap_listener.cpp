@@ -32,17 +32,19 @@ constexpr const char* kTag = "btclock";
 // callback shape without duplicating the captures.
 void BindOnZap(AppCtx& ctx) {
   if (!ctx.zap_listener) return;
-  FrontlightController* fl_ptr = ctx.frontlight.get();
+  // Frontlight + flFlashOnZap pref are intentionally NOT captured: the
+  // ZapFlash() pulse is fired from event_loop.cpp's zap-notify branch
+  // after sm.Render() so the staggered fade-up doesn't start before the
+  // EPDs paint the zap overlay. See the matching comment below.
   DataHub* hub_ptr = ctx.hub.get();
   TaskHandle_t main_task = ctx.main_task;
   auto* flash_on_zap_ptr = &ctx.flash_on_zap_enabled;
-  auto* flash_fl_on_zap_ptr = &ctx.flash_frontlight_on_zap_enabled;
   auto* zap_notify_ptr = &ctx.zap_notify_screen_enabled;
   auto* zap_pending_ptr = &ctx.zap_notify_pending;
 
   ctx.zap_listener->SetOnZap(
-      [fl_ptr, hub_ptr, main_task, flash_on_zap_ptr, flash_fl_on_zap_ptr,
-       zap_notify_ptr, zap_pending_ptr](const nostr::ZapListener::ZapInfo& z) {
+      [hub_ptr, main_task, flash_on_zap_ptr, zap_notify_ptr, zap_pending_ptr](
+          const nostr::ZapListener::ZapInfo& z) {
         const uint64_t sats = z.amount_msat / 1000ULL;
         const std::string eid =
             z.raw ? z.raw->id.substr(0, 8) : std::string("?");
@@ -67,9 +69,17 @@ void BindOnZap(AppCtx& ctx) {
           if (flash_on_zap_ptr->load()) {
             PostLedEffect(LedEffect::kZap);
           }
-          if (fl_ptr && flash_fl_on_zap_ptr->load()) {
-            fl_ptr->ZapFlash();
-          }
+          // Frontlight ZapFlash is intentionally NOT fired here.
+          // The relay-worker callback runs before the main loop has
+          // had a chance to flip ScreenManager into the zap overlay,
+          // so a Flash() here would start the staggered fade-up
+          // animation while the EPDs still show the prior screen.
+          // event_loop.cpp's zap-notify branch fires ZapFlash() AFTER
+          // sm.Render() returns (PaintDataScreen is synchronous), so
+          // the animation lines up with the user-visible "zap screen
+          // appears, then the panel pulses" sequence. Mirrors the
+          // block-flash deferral already in place for new-block events.
+
           // Signal the main loop to flip ScreenManager into the
           // zap overlay. The hub Report above also wakes main_task
           // via the on-update callback; the pending flag picks
