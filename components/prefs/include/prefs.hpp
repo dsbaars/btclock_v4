@@ -33,6 +33,12 @@ class Prefs {
   bool GetBool(const char* key, bool default_value = false) const;
   esp_err_t SetBool(const char* key, bool value);
 
+  // Erase a single key. Returns ESP_ERR_NVS_NOT_FOUND if the key wasn't
+  // there to begin with — callers that treat "remove a key that was
+  // never set" as a no-op should ignore that result. Caller still has
+  // to Commit() before close to make the deletion durable.
+  esp_err_t Remove(const char* key);
+
   // Force pending writes out to flash.
   esp_err_t Commit();
 

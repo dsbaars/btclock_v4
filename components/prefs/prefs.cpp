@@ -75,6 +75,11 @@ esp_err_t Prefs::SetBool(const char* key, bool value) {
   return SetU32(key, value ? 1 : 0);
 }
 
+esp_err_t Prefs::Remove(const char* key) {
+  if (!open_) return ESP_ERR_INVALID_STATE;
+  return nvs_erase_key(handle_, key);
+}
+
 esp_err_t Prefs::Commit() {
   if (!open_) return ESP_ERR_INVALID_STATE;
   return nvs_commit(handle_);

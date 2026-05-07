@@ -58,11 +58,12 @@ class NvsPrefs final : public PrefsReader, public PrefsWriter {
   void SetBool(const char* key, bool value) override {
     prefs_.SetBool(key, value);
   }
-  void Remove(const char* /*key*/) override {
-    // Prefs component doesn't expose nvs_erase_key yet; defer on this
-    // for now. The only caller is `txPower = 80` (reset to
-    // default) and a follow-up can add Prefs::Remove when another
-    // path also needs it.
+  void Remove(const char* key) override {
+    // ESP_ERR_NVS_NOT_FOUND is fine — the schema's reset-to-default
+    // path may run against keys that were never set. Other errors
+    // surface in the next Commit(), which is when the schema actually
+    // checks for write-set failures.
+    prefs_.Remove(key);
   }
 
   // Force accumulated writes out to flash. Call exactly once at the
