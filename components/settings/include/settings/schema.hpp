@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 82> kFields = {{
+inline constexpr std::array<FieldSpec, 83> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -166,6 +166,13 @@ inline constexpr std::array<FieldSpec, 82> kFields = {{
      false,
      2048,
      {}},
+    // flOffOnDnd: when true (default), the frontlight respects an active
+    // Do-Not-Disturb window — the controller's Post() suppressor drops
+    // on/flash events and fades the panel out. Setting it false keeps
+    // the frontlight active during DND, useful for boards mounted in
+    // workspaces where the user wants the LED ring muted but the EPDs
+    // lit. Runtime-editable; no reboot required.
+    {prefs::kFlOffOnDnd, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kFlOffWhenDark, FieldKind::kBool, false, 0, 0, true, 0, {}},
     // v3 DEFAULT_FONT_NAME="antonio", DEFAULT_MINUTES_FULL_REFRESH=60.
     // gitReleaseUrl points at the v4 Forgejo release feed; OtaManager

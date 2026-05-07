@@ -118,6 +118,8 @@ void InitHardware(AppCtx& ctx) {
           btclock::settings::ReadBool(settings, prefs::kFlDisable));
       ctx.frontlight->SetFlashOnUpdate(
           btclock::settings::ReadBool(settings, prefs::kFlFlashOnUpd));
+      ctx.frontlight->SetOffOnDnd(
+          btclock::settings::ReadBool(settings, prefs::kFlOffOnDnd));
     }
 
     // Install DND gate before Start() so the boot fade-in is

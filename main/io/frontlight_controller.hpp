@@ -186,14 +186,24 @@ class FrontlightController {
   void SetFlashOnUpdate(bool enabled) { flash_on_update_ = enabled; }
   bool flash_on_update() const { return flash_on_update_; }
 
+  // `flOffOnDnd` — gate the active-suppressor predicate. When true
+  // (default), an active DND window suppresses the frontlight (Post
+  // drops on/flash events and fades the panel out via kAmbientOff).
+  // When false, the suppressor predicate's return value is ignored
+  // and the frontlight stays under its normal user/ambient control,
+  // so the LED ring can be muted by DND independently of the panel.
+  void SetOffOnDnd(bool enabled) { off_on_dnd_ = enabled; }
+  bool off_on_dnd() const { return off_on_dnd_; }
+
   // Install a predicate the controller consults before acting on Post.
-  // When true, kOn / kSetBrightness / kBlockFlash / kZapFlash are
-  // silently dropped and an immediate kOff is enqueued so the backlight
-  // fades to black. Pointed at the DND subsystem from main.cpp;
-  // std::function keeps the dnd component out of the frontlight
-  // controller's include graph. Thread-safety: predicate is swapped
-  // atomically; callers that set this more than once race on
-  // interleaved updates (not a concern — only wired at boot).
+  // When true AND `off_on_dnd_` is true (the default), kOn /
+  // kSetBrightness / kBlockFlash / kZapFlash are silently dropped and
+  // an immediate kOff is enqueued so the backlight fades to black.
+  // Pointed at the DND subsystem from main.cpp; std::function keeps
+  // the dnd component out of the frontlight controller's include
+  // graph. Thread-safety: predicate is swapped atomically; callers
+  // that set this more than once race on interleaved updates (not a
+  // concern — only wired at boot).
   void SetActiveSuppressor(std::function<bool()> predicate) {
     suppressor_ = std::move(predicate);
   }
@@ -251,6 +261,10 @@ class FrontlightController {
   volatile bool disabled_ = false;
   volatile bool always_on_ = true;
   volatile bool flash_on_update_ = true;
+  // flOffOnDnd default true: existing behaviour was hardcoded "DND
+  // suppresses the frontlight" before this gate was added; opting out
+  // is a deliberate user choice via /api/settings.
+  volatile bool off_on_dnd_ = true;
 
   // Ambient-light state. `policy_` owns the hysteresis latch + the
   // dark-mode detection; `OnAmbientLux()` is the single point that

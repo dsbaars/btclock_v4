@@ -901,7 +901,8 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // proxy_transport landed 7 fields (proxyEnabled, proxyType, proxyHost,
   // proxyPort, proxyUser, proxyPass, proxyBypass); none boot_only —
   // they're re-read per request by the ApplyProxyTo* helper.
-  CHECK(btclock::settings::kFields.size() == 82);
+  // 82 -> 83: flOffOnDnd opt-out for the DND-suppresses-frontlight gate.
+  CHECK(btclock::settings::kFields.size() == 83);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,

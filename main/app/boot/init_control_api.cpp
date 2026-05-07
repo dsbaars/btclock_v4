@@ -247,6 +247,8 @@ void InitControlApi(AppCtx& ctx) {
             btclock::settings::ReadBool(settings, prefs::kFlDisable));
         fl->SetFlashOnUpdate(
             btclock::settings::ReadBool(settings, prefs::kFlFlashOnUpd));
+        fl->SetOffOnDnd(
+            btclock::settings::ReadBool(settings, prefs::kFlOffOnDnd));
       };
     }
     // Every successful /api/settings PATCH pulses the LEDs green so

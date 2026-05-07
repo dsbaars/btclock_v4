@@ -64,6 +64,7 @@ inline constexpr const char* kFlEffectDelay = "flEffectDelay";
 inline constexpr const char* kFlFlashOnUpd = "flFlashOnUpd";
 inline constexpr const char* kFlFlashOnZap = "flFlashOnZap";
 inline constexpr const char* kFlMaxBrightness = "flMaxBrightness";
+inline constexpr const char* kFlOffOnDnd = "flOffOnDnd";
 inline constexpr const char* kFlOffWhenDark = "flOffWhenDark";
 inline constexpr const char* kFontName = "fontName";
 // Foundry USA Pool: per-account API key (suppressed in GET like
@@ -246,6 +247,7 @@ BTCLOCK_PREF_KEY_ASSERT(kFlEffectDelay);
 BTCLOCK_PREF_KEY_ASSERT(kFlFlashOnUpd);
 BTCLOCK_PREF_KEY_ASSERT(kFlFlashOnZap);
 BTCLOCK_PREF_KEY_ASSERT(kFlMaxBrightness);
+BTCLOCK_PREF_KEY_ASSERT(kFlOffOnDnd);
 BTCLOCK_PREF_KEY_ASSERT(kFlOffWhenDark);
 BTCLOCK_PREF_KEY_ASSERT(kFontName);
 BTCLOCK_PREF_KEY_ASSERT(kFullRefreshMin);

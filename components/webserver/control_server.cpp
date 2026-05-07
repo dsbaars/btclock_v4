@@ -2491,7 +2491,8 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
           k == btclock::prefs::kFlMaxBrightness ||
           k == btclock::prefs::kFlEffectDelay ||
           k == btclock::prefs::kFlAlwaysOn || k == btclock::prefs::kFlDisable ||
-          k == btclock::prefs::kFlFlashOnUpd) {
+          k == btclock::prefs::kFlFlashOnUpd ||
+          k == btclock::prefs::kFlOffOnDnd) {
         cfg_.on_frontlight_changed();
         break;
       }

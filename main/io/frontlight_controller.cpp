@@ -115,8 +115,11 @@ void FrontlightController::Post(FrontlightCommand cmd) {
   // forced kOff so a DND window armed while the light is already on
   // fades the panel to black without the caller having to know.
   // kAmbientOn / kAmbientOff are treated like kOn / kOff here so DND
-  // wins over the ambient loop too.
-  if (suppressor_ && suppressor_()) {
+  // wins over the ambient loop too. `flOffOnDnd` (off_on_dnd_) is the
+  // user opt-out — when false, an active DND window no longer mutes
+  // the frontlight and the LED ring's DND gate (LedController) stays
+  // the sole muting path.
+  if (off_on_dnd_ && suppressor_ && suppressor_()) {
     // Forward a user-off verbatim so the latch still tracks user
     // intent even inside a DND window. Everything else becomes a
     // kAmbientOff — we fade to black (or stay black) without setting
