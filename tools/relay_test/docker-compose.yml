@@ -1,0 +1,83 @@
+# Per-relay flap simulator for the Nostr stack.
+#
+# Two services:
+#   - toxiproxy: TCP proxy + toxic injection. Three proxies, one per
+#     upstream relay, each on its own port.
+#   - 3proxy:    SOCKS5 fronting that overrides the relay hostnames'
+#     DNS resolution so they all point at toxiproxy (per relay/port).
+#
+# Why both? The firmware's `proxy_transport` always sends SOCKS5
+# CONNECT with ATYP=domain (the proxy resolves the hostname). 3proxy's
+# `nsrecord` directive lets us override resolution for specific
+# hostnames, so the device-side URLs stay as `wss://relay.primal.net`
+# (with a per-relay port) and the LAN's real DNS is never touched.
+# Toxiproxy then injects the toxics on a per-relay basis, before the
+# bytes reach the real upstream.
+#
+# Architecture:
+#
+#   device  ─SOCKS5─►  3proxy:1080  ─resolved via nsrecord─►  toxiproxy:9443/4/5
+#                                                                   │
+#                                                                   ▼
+#                                                              real relay:443
+#
+# Bring-up:
+#   docker compose up -d
+#   ./bootstrap-toxiproxy.sh
+#   # PATCH device with proxyEnabled + proxyType=4 + proxyHost=<rig>
+#   # + nostrRelays = wss://relay.primal.net:9443 etc. (see README)
+
+services:
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    container_name: btclock_toxiproxy
+    restart: unless-stopped
+    networks:
+      relay_test_net:
+        # Pinned IP so 3proxy.cfg can reference it via nsrecord. The
+        # subnet is declared at the bottom of this file.
+        ipv4_address: 172.28.0.10
+    ports:
+      - "0.0.0.0:8474:8474"
+      - "0.0.0.0:9443:9443"
+      - "0.0.0.0:9444:9444"
+      - "0.0.0.0:9445:9445"
+    healthcheck:
+      test: ["CMD", "/toxiproxy-cli", "list"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  socks5:
+    # Tiny SOCKS5 server that rewrites the three relay hostnames to
+    # the matching toxiproxy listener. ~120 lines of Python; no extra
+    # packages. 3proxy 0.9.5 lacks a per-host destination-rewrite
+    # directive (`nsrecord` doesn't exist there), and dante's libwrap
+    # dependency was overkill for this — see socks5_router.py for the
+    # full rationale.
+    image: python:3.12-alpine
+    container_name: btclock_relay_socks5
+    restart: unless-stopped
+    depends_on:
+      toxiproxy:
+        condition: service_healthy
+    networks:
+      relay_test_net:
+    ports:
+      # SOCKS5 listener for the device. 1180 avoids clashing with
+      # `tools/proxy_test/`'s 3proxy on 1080 if both rigs are up.
+      - "0.0.0.0:1180:1080"
+    volumes:
+      - ./socks5_router.py:/srv/socks5_router.py:ro
+    environment:
+      TOXIPROXY_HOST: 172.28.0.10
+    command: ["python3", "/srv/socks5_router.py"]
+
+networks:
+  relay_test_net:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  relay_test_logs:
