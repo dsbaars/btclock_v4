@@ -210,9 +210,18 @@ void WireDataSources(AppCtx& ctx) {
     ESP_LOGW(kTag, "hub StartAll partial failure: %s — continuing",
              esp_err_to_name(err));
   }
+}
+
+void FinishWiringDataSources(AppCtx& ctx) {
+  // AP-mode boot path skips WireDataSources, so the hub never gets
+  // built. Detect that here and bail — the provisioning UI owns the
+  // panel + LEDs in that mode, and there are no buttons to wire.
+  if (!ctx.hub || !ctx.sm) return;
 
   // Block until the first blockheight arrives (or 30 s passes and we
   // paint whatever — the event loop will catch up when data lands).
+  // The HTTP control API is already up at this point, so the device
+  // responds to /api/* while we wait.
   ESP_LOGI(kTag, "waiting for first blockheight push …");
   const int64_t deadline = MsNow() + 30'000;
   while (!ctx.hub->GetSnapshot().block_height) {

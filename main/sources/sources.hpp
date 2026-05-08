@@ -9,11 +9,15 @@
 //   * (optional) Mining-pool HTTPS poller — selected pool only.
 //   * (optional) Bitaxe LAN poller.
 //
-// Also installs the SetOnUpdate → xTaskNotifyGive fan-in and blocks
-// for up to 30 s waiting on the first block-height snapshot so the
-// initial render has a real frame to paint. The button reader comes
-// up after the first paint so early clicks don't race a blank
-// display.
+// Also installs the SetOnUpdate → xTaskNotifyGive fan-in. The wait
+// for the first block-height snapshot, the first render, and the
+// button reader bring-up are split off into FinishWiringDataSources
+// so the HTTP control API can come up *before* the up-to-30-s data
+// wait — that wait used to gate the webserver behind first-data, and
+// users observed the device as "unresponsive over HTTP until the
+// screen lit up". WireDataSources now returns as soon as the source
+// tasks are spawned (fast); FinishWiringDataSources runs after
+// InitControlApi to finish the boot.
 //
 // Zap listener lives in app/boot/init_zap_listener — separate WSS
 // connection from the Nostr DataSource so enabling/disabling one
@@ -33,8 +37,18 @@ struct AppCtx;
 
 // Do nothing in AP (provisioning) mode — the provisioning render was
 // already painted by main. STA mode: build hub, attach sources, wire
-// the notify, wait for first snapshot, paint, start buttons.
+// the notify, kick off StartAll, return. No blocking wait, no first
+// render, no button bring-up — those are deferred to
+// FinishWiringDataSources so the webserver can start in between.
 void WireDataSources(AppCtx& ctx);
+
+// STA-mode tail of the boot sequence. Blocks until the first
+// blockheight snapshot lands (or 30 s elapses, whichever first),
+// paints the first frame with whatever data is available, then
+// constructs and starts the button reader. Idempotent against
+// AP mode: returns immediately when ctx.hub is null (the AP boot
+// path skips WireDataSources, so hub stays unset).
+void FinishWiringDataSources(AppCtx& ctx);
 
 // Pure helper exposed so host tests can pin the URI shape without
 // dragging in NVS. Maps the dataSource enum (shared with WebUI's

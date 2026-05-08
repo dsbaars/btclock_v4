@@ -37,6 +37,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "sources/sources.hpp"
 
 extern "C" void app_main() {
   // Bump main-task priority above the network/LWIP stack (LWIP is at
@@ -88,8 +89,18 @@ extern "C" void app_main() {
   btclock::InitStorage(ctx);
   btclock::InitNetwork(ctx);
   btclock::InitScreenManager(ctx);
+  // DispatchBootPath kicks off the data sources but no longer blocks
+  // for the first snapshot — that wait used to gate InitControlApi
+  // behind ~3-30 s of "wait for first blockheight push", which made
+  // the device feel HTTP-dead until the screen lit up. We start the
+  // control API as soon as the source tasks are spawned so /api/* is
+  // responsive while the first data is still in flight.
   btclock::DispatchBootPath(ctx);
   btclock::InitControlApi(ctx);
+  // Tail of WireDataSources: blocking wait for first blockheight,
+  // first render, button bring-up. Idempotent in AP mode (skips when
+  // there's no hub).
+  btclock::FinishWiringDataSources(ctx);
   btclock::InitMdns(ctx);
 
   btclock::RunEventLoop(ctx);
