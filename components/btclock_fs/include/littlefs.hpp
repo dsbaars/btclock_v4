@@ -43,7 +43,16 @@ esp_err_t UnmountLittleFs();
 // Populate `used_bytes` and `total_bytes` with the current usage.
 // Either pointer may be null if the caller only wants one of the two.
 // Returns an error if the filesystem isn't mounted.
+//
+// NB: this calls `esp_littlefs_info`, which walks the live filesystem.
+// On a populated WebUI partition that's tens of milliseconds — too slow
+// for the static-asset hot path. Use `IsLittleFsMounted()` for a cheap
+// "is the FS available?" check.
 esp_err_t GetLittleFsUsage(size_t* used_bytes, size_t* total_bytes);
+
+// Cheap mount-state check. O(1) — does not walk the FS. Safe to call
+// from per-request hot paths.
+bool IsLittleFsMounted();
 
 // Return the total byte-size of the LittleFS partition as declared in
 // the partition table. Does not require the FS to be mounted — it reads

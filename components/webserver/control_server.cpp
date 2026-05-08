@@ -229,11 +229,6 @@ bool RequestAcceptsGzip(httpd_req_t* req) {
   return v.find("gzip") != std::string_view::npos;
 }
 
-bool FileExists(const std::string& abs_path) {
-  struct stat st;
-  return stat(abs_path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
-}
-
 // Format the per-pixel array under the key "data" — this is what the
 // WebUI (and SSE stream) consume. Pixel 0 is the *last* one in the
 // array, matching the old firmware's numPixels()-i-1 ordering (the
@@ -2089,8 +2084,12 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   // happen: first-boot before MountLittleFs completes, or a future
   // upload flow that briefly unmounts. Either way the correct answer
   // is 503 + Retry-After, not a misleading 404.
-  size_t fs_used = 0, fs_total = 0;
-  if (btclock::GetLittleFsUsage(&fs_used, &fs_total) != ESP_OK) {
+  //
+  // Cheap mount-state check only — we used to call GetLittleFsUsage
+  // here, but esp_littlefs_info walks the live filesystem (~80-100 ms
+  // on a populated WebUI partition) and dominated TTFB for every
+  // static request, even tiny ones like commit.txt.
+  if (!btclock::IsLittleFsMounted()) {
     const int64_t now_us = esp_timer_get_time();
     if (now_us - s_last_503_log_us > 60LL * 1000 * 1000) {
       ESP_LOGW(kTag, "static asset requested but LittleFS not mounted");
@@ -2103,40 +2102,50 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
     return httpd_resp_send(req, kMsg, sizeof(kMsg) - 1);
   }
 
-  // Build candidate absolute paths. The old firmware *always* prefers
-  // the gzipped variant (AsyncStatic re-checks on every request too),
-  // but we honour Accept-Encoding: browsers that explicitly exclude
-  // gzip still get an uncompressed copy if one exists.
+  // Resolve via fopen, not stat-then-fopen. Each FileExists() did a
+  // round-trip through the LittleFS VFS that the subsequent fopen
+  // had to repeat anyway; merging them halves the syscalls per
+  // request. Order: prefer .gz when the client accepts it, otherwise
+  // try the literal, then fall back to .gz so gzip-only bundles
+  // still serve to clients that didn't advertise gzip.
   const std::string base = std::string(kWebRootBase) + "/" + rel;
   const std::string gz = base + ".gz";
   const bool want_gz = RequestAcceptsGzip(req);
 
-  std::string chosen;
+  FILE* f = nullptr;
   bool chosen_gz = false;
-  if (want_gz && FileExists(gz)) {
-    chosen = gz;
-    chosen_gz = true;
-  } else if (FileExists(base)) {
-    chosen = base;
-  } else if (FileExists(gz)) {
-    // Fall back to gzipped even without explicit Accept-Encoding —
-    // every modern browser handles it and the old firmware does the
-    // same (it doesn't inspect Accept-Encoding at all). This keeps us
-    // from returning 404 for gzip-only bundles.
-    chosen = gz;
-    chosen_gz = true;
-  } else {
-    httpd_resp_set_status(req, "404 Not Found");
-    httpd_resp_set_type(req, "text/plain");
-    const char kMsg[] = "not found";
-    return httpd_resp_send(req, kMsg, sizeof(kMsg) - 1);
+  if (want_gz) {
+    f = std::fopen(gz.c_str(), "rb");
+    if (f) chosen_gz = true;
   }
-
-  FILE* f = std::fopen(chosen.c_str(), "rb");
   if (!f) {
-    // Race with unlink, or ENOMEM inside esp_littlefs — either way
-    // pretend it's a 404. Logging helps diagnose.
-    ESP_LOGW(kTag, "fopen('%s') failed: %d", chosen.c_str(), errno);
+    f = std::fopen(base.c_str(), "rb");
+  }
+  if (!f && !want_gz) {
+    f = std::fopen(gz.c_str(), "rb");
+    if (f) chosen_gz = true;
+  }
+  // SPA fallback: SvelteKit's static adapter no longer emits per-route
+  // prerendered HTML stubs for /api and /convert (see the WebUI's
+  // src/routes/{api,convert}/+page.ts — both `prerender = false`), so a
+  // direct GET /api or /convert otherwise 404s. Match those known
+  // top-level routes explicitly and serve the app shell so the
+  // client-side router can take over after hydration. We deliberately
+  // do NOT fall back on arbitrary unknown paths — handing back the
+  // shell with a 200 OK for /api/blarg is worse than a 404 because it
+  // hides typos and broken inbound links behind a working-looking
+  // response. Add a new entry here when a new SvelteKit route lands
+  // in the WebUI submodule.
+  bool spa_fallback = false;
+  if (!f && (rel == "api" || rel == "convert")) {
+    const std::string shell = std::string(kWebRootBase) + "/index.html.gz";
+    f = std::fopen(shell.c_str(), "rb");
+    if (f) {
+      spa_fallback = true;
+      chosen_gz = true;  // index.html ships gzipped
+    }
+  }
+  if (!f) {
     httpd_resp_set_status(req, "404 Not Found");
     httpd_resp_set_type(req, "text/plain");
     const char kMsg[] = "not found";
@@ -2149,7 +2158,12 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   // a temporary std::string here hands httpd a dangling pointer whose
   // memory gets overwritten by the body-chunk buffer below — the symptom
   // is Content-Type showing bytes from the gzip FNAME field.
-  httpd_resp_set_type(req, MimeTypeForPath(rel).data());
+  //
+  // SPA-fallback responses pin Content-Type to text/html regardless of
+  // the requested URL — the body is the app shell, not whatever the
+  // client typed.
+  httpd_resp_set_type(req,
+                      spa_fallback ? "text/html" : MimeTypeForPath(rel).data());
   if (chosen_gz) {
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     // Vary: Accept-Encoding so proxies don't hand the .gz to a client
@@ -2158,8 +2172,9 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   }
 
   // Caching policy:
-  //   * index.html: no-cache. The hashed JS/CSS references inside it
-  //     are the only link between a deployed bundle and its assets;
+  //   * index.html (and SPA-fallback responses, which serve the same
+  //     shell): no-cache. The hashed JS/CSS references inside it are
+  //     the only link between a deployed bundle and its assets;
   //     serving a stale index would point the browser at missing
   //     hashes on the next upload. Matches the spirit of the old
   //     firmware (AsyncStatic with no-cache defaults) without
@@ -2170,13 +2185,50 @@ esp_err_t ControlServer::HandleStatic(httpd_req_t* req) {
   // headers; this is a deliberate improvement on that side.
   const bool is_index_html =
       rel == "index.html" || rel.rfind("/index.html") == rel.size() - 11;
-  httpd_resp_set_hdr(req, "Cache-Control",
-                     is_index_html ? "no-cache" : "public, max-age=300");
+  httpd_resp_set_hdr(
+      req, "Cache-Control",
+      (is_index_html || spa_fallback) ? "no-cache" : "public, max-age=300");
 
-  // Stream the body. 1536 B keeps us well under the 2 KiB stack cushion
-  // esp_http_server leaves on the worker task, and is large enough to
-  // amortise the per-send TCP overhead on typical 20 KiB JS chunks.
-  constexpr size_t kChunk = 1536;
+  // Body streaming strategy splits on file size:
+  //
+  //   * Small files (<= kSmallFileMax): read the whole file into a
+  //     scratch buffer and send via httpd_resp_send. esp_http_server
+  //     then emits headers + body in a single response with an
+  //     accurate Content-Length, no Transfer-Encoding: chunked, and
+  //     usually one TCP segment. This is a measurable win for
+  //     index.html.gz, manifest.json, commit.txt — every one of them
+  //     fit in a single packet but the chunked path was sending three
+  //     (headers, chunk, terminator).
+  //
+  //   * Large files (> kSmallFileMax): keep chunked transfer, but with
+  //     a larger chunk than the original 1.5 KiB. 4 KiB matches a
+  //     typical page boundary on the LittleFS read path, packs into
+  //     three TCP segments per chunk vs. one, and roughly quarters the
+  //     number of httpd_resp_send_chunk syscalls for the JS bundle.
+  //     The 4 KiB scratch buffer fits comfortably on the httpd
+  //     worker's 8 KiB stack.
+  struct stat fst;
+  size_t file_len = 0;
+  if (fstat(fileno(f), &fst) == 0 && fst.st_size > 0) {
+    file_len = static_cast<size_t>(fst.st_size);
+  }
+
+  constexpr size_t kSmallFileMax = 2 * 1024;
+  if (file_len > 0 && file_len <= kSmallFileMax) {
+    char small_buf[kSmallFileMax];
+    const size_t n = std::fread(small_buf, 1, file_len, f);
+    std::fclose(f);
+    if (n != file_len) {
+      // Short read — corrupt FS or unlinked-while-reading. The headers
+      // are already buffered (not flushed), so esp_http_server will
+      // happily send an error in their place.
+      httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "short read");
+      return ESP_FAIL;
+    }
+    return httpd_resp_send(req, small_buf, static_cast<ssize_t>(n));
+  }
+
+  constexpr size_t kChunk = 4 * 1024;
   char buf[kChunk];
   for (;;) {
     const size_t n = std::fread(buf, 1, kChunk, f);
