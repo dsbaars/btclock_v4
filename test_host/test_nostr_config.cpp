@@ -82,7 +82,11 @@ TEST_CASE("ReadNostrSourceConfig: defaults match schema (no NVS writes)") {
   // disabled even though kNostrRelay/kNostrPubKey carry sensible
   // defaults. This is the on-disk shape of a fresh install.
   CHECK_FALSE(cfg.enabled);
-  CHECK(cfg.relay_url == "wss://relay.primal.net");
+  // ReadRelayUrls reads kNostrRelays (schema default "") first, then
+  // falls back to the legacy singular kNostrRelay (schema default
+  // "wss://relay.primal.net"). Fresh install → 1-entry list.
+  REQUIRE(cfg.relay_urls.size() == 1);
+  CHECK(cfg.relay_urls[0] == "wss://relay.primal.net");
   CHECK(cfg.author_pubkey_hex ==
         "642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288");
 }
@@ -102,7 +106,8 @@ TEST_CASE(
 
   const auto cfg = btclock::settings::ReadNostrSourceConfig(prefs);
   CHECK(cfg.enabled);
-  CHECK(cfg.relay_url == "wss://relay.example.com");
+  REQUIRE(cfg.relay_urls.size() == 1);
+  CHECK(cfg.relay_urls[0] == "wss://relay.example.com");
   CHECK(cfg.author_pubkey_hex == pub);
 }
 
@@ -132,7 +137,8 @@ TEST_CASE("ReadZapListenerConfig: defaults match schema (no NVS writes)") {
   // Schema-driven defaults (single source of truth — see schema.hpp).
   CHECK_FALSE(cfg.zap_screen_notify);  // schema kNostrZapNotify = false
   CHECK_FALSE(cfg.enabled);            // gated on zap_screen_notify
-  CHECK(cfg.relay_url == "wss://relay.primal.net");
+  REQUIRE(cfg.relay_urls.size() == 1);
+  CHECK(cfg.relay_urls[0] == "wss://relay.primal.net");
   // Plural slot now carries the v3 default as a 1-entry list.
   REQUIRE(cfg.zap_pubkeys.size() == 1);
   CHECK(cfg.zap_pubkeys[0] ==
@@ -153,7 +159,36 @@ TEST_CASE(
   FakePrefs prefs;
   prefs.SetString(btclock::prefs::kNostrRelay, "wss://relay.example.com");
   const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
-  CHECK(cfg.relay_url == "wss://relay.example.com");
+  REQUIRE(cfg.relay_urls.size() == 1);
+  CHECK(cfg.relay_urls[0] == "wss://relay.example.com");
+}
+
+TEST_CASE(
+    "ReadZapListenerConfig: plural kNostrRelays wins over legacy singular") {
+  FakePrefs prefs;
+  prefs.SetString(btclock::prefs::kNostrRelay, "wss://stale.example.com");
+  prefs.SetString(btclock::prefs::kNostrRelays,
+                  "wss://primary.example.com,wss://secondary.example.com");
+  const auto cfg = btclock::settings::ReadZapListenerConfig(prefs);
+  REQUIRE(cfg.relay_urls.size() == 2);
+  CHECK(cfg.relay_urls[0] == "wss://primary.example.com");
+  CHECK(cfg.relay_urls[1] == "wss://secondary.example.com");
+}
+
+TEST_CASE("ReadNostrSourceConfig: enforces kMaxNostrRelays cap on read") {
+  // Hand-edited NVS could carry > N entries past the largest-free-block
+  // ceiling. Defensive trim mirrors the PATCH validator.
+  FakePrefs prefs;
+  std::string csv;
+  for (std::size_t i = 0; i < btclock::settings::kMaxNostrRelays + 2; ++i) {
+    if (!csv.empty()) csv.push_back(',');
+    csv.append("wss://relay");
+    csv.append(std::to_string(i));
+    csv.append(".example");
+  }
+  prefs.SetString(btclock::prefs::kNostrRelays, csv.c_str());
+  const auto cfg = btclock::settings::ReadNostrSourceConfig(prefs);
+  CHECK(cfg.relay_urls.size() == btclock::settings::kMaxNostrRelays);
 }
 
 TEST_CASE(

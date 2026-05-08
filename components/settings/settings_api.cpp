@@ -175,6 +175,27 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     }
   }
   {
+    // nostrRelays: stored as CSV under the canonical plural key, with a
+    // fallback to the legacy singular `nostrRelay` slot for installs
+    // that pre-date the multi-relay rollout. Replace the schema's auto-
+    // emitted CSV string with a JSON array so the WebUI can render the
+    // field as a list. Also overwrite the legacy `nostrRelay` emit with
+    // the array's first entry — keeps a stale WebUI that still binds to
+    // the singular field functional (it sees the primary relay) until it
+    // migrates to the plural.
+    std::string csv = ReadString(prefs, prefs::kNostrRelays);
+    if (csv.empty()) csv = ReadString(prefs, prefs::kNostrRelay);
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "nostrRelays");
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "nostrRelay");
+    cJSON* arr = cJSON_AddArrayToObject(root, "nostrRelays");
+    std::string first;
+    for (const auto& url : SplitCsv(csv)) {
+      cJSON_AddItemToArray(arr, cJSON_CreateString(url.c_str()));
+      if (first.empty()) first = url;
+    }
+    AddString(root, "nostrRelay", first);
+  }
+  {
     // nostrZapPubkeys: stored as CSV under the canonical plural key,
     // with a fallback to the legacy singular `nostrZapPubkey` slot for
     // installs that pre-date the multi-pubkey rollout. Replace the
@@ -470,7 +491,8 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
 
     if (key == "screens" || key == "dnd" || key == "actCurrencies" ||
         key == "timePerScreen" || key == "txPower" || key == "invertedColor" ||
-        key == "nostrZapPubkey" || key == "nostrZapPubkeys") {
+        key == "nostrZapPubkey" || key == "nostrZapPubkeys" ||
+        key == "nostrRelays") {
       continue;  // handled below
     }
     // tzOffset / gmtOffset are ignored — bd btclock_v4-9rx. v4 drives
@@ -812,6 +834,81 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       if (prefs.GetString(prefs::kNostrZapPubkeys, "") != joined) {
         writer.SetString(prefs::kNostrZapPubkeys, joined.c_str());
         result.touched_keys.emplace_back(prefs::kNostrZapPubkeys);
+      }
+    }
+  }
+
+  // nostrRelays: WebUI sends an array of WSS URLs; CSV-join into the
+  // canonical plural NVS slot. Caps the count at kMaxNostrRelays — each
+  // extra relay opens its own WSS, and the largest-free-block ceiling
+  // breaks the EPD render path past four. Empty array clears the field.
+  //
+  // The legacy singular `nostrRelay` is bridged in the same block: a
+  // PATCH carrying only the singular is treated as a 1-element
+  // assignment of the plural slot. When both keys are present the array
+  // wins (it's processed last). Without this bridge, an old WebUI's
+  // singular-only PATCH would leave the plural NVS slot stale and
+  // ReadRelayUrls would surface the wrong URL set on the next boot.
+  {
+    cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "nostrRelays");
+    cJSON* legacy = cJSON_GetObjectItemCaseSensitive(root, "nostrRelay");
+    if (!cJSON_IsArray(arr) && cJSON_IsString(legacy)) {
+      // Legacy singular path: reuse the per-iteration validation that
+      // already accepted the value (scheme guard at line ~541) and
+      // simply mirror it into the plural slot. Empty string clears.
+      const char* sv = legacy->valuestring ? legacy->valuestring : "";
+      const std::string s = sv;
+      if (prefs.GetString(prefs::kNostrRelays, "") != s) {
+        writer.SetString(prefs::kNostrRelays, s.c_str());
+        result.touched_keys.emplace_back(prefs::kNostrRelays);
+        // Boot-only — RelayClient bring-up isn't safe from the httpd
+        // worker thread. The per-iteration loop already flagged
+        // reboot_required for the legacy `nostrRelay` write itself, so
+        // this is belt-and-braces in case the legacy slot was already
+        // empty and only the plural mirror moved.
+        result.reboot_required = true;
+      }
+    }
+    if (cJSON_IsArray(arr)) {
+      std::string joined;
+      std::size_t count = 0;
+      for (cJSON* it = arr->child; it; it = it->next) {
+        if (!cJSON_IsString(it) || !it->valuestring) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrRelays:not_string";
+          cJSON_Delete(root);
+          return result;
+        }
+        const std::string s = it->valuestring;
+        if (s.empty()) continue;  // ignore blank form noise
+        const bool scheme_ok =
+            s.rfind("wss://", 0) == 0 || s.rfind("ws://", 0) == 0;
+        if (!scheme_ok) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrRelays:bad_scheme";
+          cJSON_Delete(root);
+          return result;
+        }
+        if (++count > kMaxNostrRelays) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrRelays:too_many";
+          cJSON_Delete(root);
+          return result;
+        }
+        if (!joined.empty()) joined.push_back(',');
+        joined.append(s);
+      }
+      if (prefs.GetString(prefs::kNostrRelays, "") != joined) {
+        writer.SetString(prefs::kNostrRelays, joined.c_str());
+        result.touched_keys.emplace_back(prefs::kNostrRelays);
+        // kNostrRelays is boot_only in the schema, but the per-
+        // iteration loop's `if (spec->boot_only) reboot_required=true`
+        // gate doesn't run for this key — we handle the array shape
+        // out-of-band, so set the flag here. Without this the WebUI
+        // would echo a 200 with no rebootRequired hint and the new
+        // relay set would only take effect on the user's next manual
+        // reboot — confusing.
+        result.reboot_required = true;
       }
     }
   }

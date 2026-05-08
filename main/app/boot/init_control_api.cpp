@@ -13,7 +13,6 @@
 #include "app/boot/init_mdns.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "app/catalogs.hpp"
-#include "app/ota_quiesce.hpp"
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
 #include "app/screen_slot_map.hpp"
@@ -328,23 +327,30 @@ void InitControlApi(AppCtx& ctx) {
     for (const auto& s : catalogs::kScreenKinds) {
       ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label)});
     }
-    // Nostr connection liveness — read on every /api/status so the
-    // WebUI's connection badge tracks reality instead of the
-    // hardcoded-false we used before the ZapListener was wired. Two
-    // mutually exclusive topologies need a probe:
-    //   1. Dedicated zap WSS — ctx.zap_relay set (zap listener + data
-    //      source point at different relays, or data source isn't
-    //      Nostr but zap notify is on).
-    //   2. Shared WSS — ctx.zap_relay is null because af2ad6c collapses
-    //      the listener onto ctx.nostr_source's RelayClient when both
-    //      relays match. Without this fallback the badge always reads
-    //      "not connected" while Nostr is the data source — that is
-    //      the whole point of the badge.
-    if (nostr::RelayClient* zap_ptr = ctx.zap_relay.get()) {
-      ccfg.nostr_connected = [zap_ptr]() { return zap_ptr->connected(); };
-    } else if (nostr::NostrDataSource* ns = ctx.nostr_source) {
-      ccfg.nostr_connected = [ns]() { return ns->relay_connected(); };
-    }
+    // Per-relay Nostr liveness — read on every /api/status so the
+    // WebUI's connection badge tracks reality. Walks both nostr_sources
+    // (shared-WSS path: data source owns the RelayClient) and
+    // zap_relays (dedicated-WSS path: zap listener owns its own when
+    // dataSource != 2 or the URLs disagree). Each unique relay URL
+    // appears exactly once: the shared path doesn't push to zap_relays
+    // when a sibling NostrDataSource owns the same WSS, so dedup by
+    // URL is implicit at construction time. Captures raw pointers to
+    // AppCtx-owned vectors — both outlive the control server (AppCtx
+    // declaration order keeps ctrl after every nostr field).
+    AppCtx* ctx_ptr = &ctx;
+    ccfg.nostr_relays_status = [ctx_ptr]() {
+      std::vector<ControlServer::Config::NostrRelayStatus> out;
+      out.reserve(ctx_ptr->nostr_sources.size() + ctx_ptr->zap_relays.size());
+      for (auto* ds : ctx_ptr->nostr_sources) {
+        if (!ds) continue;
+        out.push_back({ds->relay_url(), ds->relay_connected()});
+      }
+      for (const auto& zr : ctx_ptr->zap_relays) {
+        if (!zr) continue;
+        out.push_back({zr->url(), zr->connected()});
+      }
+      return out;
+    };
     // dataSource=1 plumbs price/blocks straight from the source's
     // per-WS connection probes. dataSource=0 leaves all three callbacks
     // unset → control_server falls back to the hub-presence heuristic
@@ -487,9 +493,19 @@ void InitControlApi(AppCtx& ctx) {
   GetOtaManager().SetPreFlashHook([ctx_ptr]() {
     ESP_LOGW("ota-ux", "pre-flash hook: quiescing data + painting UPDATE");
     // Order is non-obvious — see ota_quiesce.hpp. Host-tested in
-    // test_ota_quiesce.cpp.
-    QuiesceOtaPreFlash(ctx_ptr->zap_listener.get(), ctx_ptr->zap_relay.get(),
-                       ctx_ptr->hub.get());
+    // test_ota_quiesce.cpp. Multi-relay: stop EVERY listener before any
+    // relay (they may borrow a sibling NostrDataSource's
+    // SubscriptionManager — the data source dies inside hub->StopAll()
+    // last), then stop every dedicated relay, then the hub. Walks all
+    // listeners with a null relay so QuiesceOtaPreFlash's three-step
+    // ordering holds for the dedicated case below.
+    for (auto& listener : ctx_ptr->zap_listeners) {
+      if (listener) listener->Stop();
+    }
+    for (auto& relay : ctx_ptr->zap_relays) {
+      if (relay) relay->Stop();
+    }
+    if (ctx_ptr->hub) ctx_ptr->hub->StopAll();
     // Latch ScreenManager into OTA mode before painting — ShouldRender
     // now returns false so the main loop stays out of the EPD for the
     // remainder of the flash. Rotation timer is frozen via the same

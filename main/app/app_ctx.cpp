@@ -16,6 +16,7 @@
 #include "io/wifi_guard.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
+#include "nostr/zap_id_lru.hpp"
 #include "nostr/zap_listener.hpp"
 #include "provisioning_server.hpp"
 #include "sse_server.hpp"

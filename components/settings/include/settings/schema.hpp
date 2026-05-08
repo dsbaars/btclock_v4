@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 83> kFields = {{
+inline constexpr std::array<FieldSpec, 84> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -280,6 +280,12 @@ inline constexpr std::array<FieldSpec, 83> kFields = {{
      "642317135fd4c4205323b9dea8af3270657e62d51dc31a657c0ec8aab31c6288"},
     {prefs::kNostrRelay, FieldKind::kString, true, 0, 0, false, 0,
      "wss://relay.primal.net"},
+    // Canonical relay-URL list. Stored as CSV in NVS (matches the
+    // nostrZapPubkeys pattern); settings_api emits it as a JSON array on
+    // GET and accepts a JSON array on PATCH. Default empty so the read-
+    // side fallback can detect "user has not configured the new plural
+    // slot yet" and consult the legacy singular instead.
+    {prefs::kNostrRelays, FieldKind::kString, true, 0, 0, false, 0, ""},
     {prefs::kNostrZapNotify, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // Legacy single-pubkey slot. Carries the v3 demo-pubkey default so
     // a fresh install still surfaces it via the read-side fallback in

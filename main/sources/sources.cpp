@@ -37,43 +37,61 @@ void MaybeAddNostrSource(AppCtx& ctx) {
   // /api/settings PATCH writes them — readers used to open a separate
   // "nostr" namespace with shorthand keys ("enable" / "relay" / "pub")
   // so the WebUI's PATCH was effectively a no-op (bd btclock_v4-aw5).
-  // Schema keys: kDataSource (==2 selects Nostr), kNostrRelay,
-  // kNostrPubKey. All three are flagged boot_only in the schema so a
-  // change requires reboot — no live-reload hook here.
+  // Schema keys: kDataSource (==2 selects Nostr), kNostrRelays (CSV
+  // canonical / kNostrRelay singular fallback), kNostrPubKey. All four
+  // are flagged boot_only in the schema so a change requires reboot —
+  // no live-reload hook here.
   settings::NvsPrefs settings_prefs(prefs::kSettingsNs);
   const auto cfg = settings::ReadNostrSourceConfig(settings_prefs);
-  // Reject bare hostnames / https:// values up front. The PATCH path
-  // validates the scheme on the way in, but devices flashed before
-  // that gate can carry a stale schemeless `nostrRelay` in NVS.
-  // Constructing NostrDataSource with such a URL would fail at Start()
-  // with "Invalid uri", and the StartAll() aggregate used to abort the
-  // boot (Rev B reboot loop). Keep the source out of the hub entirely
-  // so the rest of the data pipeline (block/price feeds) still comes up.
-  const bool relay_scheme_ok = cfg.relay_url.rfind("wss://", 0) == 0 ||
-                               cfg.relay_url.rfind("ws://", 0) == 0;
-  if (cfg.enabled && !cfg.relay_url.empty() && !cfg.author_pubkey_hex.empty() &&
-      relay_scheme_ok) {
+  if (!cfg.enabled || cfg.relay_urls.empty() || cfg.author_pubkey_hex.empty()) {
+    ESP_LOGI(kTag, "nostr disabled (enable=%d relays=%u pub=%s)",
+             cfg.enabled ? 1 : 0, static_cast<unsigned>(cfg.relay_urls.size()),
+             cfg.author_pubkey_hex.empty() ? "<empty>" : "set");
+    return;
+  }
+  // One NostrDataSource per relay. Hub::Report Merge is content-
+  // idempotent and NostrDataSource keeps its own per-d staleness map,
+  // so duplicate NIP-78 events from sibling relays collapse to a no-op
+  // — no extra dedup needed on the data path. The zap path needs an
+  // explicit event-id LRU; that lives in init_zap_listener.cpp.
+  ctx.nostr_sources.reserve(cfg.relay_urls.size());
+  for (const auto& url : cfg.relay_urls) {
+    // Reject bare hostnames / https:// values up front. The PATCH path
+    // validates the scheme on the way in, but devices flashed before
+    // that gate can carry a stale schemeless `nostrRelay` in NVS.
+    // Constructing NostrDataSource with such a URL would fail at
+    // Start() with "Invalid uri", and the StartAll() aggregate used to
+    // abort the boot (Rev B reboot loop). Skip the bad relay and keep
+    // wiring the rest so a partially-corrupt list still gives a
+    // usable boot.
+    const bool scheme_ok =
+        url.rfind("wss://", 0) == 0 || url.rfind("ws://", 0) == 0;
+    if (!scheme_ok) {
+      ESP_LOGW(kTag, "nostr relay skipped (bad scheme): %s", url.c_str());
+      continue;
+    }
     nostr::NostrDataSource::Config ncfg;
-    ncfg.relay_url = cfg.relay_url;
+    ncfg.relay_url = url;
     ncfg.author_pubkey_hex = cfg.author_pubkey_hex;
-    // Leave d_tags empty → subscribe to all slots the publisher
-    // emits (price:*, blockheight, medianFee). Narrowing is a
-    // future optimisation if the pubkey publishes more than we need.
+    // Per-source NIP-01 sub identifier — unique per relay so the
+    // SubscriptionManager dispatches CLOSE/EVENT to the right consumer
+    // even though every NostrDataSource owns its own manager today.
+    // Future-proof against accidental sub-id collisions if we ever
+    // share managers across multiple data sources.
+    ncfg.sub_id = "btclock-v1-" + std::to_string(ctx.nostr_sources.size());
+    // Leave d_tags empty → subscribe to all slots the publisher emits
+    // (price:*, blockheight, medianFee). Narrowing is a future
+    // optimisation if the pubkey publishes more than we need.
     auto source = std::make_unique<nostr::NostrDataSource>(std::move(ncfg));
-    // Stash the raw pointer before the unique_ptr is moved into the hub,
+    // Stash the raw pointer before the unique_ptr is moved into the hub
     // so InitZapListener can consult subs() / relay_url() to share the
     // single WSS instead of opening a second one. Lifetime: the hub
     // outlives the listener (declaration order in AppCtx), so the
-    // back-ref stays valid for the listener's whole life.
-    ctx.nostr_source = source.get();
+    // back-refs stay valid for the listeners' whole lives.
+    ctx.nostr_sources.push_back(source.get());
     ctx.hub->AddSource(std::move(source));
-    ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…", cfg.relay_url.c_str(),
+    ESP_LOGI(kTag, "nostr enabled: relay=%s pub=%s…", url.c_str(),
              cfg.author_pubkey_hex.substr(0, 8).c_str());
-  } else {
-    ESP_LOGI(kTag, "nostr disabled (enable=%d relay=%s pub=%s scheme_ok=%d)",
-             cfg.enabled ? 1 : 0, cfg.relay_url.empty() ? "<empty>" : "set",
-             cfg.author_pubkey_hex.empty() ? "<empty>" : "set",
-             relay_scheme_ok ? 1 : 0);
   }
 }
 

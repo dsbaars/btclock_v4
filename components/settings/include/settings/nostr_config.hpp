@@ -31,8 +31,18 @@
 namespace btclock {
 namespace settings {
 
+// Cap on the number of relays a single install can connect to. Each
+// extra relay opens its own WSS (one RelayClient + SubscriptionManager
+// shared between the data source and the zap listener via NIP-01 multi-
+// sub). Measured cost on Rev B: ~13 KB internal SRAM + ~24 KB PSRAM per
+// extra dedicated WSS, halved when shared. Four caps keeps Rev A (4 MB
+// flash / 2 MB PSRAM) inside the largest-free-block fragmentation
+// ceiling — adding a fifth approaches the 32 KB cliff that pinned the
+// EPD render path on long-running devices.
+constexpr std::size_t kMaxNostrRelays = 4;
+
 // Snapshot of the nostr-relevant settings the data-source consumes. A
-// missing or zero-length string disables the source — the caller is
+// missing or zero-length list disables the source — the caller is
 // expected to skip construction in that case rather than feeding the
 // empty values into the relay client.
 struct NostrSourceConfig {
@@ -40,7 +50,10 @@ struct NostrSourceConfig {
   // defaults.hpp). The data-source builder gates Nostr construction
   // on this flag in addition to the URL/pubkey presence check.
   bool enabled = false;
-  std::string relay_url;          // kNostrRelay
+  // Canonical multi-relay list. CSV in NVS (kNostrRelays); reader falls
+  // back to the legacy singular kNostrRelay slot when the plural is
+  // empty so existing installs keep working without a migration step.
+  std::vector<std::string> relay_urls;
   std::string author_pubkey_hex;  // kNostrPubKey (lowercase hex, 64 chars)
 };
 
@@ -56,9 +69,12 @@ constexpr std::size_t kMaxZapPubkeys = 8;
 // can stash them in atomics in a single read pass.
 struct ZapListenerConfig {
   // True when nostrZapNotify is set. The listener is wired iff this is
-  // true AND the relay URL + zap_pubkeys are valid.
+  // true AND the relay URL list + zap_pubkeys are valid.
   bool enabled = true;
-  std::string relay_url;  // kNostrRelay (shared with the data source)
+  // Same canonical list NostrSourceConfig consumes — listener and data
+  // source share the relay set so each WSS carries both NIP-78 and
+  // kind-9735 subscriptions.
+  std::vector<std::string> relay_urls;
   // Recipient pubkeys (lowercase hex, 64 chars each). Source of truth
   // is kNostrZapPubkeys (CSV in NVS); reader falls back to the legacy
   // singular kNostrZapPubkey when the plural slot is empty so existing

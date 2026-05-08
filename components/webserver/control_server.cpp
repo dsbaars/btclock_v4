@@ -717,12 +717,22 @@ std::string ControlServer::BuildStatusJson() const {
       cfg_.blocks_connected ? cfg_.blocks_connected() : fallback_up);
   cJSON_AddBoolToObject(conn, "V2",
                         cfg_.v2_connected ? cfg_.v2_connected() : fallback_up);
-  // Nostr tracks the zap-relay WebSocket's live state when wired. An
-  // unset provider means the listener isn't configured (nostrZapNotify
-  // off or relay URL blank) — report false in that case so the WebUI
-  // badge correctly shows "not connected" rather than an implicit "N/A".
-  cJSON_AddBoolToObject(conn, "nostr",
-                        cfg_.nostr_connected ? cfg_.nostr_connected() : false);
+  // Nostr — array of {url, connected} objects, one per configured
+  // relay. Multi-relay collapses ~13 KB internal SRAM + ~24 KB PSRAM
+  // per extra WSS by sharing a RelayClient between the data source and
+  // the zap listener; this enumeration walks both paths so the WebUI's
+  // health badge surfaces every relay's reachability separately. Empty
+  // array means "no Nostr feature wired" (dataSource != 2 AND
+  // nostrZapNotify off, or every relay URL was rejected at boot).
+  cJSON* nostr_arr = cJSON_AddArrayToObject(conn, "nostr");
+  if (cfg_.nostr_relays_status) {
+    for (const auto& rs : cfg_.nostr_relays_status()) {
+      cJSON* obj = cJSON_CreateObject();
+      cJSON_AddStringToObject(obj, "url", rs.url.c_str());
+      cJSON_AddBoolToObject(obj, "connected", rs.connected);
+      cJSON_AddItemToArray(nostr_arr, obj);
+    }
+  }
 
   cJSON_AddNumberToObject(root, "rssi", CurrentRssi());
   cJSON_AddStringToObject(root, "currency",

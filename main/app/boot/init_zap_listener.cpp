@@ -16,6 +16,7 @@
 #include "nostr/nostr_data_source.hpp"
 #include "nostr/relay_client.hpp"
 #include "nostr/subscription_manager.hpp"
+#include "nostr/zap_id_lru.hpp"
 #include "nostr/zap_listener.hpp"
 #include "prefs.hpp"
 #include "settings/nostr_config.hpp"
@@ -27,11 +28,13 @@ namespace btclock {
 namespace {
 constexpr const char* kTag = "btclock";
 
-// Bind the on-zap callback. Factored out so RefreshZapListenerSettings
-// can rebuild the ZapListener with a new pubkey and re-attach the same
-// callback shape without duplicating the captures.
-void BindOnZap(AppCtx& ctx) {
-  if (!ctx.zap_listener) return;
+// Bind the on-zap callback for one ZapListener. Factored out so
+// RefreshZapListenerSettings can rebuild the listeners with new pubkeys
+// and re-attach the same callback shape without duplicating the
+// captures. The shared ZapIdLru lives on AppCtx so callbacks bound
+// across multiple relays cooperate: the first relay to deliver a given
+// kind-9735 receipt wins, the rest see MarkFresh()=false and drop.
+void BindOnZap(AppCtx& ctx, nostr::ZapListener& listener) {
   // Neither LED nor frontlight effects are fired from the relay-worker
   // callback. Both are dispatched from event_loop.cpp's zap-notify
   // branch AFTER sm.Render() paints the zap overlay, so the user sees
@@ -43,10 +46,22 @@ void BindOnZap(AppCtx& ctx) {
   TaskHandle_t main_task = ctx.main_task;
   auto* zap_notify_ptr = &ctx.zap_notify_screen_enabled;
   auto* zap_pending_ptr = &ctx.zap_notify_pending;
+  nostr::ZapIdLru* lru = ctx.zap_id_lru.get();
 
-  ctx.zap_listener->SetOnZap([hub_ptr, main_task, zap_notify_ptr,
-                              zap_pending_ptr](
-                                 const nostr::ZapListener::ZapInfo& z) {
+  listener.SetOnZap([hub_ptr, main_task, zap_notify_ptr, zap_pending_ptr,
+                     lru](const nostr::ZapListener::ZapInfo& z) {
+    // Multi-relay dedup: when the same NIP-57 receipt arrives over
+    // sibling relays the first call wins and the rest drop. Empty id
+    // (relay misbehaved) treats as fresh — the renderer's per-event
+    // bolt11 + amount overlay still benefits from the screen-overlay
+    // single-fire even when we can't dedupe by id.
+    const std::string_view eid_view =
+        z.raw ? std::string_view(z.raw->id) : std::string_view();
+    if (lru && !lru->MarkFresh(eid_view)) {
+      ESP_LOGD(kTag, "zap dropped (duplicate id=%.8s)",
+               eid_view.empty() ? "?" : eid_view.data());
+      return;
+    }
     const uint64_t sats = z.amount_msat / 1000ULL;
     const std::string eid = z.raw ? z.raw->id.substr(0, 8) : std::string("?");
     ESP_LOGI(kTag, "zap: %llu sats id=%s…",
@@ -79,12 +94,39 @@ void BindOnZap(AppCtx& ctx) {
     }
   });
 }
+
+// Locate the matching NostrDataSource for a zap relay URL — used to
+// share the WSS via NIP-01 multi-sub instead of opening a second
+// socket. Returns null when no data source is wired for that URL (or
+// dataSource != 2). Comparison goes through ShouldShareNostrRelay so
+// the trailing-slash + lowercase normalisation is identical to the
+// validator's gate.
+nostr::SubscriptionManager* FindSiblingSubs(AppCtx& ctx,
+                                            const std::string& url) {
+  for (auto* ds : ctx.nostr_sources) {
+    if (ds && ShouldShareNostrRelay(ds->relay_url(), url)) return ds->subs();
+  }
+  return nullptr;
+}
+
+// Validate the zap config common gates (master enable, pubkey shape).
+// Per-relay scheme is checked at the iteration site so a single bad
+// URL in the list doesn't disable every relay.
+bool ZapConfigBasicallyValid(const settings::ZapListenerConfig& zap_cfg) {
+  if (!zap_cfg.enabled) return false;
+  if (zap_cfg.relay_urls.empty()) return false;
+  if (zap_cfg.zap_pubkeys.empty()) return false;
+  for (const auto& pk : zap_cfg.zap_pubkeys) {
+    if (pk.size() != 64) return false;
+  }
+  return true;
+}
 }  // namespace
 
 void InitZapListener(AppCtx& ctx) {
   if (!ctx.wifi || ctx.wifi->is_ap_mode()) return;
 
-  // All zap-listener prefs (relay URL, zap pubkey, the flash gates and
+  // All zap-listener prefs (relay URLs, zap pubkey, the flash gates and
   // the screen-notify master toggle) live in the canonical "settings"
   // NVS namespace where /api/settings PATCH writes them. Earlier this
   // file opened a separate "nostr" namespace with shorthand keys
@@ -101,46 +143,21 @@ void InitZapListener(AppCtx& ctx) {
   ctx.zap_notify_screen_enabled.store(zap_cfg.zap_screen_notify);
   ctx.zap_screen_auto_restore.store(zap_cfg.zap_screen_auto_restore);
 
-  // Reject bare-hostname / https:// `nostrRelay` values that survive
-  // from before the PATCH-side scheme guard. RelayClient would
-  // otherwise log "Invalid uri" on Start() and the listener would
-  // silently never connect — keep it inert so the boot path still
-  // log-explains why. Each pubkey must already be 64-char hex (PATCH
-  // validator enforces); recheck here so a hand-edited NVS that drops
-  // a stray space or a partial hex doesn't leak through.
-  const bool relay_scheme_ok = zap_cfg.relay_url.rfind("wss://", 0) == 0 ||
-                               zap_cfg.relay_url.rfind("ws://", 0) == 0;
-  bool all_pubkeys_ok = !zap_cfg.zap_pubkeys.empty();
-  for (const auto& pk : zap_cfg.zap_pubkeys) {
-    if (pk.size() != 64) {
-      all_pubkeys_ok = false;
-      break;
-    }
-  }
-  if (!(zap_cfg.enabled && !zap_cfg.relay_url.empty() && all_pubkeys_ok &&
-        relay_scheme_ok)) {
-    ESP_LOGI(kTag,
-             "zap listener disabled (enable=%d relay=%s pubs=%zu/%s "
-             "scheme_ok=%d)",
+  if (!ZapConfigBasicallyValid(zap_cfg)) {
+    ESP_LOGI(kTag, "zap listener disabled (enable=%d relays=%u pubs=%zu)",
              zap_cfg.enabled ? 1 : 0,
-             zap_cfg.relay_url.empty() ? "<empty>" : "set",
-             zap_cfg.zap_pubkeys.size(), all_pubkeys_ok ? "ok" : "invalid",
-             relay_scheme_ok ? 1 : 0);
+             static_cast<unsigned>(zap_cfg.relay_urls.size()),
+             zap_cfg.zap_pubkeys.size());
     return;
   }
 
-  // Try to share the Nostr data source's RelayClient + SubscriptionManager
-  // when both the data source and the zap listener point at the same
-  // relay. NIP-01 supports multiple subscriptions per WSS, so the second
-  // RelayClient is pure overhead (~30+ KB internal SRAM + heap
-  // fragmentation that pinned espLargestFreeBlock at 7 KB and silently
-  // broke the EPD render path). Falls back to the original separate-WSS
-  // path when the URLs differ or the data source is absent.
-  nostr::SubscriptionManager* shared_subs = nullptr;
-  if (ctx.nostr_source != nullptr &&
-      ShouldShareNostrRelay(ctx.nostr_source->relay_url(), zap_cfg.relay_url)) {
-    shared_subs = ctx.nostr_source->subs();
-  }
+  // Construct the shared event-id LRU once before any listener fires.
+  // BindOnZap captures it by raw pointer so future reconstructions in
+  // RefreshZapListenerSettings keep the same dedup window — a freshly
+  // arrived duplicate from a relay that reconnected mid-rotation still
+  // hits the LRU instead of slipping past as a "first sight".
+  if (!ctx.zap_id_lru) ctx.zap_id_lru = std::make_unique<nostr::ZapIdLru>();
+
   // Log helper: first pubkey's 8-char prefix + total count keeps the
   // boot log informative without dumping all 8 hex strings on V8 boards.
   auto pubkeys_log = [](const std::vector<std::string>& pks) {
@@ -150,52 +167,86 @@ void InitZapListener(AppCtx& ctx) {
     return s;
   };
 
-  if (shared_subs != nullptr) {
-    ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-        *shared_subs, std::string("zap"), zap_cfg.zap_pubkeys);
-    ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
-    BindOnZap(ctx);
-    ctx.zap_listener->Start();
-    ESP_LOGI(kTag,
-             "zap listener enabled (shared WSS via nostr data source): "
-             "relay=%s pubs=%s flashLed=%d flashFl=%d",
-             zap_cfg.relay_url.c_str(),
-             pubkeys_log(zap_cfg.zap_pubkeys).c_str(),
-             ctx.flash_on_zap_enabled.load() ? 1 : 0,
-             ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
-    return;
+  // Reserve sized to the worst-case all-dedicated path; the shared path
+  // leaves zap_relays / zap_subs short, but reserving up-front avoids
+  // intermediate reallocations that would invalidate listener pointers
+  // mid-loop.
+  ctx.zap_listeners.reserve(zap_cfg.relay_urls.size());
+  ctx.zap_relays.reserve(zap_cfg.relay_urls.size());
+  ctx.zap_subs.reserve(zap_cfg.relay_urls.size());
+
+  std::size_t shared_count = 0, dedicated_count = 0;
+  for (std::size_t i = 0; i < zap_cfg.relay_urls.size(); ++i) {
+    const std::string& url = zap_cfg.relay_urls[i];
+    const bool scheme_ok =
+        url.rfind("wss://", 0) == 0 || url.rfind("ws://", 0) == 0;
+    if (!scheme_ok) {
+      ESP_LOGW(kTag, "zap relay skipped (bad scheme): %s", url.c_str());
+      continue;
+    }
+
+    // Per-relay sub-id keeps NIP-01 dispatch unambiguous when one
+    // SubscriptionManager carries both data + zap subs.
+    const std::string sub_id = "zap-" + std::to_string(i);
+
+    nostr::SubscriptionManager* shared_subs = FindSiblingSubs(ctx, url);
+    if (shared_subs != nullptr) {
+      // Ride an existing data-source RelayClient. NIP-01 supports
+      // multiple subs per WSS, so the second RelayClient would be pure
+      // overhead (~13 KB internal SRAM + ~24 KB PSRAM measured Rev B)
+      // and the matching largest-block fragmentation that pinned
+      // espLargestFreeBlock at 7 KB and silently broke the EPD render
+      // path on long-running devices.
+      auto listener = std::make_unique<nostr::ZapListener>(*shared_subs, sub_id,
+                                                           zap_cfg.zap_pubkeys);
+      BindOnZap(ctx, *listener);
+      listener->Start();
+      ctx.zap_listeners.push_back(std::move(listener));
+      ++shared_count;
+      ESP_LOGI(kTag, "zap listener (shared WSS): relay=%s", url.c_str());
+      continue;
+    }
+
+    // Dedicated WSS — either dataSource != 2 (no NostrDataSource at
+    // all) or the URL doesn't match any sibling. Open our own socket.
+    auto relay = std::make_unique<nostr::RelayClient>(url);
+    auto subs = std::make_unique<nostr::SubscriptionManager>(*relay);
+    auto listener = std::make_unique<nostr::ZapListener>(*subs, sub_id,
+                                                         zap_cfg.zap_pubkeys);
+    BindOnZap(ctx, *listener);
+    if (auto err = relay->Start(); err != ESP_OK) {
+      ESP_LOGE(kTag,
+               "zap relay Start() failed: %s (relay=%s) — skipping this relay",
+               esp_err_to_name(err), url.c_str());
+      // Don't push partial state — let the listener / relay / subs go
+      // out of scope and free immediately so we don't leak a half-
+      // wired entry into ctx.zap_*.
+      continue;
+    }
+    listener->Start();
+    ctx.zap_relays.push_back(std::move(relay));
+    ctx.zap_subs.push_back(std::move(subs));
+    ctx.zap_listeners.push_back(std::move(listener));
+    ++dedicated_count;
+    ESP_LOGI(kTag, "zap listener (dedicated WSS): relay=%s", url.c_str());
   }
 
-  ctx.zap_relay = std::make_unique<nostr::RelayClient>(zap_cfg.relay_url);
-  ctx.zap_subs = std::make_unique<nostr::SubscriptionManager>(*ctx.zap_relay);
-  ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-      *ctx.zap_subs, std::string("zap"), zap_cfg.zap_pubkeys);
   ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
-
-  BindOnZap(ctx);
-  if (auto err = ctx.zap_relay->Start(); err != ESP_OK) {
-    ESP_LOGE(kTag,
-             "zap relay Start() failed: %s (relay=%s) — disabling listener",
-             esp_err_to_name(err), zap_cfg.relay_url.c_str());
-    ctx.zap_listener.reset();
-    ctx.zap_subs.reset();
-    ctx.zap_relay.reset();
-    return;
-  }
-  ctx.zap_listener->Start();
   ESP_LOGI(kTag,
-           "zap listener enabled (dedicated WSS): relay=%s pubs=%s "
-           "flashLed=%d flashFl=%d",
-           zap_cfg.relay_url.c_str(), pubkeys_log(zap_cfg.zap_pubkeys).c_str(),
+           "zap listeners up: shared=%u dedicated=%u pubs=%s flashLed=%d "
+           "flashFl=%d",
+           static_cast<unsigned>(shared_count),
+           static_cast<unsigned>(dedicated_count),
+           pubkeys_log(zap_cfg.zap_pubkeys).c_str(),
            ctx.flash_on_zap_enabled.load() ? 1 : 0,
            ctx.flash_frontlight_on_zap_enabled.load() ? 1 : 0);
 }
 
 void RefreshZapListenerSettings(AppCtx& ctx) {
   // Re-read every runtime-editable nostr key from the canonical
-  // "settings" namespace and refresh the in-memory atomics so the
+  // "settings" NVS namespace and refresh the in-memory atomics so the
   // on-zap callback (which loads them on each receipt) sees the new
-  // values immediately. nostrRelay / nostrPubKey are boot_only and
+  // values immediately. nostrRelay(s) / nostrPubKey are boot_only and
   // are intentionally NOT applied here — the schema's rebootRequired
   // response steers the user through the reboot path.
   settings::NvsPrefs settings_prefs(prefs::kSettingsNs);
@@ -205,46 +256,21 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
   ctx.zap_notify_screen_enabled.store(zap_cfg.zap_screen_notify);
   ctx.zap_screen_auto_restore.store(zap_cfg.zap_screen_auto_restore);
 
-  // Listener was never wired (boot disabled it because the master
-  // toggle was off, or the pubkey was invalid). PATCH-toggling the
+  // Listeners were never wired (boot disabled it because the master
+  // toggle was off, or every relay URL was invalid). PATCH-toggling the
   // master back on requires reboot to construct the RelayClient + WS
   // task — keeping that out of the runtime path is a deliberate scope
-  // cut for bd btclock_v4-aw5/q1l (RelayClient bring-up isn't safe
-  // from the httpd worker thread without more synchronisation).
-  //
-  // Two valid wiring shapes after InitZapListener:
-  //   A) dedicated WSS — ctx.zap_relay + ctx.zap_subs both set, listener
-  //      borrows ctx.zap_subs.
-  //   B) shared WSS — both ctx.zap_relay and ctx.zap_subs are null, the
-  //      listener borrows ctx.nostr_source->subs() instead. We must NOT
-  //      treat (B) as "listener unset" — only the absence of zap_listener
-  //      itself signals that.
-  if (!ctx.zap_listener) {
+  // cut for bd btclock_v4-aw5/q1l.
+  if (ctx.zap_listeners.empty()) {
     ESP_LOGI(kTag,
-             "RefreshZapListenerSettings: listener unset, "
+             "RefreshZapListenerSettings: no listeners wired, "
              "skip Stop+Start (master toggle requires reboot)");
-    return;
-  }
-  // Resolve which SubscriptionManager the listener is currently using —
-  // either the dedicated zap_subs (shape A) or the data source's subs
-  // (shape B). Pubkey rotation rebuilds the listener against the same
-  // manager so the existing socket stays up.
-  nostr::SubscriptionManager* active_subs = ctx.zap_subs.get();
-  if (active_subs == nullptr && ctx.nostr_source != nullptr) {
-    active_subs = ctx.nostr_source->subs();
-  }
-  if (active_subs == nullptr) {
-    ESP_LOGW(kTag,
-             "RefreshZapListenerSettings: no SubscriptionManager available "
-             "(neither dedicated nor shared); skipping pubkey rotation");
     return;
   }
 
   // Pubkey list unchanged → toggling LED/frontlight/screen-notify only
   // updates the atomics already done above. Stop/Start would tear down
-  // the relay subscription unnecessarily. Comparison is order-sensitive
-  // — a deliberate reorder by the user counts as a change so the REQ
-  // filter reflects the new ordering on the wire.
+  // every relay subscription unnecessarily.
   if (zap_cfg.zap_pubkeys == ctx.zap_pubkeys_current) {
     ESP_LOGI(kTag,
              "RefreshZapListenerSettings: atomics refreshed "
@@ -255,43 +281,96 @@ void RefreshZapListenerSettings(AppCtx& ctx) {
     return;
   }
 
-  // Pubkey list changed: ZapListener binds the REQ filter at
-  // construction, so rebuild against the same SubscriptionManager.
-  // Schema rejects bad-length / non-hex / over-cap pubkeys at PATCH
-  // time so the invariants below should already hold; the defensive
-  // checks catch the empty-list and hand-edited-NVS paths.
+  // Defensive checks for the new pubkey list. Schema rejects bad-length
+  // / non-hex / over-cap pubkeys at PATCH time so the invariants below
+  // should already hold; the checks catch the empty-list and hand-
+  // edited-NVS paths.
   if (zap_cfg.zap_pubkeys.empty()) {
     ESP_LOGW(kTag,
              "RefreshZapListenerSettings: new pubkey list empty, "
-             "keeping previous subscription");
+             "keeping previous subscriptions");
     return;
   }
   for (const auto& pk : zap_cfg.zap_pubkeys) {
     if (pk.size() != 64) {
       ESP_LOGW(kTag,
                "RefreshZapListenerSettings: new pubkey invalid (len=%zu), "
-               "keeping previous subscription",
+               "keeping previous subscriptions",
                pk.size());
       return;
     }
   }
-  ctx.zap_listener->Stop();
-  ctx.zap_listener = std::make_unique<nostr::ZapListener>(
-      *active_subs, std::string("zap"), zap_cfg.zap_pubkeys);
-  ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
-  BindOnZap(ctx);
-  if (!ctx.zap_listener->Start()) {
-    ESP_LOGW(kTag,
-             "RefreshZapListenerSettings: Start() failed for %zu pubkeys "
-             "(first=%s…)",
-             zap_cfg.zap_pubkeys.size(),
-             zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
-    return;
+
+  // Pubkey list changed: each ZapListener binds the REQ filter at
+  // construction, so rebuild every listener against its existing
+  // SubscriptionManager. We avoid tearing the underlying RelayClients
+  // down — just stop+rebuild the listeners against the same managers.
+  // Index parallel to ctx.zap_listeners so the new vector ends up the
+  // same length and order.
+  std::vector<std::unique_ptr<nostr::ZapListener>> rebuilt;
+  rebuilt.reserve(ctx.zap_listeners.size());
+  for (std::size_t i = 0; i < ctx.zap_listeners.size(); ++i) {
+    auto& old = ctx.zap_listeners[i];
+    if (!old) continue;
+    // Each listener's SubscriptionManager is whichever one it borrowed
+    // at construction — could be a sibling NostrDataSource's subs (the
+    // shared path) or our own ctx.zap_subs[k] (dedicated). Snapshot the
+    // ref before destroying the listener: ZapListener holds the manager
+    // by reference, but we don't get to reach back through it. Stop the
+    // old listener so its CLOSE frame fires before we open the new sub.
+    old->Stop();
   }
-  ESP_LOGI(kTag,
-           "RefreshZapListenerSettings: rotated to %zu pubkeys (first=%s…)",
-           zap_cfg.zap_pubkeys.size(),
-           zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
+  ctx.zap_listeners.clear();
+
+  // Re-walk the relay URLs and re-attach. This mirrors InitZapListener's
+  // loop but reuses the existing RelayClient/Subs (in the dedicated
+  // path) and the existing data-source subs (in the shared path).
+  std::size_t dedicated_idx = 0;
+  for (std::size_t i = 0; i < zap_cfg.relay_urls.size(); ++i) {
+    const std::string& url = zap_cfg.relay_urls[i];
+    const std::string sub_id = "zap-" + std::to_string(i);
+
+    nostr::SubscriptionManager* subs = FindSiblingSubs(ctx, url);
+    if (subs == nullptr) {
+      // Dedicated path — find the matching ctx.zap_relays entry.
+      // Order is preserved by the original InitZapListener loop, so the
+      // dedicated entries appear in URL order.
+      while (
+          dedicated_idx < ctx.zap_relays.size() &&
+          !ShouldShareNostrRelay(ctx.zap_relays[dedicated_idx]->url(), url)) {
+        ++dedicated_idx;
+      }
+      if (dedicated_idx >= ctx.zap_relays.size()) {
+        ESP_LOGW(kTag,
+                 "RefreshZapListenerSettings: no dedicated subs for %s, "
+                 "skipping rebuild",
+                 url.c_str());
+        continue;
+      }
+      subs = ctx.zap_subs[dedicated_idx].get();
+      ++dedicated_idx;
+    }
+    auto listener = std::make_unique<nostr::ZapListener>(*subs, sub_id,
+                                                         zap_cfg.zap_pubkeys);
+    BindOnZap(ctx, *listener);
+    if (!listener->Start()) {
+      ESP_LOGW(kTag,
+               "RefreshZapListenerSettings: Start() failed for relay=%s "
+               "(first pub=%s…)",
+               url.c_str(), zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
+      continue;
+    }
+    rebuilt.push_back(std::move(listener));
+  }
+  ctx.zap_listeners = std::move(rebuilt);
+  ctx.zap_pubkeys_current = zap_cfg.zap_pubkeys;
+  ESP_LOGI(
+      kTag,
+      "RefreshZapListenerSettings: rotated %u listener(s) to %zu pubkey(s) "
+      "(first=%s…)",
+      static_cast<unsigned>(ctx.zap_listeners.size()),
+      zap_cfg.zap_pubkeys.size(),
+      zap_cfg.zap_pubkeys.front().substr(0, 8).c_str());
 }
 
 }  // namespace btclock

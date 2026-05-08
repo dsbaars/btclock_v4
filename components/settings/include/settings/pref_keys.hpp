@@ -102,7 +102,19 @@ inline constexpr const char* kMiningPoolUser = "miningPoolUser";
 inline constexpr const char* kPoolWorker = "poolWorker";
 inline constexpr const char* kMowMode = "mowMode";
 inline constexpr const char* kNostrPubKey = "nostrPubKey";
+// Legacy single-relay slot. Reads still consult it as a fallback so
+// existing installs keep working; new writes go to kNostrRelays
+// (plural). Kept in the schema so a stale WebUI that still PATCHes the
+// singular field doesn't 400 — its value is mirrored into the plural
+// slot on apply.
 inline constexpr const char* kNostrRelay = "nostrRelay";
+// Canonical relay-URL slot. NVS storage is comma-separated WSS URLs
+// (mirrors the actCurrencies / nostrZapPubkeys CSV pattern); GET / PATCH
+// expose it as a JSON array of strings. Multi-relay collapses ~30+ KB
+// of internal SRAM per extra WSS by sharing one RelayClient between the
+// data source and the zap listener — the SubscriptionManager
+// multiplexes both NIP-78 and kind-9735 subs over one socket per relay.
+inline constexpr const char* kNostrRelays = "nostrRelays";
 inline constexpr const char* kNostrZapNotify = "nostrZapNotify";
 // Legacy single-pubkey slot. Reads still consult it as a fallback so
 // existing installs keep working; new writes go to kNostrZapPubkeys
@@ -278,6 +290,7 @@ BTCLOCK_PREF_KEY_ASSERT(kPoolWorker);
 BTCLOCK_PREF_KEY_ASSERT(kMowMode);
 BTCLOCK_PREF_KEY_ASSERT(kNostrPubKey);
 BTCLOCK_PREF_KEY_ASSERT(kNostrRelay);
+BTCLOCK_PREF_KEY_ASSERT(kNostrRelays);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapNotify);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkey);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkeys);

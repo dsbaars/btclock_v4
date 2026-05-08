@@ -170,7 +170,8 @@ TEST_CASE("GET /api/settings surfaces every schema field") {
     // filtered array shape (catalogue-validated) on the wire — schema
     // kind is kString but the JSON value is an array. nostrZapPubkeys
     // follows the same CSV-in-NVS / array-on-wire pattern.
-    if (key == "actCurrencies" || key == "nostrZapPubkeys") {
+    if (key == "actCurrencies" || key == "nostrZapPubkeys" ||
+        key == "nostrRelays") {
       CHECK(cJSON_IsArray(item));
       continue;
     }
@@ -902,15 +903,18 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // proxyPort, proxyUser, proxyPass, proxyBypass); none boot_only —
   // they're re-read per request by the ApplyProxyTo* helper.
   // 82 -> 83: flOffOnDnd opt-out for the DND-suppresses-frontlight gate.
-  CHECK(btclock::settings::kFields.size() == 83);
+  // 83 -> 84: nostrRelays plural slot for multi-relay support
+  // (CSV-in-NVS, array-on-wire — see settings_api.cpp). Boot-only because
+  // each relay opens a WSS at boot.
+  CHECK(btclock::settings::kFields.size() == 84);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
-  // enableDebugLog, wpTimeout = 15. hostnamePrefix and mdnsEnabled used
-  // to be in this set; bd btclock_v4-9ut flipped them to runtime via
-  // on_mdns_changed. fontName likewise: bd btclock_v4-j76.5 dropped it
-  // because kSetFont applies live via the ControlCommand queue.
-  CHECK(btclock::settings::BootOnlyCount() == 15);
+  // nostrRelays, enableDebugLog, wpTimeout = 16. hostnamePrefix and
+  // mdnsEnabled used to be in this set; bd btclock_v4-9ut flipped them to
+  // runtime via on_mdns_changed. fontName likewise: bd btclock_v4-j76.5
+  // dropped it because kSetFont applies live via the ControlCommand queue.
+  CHECK(btclock::settings::BootOnlyCount() == 16);
 }
 
 TEST_CASE("NVS key length guard: every field key fits NVS's 15-char limit") {
@@ -1087,6 +1091,61 @@ TEST_CASE("PATCH nostrRelay empty string clears the field") {
                                            DefaultCtx(), prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kOk);
   CHECK(prefs.str_["nostrRelay"].empty());
+}
+
+TEST_CASE("PATCH nostrRelays array writes plural CSV + rebootRequired") {
+  // Multi-relay PATCH: the dedicated array handler writes the plural
+  // slot in CSV form, AND must echo rebootRequired:true so the WebUI
+  // can prompt the user to reboot. Without that the new RelayClient
+  // set never opens (boot_only — RelayClient bring-up isn't safe from
+  // the httpd worker thread).
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelays\":[\"wss://a.example\",\"wss://b.example\"]}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrRelays"] == "wss://a.example,wss://b.example");
+  CHECK(res.reboot_required);
+}
+
+TEST_CASE(
+    "PATCH legacy nostrRelay singular bridges to plural + rebootRequired") {
+  // Singular-only PATCH writes BOTH kNostrRelay (via per-iteration loop)
+  // and kNostrRelays (via the bridge) so a future read converges. The
+  // per-iteration loop already sets reboot_required because nostrRelay
+  // is boot_only — pin that the bridge keeps the flag set.
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelay\":\"wss://primary.example\"}", DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.str_["nostrRelay"] == "wss://primary.example");
+  CHECK(prefs.str_["nostrRelays"] == "wss://primary.example");
+  CHECK(res.reboot_required);
+}
+
+TEST_CASE("PATCH nostrRelays rejects entries with bad scheme") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"nostrRelays\":[\"wss://ok.example\",\"https://bad.example\"]}",
+      DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "nostrRelays:bad_scheme");
+}
+
+TEST_CASE("PATCH nostrRelays rejects more than kMaxNostrRelays entries") {
+  FakePrefs prefs;
+  std::string body = "{\"nostrRelays\":[";
+  for (std::size_t i = 0; i <= btclock::settings::kMaxNostrRelays; ++i) {
+    if (i) body.push_back(',');
+    body.append("\"wss://r");
+    body.append(std::to_string(i));
+    body.append(".example\"");
+  }
+  body.append("]}");
+  auto res =
+      btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadField);
+  CHECK(res.error == "nostrRelays:too_many");
 }
 
 TEST_CASE("PATCH legacy nostrZapPubkey is bridged into the plural slot") {

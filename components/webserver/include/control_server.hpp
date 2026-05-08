@@ -372,13 +372,22 @@ class ControlServer {
     // double-up fee ticks. Nullable: a null callback defers to reboot.
     std::function<void(bool)> on_block_fee_dec_changed;
 
-    // Live Nostr zap-relay connection state. Non-null only when the
-    // zap listener is wired (nostrZapNotify=true + valid relay URL +
-    // 64-char zap pubkey). Returns false while the WebSocket is
-    // disconnected or reconnecting so /api/status `connectionStatus.nostr`
-    // mirrors reality — a stale "true" here would mask relay failures
-    // from the WebUI's health indicator.
-    std::function<bool()> nostr_connected;
+    // Per-relay Nostr connection state for /api/status
+    // `connectionStatus.nostr`. Each entry describes one configured
+    // relay: the URL the firmware connected to and whether its
+    // WebSocket is currently up. The array's order matches the
+    // PATCH-set `nostrRelays` order. Empty when no Nostr feature is
+    // wired (dataSource != 2 AND nostrZapNotify off, OR every relay
+    // URL was rejected at boot).
+    //
+    // Non-null only when the Nostr stack is wired. When null the
+    // /api/status emitter falls back to an empty array — matches the
+    // WebUI's "no relay configured" badge.
+    struct NostrRelayStatus {
+      std::string url;
+      bool connected = false;
+    };
+    std::function<std::vector<NostrRelayStatus>()> nostr_relays_status;
 
     // Live data-source connection state for the /api/status
     // `connectionStatus.price` / `connectionStatus.blocks` / `V2`
