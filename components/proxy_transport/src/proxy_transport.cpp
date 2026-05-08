@@ -52,6 +52,24 @@ extern "C" int PollWrite(esp_transport_handle_t t, int timeout_ms);
 extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
                        int timeout_ms) {
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
+  // Defensive cleanup of any stale state from a previous Connect().
+  // esp_websocket_client's reconnect path on some failure modes
+  // (mid-handshake timeout, peer RST during upgrade) calls Connect()
+  // without a paired Close() — it expects the transport to handle
+  // reuse internally. Without this teardown the previous attempt's
+  // fd + tls leak, and lwIP's tcp_pcb / netconn / mbox quietly
+  // accumulate. heap_trace under tools/relay_test pinned this as the
+  // dominant fragmentation source on long-running devices: a single
+  // flaky relay producing one TLS-handshake-failure per ~10 s
+  // reconnect storm leaks ~30 KB of internal lwIP state per hour.
+  if (ctx->tls) {
+    esp_tls_conn_destroy(ctx->tls);
+    ctx->tls = nullptr;
+  }
+  if (ctx->fd >= 0) {
+    close(ctx->fd);
+    ctx->fd = -1;
+  }
   // Bypass is evaluated against whatever destination the upper layer
   // hands us — esp_http_client / esp_websocket_client parse cfg.url /
   // cfg.uri and call us with the host extracted, including after
@@ -105,7 +123,15 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
     ESP_LOGE(kTag, "esp_tls_set_conn_sockfd failed");
     esp_tls_conn_destroy(ctx->tls);
     ctx->tls = nullptr;
-    ctx->fd = -1;  // destroyed by esp_tls_conn_destroy via socket close
+    // esp_tls_set_conn_sockfd documents the application as owning the
+    // fd's lifecycle — the corresponding `esp_tls_conn_destroy` does
+    // NOT close it. Without an explicit close here, every TLS-side
+    // bring-up failure leaks a lwIP netconn + TCP PCB. The leak only
+    // manifests under post-handshake disconnect / mid-handshake-timeout
+    // workloads (heap_trace under tools/relay_test confirmed this),
+    // which is why it slipped past the original "happy-path" testing.
+    close(ctx->fd);
+    ctx->fd = -1;
     return -1;
   }
   // ESP_TLS_CONNECTING tells esp_tls_low_level_conn that the TCP
@@ -116,6 +142,8 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
   if (esp_tls_set_conn_state(ctx->tls, ESP_TLS_CONNECTING) != ESP_OK) {
     esp_tls_conn_destroy(ctx->tls);
     ctx->tls = nullptr;
+    // Same lifecycle invariant — see set_conn_sockfd branch above.
+    close(ctx->fd);
     ctx->fd = -1;
     return -1;
   }
@@ -131,6 +159,13 @@ extern "C" int Connect(esp_transport_handle_t t, const char* host, int port,
              port);
     esp_tls_conn_destroy(ctx->tls);
     ctx->tls = nullptr;
+    // Same lifecycle invariant — close the fd we attached via
+    // esp_tls_set_conn_sockfd ourselves. This is the dominant leak
+    // path on long-running devices: a single flaky relay producing one
+    // TLS-handshake-failure per ~10 s reconnect storm leaks ~30 KB of
+    // lwIP state per hour and progressively pins largest_free_block
+    // below the EPD partial-refresh DMA buffer size.
+    close(ctx->fd);
     ctx->fd = -1;
     return -1;
   }
@@ -238,8 +273,9 @@ extern "C" int Close(esp_transport_handle_t t) {
   if (ctx->tls) {
     esp_tls_conn_destroy(ctx->tls);
     ctx->tls = nullptr;
-    ctx->fd = -1;  // closed by esp_tls_conn_destroy
-    return 0;
+    // Application owns the fd lifecycle when esp_tls_set_conn_sockfd
+    // was used (which Connect() always does) — esp_tls_conn_destroy
+    // does not close it. Same invariant as the Connect() error paths.
   }
   if (ctx->fd >= 0) {
     close(ctx->fd);
@@ -252,10 +288,9 @@ extern "C" int Destroy(esp_transport_handle_t t) {
   if (!t) return ESP_OK;
   auto* ctx = static_cast<Ctx*>(esp_transport_get_context_data(t));
   if (!ctx) return ESP_OK;
-  if (ctx->tls)
-    esp_tls_conn_destroy(ctx->tls);
-  else if (ctx->fd >= 0)
-    close(ctx->fd);
+  if (ctx->tls) esp_tls_conn_destroy(ctx->tls);
+  // Always close the fd ourselves — see Connect()/Close() comments.
+  if (ctx->fd >= 0) close(ctx->fd);
   delete ctx;
   return ESP_OK;
 }
