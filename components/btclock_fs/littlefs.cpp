@@ -89,7 +89,9 @@ esp_err_t GetLittleFsUsage(size_t* used_bytes, size_t* total_bytes) {
   return ESP_OK;
 }
 
-bool IsLittleFsMounted() { return !g_mounted_base_path.empty(); }
+bool IsLittleFsMounted() {
+  return !g_mounted_base_path.empty();
+}
 
 size_t GetLittleFsPartitionSize() {
   const esp_partition_t* p = esp_partition_find_first(
