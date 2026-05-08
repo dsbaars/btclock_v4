@@ -428,6 +428,12 @@ esp_err_t ControlServer::Start() {
   reg("/api/diag/heap_trace/start", HTTP_POST, TrampolineHeapTraceStart);
   reg("/api/diag/heap_trace/stop", HTTP_POST, TrampolineHeapTraceStop);
 #endif
+  // Per-cap heap snapshot. Read-only, sub-allocation cost (response is
+  // a small fixed-shape JSON), safe to call when the device is in a
+  // low-memory state — the json builder allocates a few hundred bytes
+  // and returns. Use this to triage "/api/status shows huge heap but
+  // largestFreeBlock is tiny" fragmentation reports without serial.
+  reg("/api/diag/heap", HTTP_GET, TrampolineDiagHeap);
 
   // Long-lived SSE stream for the WebUI's live-refresh. Registered
   // via SseServer::RegisterRoute so the handler owns its own client
@@ -599,6 +605,9 @@ esp_err_t ControlServer::TrampolineHeapTraceStart(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineHeapTraceStop(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleHeapTraceStop(req);
+}
+esp_err_t ControlServer::TrampolineDiagHeap(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleDiagHeap(req);
 }
 
 esp_err_t ControlServer::TrampolineStatic(httpd_req_t* req) {
@@ -1178,6 +1187,72 @@ esp_err_t ControlServer::HandleHeapTraceStop(httpd_req_t* req) {
   httpd_resp_send_chunk(req, nullptr, 0);
   return ESP_OK;
 #endif
+}
+
+esp_err_t ControlServer::HandleDiagHeap(httpd_req_t* req) {
+  if (!RequireHttpAuth(req)) return ESP_OK;
+  // Per-cap snapshot of the live heap. The aggregate /api/system_status
+  // surfaces total / largest-free / minimum-free for INTERNAL+DMA but
+  // doesn't break out the SPIRAM-only / DMA-capable / 8-bit pools, and
+  // doesn't expose `free_blocks` / `allocated_blocks` — both are needed
+  // to triage fragmentation cases (largestFreeBlock collapsed even
+  // though total free is healthy = many small live allocations holding
+  // the heap into islands). Fixed JSON shape, no dynamic sizing — the
+  // builder fits comfortably in a 1 KiB stack snprintf chain so the
+  // endpoint is safe to call when the heap is already starved.
+  //
+  // The cap masks below are the four pools every IDF target reports:
+  //   internal     — non-PSRAM SRAM.
+  //   internal_dma — internal AND DMA-capable (the SSD1680 partial-
+  //                  refresh and esp-aes paths pull from this; when
+  //                  largest_free here drops below the EPD framebuffer
+  //                  size every render aborts with WriteVram failures).
+  //   spiram       — PSRAM only (when CONFIG_SPIRAM is on).
+  //   default      — anything malloc()/new fall back to (matches
+  //                  espFreeHeap in /api/status).
+  cJSON* root = cJSON_CreateObject();
+  if (!root) {
+    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
+    return ESP_FAIL;
+  }
+  cJSON_AddNumberToObject(root, "espUptime",
+                          static_cast<double>(esp_timer_get_time() / 1000000));
+
+  struct CapEntry {
+    const char* name;
+    uint32_t caps;
+  };
+  const CapEntry entries[] = {
+      {"internal", MALLOC_CAP_INTERNAL},
+      {"internal_dma", MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA},
+      {"spiram", MALLOC_CAP_SPIRAM},
+      {"default", MALLOC_CAP_DEFAULT},
+  };
+  cJSON* caps = cJSON_AddObjectToObject(root, "caps");
+  for (const auto& e : entries) {
+    multi_heap_info_t info;
+    heap_caps_get_info(&info, e.caps);
+    cJSON* obj = cJSON_AddObjectToObject(caps, e.name);
+    if (!obj) continue;
+    cJSON_AddNumberToObject(obj, "total_free_bytes",
+                            static_cast<double>(info.total_free_bytes));
+    cJSON_AddNumberToObject(obj, "total_allocated_bytes",
+                            static_cast<double>(info.total_allocated_bytes));
+    cJSON_AddNumberToObject(obj, "largest_free_block",
+                            static_cast<double>(info.largest_free_block));
+    cJSON_AddNumberToObject(obj, "minimum_free_bytes",
+                            static_cast<double>(info.minimum_free_bytes));
+    cJSON_AddNumberToObject(obj, "allocated_blocks",
+                            static_cast<double>(info.allocated_blocks));
+    cJSON_AddNumberToObject(obj, "free_blocks",
+                            static_cast<double>(info.free_blocks));
+    cJSON_AddNumberToObject(obj, "total_blocks",
+                            static_cast<double>(info.total_blocks));
+  }
+
+  char* txt = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  return SendJsonChar(req, txt);
 }
 
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {
