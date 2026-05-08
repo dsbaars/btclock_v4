@@ -185,8 +185,7 @@ If esptool reports "Failed to connect":
 binary.** Source layout that matters:
 
 - `data/build_gz/www/` — compressed WebUI assets (`index.html.gz`,
-  `bundle.js.gz`, `build/*`, etc.). This is what gets baked into the
-  image.
+  `build/*`, etc.). This is what gets baked into the image.
 - The webserver (`components/webserver/control_server.cpp`) serves
   from `kWebRootBase = "/lfs/www"`, so the files must land under
   `/www/` inside the LittleFS image — **pack from `data/build_gz/`
