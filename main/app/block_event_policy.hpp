@@ -50,6 +50,24 @@ struct BlockEventPolicy {
     }
   }
 
+  // Returns true when a non-stealing block update should still reset
+  // the rotation deadline. Companion to ShouldSteal: covers the case
+  // where the user is already on kBlockHeight and a new block arrives
+  // — the steal path is a no-op, but the rotation timer keeps ticking
+  // and could flip the screen seconds after the new digits paint
+  // (matches the user's "saw the new height for one second" report).
+  // Gated on `steal_focus` because that's the user opting into "the
+  // new block is the most important thing on screen right now"; with
+  // stealFocus off we keep the prior behaviour (rotation wins).
+  // kDebug and kNostrZap are intentionally excluded — debug freezes
+  // rotation on its own, and the zap overlay has its own deadline
+  // arithmetic.
+  static constexpr bool ShouldRestartTimerOnBlockUpdate(bool steal_focus,
+                                                        ScreenType current) {
+    if (!steal_focus) return false;
+    return current == ScreenType::kBlockHeight;
+  }
+
   // Threshold for the catch-up jump guard. Mirrors the v3 firmware's
   // hardcoded value (100 blocks ≈ 16 hours of chain advance) so a
   // device that boots after being offline for a few hours doesn't yank

@@ -345,6 +345,17 @@ constexpr const char* kTag = "btclock";
             }
             continue;
           }
+        } else if (BlockEventPolicy::ShouldRestartTimerOnBlockUpdate(
+                       steal_focus, sm.current_kind())) {
+          // Already on kBlockHeight when the new block landed. The
+          // steal path is a no-op (we're on the right screen), but the
+          // rotation deadline keeps ticking — without resetting it the
+          // user can see the fresh height for as little as a few hundred
+          // milliseconds before the next slot rotates in. Restart the
+          // timer so the new digits stay visible for the full
+          // `timerSeconds` window. The render itself happens in the
+          // ShouldRender branch below; we just adjust the deadline here.
+          sm.RestartTimer(now_ms);
         }
       }
     }

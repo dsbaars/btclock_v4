@@ -56,6 +56,37 @@ TEST_CASE("ShouldSteal is a no-op when already on kBlockHeight") {
   CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kBlockHeight));
 }
 
+TEST_CASE(
+    "ShouldRestartTimerOnBlockUpdate restarts only when stealFocus=true and "
+    "current is kBlockHeight") {
+  // Companion to ShouldSteal: when the user is already viewing the
+  // block-height screen and a new block lands, ShouldSteal returns
+  // false (no nav needed) but the rotation timer keeps ticking — so
+  // the freshly painted height could vanish in the next ~hundreds of
+  // milliseconds. ShouldRestartTimerOnBlockUpdate flags exactly that
+  // case so the event loop can call sm.RestartTimer() before falling
+  // through to the normal Render path.
+  CHECK(BlockEventPolicy::ShouldRestartTimerOnBlockUpdate(
+      true, ScreenType::kBlockHeight));
+
+  // stealFocus off → keep prior behaviour; rotation wins.
+  CHECK_FALSE(BlockEventPolicy::ShouldRestartTimerOnBlockUpdate(
+      false, ScreenType::kBlockHeight));
+
+  // Other screens go through ShouldSteal (which yanks to kBlockHeight
+  // and resets the timer via SetSlot), so ShouldRestartTimerOnBlockUpdate
+  // must not double-fire on them.
+  for (auto kind :
+       {ScreenType::kMoscowTime, ScreenType::kBtcPrice,
+        ScreenType::kBlockFeeRate, ScreenType::kClock, ScreenType::kHalving,
+        ScreenType::kBitcoinSupply, ScreenType::kMarketCap,
+        ScreenType::kMiningPoolHashrate, ScreenType::kMiningPoolEarnings,
+        ScreenType::kBitaxeHashrate, ScreenType::kBitaxeBestDiff,
+        ScreenType::kCustom, ScreenType::kDebug, ScreenType::kNostrZap}) {
+    CHECK_FALSE(BlockEventPolicy::ShouldRestartTimerOnBlockUpdate(true, kind));
+  }
+}
+
 TEST_CASE("ShouldSteal respects debug + zap overlays but not custom") {
   // kDebug: user is mid-debug, yanking would lose state.
   CHECK_FALSE(BlockEventPolicy::ShouldSteal(true, ScreenType::kDebug));
