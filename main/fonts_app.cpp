@@ -17,6 +17,8 @@ AppFonts::AppFonts()
       oswald_bold_(kOswaldBoldTtf, kOswaldBoldTtfSize),
       inter_(kInterTtf, kInterTtfSize),
       inter_bold_(kInterBoldTtf, kInterBoldTtfSize),
+      open_runde_(kOpenRundeTtf, kOpenRundeTtfSize),
+      open_runde_bold_(kOpenRundeBoldTtf, kOpenRundeBoldTtfSize),
       source_serif_(kSourceSerifTtf, kSourceSerifTtfSize),
       source_serif_bold_(kSourceSerifBoldTtf, kSourceSerifBoldTtfSize),
 #ifndef BTCLOCK_BOARD_REV_A
@@ -49,6 +51,9 @@ AppFonts::AppFonts()
                    SizeBetween(kOswaldBoldTtf, kOswaldBoldTtfEnd)),
       inter_(kInterTtf, SizeBetween(kInterTtf, kInterTtfEnd)),
       inter_bold_(kInterBoldTtf, SizeBetween(kInterBoldTtf, kInterBoldTtfEnd)),
+      open_runde_(kOpenRundeTtf, SizeBetween(kOpenRundeTtf, kOpenRundeTtfEnd)),
+      open_runde_bold_(kOpenRundeBoldTtf,
+                       SizeBetween(kOpenRundeBoldTtf, kOpenRundeBoldTtfEnd)),
       source_serif_(kSourceSerifTtf,
                     SizeBetween(kSourceSerifTtf, kSourceSerifTtfEnd)),
       source_serif_bold_(
@@ -128,6 +133,10 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
       return &atkinson_;
     case FontSlot::kAtkinsonBold:
       return &atkinson_bold_;
+    case FontSlot::kOpenRundeRegular:
+      return &open_runde_;
+    case FontSlot::kOpenRundeBold:
+      return &open_runde_bold_;
   }
   return &atkinson_;
 }
@@ -165,6 +174,9 @@ void AppFonts::SetFamily(FontFamily f) {
       break;
     case FontFamily::kAtkinsonBold:
       regular = &atkinson_bold_;
+      break;
+    case FontFamily::kOpenRunde:
+      regular = &open_runde_;
       break;
     case FontFamily::kOswald:
       regular = &oswald_;

@@ -74,6 +74,8 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
       return {FontSlot::kBitterRegular, FontSlot::kBitterBold};
     case FontFamily::kAtkinson:
       return {FontSlot::kAtkinsonRegular, FontSlot::kAtkinsonBold};
+    case FontFamily::kOpenRunde:
+      return {FontSlot::kOpenRundeRegular, FontSlot::kOpenRundeBold};
   }
   // Atkinson is the body-text fallback (legibility-first replacement
   // for the retired DejaVu pair).

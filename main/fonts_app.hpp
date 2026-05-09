@@ -1,9 +1,10 @@
 // Application-side font bundle.
 //
 // Loads every TTF the firmware ships and exposes them both by name
-// (antonio / antonioSemiBold / antonioBold / oswald / inter / sourceSerif /
-// merriweather / bitter / atkinson) and via a selectable FontFamily enum
-// that the production firmware's `fontName` preference maps to.
+// (antonio / antonioSemiBold / antonioBold / oswald / inter / openRunde /
+// sourceSerif / merriweather / bitter / atkinson) and via a selectable
+// FontFamily enum that the production firmware's `fontName` preference
+// maps to.
 
 #pragma once
 
@@ -57,8 +58,8 @@ inline SatsGlyphUtf8Buf SatsGlyphUtf8(uint8_t variant) {
 // Order: 0 antonio, 1 oswald, 2 inter, 3 sourceSerif, 4 merriweather,
 // 5 bitter, 6 atkinson, 7 antonioSemiBold, 8 antonioBold, 9 oswaldBold,
 // 10 interBold, 11 sourceSerifBold, 12 merriweatherBold, 13 bitterBold,
-// 14 atkinsonBold. New ids are appended so the existing numeric mapping
-// stays stable across firmware upgrades.
+// 14 atkinsonBold, 15 openRunde. New ids are appended so the existing
+// numeric mapping stays stable across firmware upgrades.
 enum class FontFamily : uint8_t {
   kAntonio = 0,
   kOswald = 1,
@@ -75,6 +76,7 @@ enum class FontFamily : uint8_t {
   kMerriweatherBold = 12,
   kBitterBold = 13,
   kAtkinsonBold = 14,
+  kOpenRunde = 15,
 };
 
 struct FontBundle {
@@ -104,6 +106,8 @@ enum class FontSlot : uint8_t {
   kAtkinsonBold = 12,
   kAntonioSemiBold = 13,
   kAntonioBold = 14,
+  kOpenRundeRegular = 15,
+  kOpenRundeBold = 16,
 };
 
 class AppFonts {
@@ -166,6 +170,8 @@ class AppFonts {
   Font oswald_bold_;
   Font inter_;
   Font inter_bold_;
+  Font open_runde_;
+  Font open_runde_bold_;
   Font source_serif_;
   Font source_serif_bold_;
 #ifndef BTCLOCK_BOARD_REV_A
@@ -193,12 +199,12 @@ class AppFonts {
 // "antonioBold" / "oswald" / "oswaldBold" / "inter" / "interBold" /
 // "sourceSerif" / "sourceSerifBold" / "merriweather" /
 // "merriweatherBold" / "bitter" / "bitterBold" / "atkinson" /
-// "atkinsonBold") to a FontFamily. Unknown values fall back to kAntonio
-// — the day-1 default every built-in screen was tuned against. Devices
-// upgrading from a build that stored "dejavu" land here too: kAntonio is
-// the safe fallback. Defined inline so host tests can call it without
-// linking AppFonts (whose ctor references TTF-blob symbols that only
-// exist in an IDF build).
+// "atkinsonBold" / "openRunde") to a FontFamily. Unknown values fall
+// back to kAntonio — the day-1 default every built-in screen was tuned
+// against. Devices upgrading from a build that stored "dejavu" land here
+// too: kAntonio is the safe fallback. Defined inline so host tests can
+// call it without linking AppFonts (whose ctor references TTF-blob
+// symbols that only exist in an IDF build).
 inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "oswald") return FontFamily::kOswald;
   if (id == "oswaldBold") return FontFamily::kOswaldBold;
@@ -212,6 +218,7 @@ inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "bitterBold") return FontFamily::kBitterBold;
   if (id == "atkinson") return FontFamily::kAtkinson;
   if (id == "atkinsonBold") return FontFamily::kAtkinsonBold;
+  if (id == "openRunde") return FontFamily::kOpenRunde;
   if (id == "antonioSemiBold") return FontFamily::kAntonioSemiBold;
   if (id == "antonioBold") return FontFamily::kAntonioBold;
   return FontFamily::kAntonio;

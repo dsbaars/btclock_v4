@@ -96,6 +96,12 @@ TEST_CASE("ResolveBundleSlots maps AtkinsonBold to its bold slot") {
   CHECK(s.bold == FontSlot::kAtkinsonBold);
 }
 
+TEST_CASE("ResolveBundleSlots maps OpenRunde to its (regular, bold) pair") {
+  const auto s = ResolveBundleSlots(FontFamily::kOpenRunde, true);
+  CHECK(s.regular == FontSlot::kOpenRundeRegular);
+  CHECK(s.bold == FontSlot::kOpenRundeBold);
+}
+
 TEST_CASE("ResolveBundleSlots maps Oswald to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kOswald, true);
   CHECK(s.regular == FontSlot::kOswaldRegular);
@@ -152,13 +158,13 @@ TEST_CASE("ResolveBundleSlots covers every FontFamily enumerator") {
   // adds to FontFamily but forgets to handle in ResolveBundleSlots —
   // the default-Atkinson tail covers that case but the test pins it.
   for (uint8_t i = static_cast<uint8_t>(FontFamily::kAntonio);
-       i <= static_cast<uint8_t>(FontFamily::kAtkinsonBold); ++i) {
+       i <= static_cast<uint8_t>(FontFamily::kOpenRunde); ++i) {
     const auto f = static_cast<FontFamily>(i);
     const auto s = ResolveBundleSlots(f, /*has_merriweather=*/true);
     CHECK(static_cast<uint8_t>(s.regular) <=
-          static_cast<uint8_t>(FontSlot::kAntonioBold));
+          static_cast<uint8_t>(FontSlot::kOpenRundeBold));
     CHECK(static_cast<uint8_t>(s.bold) <=
-          static_cast<uint8_t>(FontSlot::kAntonioBold));
+          static_cast<uint8_t>(FontSlot::kOpenRundeBold));
   }
 }
 
@@ -182,7 +188,8 @@ TEST_CASE("FontSlot enumerators are unique") {
       FontSlot::kMerriweatherBold, FontSlot::kBitterRegular,
       FontSlot::kBitterBold,       FontSlot::kAtkinsonRegular,
       FontSlot::kAtkinsonBold,     FontSlot::kAntonioSemiBold,
-      FontSlot::kAntonioBold,
+      FontSlot::kAntonioBold,      FontSlot::kOpenRundeRegular,
+      FontSlot::kOpenRundeBold,
   };
   const std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {

@@ -44,8 +44,9 @@ subset_full() {
 }
 
 # Antonio and Oswald upstreams ship variable fonts. stb_truetype doesn't
-# read fvar/gvar — instance to wght=400 first so the subset is a static
-# font and the variable tables are dropped (gvar alone is ~11 KB).
+# read fvar/gvar — instance to the chosen base weight first so the subset
+# is a static font and the variable tables are dropped (gvar alone is
+# ~11 KB).
 echo "→ Antonio (Google Fonts main, instance wght=400)"
 curl -sSL -o "${TMP}/Antonio-VF.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
@@ -57,7 +58,7 @@ pyftsubset "${TMP}/Antonio-Regular.ttf" \
     "--drop-tables+=GPOS,GSUB,DSIG" \
     "--output-file=${ASSETS}/Antonio.ttf"
 
-echo "→ Oswald (Google Fonts main, instance wght=400)"
+echo "→ Oswald (Google Fonts main, base cut = wght=400)"
 curl -sSL -o "${TMP}/Oswald-VF.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
 python3 -m fontTools.varLib.instancer "${TMP}/Oswald-VF.ttf" wght=400 \
@@ -74,22 +75,22 @@ pyftsubset "${TMP}/Oswald-Regular.ttf" \
 # instancer if the bundled copy drifts.
 echo "→ OswaldBold: skipped (manual wght=700 instance — see README)"
 
-echo "→ Inter 4.1 (rsms/inter release zip)"
+echo "→ Inter 4.1 (rsms/inter release zip; base cut = SemiBold)"
 curl -sSL -o "${TMP}/Inter-4.1.zip" \
     "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
 unzip -q -o "${TMP}/Inter-4.1.zip" -d "${TMP}/inter"
 # Release zip flattens extras/ at the archive root — no Inter-4.1/ wrapper.
-subset_full "${TMP}/inter/extras/ttf/Inter-Regular.ttf" \
+subset_full "${TMP}/inter/extras/ttf/Inter-SemiBold.ttf" \
     "${ASSETS}/Inter.ttf"
 subset_full "${TMP}/inter/extras/ttf/Inter-Bold.ttf" \
     "${ASSETS}/InterBold.ttf"
 
-echo "→ Source Serif 4 (adobe-fonts/source-serif release/TTF)"
-curl -sSL -o "${TMP}/SourceSerif4-Regular.ttf" \
-    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Regular.ttf"
+echo "→ Source Serif 4 (base cut = Semibold)"
+curl -sSL -o "${TMP}/SourceSerif4-Semibold.ttf" \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Semibold.ttf"
 curl -sSL -o "${TMP}/SourceSerif4-Bold.ttf" \
     "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Bold.ttf"
-subset_full "${TMP}/SourceSerif4-Regular.ttf" "${ASSETS}/SourceSerif.ttf"
+subset_full "${TMP}/SourceSerif4-Semibold.ttf" "${ASSETS}/SourceSerif.ttf"
 subset_full "${TMP}/SourceSerif4-Bold.ttf"    "${ASSETS}/SourceSerifBold.ttf"
 
 echo "→ Merriweather (SorkinType static TTFs)"
@@ -100,17 +101,18 @@ curl -sSL -o "${TMP}/Merriweather-Bold.ttf" \
 subset_full "${TMP}/Merriweather-Regular.ttf" "${ASSETS}/Merriweather.ttf"
 subset_full "${TMP}/Merriweather-Bold.ttf"    "${ASSETS}/MerriweatherBold.ttf"
 
-# BitterPro upstream only ships the variable font — instance to wght=400
-# and wght=700 before subsetting. Done this way to keep upstream
+# BitterPro upstream only ships the variable font — instance to wght=600
+# (base cut) and wght=700 (bold role) before subsetting. Done this way
+# to keep upstream
 # provenance verifiable; matches Google Fonts' downstream static workflow.
-echo "→ Bitter (BitterPro VF -> instance at wght=400/700 -> subset)"
+echo "→ Bitter (BitterPro VF -> instance at wght=600/700 -> subset)"
 curl -sSL -o "${TMP}/Bitter-VF.ttf" \
     "https://github.com/solmatas/BitterPro/raw/master/fonts/variable/Bitter%5Bwght%5D.ttf"
-python3 -m fontTools.varLib.instancer "${TMP}/Bitter-VF.ttf" wght=400 \
-    -o "${TMP}/Bitter-Regular.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/Bitter-VF.ttf" wght=600 \
+    -o "${TMP}/Bitter-SemiBold.ttf"
 python3 -m fontTools.varLib.instancer "${TMP}/Bitter-VF.ttf" wght=700 \
     -o "${TMP}/Bitter-Bold.ttf"
-subset_full "${TMP}/Bitter-Regular.ttf" "${ASSETS}/Bitter.ttf"
+subset_full "${TMP}/Bitter-SemiBold.ttf" "${ASSETS}/Bitter.ttf"
 subset_full "${TMP}/Bitter-Bold.ttf"    "${ASSETS}/BitterBold.ttf"
 
 echo "→ Atkinson Hyperlegible (googlefonts/atkinson-hyperlegible)"
@@ -120,6 +122,14 @@ curl -sSL -o "${TMP}/AtkinsonHyperlegible-Bold.ttf" \
     "https://github.com/googlefonts/atkinson-hyperlegible/raw/main/fonts/ttf/AtkinsonHyperlegible-Bold.ttf"
 subset_full "${TMP}/AtkinsonHyperlegible-Regular.ttf" "${ASSETS}/Atkinson.ttf"
 subset_full "${TMP}/AtkinsonHyperlegible-Bold.ttf"    "${ASSETS}/AtkinsonBold.ttf"
+
+echo "→ OpenRunde (lauridskern/open-runde desktop OTFs; base cut = SemiBold)"
+curl -sSL -o "${TMP}/OpenRunde-Semibold.otf" \
+    "https://raw.githubusercontent.com/lauridskern/open-runde/main/src/desktop/OpenRunde-Semibold.otf"
+curl -sSL -o "${TMP}/OpenRunde-Bold.otf" \
+    "https://raw.githubusercontent.com/lauridskern/open-runde/main/src/desktop/OpenRunde-Bold.otf"
+subset_full "${TMP}/OpenRunde-Semibold.otf" "${ASSETS}/OpenRunde.ttf"
+subset_full "${TMP}/OpenRunde-Bold.otf"    "${ASSETS}/OpenRundeBold.ttf"
 
 echo "→ SatoshiSymbol (from preserved woff2)"
 pyftsubset "${ASSETS}/SatoshiSymbol_source.woff2" \
@@ -151,6 +161,7 @@ expected = [
     "Merriweather.ttf", "MerriweatherBold.ttf",
     "Bitter.ttf", "BitterBold.ttf",
     "Atkinson.ttf", "AtkinsonBold.ttf",
+    "OpenRunde.ttf", "OpenRundeBold.ttf",
 ]
 missing = []
 for name in expected:

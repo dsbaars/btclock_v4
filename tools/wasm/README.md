@@ -16,6 +16,8 @@ that consume the WASM module off-device.
 | `smoke_test.mjs` | Node-side regression test for the bindings. `node tools/wasm/smoke_test.mjs`. |
 | `analyze_bolt.mjs` | Inspector for the WASM module's symbol table — used when debugging missing exports. |
 | `render_doc_screens.mjs` | **Doc-image renderer.** Composites WASM-rendered panels inside the BTClock acrylic-frame outline and writes the PNGs the user-facing docs reference. |
+| `render_font_sample.mjs` | Renders one block-height sample (`family` id) in the same PCB/chrome style as docs. Fast path for typography checks. |
+| `render_font_ab.sh` | End-to-end A/B helper for one font asset: builds regular + candidate renders and restores the original asset. |
 
 ## Doc-image renderer
 
@@ -86,3 +88,31 @@ Re-run the script — the new file will appear under
 If the screen has no WASM binding (like the clock screen, which uses
 real wall-clock time), set `skip: true` and instead capture a real
 device photo, tracked in [`docs/img/PHOTOS_NEEDED.md`](../../docs/img/PHOTOS_NEEDED.md).
+
+## Fast font A/B comparisons
+
+For font weight experiments, prefer the single-sample tools instead of
+re-rendering every docs screen.
+
+1) Build one sample directly (already-built WASM):
+
+```bash
+node tools/wasm/render_font_sample.mjs \
+  --family 2 \
+  --out docs/img/fonts/inter_regular_candidate.png
+```
+
+2) Run full regular-vs-candidate flow (including restore):
+
+```bash
+tools/wasm/render_font_ab.sh \
+  --family 2 \
+  --font-id inter \
+  --asset components/fonts/assets/Inter.ttf \
+  --candidate /tmp/Inter-SemiBold.ttf
+```
+
+This writes:
+
+- `docs/img/fonts/<font-id>_regular_candidate.png`
+- `docs/img/fonts/<font-id>_semibold_candidate.png`

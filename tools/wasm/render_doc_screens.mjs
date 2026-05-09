@@ -672,20 +672,18 @@ const SCREENS = [
   },
 ];
 
-// Order MUST match FontFamily's numeric values in main/fonts_app.hpp —
-// the loop below uses the array index as the font_family argument to
-// setRenderOptions(), so re-ordering here would silently render the
-// wrong face under each label.
+// `family` must match FontFamily's numeric value in main/fonts_app.hpp.
 const FONTS = [
-  { id: "antonio", title: "Antonio (default)" },
-  { id: "oswald", title: "Oswald" },
-  { id: "inter", title: "Inter" },
-  { id: "sourceSerif", title: "Source Serif" },
-  { id: "merriweather", title: "Merriweather" },
-  { id: "bitter", title: "Bitter" },
-  { id: "atkinson", title: "Atkinson Hyperlegible" },
-  { id: "antonioSemiBold", title: "Antonio SemiBold" },
-  { id: "antonioBold", title: "Antonio Bold" },
+  { id: "antonio", title: "Antonio (default)", family: 0 },
+  { id: "oswald", title: "Oswald", family: 1 },
+  { id: "inter", title: "Inter", family: 2 },
+  { id: "sourceSerif", title: "Source Serif", family: 3 },
+  { id: "merriweather", title: "Merriweather", family: 4 },
+  { id: "bitter", title: "Bitter", family: 5 },
+  { id: "atkinson", title: "Atkinson Hyperlegible", family: 6 },
+  { id: "antonioSemiBold", title: "Antonio SemiBold", family: 7 },
+  { id: "antonioBold", title: "Antonio Bold", family: 8 },
+  { id: "openRunde", title: "Open Runde", family: 15 },
 ];
 
 const generated = [];
@@ -750,9 +748,8 @@ async function main() {
     console.log(`[ok]   ${out}`);
   }
 
-  for (let i = 0; i < FONTS.length; i++) {
-    const f = FONTS[i];
-    mod.setRenderOptions(7, i);
+  for (const f of FONTS) {
+    mod.setRenderOptions(7, f.family);
     const fbs = mod.renderBlockHeightAlphaBuffer(897654);
     const out = resolve(fontsDir, `${f.id}.png`);
     await renderComposite(out, fbs);

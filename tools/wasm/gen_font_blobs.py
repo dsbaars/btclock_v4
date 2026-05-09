@@ -15,6 +15,8 @@ FONTS = [
     ("OswaldBold.ttf", "kOswaldBoldTtf", "kOswaldBoldTtfSize"),
     ("Inter.ttf", "kInterTtf", "kInterTtfSize"),
     ("InterBold.ttf", "kInterBoldTtf", "kInterBoldTtfSize"),
+    ("OpenRunde.ttf", "kOpenRundeTtf", "kOpenRundeTtfSize"),
+    ("OpenRundeBold.ttf", "kOpenRundeBoldTtf", "kOpenRundeBoldTtfSize"),
     ("SourceSerif.ttf", "kSourceSerifTtf", "kSourceSerifTtfSize"),
     ("SourceSerifBold.ttf", "kSourceSerifBoldTtf",
      "kSourceSerifBoldTtfSize"),

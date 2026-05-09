@@ -16,6 +16,7 @@ set(_FONT_SOURCES
     Oswald.ttf
     OswaldBold.ttf
     Inter.ttf InterBold.ttf
+    OpenRunde.ttf OpenRundeBold.ttf
     SourceSerif.ttf SourceSerifBold.ttf
     Bitter.ttf BitterBold.ttf
     Atkinson.ttf AtkinsonBold.ttf

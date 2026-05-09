@@ -211,7 +211,7 @@ check("label panel ink reaches near the right edge (no rotation clip)",
 //
 //   setRenderOptions(panels, fontFamily)
 //     panels: 7 or 8
-//     fontFamily: 0 antonio (stock), 1 oswald, 2 dejavu
+//     fontFamily: 0 antonio (stock), 1 oswald, 2 inter
 //
 // Assertions:
 //   1. panels=8 makes every render function emit 8 buffers.
@@ -244,12 +244,12 @@ check("oswald ink differs from antonio ink", oswaldInk !== baselineInk,
 
 // DejaVu.
 mod.setRenderOptions(7, 2);
-const dejavuBh = mod.renderBlockHeightFrameBuffer(833333);
-const dejavuInk = countBlackPixels(dejavuBh[1]);
-check("dejavu digit panel still has ink", dejavuInk > 50,
-      `ink=${dejavuInk}`);
-check("dejavu ink differs from antonio ink", dejavuInk !== baselineInk,
-      `antonio=${baselineInk} dejavu=${dejavuInk}`);
+const interBh = mod.renderBlockHeightFrameBuffer(833333);
+const interInk = countBlackPixels(interBh[1]);
+check("inter digit panel still has ink", interInk > 50,
+      `ink=${interInk}`);
+check("inter ink differs from antonio ink", interInk !== baselineInk,
+      `antonio=${baselineInk} inter=${interInk}`);
 
 // 8-panel mode. V8 board topology: one extra digit panel vs Rev A/B.
 // Panel-count should climb; dims should reflect the switch too.

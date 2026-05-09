@@ -87,7 +87,10 @@ struct RenderContext {
   // Runtime-selectable preview state. `panels_active` is 7 or 8;
   // `font_family` selects which face overrides the stock antonio slot
   // on `fonts` before a render. 0=antonio (stock), 1=oswald, 2=inter,
-  // 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson.
+  // 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
+  // 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
+  // 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
+  // 14=atkinsonBold, 15=openRunde.
   // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
   // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
   // axis. Default false matches the device boot default.
@@ -97,8 +100,8 @@ struct RenderContext {
 
   RenderContext() {
     for (std::size_t i = 0; i < kMaxPanels; ++i) {
-      panels[i] =
-          std::make_unique<btclock::epd::IEpdPanel>(btclock::PanelKind::k2_13);
+      panels[i] = std::make_unique<btclock::epd::IEpdPanel>(
+          btclock::epd::PanelKind::k2_13);
     }
   }
 };
@@ -155,7 +158,10 @@ void ReturnPanels(
 //
 // 0 = antonio (stock), 1 = oswald, 2 = inter, 3 = sourceSerif,
 // 4 = merriweather, 5 = bitter, 6 = atkinson, 7 = antonioSemiBold,
-// 8 = antonioBold. Unknown families fall back to antonio — same
+// 8 = antonioBold, 9 = oswaldBold, 10 = interBold,
+// 11 = sourceSerifBold, 12 = merriweatherBold, 13 = bitterBold,
+// 14 = atkinsonBold, 15 = openRunde. Unknown families fall back to
+// antonio — same
 // semantics as the old ApplyFontOverride. Numeric ids match
 // FontFamily's enum values in main/fonts_app.hpp; keep the cases in
 // lockstep.
@@ -185,6 +191,27 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
       break;
     case 8:
       f = btclock::FontFamily::kAntonioBold;
+      break;
+    case 9:
+      f = btclock::FontFamily::kOswaldBold;
+      break;
+    case 10:
+      f = btclock::FontFamily::kInterBold;
+      break;
+    case 11:
+      f = btclock::FontFamily::kSourceSerifBold;
+      break;
+    case 12:
+      f = btclock::FontFamily::kMerriweatherBold;
+      break;
+    case 13:
+      f = btclock::FontFamily::kBitterBold;
+      break;
+    case 14:
+      f = btclock::FontFamily::kAtkinsonBold;
+      break;
+    case 15:
+      f = btclock::FontFamily::kOpenRunde;
       break;
     default:
       f = btclock::FontFamily::kAntonio;
@@ -1332,13 +1359,15 @@ val renderDebugAlpha(std::string ip, std::string ssid, int free_heap_bytes,
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
 // is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
 // 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
-// 7=antonioSemiBold, 8=antonioBold. Unknown font families fall back to
+// 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
+// 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
+// 14=atkinsonBold, 15=openRunde. Unknown font families fall back to
 // stock. Call whenever the user changes the UI selector; safe to call
 // before every render.
 void setRenderOptions(int panels, int font_family) {
   auto& ctx = Ctx();
   ctx.panels_active = (panels == 8) ? 8 : 7;
-  if (font_family < 0 || font_family > 8) font_family = 0;
+  if (font_family < 0 || font_family > 15) font_family = 0;
   ctx.font_family = font_family;
 }
 

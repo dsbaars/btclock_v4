@@ -226,6 +226,10 @@ extern const uint8_t kInterTtf[];
 extern const size_t kInterTtfSize;
 extern const uint8_t kInterBoldTtf[];
 extern const size_t kInterBoldTtfSize;
+extern const uint8_t kOpenRundeTtf[];
+extern const size_t kOpenRundeTtfSize;
+extern const uint8_t kOpenRundeBoldTtf[];
+extern const size_t kOpenRundeBoldTtfSize;
 extern const uint8_t kSourceSerifTtf[];
 extern const size_t kSourceSerifTtfSize;
 extern const uint8_t kSourceSerifBoldTtf[];
@@ -263,6 +267,12 @@ extern const uint8_t kInterTtf[] asm("_binary_Inter_ttf_gz_start");
 extern const uint8_t kInterTtfEnd[] asm("_binary_Inter_ttf_gz_end");
 extern const uint8_t kInterBoldTtf[] asm("_binary_InterBold_ttf_gz_start");
 extern const uint8_t kInterBoldTtfEnd[] asm("_binary_InterBold_ttf_gz_end");
+extern const uint8_t kOpenRundeTtf[] asm("_binary_OpenRunde_ttf_gz_start");
+extern const uint8_t kOpenRundeTtfEnd[] asm("_binary_OpenRunde_ttf_gz_end");
+extern const uint8_t kOpenRundeBoldTtf[] asm(
+    "_binary_OpenRundeBold_ttf_gz_start");
+extern const uint8_t kOpenRundeBoldTtfEnd[] asm(
+    "_binary_OpenRundeBold_ttf_gz_end");
 extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_gz_start");
 extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_gz_end");
 extern const uint8_t kSourceSerifBoldTtf[] asm(

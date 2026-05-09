@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-05-03T16:28:41.901Z",
+  "rendered_at": "2026-05-09T10:02:52.029Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -209,6 +209,12 @@
       "id": "antonioBold",
       "title": "Antonio Bold",
       "path": "docs/img/fonts/antonioBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "openRunde",
+      "title": "Open Runde",
+      "path": "docs/img/fonts/openRunde.png"
     }
   ]
 }

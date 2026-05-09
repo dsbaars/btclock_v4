@@ -38,7 +38,7 @@ pyftsubset /tmp/Antonio-Bold.ttf \
     --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioBold.ttf
 
-# Oswald: instance at 400 / 700, then subset with the same currency range.
+# Oswald: base cut at 400 / bold role at 700, then subset.
 python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=400 \
     -o /tmp/Oswald-Regular.ttf
 python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=700 \
@@ -70,20 +70,23 @@ modern sans for the main panels. The text cut (vs. the Display cut) is
 wider and more open at the BTClock's rendered sizes, which legibility-
 tested better than Inter Display did on the e-paper panels.
 
-Sourced from the upstream Inter 4.1 release (rsms/inter on GitHub),
-specifically the `extras/ttf/Inter-Regular.ttf` and `Inter-Bold.ttf`
-payloads.
+Sourced from the upstream Inter 4.1 release (rsms/inter on GitHub).
+BTClock uses **SemiBold as the family base cut** for `Inter.ttf`
+(to improve e-paper legibility), while `InterBold.ttf` remains the
+markdown bold role cut.
 
 ```sh
-pyftsubset Inter-4.1/extras/ttf/Inter-Regular.ttf \
+pyftsubset Inter-4.1/extras/ttf/Inter-SemiBold.ttf \
     --output-file=Inter.ttf \
     --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset Inter-4.1/extras/ttf/Inter-Bold.ttf \
     --output-file=InterBold.ttf \
     --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
@@ -101,21 +104,55 @@ Licensed under SIL Open Font License 1.1 — compatible with the project's
 Apache-2.0 firmware licence. See upstream `LICENSE.txt` in the Inter 4.1
 distribution.
 
+## OpenRunde / OpenRundeBold
+
+OpenRunde is sourced from the upstream
+`lauridskern/open-runde` repository (desktop OTFs under
+`src/desktop/`), subsetted to BTClock's common glyph range
+(printable ASCII + £/¥/€/₿). BTClock uses **SemiBold as the family
+base cut** for `OpenRunde.ttf`, while `OpenRundeBold.ttf` remains the
+markdown bold role cut. The family is exposed in firmware as
+`fontName: "openRunde"`.
+
+```sh
+curl -L -o /tmp/OpenRunde-Semibold.otf \
+    "https://raw.githubusercontent.com/lauridskern/open-runde/main/src/desktop/OpenRunde-Semibold.otf"
+curl -L -o /tmp/OpenRunde-Bold.otf \
+    "https://raw.githubusercontent.com/lauridskern/open-runde/main/src/desktop/OpenRunde-Bold.otf"
+pyftsubset /tmp/OpenRunde-Semibold.otf \
+    --output-file=OpenRunde.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/OpenRunde-Bold.otf \
+    --output-file=OpenRundeBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1 (see upstream `LICENSE.txt`).
+
 ## SourceSerif / SourceSerifBold
 
 Source Serif 4 (Adobe). A modern transitional serif designed for
-on-screen reading at body sizes. Selectable family alongside the sans
-options.
+on-screen reading at body sizes. BTClock uses **Semibold as the family
+base cut** (`SourceSerif.ttf`) for stronger e-paper readability, with
+`SourceSerifBold.ttf` as the markdown bold role cut.
 
 Sourced from the upstream `adobe-fonts/source-serif` release TTF payload:
 
 ```sh
-curl -L -o /tmp/SourceSerif4-Regular.ttf \
-    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Regular.ttf"
+curl -L -o /tmp/SourceSerif4-Semibold.ttf \
+    "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Semibold.ttf"
 curl -L -o /tmp/SourceSerif4-Bold.ttf \
     "https://github.com/adobe-fonts/source-serif/raw/release/TTF/SourceSerif4-Bold.ttf"
 
-pyftsubset /tmp/SourceSerif4-Regular.ttf \
+pyftsubset /tmp/SourceSerif4-Semibold.ttf \
     --output-file=SourceSerif.ttf \
     --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
@@ -169,8 +206,9 @@ and sharp. The user-facing name "Bitter HT" refers to the designer
 (HT = Huerta Tipográfica) — this is the canonical Bitter.
 
 The upstream `solmatas/BitterPro` repo only ships a variable font
-(`fonts/variable/Bitter[wght].ttf`), so we instance it at wght=400 and
-wght=700 with `fonttools varLib.instancer` before subsetting. This
+(`fonts/variable/Bitter[wght].ttf`), so we instance it at wght=600
+(base cut) and wght=700 (bold role) with `fonttools varLib.instancer`
+before subsetting. This
 matches the static-font output Google Fonts publishes downstream while
 keeping the upstream provenance traceable.
 
@@ -178,12 +216,12 @@ keeping the upstream provenance traceable.
 curl -L -o /tmp/Bitter-VF.ttf \
     "https://github.com/solmatas/BitterPro/raw/master/fonts/variable/Bitter%5Bwght%5D.ttf"
 
-python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=400 \
-    -o /tmp/Bitter-Regular.ttf
+python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=600 \
+    -o /tmp/Bitter-SemiBold.ttf
 python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=700 \
     -o /tmp/Bitter-Bold.ttf
 
-pyftsubset /tmp/Bitter-Regular.ttf \
+pyftsubset /tmp/Bitter-SemiBold.ttf \
     --output-file=Bitter.ttf \
     --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
@@ -320,6 +358,8 @@ In-tree byte counts (`wc -c`), rounded:
 | OswaldBold            |   8.9 KB |
 | Inter                 |   9.6 KB |
 | InterBold             |   9.4 KB |
+| OpenRunde             |  11.3 KB |
+| OpenRundeBold         |  11.6 KB |
 | SourceSerif           |  11.5 KB |
 | SourceSerifBold       |  11.4 KB |
 | Merriweather          |  11.8 KB |

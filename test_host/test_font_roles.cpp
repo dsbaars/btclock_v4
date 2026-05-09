@@ -50,6 +50,8 @@ struct RoleFixture {
   int bitter_bold = 0;
   int atkinson = 0;
   int atkinson_bold = 0;
+  int open_runde = 0;
+  int open_runde_bold = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -89,6 +91,9 @@ struct RoleFixture {
         break;
       case FontFamily::kAtkinsonBold:
         regular = &atkinson_bold;
+        break;
+      case FontFamily::kOpenRunde:
+        regular = &open_runde;
         break;
       case FontFamily::kOswald:
         regular = &oswald;
@@ -223,6 +228,7 @@ TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("bitterBold") == FontFamily::kBitterBold);
   CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
   CHECK(ParseFontFamily("atkinsonBold") == FontFamily::kAtkinsonBold);
+  CHECK(ParseFontFamily("openRunde") == FontFamily::kOpenRunde);
 }
 
 TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
@@ -254,6 +260,17 @@ TEST_CASE("SetFamily(kInterBold) rebinds swappable roles") {
   CHECK(f.label == &f.inter_bold);
   CHECK(f.small_chars == &f.inter_bold);
   CHECK(f.unit == &f.inter_bold);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kOpenRunde) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kOpenRunde);
+  CHECK(f.digit == &f.open_runde);
+  CHECK(f.label == &f.open_runde);
+  CHECK(f.small_chars == &f.open_runde);
+  CHECK(f.unit == &f.open_runde);
   CHECK(f.icon == &f.mdi);
   CHECK(f.sats_glyph == &f.sats);
 }
