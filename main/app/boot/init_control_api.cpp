@@ -432,7 +432,8 @@ void InitControlApi(AppCtx& ctx) {
           btclock::settings::ReadString(p, prefs::kMiningPoolName);
       return !mining_pools::PoolSupportsDailyEarnings(name);
     };
-    // POST /api/show/screen?s=<api_id> and the `currentScreen` field in
+    // Body-first POST /api/show/screen {"s":<api_id>} and the
+    // `currentScreen` field in
     // /api/status both speak the settings-catalog id the WebUI persists —
     // not ScreenManager's dense slot index. Bridge the two with pure-logic
     // helpers (app/screen_slot_map.hpp) so the HTTP handler stays free of

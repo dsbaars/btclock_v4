@@ -782,7 +782,8 @@ void SetLedSolidColor(uint32_t rgb) {
   {
     std::lock_guard<std::mutex> lk(g_state_mu);
     for (uint32_t i = 0; i < g_count; ++i) g_resting_pixels[i] = rgb;
-    // /api/lights/color?c=off uses this path to clear the strip. Keep
+    // Body-first /api/lights/color {"c":"off"} uses this path to clear
+    // the strip. Keep
     // the disabled flag in sync so the WebUI toggle tracks reality.
     if (rgb == 0) {
       g_state.disabled = true;

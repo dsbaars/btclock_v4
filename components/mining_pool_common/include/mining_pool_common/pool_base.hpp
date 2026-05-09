@@ -100,7 +100,8 @@ class PoolDataSource : public DataSource {
   // raw hashrate — there's no payout stream to aggregate — so the
   // kMiningPoolEarnings screen would forever read "0 SATS". Plugins for
   // those override this to `false`; the /api/settings builder, screen
-  // rotation, and POST /api/show/screen?s=71 all gate on this so the
+  // rotation, and body-first POST /api/show/screen {"s":71} all gate on
+  // this so the
   // earnings slot stays off when a solo pool is active.
   //
   // Default `true` keeps parity with the old firmware for every pool

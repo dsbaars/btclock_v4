@@ -131,7 +131,8 @@ inline std::size_t TransposeSlotToCurrency(std::size_t current_slot,
 
 // api_id → slot. For per-currency screens (moscow / price / mcap), lands
 // on the `preferred_currency_index` stride — typically the currently-
-// displayed currency so POST /api/show/screen?s=20 (Ticker) keeps the
+// displayed currency so body-first POST /api/show/screen {"s":20}
+// (Ticker) keeps the
 // user on whichever currency they were already viewing. Returns -1 when
 // the api_id isn't in the active rotation.
 inline int SlotForApiId(int api_id, std::size_t currency_count,

@@ -1,7 +1,8 @@
-// Host tests for the in-place query-string decoder used by every
-// /api/show/* endpoint. The user-visible bug that motivated the helper
-// was `?t=%20CLOCK%20` rendering literally as `%20CLOCK%20`; the first
-// test below pins that exact case so it can never regress silently.
+// Host tests for the in-place query-string decoder still used by legacy
+// /api/show/* query fallbacks and other query-parsing paths. The
+// user-visible bug that motivated the helper was `?t=%20CLOCK%20`
+// rendering literally as `%20CLOCK%20`; the first test below pins that
+// exact case so it can never regress silently.
 
 #include <cstring>
 #include <string>
@@ -41,7 +42,8 @@ TEST_CASE("UrlDecodeInPlace: %20 mid-string decodes to space") {
 }
 
 TEST_CASE("UrlDecodeInPlace: leading and trailing %20 (the user bug)") {
-  // /api/show/text?t=%20CLOCK%20 was rendering `%20CLOCK%20` literally.
+  // Legacy /api/show/text?t=%20CLOCK%20 was rendering `%20CLOCK%20`
+  // literally.
   bool ok = false;
   auto s = Decode("%20CLOCK%20", &ok);
   CHECK(ok);

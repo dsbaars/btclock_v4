@@ -693,7 +693,8 @@ sequenceDiagram
 ## 11. HTTP API → screen change
 
 A WebUI / curl client jumps to a specific slot via
-`POST /api/show/screen?s=<idx>`. Handlers run on the httpd worker task;
+`POST /api/show/screen` with JSON body `{"s":<idx>}`. Handlers run on
+the httpd worker task;
 state mutation is queued for the main task to keep `ScreenManager`
 single-threaded.
 
@@ -709,13 +710,13 @@ sequenceDiagram
     participant SM as ScreenManager
     participant R as Renderer
 
-    Client->>HTTPD: POST /api/show/screen?s=42
+    Client->>HTTPD: POST /api/show/screen {"s":42}
     HTTPD->>CS: registered handler
     CS->>AG: RequireHttpAuth(req)
     alt auth fails
         AG-->>Client: 401 Unauthorized
     end
-    CS->>CS: parse query, validate range
+    CS->>CS: parse JSON body, validate range (legacy query fallback accepted)
     CS->>Q: xQueueSend(ControlCommand::ShowSlot{42})
     CS-->>Client: 200 OK (immediate)
     EL->>Q: xQueueReceive (drain phase)

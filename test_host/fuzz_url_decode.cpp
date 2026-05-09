@@ -1,8 +1,9 @@
 // libFuzzer harness for components/webserver/url_decode.cpp.
 //
 // UrlDecodeInPlace is reached on every HTTP request that takes a
-// query-string value (`/api/show/text?t=...`, `/api/show/currency?c=...`,
-// every PATCH that round-trips through `httpd_query_key_value`). It's a
+// query-string value (legacy fallbacks like `/api/show/text?t=...`,
+// `/api/show/currency?c=...`, and every PATCH that round-trips through
+// `httpd_query_key_value`). It's a
 // hand-rolled byte state machine with `%XX` hex decoding, `+`-to-space
 // rules, and an "in-place" write contract — three categories that have
 // historically been a CVE-magnet for HTTP servers.

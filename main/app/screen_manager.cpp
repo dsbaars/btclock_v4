@@ -187,6 +187,17 @@ void ScreenManager::AdvancePastSkipped(int direction) {
   }
 }
 
+const char* FullRefreshReason(bool is_force_full, bool is_screen_change,
+                              bool refr_scrn_change, int full_refresh_min,
+                              int64_t last_full_refresh_ms) {
+  if (is_force_full) return "force_full";
+  if (!is_screen_change) return "unknown";
+  if (refr_scrn_change) return "screen_change_pref";
+  if (last_full_refresh_ms == RefreshPolicyState::kNever) return "first_full";
+  if (full_refresh_min <= 0) return "full_refresh_min_le_zero";
+  return "full_refresh_interval_elapsed";
+}
+
 std::size_t ScreenManager::IndexForSlot(std::size_t slot) const {
   for (std::size_t i = 0; i < rotation_sequence_.size(); ++i) {
     if (rotation_sequence_[i] == slot) return i;
@@ -670,10 +681,33 @@ void ScreenManager::Render(
   // might accidentally equal the last-rendered value of the outgoing
   // screen) but only force a full EPD refresh when the policy says to.
   const int64_t now_ms_policy = MsNow();
+  const int64_t prev_last_full_ms = refresh_state_.last_full_refresh_ms;
   const bool force_full = RefreshPolicy::Decide(
       refresh_state_, now_ms_policy,
       /*is_screen_change=*/screen_change_pending_,
       /*is_force_full=*/dirty_, rp.refr_scrn_change, rp.full_refresh_min);
+  if (force_full) {
+    const int64_t elapsed_ms =
+        (prev_last_full_ms == RefreshPolicyState::kNever)
+            ? -1
+            : (now_ms_policy - prev_last_full_ms);
+    const int64_t threshold_ms =
+        static_cast<int64_t>(rp.full_refresh_min) * 60LL * 1000LL;
+    ESP_LOGW(
+        kTag,
+        "full refresh queued reason=%s kind=%s slot=%zu now_ms=%lld "
+        "prev_last_full_ms=%lld elapsed_ms=%lld threshold_ms=%lld "
+        "fullRefreshMin=%d refrScrnChange=%d screen_change=%d dirty=%d",
+        FullRefreshReason(/*is_force_full=*/dirty_,
+                          /*is_screen_change=*/screen_change_pending_,
+                          rp.refr_scrn_change, rp.full_refresh_min,
+                          prev_last_full_ms),
+        KindName(kind), slot_, static_cast<long long>(now_ms_policy),
+        static_cast<long long>(prev_last_full_ms),
+        static_cast<long long>(elapsed_ms), static_cast<long long>(threshold_ms),
+        rp.full_refresh_min, rp.refr_scrn_change ? 1 : 0,
+        screen_change_pending_ ? 1 : 0, dirty_ ? 1 : 0);
+  }
 
   // Force cell-diff reset on any transition so the renderer repaints
   // the new screen's content. Without this, POST /api/show/screen?s=0
@@ -998,10 +1032,30 @@ void ScreenManager::RenderDebug(
   // once per fullRefreshMin minutes, with the 10 s ticks in between
   // running as silent partial refreshes.
   const RenderPrefs rp = ReadRenderPrefs();
+  const int64_t prev_last_full_ms = refresh_state_.last_full_refresh_ms;
   const bool full_refresh = RefreshPolicy::Decide(
       refresh_state_, now_ms,
       /*is_screen_change=*/force_full,
       /*is_force_full=*/force_full, rp.refr_scrn_change, rp.full_refresh_min);
+  if (full_refresh) {
+    const int64_t elapsed_ms =
+        (prev_last_full_ms == RefreshPolicyState::kNever)
+            ? -1
+            : (now_ms - prev_last_full_ms);
+    const int64_t threshold_ms =
+        static_cast<int64_t>(rp.full_refresh_min) * 60LL * 1000LL;
+    ESP_LOGW(
+        kTag,
+        "full refresh queued(debug) reason=%s now_ms=%lld "
+        "prev_last_full_ms=%lld elapsed_ms=%lld threshold_ms=%lld "
+        "fullRefreshMin=%d refrScrnChange=%d force_full=%d",
+        FullRefreshReason(/*is_force_full=*/force_full,
+                          /*is_screen_change=*/force_full, rp.refr_scrn_change,
+                          rp.full_refresh_min, prev_last_full_ms),
+        static_cast<long long>(now_ms), static_cast<long long>(prev_last_full_ms),
+        static_cast<long long>(elapsed_ms), static_cast<long long>(threshold_ms),
+        rp.full_refresh_min, rp.refr_scrn_change ? 1 : 0, force_full ? 1 : 0);
+  }
   RenderDebugScreen(panels, fb, fonts, info, full_refresh);
   // Invalidate per-screen diff state so the slot we return to does a
   // full refresh rather than trying to paint a partial against the

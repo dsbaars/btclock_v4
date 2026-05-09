@@ -65,7 +65,8 @@ class ScreenManager {
   const std::vector<std::string>& currencies() const { return currencies_; }
 
   // Jump to a specific slot (wraps on overflow). Used by the HTTP
-  // `/api/show/screen?s=<idx>` endpoint; button-driven navigation goes
+  // body-first `/api/show/screen` (`{"s":<idx>}`) endpoint; button-driven
+  // navigation goes
   // through NextScreen/PrevScreen so it keeps its auto-rotate baseline
   // reset alongside the slot change.
   bool SetSlot(size_t slot, int64_t now_ms);

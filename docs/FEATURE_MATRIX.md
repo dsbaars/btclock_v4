@@ -182,7 +182,7 @@ follow-up issue.
 | `POST /api/restart` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/screen` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/currency` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
-| `POST /api/show/text` | actions.cpp | [control_server.cpp::HandleShowText](../components/webserver/control_server.cpp) — accepts `?t=` and `{"text":"..."}`, one char per panel uppercased | Implemented | — |
+| `POST /api/show/text` | actions.cpp | [control_server.cpp::HandleShowText](../components/webserver/control_server.cpp) — primary body `{"t":"..."}` (legacy `?t=` fallback still accepted), one char per panel uppercased | Implemented | — |
 | `POST /api/show/custom` | (derived: custom screen) | [control_server.cpp::HandleShowCustom](../components/webserver/control_server.cpp) — bare array or `{"cells":[...]}`, verbatim per panel | Implemented | — |
 | `POST /api/screen/next` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/screen/previous` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
@@ -195,7 +195,7 @@ follow-up issue.
 | `POST /api/dnd/enable` | dnd.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → `Dnd::SetEnabled(true)` | Implemented | — |
 | `POST /api/dnd/disable` | dnd.cpp | [control_server.cpp](../components/webserver/control_server.cpp) → `Dnd::SetEnabled(false)` | Implemented | — |
 | `GET /api/lights` | [lights.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/net/webserver/lights.cpp) | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (per-pixel RGB + hex, reversed ordering matches old firmware) | — |
-| `POST /api/lights/color` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (`?c=RRGGBB` or `?c=off`, echoes status body) | — |
+| `POST /api/lights/color` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (primary body `{"c":"RRGGBB"}` or `{"c":"off"}`; legacy `?c=` fallback accepted, echoes status body) | — |
 | `POST /api/lights/off` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (sets solid 0, mutes strip) | — |
 | `POST /api/lights/set` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (per-pixel JSON array, accepts hex or r/g/b) | — |
 | `POST /api/frontlight/on` | lights.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented (FrontlightIface → `FrontlightController::On`; 503 on boards without frontlight) | — |

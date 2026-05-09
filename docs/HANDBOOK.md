@@ -803,8 +803,9 @@ Affected by: `nostrZapNotify`, `nostrZapPubkey`, `ledFlashOnZap`,
 
 ### Custom text (push)
 
-`POST /api/show/text?t=HELLO` (or `POST /api/show/custom` with a
-per-panel array) puts arbitrary text on the panels. Stays up until the
+`POST /api/show/text` with JSON body `{"t":"HELLO"}` (or `POST
+/api/show/custom` with a per-panel array) puts arbitrary text on the
+panels. Legacy `?t=` query usage still works as a fallback. Stays up until the
 next nav event. Useful for build alerts, notifications, "BACK SOON",
 etc.
 
@@ -989,7 +990,13 @@ For ad-hoc colours from a script:
 
 ```bash
 # Set the whole strip orange
-curl -X POST 'http://btclock-xxxxxx.local/api/lights/color?c=E04300'
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"c":"E04300"}' \
+  http://btclock-xxxxxx.local/api/lights/color
+# Or explicitly turn it off through the same endpoint
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"c":"off"}' \
+  http://btclock-xxxxxx.local/api/lights/color
 # Mute the strip
 curl -X POST http://btclock-xxxxxx.local/api/lights/off
 ```
@@ -1132,7 +1139,9 @@ Here are the endpoints you'll most often want from a script.
 curl http://btclock-xxxxxx.local/api/status
 
 # Push three letters to the panels
-curl -X POST 'http://btclock-xxxxxx.local/api/show/text?t=HEY'
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"t":"HEY"}' \
+  http://btclock-xxxxxx.local/api/show/text
 
 # Push a per-panel custom layout
 curl -X POST -H 'Content-Type: application/json' \
@@ -1140,14 +1149,33 @@ curl -X POST -H 'Content-Type: application/json' \
   http://btclock-xxxxxx.local/api/show/custom
 
 # Jump to the BTC ticker
-curl -X POST 'http://btclock-xxxxxx.local/api/show/screen?s=20'
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"s":20}' \
+  http://btclock-xxxxxx.local/api/show/screen
+
+# Switch active price currency
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"c":"USD"}' \
+  http://btclock-xxxxxx.local/api/show/currency
 
 # Pause / resume rotation
 curl -X POST http://btclock-xxxxxx.local/api/action/pause
 curl -X POST http://btclock-xxxxxx.local/api/action/timer_restart
 
 # Set the LED strip to all-orange
-curl -X POST 'http://btclock-xxxxxx.local/api/lights/color?c=E04300'
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"c":"E04300"}' \
+  http://btclock-xxxxxx.local/api/lights/color
+
+# Set frontlight max brightness (Rev B only)
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"b":12345}' \
+  http://btclock-xxxxxx.local/api/frontlight/brightness
+
+# Start heap tracing with optional capture limit
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"cap":256}' \
+  http://btclock-xxxxxx.local/api/diag/heap_trace/start
 
 # Trigger a named LED effect (blink / blink_success / blink_error /
 # rainbow / breathe / breathe_error / zap / identify / heartbeat /

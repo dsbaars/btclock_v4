@@ -128,6 +128,46 @@ bool QueryParam(httpd_req_t* req, const char* key, char* out, size_t out_size) {
   return btclock::http::UrlDecodeInPlace(out);
 }
 
+char* ReadFullBody(httpd_req_t* req, size_t max_bytes);
+
+bool JsonIntParam(httpd_req_t* req, size_t max_bytes, const char* key, int* out) {
+  if (!out) return false;
+  char* body = ReadFullBody(req, max_bytes);
+  if (!body) return false;
+  cJSON* root = cJSON_Parse(body);
+  heap_caps_free(body);
+  if (!root || !cJSON_IsObject(root)) {
+    if (root) cJSON_Delete(root);
+    return false;
+  }
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(root, key);
+  if (!cJSON_IsNumber(v)) {
+    cJSON_Delete(root);
+    return false;
+  }
+  *out = static_cast<int>(v->valuedouble);
+  cJSON_Delete(root);
+  return true;
+}
+
+bool JsonStringParam(httpd_req_t* req, size_t max_bytes, const char* key,
+                     std::string* out) {
+  if (!out) return false;
+  char* body = ReadFullBody(req, max_bytes);
+  if (!body) return false;
+  cJSON* root = cJSON_Parse(body);
+  heap_caps_free(body);
+  if (!root || !cJSON_IsObject(root)) {
+    if (root) cJSON_Delete(root);
+    return false;
+  }
+  const cJSON* v = cJSON_GetObjectItemCaseSensitive(root, key);
+  const bool ok = cJSON_IsString(v) && v->valuestring != nullptr;
+  if (ok) *out = v->valuestring;
+  cJSON_Delete(root);
+  return ok;
+}
+
 // --- Misc -----------------------------------------------------------
 
 int CurrentRssi() {
@@ -420,8 +460,8 @@ esp_err_t ControlServer::Start() {
   reg("/api/coredump", HTTP_DELETE, TrampolineCoredumpDelete);
   // Standalone heap_trace control surface — used to attribute slow
   // internal-heap drift to a specific allocator on a live device.
-  // start?cap=N initializes a HEAP_TRACE_LEAKS recording with N records
-  // in PSRAM; stop returns the unfreed-records dump as JSON for
+  // start with body {"cap":N} initializes a HEAP_TRACE_LEAKS recording
+  // with N records in PSRAM; stop returns the unfreed-records dump as JSON for
   // addr2line postprocessing. Auth-gated; never registered on a
   // build that doesn't enable CONFIG_HEAP_TRACING_STANDALONE.
 #if CONFIG_HEAP_TRACING_STANDALONE
@@ -1080,10 +1120,16 @@ esp_err_t ControlServer::HandleHeapTraceStart(httpd_req_t* req) {
   // records at depth=4 is ~150 KiB in PSRAM, fine. Default 256 keeps
   // the dump JSON cheap for the common case.
   size_t cap = 256;
-  char buf[16];
-  if (QueryParam(req, "cap", buf, sizeof(buf))) {
-    const int n = std::atoi(buf);
-    if (n > 0 && n <= 4096) cap = static_cast<size_t>(n);
+  int cap_in = 0;
+  if (JsonIntParam(req, 128, "cap", &cap_in)) {
+    if (cap_in > 0 && cap_in <= 4096) cap = static_cast<size_t>(cap_in);
+  } else {
+    // Backward-compat: keep supporting the old `?cap=` query form.
+    char buf[16];
+    if (QueryParam(req, "cap", buf, sizeof(buf))) {
+      const int n = std::atoi(buf);
+      if (n > 0 && n <= 4096) cap = static_cast<size_t>(n);
+    }
   }
 
   if (g_trace_running) {
@@ -1257,10 +1303,15 @@ esp_err_t ControlServer::HandleDiagHeap(httpd_req_t* req) {
 
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
-  char buf[16];
-  if (!QueryParam(req, "s", buf, sizeof(buf))) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing s");
-    return ESP_FAIL;
+  int api_id = 0;
+  if (!JsonIntParam(req, 256, "s", &api_id)) {
+    // Backward-compat path for older callers.
+    char buf[16];
+    if (!QueryParam(req, "s", buf, sizeof(buf))) {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing s");
+      return ESP_FAIL;
+    }
+    api_id = atoi(buf);
   }
   // `s` is the settings-catalog `screens[].id` (api_id) — what the WebUI's
   // screen-picker buttons post (ScreenButtons.svelte). Translate to the
@@ -1268,7 +1319,6 @@ esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {
   // zero-based slot model. An unresolved api_id means the id isn't
   // currently in the rotation (e.g. caller sent a stale catalog entry);
   // return 400 rather than silently wrapping to slot 0.
-  const int api_id = atoi(buf);
   // Capability gate: a WebUI built against a richer pool (e.g. Ocean)
   // still has the mining-pool-earnings button and the user could POST
   // it after reconfiguring to a solo pool. Reject with 409 Conflict so
@@ -1302,14 +1352,18 @@ esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {
 
 esp_err_t ControlServer::HandleShowCurrency(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
-  char buf[16];
-  if (!QueryParam(req, "c", buf, sizeof(buf))) {
-    httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "missing c");
-    return ESP_FAIL;
+  std::string req_ccy;
+  if (!JsonStringParam(req, 256, "c", &req_ccy)) {
+    // Backward-compat path for older callers.
+    char buf[16];
+    if (!QueryParam(req, "c", buf, sizeof(buf))) {
+      httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "missing c");
+      return ESP_FAIL;
+    }
+    req_ccy.assign(buf);
   }
   // Match against active currencies; 404 if not present matches the
   // old firmware's isActiveCurrency() check.
-  std::string req_ccy(buf);
   std::transform(req_ccy.begin(), req_ccy.end(), req_ccy.begin(), ::toupper);
   const bool active =
       std::any_of(cfg_.currencies.begin(), cfg_.currencies.end(),
@@ -1326,16 +1380,15 @@ esp_err_t ControlServer::HandleShowCurrency(httpd_req_t* req) {
 
 esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
-  // Accept either ?t=TEXT (old-firmware wire format, preserved by the
-  // OneParamRewrite /api/show/text/{text} → ?t=) or a JSON body
-  // {"text":"..."}. The query-param path takes precedence when both
-  // are supplied so a URL-rewritten call can't be quietly silenced by
-  // a stray request body.
+  // Prefer a JSON body {"text":"..."} for POST semantics. Keep query
+  // fallback (`?t=`) so older clients still work.
   std::string text;
   {
-    char qbuf[256];
-    if (QueryParam(req, "t", qbuf, sizeof(qbuf))) {
-      text.assign(qbuf);
+    if (!JsonStringParam(req, 1024, "t", &text)) {
+      char qbuf[256];
+      if (QueryParam(req, "t", qbuf, sizeof(qbuf))) {
+        text.assign(qbuf);
+      }
     }
   }
 
@@ -1347,9 +1400,8 @@ esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
 
   ShowTextParseResult parsed;
   if (!text.empty()) {
-    // Query-param path — uppercase + one-char-per-panel, matching the
-    // old firmware's onApiShowText. The pure parser takes JSON only, so
-    // the split runs inline here.
+    // Keep the old one-char-per-panel placement semantics regardless of
+    // whether text came from JSON body or legacy query fallback.
     parsed.ok = true;
     parsed.cells.assign(n_panels, std::string());
     for (std::size_t i = 0; i < text.size() && i < n_panels; ++i) {
@@ -1533,15 +1585,16 @@ esp_err_t ControlServer::HandleFrontlightBrightness(httpd_req_t* req) {
     const char kBody[] = "{\"error\":\"frontlight not present on this board\"}";
     return httpd_resp_send(req, kBody, sizeof(kBody) - 1);
   }
-  // Old firmware accepts `?b=<value>` on the query string (and a path
-  // variant that rewrites onto the query). Keep the query form — the
-  // existing WebUI already calls it that way.
-  char buf[16];
-  if (!QueryParam(req, "b", buf, sizeof(buf))) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing b");
-    return ESP_FAIL;
+  int raw = 0;
+  if (!JsonIntParam(req, 256, "b", &raw)) {
+    // Backward-compat path for older callers.
+    char buf[16];
+    if (!QueryParam(req, "b", buf, sizeof(buf))) {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing b");
+      return ESP_FAIL;
+    }
+    raw = atoi(buf);
   }
-  const int raw = atoi(buf);
   if (raw < 0 || raw > 65535) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "out of range");
     return ESP_FAIL;
@@ -1626,7 +1679,8 @@ esp_err_t ControlServer::HandleFrontlightSet(httpd_req_t* req) {
 // drives this port unchanged:
 //
 //   GET  /api/lights          -> [{"red":R,"green":G,"blue":B,"hex":"#RRGGBB"},
-//   ...] POST /api/lights/color?c=RRGGBB  (or "off") -> same status body POST
+//   ...] POST /api/lights/color with body {"c":"RRGGBB"} (or "off")
+//   -> same status body POST
 //   /api/lights/off      -> 200 OK, empty body POST /api/lights/set      ->
 //   body is a JSON array of per-pixel
 //                                objects {"red":..,"green":..,"blue":..}
@@ -1692,15 +1746,20 @@ esp_err_t ControlServer::HandleLightsStatus(httpd_req_t* req) {
 esp_err_t ControlServer::HandleLightsColor(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
   if (!cfg_.leds) return SendLedsUnavailable(req);
-  char buf[16];
-  if (!QueryParam(req, "c", buf, sizeof(buf))) {
-    httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing c");
-    return ESP_FAIL;
+  std::string color;
+  if (!JsonStringParam(req, 256, "c", &color)) {
+    // Backward-compat path for older callers.
+    char buf[16];
+    if (!QueryParam(req, "c", buf, sizeof(buf))) {
+      httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing c");
+      return ESP_FAIL;
+    }
+    color.assign(buf);
   }
   uint32_t rgb = 0;
-  if (std::string_view(buf) == "off") {
+  if (std::string_view(color) == "off") {
     rgb = 0;
-  } else if (!ParseHex6(buf, &rgb)) {
+  } else if (!ParseHex6(color, &rgb)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad color");
     return ESP_FAIL;
   }

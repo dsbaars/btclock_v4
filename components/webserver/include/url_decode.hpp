@@ -1,6 +1,6 @@
 // In-place RFC 3986 / x-www-form-urlencoded decoder for query-string
 // values. ESP-IDF's `httpd_query_key_value()` does NOT percent-decode
-// the value it returns; without this every endpoint that takes a
+// the value it returns; without this legacy query fallbacks that take a
 // human-typed string (e.g. `/api/show/text?t=%20CLOCK%20`) would render
 // the literal `%20`s. Decoding in-place keeps the helper
 // allocation-free and lets callers hand the same fixed-size buffer

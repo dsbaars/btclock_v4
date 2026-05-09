@@ -208,7 +208,8 @@ class ControlServer {
     Wifi* wifi = nullptr;
     DataHub* hub = nullptr;
     // Non-empty list of active currency codes. The control server uses
-    // it to resolve /api/show/currency?c=<code> against /api/status's
+    // it to resolve body-first POST /api/show/currency {"c":"<code>"}
+    // (legacy ?c= still accepted) against /api/status's
     // `actCurrencies` and to size price arrays in /api/status.
     std::vector<std::string> currencies;
     // Number of EPD panels — drives the size of /api/status `data`.
@@ -451,7 +452,8 @@ class ControlServer {
     // true when the currently-configured environment makes the screen
     // useless (e.g. mining-pool earnings on a solo pool that only reports
     // hashrate). The /api/settings GET handler drops hidden ids from the
-    // emitted `screens[]` and POST /api/show/screen?s=<id> rejects them
+    // emitted `screens[]` and body-first POST /api/show/screen {"s":<id>}
+    // rejects them
     // with 409 so a stale WebUI button can't force the slot back on.
     // Nullable — a null hook keeps every catalogue entry visible.
     std::function<bool(int)> screen_is_hidden;
