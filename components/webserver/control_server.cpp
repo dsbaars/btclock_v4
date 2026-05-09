@@ -1746,15 +1746,7 @@ esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
 
   ShowTextParseResult parsed;
   if (!text.empty()) {
-    // Keep the old one-char-per-panel placement semantics regardless of
-    // whether text came from JSON body or legacy query fallback.
-    parsed.ok = true;
-    parsed.cells.assign(n_panels, std::string());
-    for (std::size_t i = 0; i < text.size() && i < n_panels; ++i) {
-      const unsigned char u = static_cast<unsigned char>(text[i]);
-      parsed.cells[i].assign(1,
-                             static_cast<char>(u < 0x80 ? std::toupper(u) : u));
-    }
+    parsed = SplitShowTextAcrossPanels(text, n_panels);
   } else {
     // Fall back to JSON body. Bound it well below any realistic use
     // case; one-char-per-panel caps the useful payload at ~16 bytes,

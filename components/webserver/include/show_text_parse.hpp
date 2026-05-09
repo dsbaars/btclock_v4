@@ -40,13 +40,18 @@ struct ShowTextParseResult {
 //      (QueryParam) *before* this function; when it fires this parser
 //      only sees the JSON body.
 //
-// Heuristic (mirrors old-firmware onApiShowText): uppercase the input,
-// then place one character per panel left-to-right; panels past the
-// text length are left empty; characters past n_panels are silently
-// discarded. No word-wrap, no char-wrap, no split-on-whitespace — the
-// old firmware does the same character-at-a-time placement.
+// Heuristic (mirrors old-firmware onApiShowText): ASCII letters are
+// uppercased; each UTF-8 codepoint is placed on one panel left-to-right.
+// Panels past the text length stay empty; extra codepoints are dropped.
+// No word-wrap — same placement model as v3, but Unicode-aware (v3 was
+// effectively ASCII-only because it split raw bytes).
 ShowTextParseResult ParseShowTextBody(std::string_view body,
                                       std::size_t n_panels);
+
+// Shared by POST /api/show/text (JSON `t`, query `t`, and legacy
+// `{"text":"..."}`) — splits UTF-8 into one scalar value per panel.
+ShowTextParseResult SplitShowTextAcrossPanels(std::string_view text,
+                                              std::size_t n_panels);
 
 // Parse the body of POST /api/show/custom.
 //

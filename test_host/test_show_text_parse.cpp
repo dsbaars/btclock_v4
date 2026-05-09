@@ -10,6 +10,7 @@
 
 using btclock::ParseShowCustomBody;
 using btclock::ParseShowTextBody;
+using btclock::SplitShowTextAcrossPanels;
 
 TEST_CASE("ParseShowTextBody: missing body yields empty cells on 7 panels") {
   // An empty JSON body is a "clear the custom screen" request — the
@@ -86,6 +87,43 @@ TEST_CASE("ParseShowTextBody: zero panels is a parse failure") {
   auto r = ParseShowTextBody(R"({"text":"A"})", 0);
   CHECK_FALSE(r.ok);
   CHECK(r.error == "no_panels");
+}
+
+TEST_CASE("SplitShowTextAcrossPanels: UTF-8 codepoints one per panel") {
+  // U+20BF BITCOIN SIGN is three UTF-8 bytes — must not split across panels.
+  auto r = SplitShowTextAcrossPanels("₿00₿$", 7);
+  REQUIRE(r.ok);
+  REQUIRE(r.cells.size() == 7);
+  CHECK(r.cells[0] == "₿");
+  CHECK(r.cells[1] == "0");
+  CHECK(r.cells[2] == "0");
+  CHECK(r.cells[3] == "₿");
+  CHECK(r.cells[4] == "$");
+  CHECK(r.cells[5].empty());
+  CHECK(r.cells[6].empty());
+}
+
+TEST_CASE("SplitShowTextAcrossPanels: ASCII uppercasing unchanged") {
+  auto r = SplitShowTextAcrossPanels("hello", 7);
+  REQUIRE(r.ok);
+  CHECK(r.cells[0] == "H");
+  CHECK(r.cells[4] == "O");
+}
+
+TEST_CASE("SplitShowTextAcrossPanels: lone continuation byte is one panel") {
+  const std::string junk("\x80\x81", 2);
+  auto r = SplitShowTextAcrossPanels(junk, 3);
+  REQUIRE(r.ok);
+  CHECK(r.cells[0].size() == 1);
+  CHECK(static_cast<unsigned char>(r.cells[0][0]) == 0x80);
+  CHECK(r.cells[1].size() == 1);
+  CHECK(static_cast<unsigned char>(r.cells[1][0]) == 0x81);
+}
+
+TEST_CASE("SplitShowTextAcrossPanels: truncates at panel count") {
+  auto r = SplitShowTextAcrossPanels("ABCDEFGH", 7);
+  REQUIRE(r.ok);
+  CHECK(r.cells[6] == "G");
 }
 
 TEST_CASE("ParseShowCustomBody: bare array (old firmware wire format)") {

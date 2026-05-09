@@ -1,6 +1,7 @@
 #include "show_text_parse.hpp"
 
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 
 #include "cJSON.h"
@@ -25,21 +26,76 @@ ShowTextParseResult MakeFailure(const char* token) {
   return r;
 }
 
-// Build n_panels cells from a flat text buffer using the old-firmware
-// one-char-per-panel heuristic. Characters past n_panels are dropped.
-ShowTextParseResult SplitTextAcrossPanels(const std::string& text,
-                                          std::size_t n_panels) {
-  ShowTextParseResult r;
-  r.ok = true;
-  r.cells.resize(n_panels);
-  const std::size_t take = text.size() < n_panels ? text.size() : n_panels;
-  for (std::size_t i = 0; i < take; ++i) {
-    r.cells[i].assign(1, UpperAsciiOnly(text[i]));
+bool Utf8IsContinuation(unsigned char c) { return (c & 0xC0) == 0x80; }
+
+// Length of one well-formed UTF-8 codepoint starting at `pos`, or 1 when
+// `pos` does not begin a valid sequence (caller treats one raw byte).
+std::size_t Utf8CodepointByteLength(std::string_view s, std::size_t pos) {
+  if (pos >= s.size()) return 0;
+  const unsigned char c0 = static_cast<unsigned char>(s[pos]);
+  if (c0 < 0x80) return 1;
+
+  const auto cont = [&](std::size_t j) -> bool {
+    return j < s.size() && Utf8IsContinuation(static_cast<unsigned char>(s[j]));
+  };
+
+  if ((c0 & 0xE0) == 0xC0) {
+    if (!cont(pos + 1)) return 1;
+    const unsigned char c1 = static_cast<unsigned char>(s[pos + 1]);
+    const std::uint32_t cp = (static_cast<std::uint32_t>(c0 & 0x1Fu) << 6) |
+                             (c1 & 0x3Fu);
+    if (cp < 0x80u) return 1;
+    return 2;
   }
-  return r;
+  if ((c0 & 0xF0) == 0xE0) {
+    if (!cont(pos + 1) || !cont(pos + 2)) return 1;
+    const unsigned char c1 = static_cast<unsigned char>(s[pos + 1]);
+    const unsigned char c2 = static_cast<unsigned char>(s[pos + 2]);
+    const std::uint32_t cp = (static_cast<std::uint32_t>(c0 & 0x0Fu) << 12) |
+                             (static_cast<std::uint32_t>(c1 & 0x3Fu) << 6) |
+                             (c2 & 0x3Fu);
+    if (cp < 0x800u) return 1;
+    if (cp >= 0xD800u && cp <= 0xDFFFu) return 1;
+    return 3;
+  }
+  if ((c0 & 0xF8) == 0xF0) {
+    if (!cont(pos + 1) || !cont(pos + 2) || !cont(pos + 3)) return 1;
+    const unsigned char c1 = static_cast<unsigned char>(s[pos + 1]);
+    const unsigned char c2 = static_cast<unsigned char>(s[pos + 2]);
+    const unsigned char c3 = static_cast<unsigned char>(s[pos + 3]);
+    const std::uint32_t cp = (static_cast<std::uint32_t>(c0 & 0x07u) << 18) |
+                             (static_cast<std::uint32_t>(c1 & 0x3Fu) << 12) |
+                             (static_cast<std::uint32_t>(c2 & 0x3Fu) << 6) |
+                             (c3 & 0x3Fu);
+    if (cp < 0x10000u || cp > 0x10FFFFu) return 1;
+    return 4;
+  }
+  return 1;
 }
 
 }  // namespace
+
+ShowTextParseResult SplitShowTextAcrossPanels(std::string_view text,
+                                              std::size_t n_panels) {
+  ShowTextParseResult r;
+  if (n_panels == 0) return MakeFailure("no_panels");
+  r.ok = true;
+  r.cells.assign(n_panels, std::string());
+  std::size_t panel = 0;
+  for (std::size_t i = 0; i < text.size() && panel < n_panels;) {
+    const std::size_t seq = Utf8CodepointByteLength(text, i);
+    if (seq == 0) break;
+    const unsigned char lead = static_cast<unsigned char>(text[i]);
+    if (seq == 1 && lead < 0x80) {
+      r.cells[panel].assign(1, UpperAsciiOnly(static_cast<char>(lead)));
+    } else {
+      r.cells[panel].assign(text.data() + i, seq);
+    }
+    ++panel;
+    i += seq;
+  }
+  return r;
+}
 
 ShowTextParseResult ParseShowTextBody(std::string_view body,
                                       std::size_t n_panels) {
@@ -63,7 +119,7 @@ ShowTextParseResult ParseShowTextBody(std::string_view body,
     text = t->valuestring;
     cJSON_Delete(root);
   }
-  return SplitTextAcrossPanels(text, n_panels);
+  return SplitShowTextAcrossPanels(text, n_panels);
 }
 
 ShowTextParseResult ParseShowCustomBody(std::string_view body,
