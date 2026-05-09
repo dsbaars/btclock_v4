@@ -1,5 +1,7 @@
 #include "boot_ui.hpp"
 
+#include "fit_text_px.hpp"
+
 namespace btclock {
 namespace {
 
@@ -17,6 +19,22 @@ void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
 
   const Font& font = fonts.digit();
 
+  // Same pixel height on every panel — match digit-screen behaviour (one
+  // scale for the whole row). The limiting glyph is whichever needs the
+  // smallest FitTextPx to stay inside panel width minus margin.
+  constexpr float kSplashMaxPx = 220.0f;
+  constexpr float kSplashMinPx = 100.0f;
+  constexpr int kSplashMarginPx = 12;
+  const float uniform_px = MinGlyphFitPxAcross(N, [&](std::size_t i) {
+    const char one[2] = {kSplashLetters[i], '\0'};
+    const int target_w = panels[i]->Width() - kSplashMarginPx;
+    return FitTextPx(one, font, kSplashMaxPx, kSplashMinPx, target_w);
+  });
+
+  char ref_visible[N + 1];
+  for (size_t i = 0; i < N; ++i) ref_visible[i] = kSplashLetters[i];
+  ref_visible[N] = '\0';
+
   for (size_t i = 0; i < N; ++i) {
     LandscapeFb lfb = {};
     lfb.native_fb = fb_storage[i];
@@ -28,14 +46,9 @@ void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     ClearFb(lfb, /*white=*/true);
 
     const char letter = kSplashLetters[i];
-    const char one[2] = {letter, '\0'};
-    // Fit the glyph as large as it goes without clipping — Oswald's
-    // condensed bold lets a single letter eat most of the 122 px panel
-    // width at roughly 180–200 px height.
-    const float px =
-        FitTextPx(one, font, 220.0f, 100.0f, lfb.native_width - 12);
-    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, one,
-                     kSplashLetters, font, px, /*white_text=*/false);
+    const char cell[2] = {letter, '\0'};
+    DrawTextCentered(lfb, lfb.native_width, lfb.native_height, cell,
+                     ref_visible, font, uniform_px, /*white_text=*/false);
 
     panels[i]->DrawFramebufferStart(fb_storage[i], RefreshKind::kFull);
   }

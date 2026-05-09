@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 namespace btclock {
 
 // Walks max_px → min_px in 0.5px steps and returns the first size
@@ -34,6 +36,21 @@ inline int ScaleTargetWidthByPercent(int target_w, float percent) {
   if (scaled < 1) scaled = 1;
   if (scaled > target_w) scaled = target_w;
   return scaled;
+}
+
+// Boot splash — one FitTextPx per glyph lane (same max/min/target rules at
+// each index), then a single pixel height for every panel: the minimum fit.
+// Keeps wide letters from clipping without shrinking narrow letters ad hoc.
+template <typename GlyphFitFn>
+inline float MinGlyphFitPxAcross(std::size_t num_glyphs,
+                                 GlyphFitFn&& glyph_fit_px) {
+  if (num_glyphs == 0) return 0.0f;
+  float uniform_px = glyph_fit_px(0);
+  for (std::size_t i = 1; i < num_glyphs; ++i) {
+    const float px = glyph_fit_px(i);
+    if (px < uniform_px) uniform_px = px;
+  }
+  return uniform_px;
 }
 
 }  // namespace btclock

@@ -9,6 +9,7 @@
 #include "fit_text_px.hpp"
 
 using btclock::FitTextPxBy;
+using btclock::MinGlyphFitPxAcross;
 using btclock::ScaleTargetWidthByPercent;
 
 namespace {
@@ -95,4 +96,45 @@ TEST_CASE("ScaleTargetWidthByPercent clamps invalid percentages") {
   CHECK(ScaleTargetWidthByPercent(100, nan) == 100);
   CHECK(ScaleTargetWidthByPercent(100, 0.0f) == 100);
   CHECK(ScaleTargetWidthByPercent(100, 250.0f) == 100);
+}
+
+TEST_CASE("MinGlyphFitPxAcross returns 0 for zero glyphs") {
+  const float u = MinGlyphFitPxAcross(0, [](std::size_t) -> float {
+    FAIL("glyph_fit_px must not run when num_glyphs == 0");
+    return 0.0f;
+  });
+  CHECK(u == doctest::Approx(0.0f));
+}
+
+TEST_CASE("MinGlyphFitPxAcross single entry matches that glyph's FitTextPxBy") {
+  constexpr float kMax = 50.0f;
+  constexpr float kMin = 5.0f;
+  const int target = 100;
+  auto measure = LinearMeasure(10.0);
+  const float expected = FitTextPxBy(measure, kMax, kMin, target);
+  const float uniform = MinGlyphFitPxAcross(
+      1, [&](std::size_t) { return FitTextPxBy(measure, kMax, kMin, target); });
+  CHECK(uniform == doctest::Approx(expected));
+}
+
+TEST_CASE("MinGlyphFitPxAcross picks limiting glyph (boot splash pattern)") {
+  constexpr float kMax = 100.0f;
+  constexpr float kMin = 10.0f;
+  const int target = 80;
+  auto wide = [](float px) { return static_cast<int>(px * 2.0f); };
+  auto narrow = [](float px) {
+    (void)px;
+    return 10;
+  };
+  const float wide_fit = FitTextPxBy(wide, kMax, kMin, target);
+  const float narrow_fit = FitTextPxBy(narrow, kMax, kMin, target);
+  const float uniform = MinGlyphFitPxAcross(2, [&](std::size_t i) {
+    return i == 0 ? FitTextPxBy(wide, kMax, kMin, target)
+                  : FitTextPxBy(narrow, kMax, kMin, target);
+  });
+  CHECK(wide_fit == doctest::Approx(40.0f));
+  CHECK(narrow_fit == doctest::Approx(kMax));
+  CHECK(uniform == doctest::Approx(40.0f));
+  CHECK(wide(uniform) <= target);
+  CHECK(narrow(uniform) <= target);
 }
