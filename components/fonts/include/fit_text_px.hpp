@@ -22,4 +22,18 @@ inline float FitTextPxBy(MeasureFn&& measure, float max_px, float min_px,
   return min_px;
 }
 
+// Scale an auto-fit width target by a user-facing percentage while keeping
+// the result in [1, target_w]. `percent` is defensively clamped to 1..100.
+inline int ScaleTargetWidthByPercent(int target_w, float percent) {
+  if (target_w <= 0) return target_w;
+  if (!(percent > 0.0f)) percent = 100.0f;
+  if (percent < 1.0f) percent = 1.0f;
+  if (percent > 100.0f) percent = 100.0f;
+  int scaled =
+      static_cast<int>(static_cast<float>(target_w) * (percent / 100.0f));
+  if (scaled < 1) scaled = 1;
+  if (scaled > target_w) scaled = target_w;
+  return scaled;
+}
+
 }  // namespace btclock

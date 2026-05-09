@@ -58,6 +58,17 @@ PanelDims LogicalDimsAfterVerticalDesc(int native_w, int native_h,
   return rotate ? PanelDims{native_h, native_w} : PanelDims{native_w, native_h};
 }
 
+// Mirrors the fit-width selector in PaintSlotIntoFb's kLabelSplit branch:
+// when verticalDesc rotates the label, DrawSplitText still scales against
+// physical panel width (native_w), not the rotated logical width.
+int SplitLabelFitWidthAfterVerticalDesc(int native_w, int native_h,
+                                        bool vertical_desc) {
+  const auto dims = LogicalDimsAfterVerticalDesc(
+      native_w, native_h, SlotKind::kLabelSplit, vertical_desc);
+  const bool rotate = vertical_desc;
+  return rotate ? native_w : dims.w;
+}
+
 // 2.13" panel — the variant wired for the REV_A/REV_B/V8 boards the
 // renderers actually target.
 constexpr int kNativeW = 122;
@@ -123,4 +134,21 @@ TEST_CASE("Rotation is reversible — applying the flag twice returns to base") 
       LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, SlotKind::kLabel, false);
   CHECK(restored.w == kNativeW);
   CHECK(restored.h == kNativeH);
+}
+
+TEST_CASE("vertical_desc split-label fit target stays width-based") {
+  // Regression guard: when verticalDesc rotates label split slots into
+  // 250x122 logical space, width fitting must still use 122px physical width.
+  const auto rotated_dims = LogicalDimsAfterVerticalDesc(
+      kNativeW, kNativeH, SlotKind::kLabelSplit, /*vertical_desc=*/true);
+  CHECK(rotated_dims.w == kNativeH);
+  CHECK(rotated_dims.h == kNativeW);
+  CHECK(SplitLabelFitWidthAfterVerticalDesc(kNativeW, kNativeH,
+                                            /*vertical_desc=*/true) ==
+        kNativeW);
+
+  // Non-rotated path keeps the same 122px target.
+  CHECK(SplitLabelFitWidthAfterVerticalDesc(kNativeW, kNativeH,
+                                            /*vertical_desc=*/false) ==
+        kNativeW);
 }

@@ -64,6 +64,8 @@ struct RenderPrefs {
   // pick up the new size on the next frame without changing call sites.
   // Schema bounds 80..220, default 180 (matches the historical kDigitPx).
   uint32_t digit_font_px;
+  // labelFitPct: split-label width target percentage (25..100).
+  uint32_t label_fit_pct;
 };
 
 RenderPrefs ReadRenderPrefs() {
@@ -86,6 +88,8 @@ RenderPrefs ReadRenderPrefs() {
       static_cast<int>(prefs.GetU32(btclock::prefs::kFullRefreshMin, 60));
   out.digit_font_px =
       btclock::settings::ReadU32(prefs, btclock::prefs::kDigitFontPx);
+  out.label_fit_pct =
+      btclock::settings::ReadU32(prefs, btclock::prefs::kLabelFitPct);
   return out;
 }
 
@@ -664,6 +668,8 @@ void ScreenManager::Render(
   // SetGlobalDigitPx clamps to the schema bounds defensively, so a stale
   // NVS value can't paint a 0 px digit.
   SetGlobalDigitPx(static_cast<float>(rp.digit_font_px));
+  // Split-label fit target percentage (100 = historical full-width fit).
+  SetGlobalLabelFitPercent(static_cast<float>(rp.label_fit_pct));
   // Route the full-vs-partial decision through the policy so
   // refrScrnChange + fullRefreshMin are honoured. MarkDirty() maps to
   // is_force_full; navigation events (Next/Prev/SetSlot/etc.) map to

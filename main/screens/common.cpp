@@ -133,8 +133,11 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
       std::string top, bottom;
       SplitOnSlash(slot.text, top, bottom);
       const char* ref = slot.ref_override ? slot.ref_override : kLabelRef;
+      // Keep label-fit percentage tied to physical panel width even when
+      // vertical_desc rotates the logical axes for label slots.
+      const int split_fit_w = rotate_label ? lfb.native_width : w;
       DrawSplitText(lfb, w, h, top.c_str(), bottom.c_str(), ref, fonts.label(),
-                    px(kLabelPx), /*white_text=*/false);
+                    px(kLabelPx), /*white_text=*/false, split_fit_w);
       return;
     }
     case PaintSlot::kLabel:

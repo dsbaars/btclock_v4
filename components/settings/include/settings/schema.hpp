@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 84> kFields = {{
+inline constexpr std::array<FieldSpec, 85> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -134,6 +134,13 @@ inline constexpr std::array<FieldSpec, 84> kFields = {{
     // matches the historical kDigitPx baseline so a fresh install paints
     // identically to pre-feature behaviour.
     {prefs::kDigitFontPx, FieldKind::kUint, false, 80, 220, false, 180, {}},
+    // labelFitPct: scales split-label auto-fit target width as a percent of
+    // the available panel width. 100 preserves historical "max fill" fitting;
+    // lower values keep the same fitting algorithm but reserve side margin.
+    // Runtime — ScreenManager::Render reads this each frame and pushes it into
+    // the shared text renderer before painting. Bounds 25..100 keep labels
+    // legible while allowing meaningful whitespace control.
+    {prefs::kLabelFitPct, FieldKind::kUint, false, 25, 100, false, 100, {}},
     // v3 DEFAULT_DISABLE_LEDS=false.
     {prefs::kDisableLeds, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // DND — schedule defaults 22:00-07:00 (the WebUI's pre-fill).

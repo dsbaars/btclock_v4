@@ -488,6 +488,27 @@ int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
 
 namespace {
 
+constexpr float kLabelFitPercentDefault = 100.0f;
+float g_label_fit_percent = kLabelFitPercentDefault;
+
+float ClampLabelFitPercent(float percent) {
+  if (!(percent >= 1.0f)) return 100.0f;
+  if (percent > 100.0f) return 100.0f;
+  return percent;
+}
+
+}  // namespace
+
+void SetGlobalLabelFitPercent(float percent) {
+  g_label_fit_percent = ClampLabelFitPercent(percent);
+}
+
+float GetGlobalLabelFitPercent() {
+  return g_label_fit_percent;
+}
+
+namespace {
+
 // Centre one line horizontally (ink-width based) with a baseline derived
 // from `ref_box` sitting inside a region [y_top, y_top + region_h].
 void DrawLineCentered(LandscapeFb& fb, int panel_w, int y_top, int region_h,
@@ -714,7 +735,7 @@ void DrawMarkdown(LandscapeFb& fb, int panel_w, int panel_h, const char* text,
 void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* top_text, const char* bottom_text,
                    const char* ref_chars, const Font& font, float pixel_height,
-                   bool white_text) {
+                   bool white_text, int fit_target_w_override) {
   // Layout mirrors the existing firmware's splitText
   // (src/lib/drivers/epd/epd.cpp): a 6 px pill-ended separator at the
   // panel vertical centre, each text's reference box offset by `kGap`
@@ -733,12 +754,16 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
   // panel edge after the fit.
   constexpr int kSidePadding = 4;
   constexpr float kMinPixelHeight = 16.0f;
-  const int target_w = panel_w - 2 * kSidePadding;
+  const int fit_target_w =
+      fit_target_w_override > 0 ? fit_target_w_override : panel_w;
+  const int target_w = fit_target_w - 2 * kSidePadding;
   if (target_w > 0) {
-    const float top_fit =
-        FitTextPx(top_text, font, pixel_height, kMinPixelHeight, target_w);
-    const float bot_fit =
-        FitTextPx(bottom_text, font, pixel_height, kMinPixelHeight, target_w);
+    const int scaled_target_w =
+        ScaleTargetWidthByPercent(target_w, GetGlobalLabelFitPercent());
+    const float top_fit = FitTextPx(top_text, font, pixel_height,
+                                    kMinPixelHeight, scaled_target_w);
+    const float bot_fit = FitTextPx(bottom_text, font, pixel_height,
+                                    kMinPixelHeight, scaled_target_w);
     pixel_height = top_fit < bot_fit ? top_fit : bot_fit;
   }
 

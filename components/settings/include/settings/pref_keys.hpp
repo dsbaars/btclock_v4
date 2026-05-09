@@ -49,6 +49,10 @@ inline constexpr const char* kDataSource = "dataSource";
 // the 122 px short axis. Runtime — on_settings_patched marks the screen
 // dirty so the next paint picks up the new value.
 inline constexpr const char* kDigitFontPx = "digitFontPx";
+// Percentage of the split-label auto-fit width target. 100 keeps the
+// historical behaviour ("fill the available width"), lower values leave
+// more side whitespace while preserving the same fit algorithm.
+inline constexpr const char* kLabelFitPct = "labelFitPct";
 inline constexpr const char* kDisableLeds = "disableLeds";
 inline constexpr const char* kDndEnabled = "dndEnabled";
 inline constexpr const char* kDndEndHour = "dndEndHour";
@@ -244,6 +248,7 @@ BTCLOCK_PREF_KEY_ASSERT(kCeEndpoint);
 BTCLOCK_PREF_KEY_ASSERT(kCurrentScreen);
 BTCLOCK_PREF_KEY_ASSERT(kDataSource);
 BTCLOCK_PREF_KEY_ASSERT(kDigitFontPx);
+BTCLOCK_PREF_KEY_ASSERT(kLabelFitPct);
 BTCLOCK_PREF_KEY_ASSERT(kDisableLeds);
 BTCLOCK_PREF_KEY_ASSERT(kDndEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kDndEndHour);

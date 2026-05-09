@@ -133,6 +133,11 @@ int MeasureInkWidth(const char* text, const Font& font, float pixel_height,
 float FitTextPx(const char* text, const Font& font, float max_px, float min_px,
                 int target_w);
 
+// Runtime split-label auto-fit target percentage (100 = historical full
+// width target). ScreenManager updates this from settings each render.
+void SetGlobalLabelFitPercent(float percent);
+float GetGlobalLabelFitPercent();
+
 // Centre `text` horizontally on a `panel_w`-wide panel and place its
 // baseline using the vertical bounding box of the `ref_chars` set —
 // typically the digits "0123456789". Strings containing only "." or "_"
@@ -159,7 +164,7 @@ void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
 void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* top_text, const char* bottom_text,
                    const char* ref_chars, const Font& font, float pixel_height,
-                   bool white_text);
+                   bool white_text, int fit_target_w_override = -1);
 
 // Render one glyph (by raw codepoint) centred on the panel, sized via
 // its own bitmap bbox rather than the digit-ref baseline — MDI icons

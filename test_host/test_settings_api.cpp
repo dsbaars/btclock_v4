@@ -630,6 +630,25 @@ TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
   CHECK(prefs2.u32_.count("ledBrightness") == 0);
 }
 
+TEST_CASE("PATCH labelFitPct accepts 25..100 and rejects out-of-range") {
+  {
+    FakePrefs prefs;
+    auto ok = btclock::settings::ApplyPatch("{\"labelFitPct\":75}",
+                                            DefaultCtx(), prefs, prefs);
+    CHECK(ok.status == btclock::settings::PatchStatus::kOk);
+    CHECK(prefs.GetU32("labelFitPct", 100) == 75u);
+    CHECK_FALSE(ok.reboot_required);
+  }
+  {
+    FakePrefs prefs;
+    auto bad = btclock::settings::ApplyPatch("{\"labelFitPct\":10}",
+                                             DefaultCtx(), prefs, prefs);
+    CHECK(bad.status == btclock::settings::PatchStatus::kBadRequest);
+    CHECK(bad.error == "range:labelFitPct");
+    CHECK(prefs.u32_.count("labelFitPct") == 0);
+  }
+}
+
 TEST_CASE("PATCH boot-only field triggers rebootRequired") {
   FakePrefs prefs;
   // otaPass is one of the remaining boot_only string fields (the OTA
@@ -906,7 +925,9 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // 83 -> 84: nostrRelays plural slot for multi-relay support
   // (CSV-in-NVS, array-on-wire — see settings_api.cpp). Boot-only because
   // each relay opens a WSS at boot.
-  CHECK(btclock::settings::kFields.size() == 84);
+  // 84 -> 85: labelFitPct added (uint, range 25..100, default 100) to
+  // scale split-label auto-fit width as a user-facing percentage.
+  CHECK(btclock::settings::kFields.size() == 85);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
@@ -1473,9 +1494,9 @@ TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
   const std::pair<const char*, double> uints[] = {
       {"blockFlashColor", 0xE04300}, {"flEffectDelay", 15},
       {"flMaxBrightness", 2048},     {"fullRefreshMin", 60},
-      {"ledBrightness", 128},        {"luxLightToggle", 128},
-      {"minSecPriceUpd", 30},        {"wifiRebootMin", 10},
-      {"wpTimeout", 15 * 60},
+      {"labelFitPct", 100},          {"ledBrightness", 128},
+      {"luxLightToggle", 128},       {"minSecPriceUpd", 30},
+      {"wifiRebootMin", 10},         {"wpTimeout", 15 * 60},
   };
   for (const auto& [k, v] : uints) {
     CAPTURE(k);

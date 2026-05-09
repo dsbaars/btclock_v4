@@ -3,10 +3,13 @@
 // callable so we can drive it with a fake measurer here; production
 // passes a lambda over MeasureInkWidth(font, …) at the call site.
 
+#include <limits>
+
 #include "doctest.h"
 #include "fit_text_px.hpp"
 
 using btclock::FitTextPxBy;
+using btclock::ScaleTargetWidthByPercent;
 
 namespace {
 
@@ -75,4 +78,21 @@ TEST_CASE("FitTextPxBy with measurer returning 0 always fits at max_px") {
   auto zero = [](float) { return 0; };
   const float fit = FitTextPxBy(zero, 100.0f, 10.0f, 50);
   CHECK(fit == doctest::Approx(100.0f));
+}
+
+TEST_CASE("ScaleTargetWidthByPercent keeps 100% unchanged") {
+  CHECK(ScaleTargetWidthByPercent(114, 100.0f) == 114);
+}
+
+TEST_CASE("ScaleTargetWidthByPercent shrinks width proportionally") {
+  CHECK(ScaleTargetWidthByPercent(120, 75.0f) == 90);
+  CHECK(ScaleTargetWidthByPercent(120, 50.0f) == 60);
+}
+
+TEST_CASE("ScaleTargetWidthByPercent clamps invalid percentages") {
+  // NaN and sub-1 values fall back to 100%; over-100 clamps down.
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  CHECK(ScaleTargetWidthByPercent(100, nan) == 100);
+  CHECK(ScaleTargetWidthByPercent(100, 0.0f) == 100);
+  CHECK(ScaleTargetWidthByPercent(100, 250.0f) == 100);
 }

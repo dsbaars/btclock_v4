@@ -220,8 +220,8 @@ class AppFonts {
 // "sourceSerif" / "sourceSerifBold" / "merriweather" /
 // "merriweatherBold" / "bitter" / "bitterBold" / "atkinson" /
 // "atkinsonBold" / "openRunde" / "roboto" / "robotoBold" / "notoSans" /
-// "notoSansBold" / "ubuntu" / "ubuntuBold") to a FontFamily. Unknown values fall
-// back to kAntonio — the day-1 default every built-in screen was tuned
+// "notoSansBold" / "ubuntu" / "ubuntuBold") to a FontFamily. Unknown values
+// fall back to kAntonio — the day-1 default every built-in screen was tuned
 // against. Devices upgrading from a build that stored "dejavu" land here
 // too: kAntonio is the safe fallback. Defined inline so host tests can
 // call it without linking AppFonts (whose ctor references TTF-blob
