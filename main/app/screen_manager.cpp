@@ -687,26 +687,25 @@ void ScreenManager::Render(
       /*is_screen_change=*/screen_change_pending_,
       /*is_force_full=*/dirty_, rp.refr_scrn_change, rp.full_refresh_min);
   if (force_full) {
-    const int64_t elapsed_ms =
-        (prev_last_full_ms == RefreshPolicyState::kNever)
-            ? -1
-            : (now_ms_policy - prev_last_full_ms);
+    const int64_t elapsed_ms = (prev_last_full_ms == RefreshPolicyState::kNever)
+                                   ? -1
+                                   : (now_ms_policy - prev_last_full_ms);
     const int64_t threshold_ms =
         static_cast<int64_t>(rp.full_refresh_min) * 60LL * 1000LL;
-    ESP_LOGW(
-        kTag,
-        "full refresh queued reason=%s kind=%s slot=%zu now_ms=%lld "
-        "prev_last_full_ms=%lld elapsed_ms=%lld threshold_ms=%lld "
-        "fullRefreshMin=%d refrScrnChange=%d screen_change=%d dirty=%d",
-        FullRefreshReason(/*is_force_full=*/dirty_,
-                          /*is_screen_change=*/screen_change_pending_,
-                          rp.refr_scrn_change, rp.full_refresh_min,
-                          prev_last_full_ms),
-        KindName(kind), slot_, static_cast<long long>(now_ms_policy),
-        static_cast<long long>(prev_last_full_ms),
-        static_cast<long long>(elapsed_ms), static_cast<long long>(threshold_ms),
-        rp.full_refresh_min, rp.refr_scrn_change ? 1 : 0,
-        screen_change_pending_ ? 1 : 0, dirty_ ? 1 : 0);
+    ESP_LOGW(kTag,
+             "full refresh queued reason=%s kind=%s slot=%zu now_ms=%lld "
+             "prev_last_full_ms=%lld elapsed_ms=%lld threshold_ms=%lld "
+             "fullRefreshMin=%d refrScrnChange=%d screen_change=%d dirty=%d",
+             FullRefreshReason(/*is_force_full=*/dirty_,
+                               /*is_screen_change=*/screen_change_pending_,
+                               rp.refr_scrn_change, rp.full_refresh_min,
+                               prev_last_full_ms),
+             KindName(kind), slot_, static_cast<long long>(now_ms_policy),
+             static_cast<long long>(prev_last_full_ms),
+             static_cast<long long>(elapsed_ms),
+             static_cast<long long>(threshold_ms), rp.full_refresh_min,
+             rp.refr_scrn_change ? 1 : 0, screen_change_pending_ ? 1 : 0,
+             dirty_ ? 1 : 0);
   }
 
   // Force cell-diff reset on any transition so the renderer repaints
@@ -1038,10 +1037,9 @@ void ScreenManager::RenderDebug(
       /*is_screen_change=*/force_full,
       /*is_force_full=*/force_full, rp.refr_scrn_change, rp.full_refresh_min);
   if (full_refresh) {
-    const int64_t elapsed_ms =
-        (prev_last_full_ms == RefreshPolicyState::kNever)
-            ? -1
-            : (now_ms - prev_last_full_ms);
+    const int64_t elapsed_ms = (prev_last_full_ms == RefreshPolicyState::kNever)
+                                   ? -1
+                                   : (now_ms - prev_last_full_ms);
     const int64_t threshold_ms =
         static_cast<int64_t>(rp.full_refresh_min) * 60LL * 1000LL;
     ESP_LOGW(
@@ -1052,9 +1050,11 @@ void ScreenManager::RenderDebug(
         FullRefreshReason(/*is_force_full=*/force_full,
                           /*is_screen_change=*/force_full, rp.refr_scrn_change,
                           rp.full_refresh_min, prev_last_full_ms),
-        static_cast<long long>(now_ms), static_cast<long long>(prev_last_full_ms),
-        static_cast<long long>(elapsed_ms), static_cast<long long>(threshold_ms),
-        rp.full_refresh_min, rp.refr_scrn_change ? 1 : 0, force_full ? 1 : 0);
+        static_cast<long long>(now_ms),
+        static_cast<long long>(prev_last_full_ms),
+        static_cast<long long>(elapsed_ms),
+        static_cast<long long>(threshold_ms), rp.full_refresh_min,
+        rp.refr_scrn_change ? 1 : 0, force_full ? 1 : 0);
   }
   RenderDebugScreen(panels, fb, fonts, info, full_refresh);
   // Invalidate per-screen diff state so the slot we return to does a

@@ -130,7 +130,8 @@ bool QueryParam(httpd_req_t* req, const char* key, char* out, size_t out_size) {
 
 char* ReadFullBody(httpd_req_t* req, size_t max_bytes);
 
-bool JsonIntParam(httpd_req_t* req, size_t max_bytes, const char* key, int* out) {
+bool JsonIntParam(httpd_req_t* req, size_t max_bytes, const char* key,
+                  int* out) {
   if (!out) return false;
   char* body = ReadFullBody(req, max_bytes);
   if (!body) return false;

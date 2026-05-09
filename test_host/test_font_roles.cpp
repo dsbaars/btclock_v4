@@ -39,11 +39,17 @@ struct RoleFixture {
   int antonio_semibold = 0;
   int antonio_bold = 0;
   int oswald = 0;
+  int oswald_bold = 0;
   int inter = 0;
+  int inter_bold = 0;
   int source_serif = 0;
+  int source_serif_bold = 0;
   int merriweather = 0;
+  int merriweather_bold = 0;
   int bitter = 0;
+  int bitter_bold = 0;
   int atkinson = 0;
+  int atkinson_bold = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -65,6 +71,24 @@ struct RoleFixture {
         break;
       case FontFamily::kAntonioBold:
         regular = &antonio_bold;
+        break;
+      case FontFamily::kOswaldBold:
+        regular = &oswald_bold;
+        break;
+      case FontFamily::kInterBold:
+        regular = &inter_bold;
+        break;
+      case FontFamily::kSourceSerifBold:
+        regular = &source_serif_bold;
+        break;
+      case FontFamily::kMerriweatherBold:
+        regular = &merriweather_bold;
+        break;
+      case FontFamily::kBitterBold:
+        regular = &bitter_bold;
+        break;
+      case FontFamily::kAtkinsonBold:
+        regular = &atkinson_bold;
         break;
       case FontFamily::kOswald:
         regular = &oswald;
@@ -188,11 +212,17 @@ TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("antonioSemiBold") == FontFamily::kAntonioSemiBold);
   CHECK(ParseFontFamily("antonioBold") == FontFamily::kAntonioBold);
   CHECK(ParseFontFamily("oswald") == FontFamily::kOswald);
+  CHECK(ParseFontFamily("oswaldBold") == FontFamily::kOswaldBold);
   CHECK(ParseFontFamily("inter") == FontFamily::kInter);
+  CHECK(ParseFontFamily("interBold") == FontFamily::kInterBold);
   CHECK(ParseFontFamily("sourceSerif") == FontFamily::kSourceSerif);
+  CHECK(ParseFontFamily("sourceSerifBold") == FontFamily::kSourceSerifBold);
   CHECK(ParseFontFamily("merriweather") == FontFamily::kMerriweather);
+  CHECK(ParseFontFamily("merriweatherBold") == FontFamily::kMerriweatherBold);
   CHECK(ParseFontFamily("bitter") == FontFamily::kBitter);
+  CHECK(ParseFontFamily("bitterBold") == FontFamily::kBitterBold);
   CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
+  CHECK(ParseFontFamily("atkinsonBold") == FontFamily::kAtkinsonBold);
 }
 
 TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
@@ -213,6 +243,17 @@ TEST_CASE("SetFamily(kAntonioBold) rebinds swappable roles") {
   CHECK(f.label == &f.antonio_bold);
   CHECK(f.small_chars == &f.antonio_bold);
   CHECK(f.unit == &f.antonio_bold);
+  CHECK(f.icon == &f.mdi);
+  CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kInterBold) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kInterBold);
+  CHECK(f.digit == &f.inter_bold);
+  CHECK(f.label == &f.inter_bold);
+  CHECK(f.small_chars == &f.inter_bold);
+  CHECK(f.unit == &f.inter_bold);
   CHECK(f.icon == &f.mdi);
   CHECK(f.sats_glyph == &f.sats);
 }

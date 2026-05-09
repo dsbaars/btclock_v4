@@ -55,9 +55,10 @@ inline SatsGlyphUtf8Buf SatsGlyphUtf8(uint8_t variant) {
 // binding's setRenderOptions(panels, font_family) selector and the WebUI
 // dropdown can map by integer id without reaching for a string table.
 // Order: 0 antonio, 1 oswald, 2 inter, 3 sourceSerif, 4 merriweather,
-// 5 bitter, 6 atkinson, 7 antonioSemiBold, 8 antonioBold — matches
-// preview.html's <option value=…>. New ids are appended so the existing
-// numeric mapping stays stable across firmware upgrades.
+// 5 bitter, 6 atkinson, 7 antonioSemiBold, 8 antonioBold, 9 oswaldBold,
+// 10 interBold, 11 sourceSerifBold, 12 merriweatherBold, 13 bitterBold,
+// 14 atkinsonBold. New ids are appended so the existing numeric mapping
+// stays stable across firmware upgrades.
 enum class FontFamily : uint8_t {
   kAntonio = 0,
   kOswald = 1,
@@ -68,6 +69,12 @@ enum class FontFamily : uint8_t {
   kAtkinson = 6,
   kAntonioSemiBold = 7,
   kAntonioBold = 8,
+  kOswaldBold = 9,
+  kInterBold = 10,
+  kSourceSerifBold = 11,
+  kMerriweatherBold = 12,
+  kBitterBold = 13,
+  kAtkinsonBold = 14,
 };
 
 struct FontBundle {
@@ -183,20 +190,28 @@ class AppFonts {
 };
 
 // Map the NVS `fontName` string ("antonio" / "antonioSemiBold" /
-// "antonioBold" / "oswald" / "inter" / "sourceSerif" / "merriweather" /
-// "bitter" / "atkinson") to a FontFamily. Unknown values fall back to
-// kAntonio — the day-1 default every built-in screen was tuned against.
-// Devices upgrading from a build that stored "dejavu" land here too:
-// kAntonio is the safe fallback. Defined inline so host tests can call
-// it without linking AppFonts (whose ctor references TTF-blob symbols
-// that only exist in an IDF build).
+// "antonioBold" / "oswald" / "oswaldBold" / "inter" / "interBold" /
+// "sourceSerif" / "sourceSerifBold" / "merriweather" /
+// "merriweatherBold" / "bitter" / "bitterBold" / "atkinson" /
+// "atkinsonBold") to a FontFamily. Unknown values fall back to kAntonio
+// — the day-1 default every built-in screen was tuned against. Devices
+// upgrading from a build that stored "dejavu" land here too: kAntonio is
+// the safe fallback. Defined inline so host tests can call it without
+// linking AppFonts (whose ctor references TTF-blob symbols that only
+// exist in an IDF build).
 inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "oswald") return FontFamily::kOswald;
+  if (id == "oswaldBold") return FontFamily::kOswaldBold;
   if (id == "inter") return FontFamily::kInter;
+  if (id == "interBold") return FontFamily::kInterBold;
   if (id == "sourceSerif") return FontFamily::kSourceSerif;
+  if (id == "sourceSerifBold") return FontFamily::kSourceSerifBold;
   if (id == "merriweather") return FontFamily::kMerriweather;
+  if (id == "merriweatherBold") return FontFamily::kMerriweatherBold;
   if (id == "bitter") return FontFamily::kBitter;
+  if (id == "bitterBold") return FontFamily::kBitterBold;
   if (id == "atkinson") return FontFamily::kAtkinson;
+  if (id == "atkinsonBold") return FontFamily::kAtkinsonBold;
   if (id == "antonioSemiBold") return FontFamily::kAntonioSemiBold;
   if (id == "antonioBold") return FontFamily::kAntonioBold;
   return FontFamily::kAntonio;

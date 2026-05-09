@@ -144,6 +144,28 @@ void AppFonts::SetFamily(FontFamily f) {
     case FontFamily::kAntonioBold:
       regular = &antonio_bold_;
       break;
+    case FontFamily::kOswaldBold:
+      regular = &oswald_bold_;
+      break;
+    case FontFamily::kInterBold:
+      regular = &inter_bold_;
+      break;
+    case FontFamily::kSourceSerifBold:
+      regular = &source_serif_bold_;
+      break;
+    case FontFamily::kMerriweatherBold:
+#ifdef BTCLOCK_BOARD_REV_A
+      regular = &source_serif_bold_;
+#else
+      regular = &merriweather_bold_;
+#endif
+      break;
+    case FontFamily::kBitterBold:
+      regular = &bitter_bold_;
+      break;
+    case FontFamily::kAtkinsonBold:
+      regular = &atkinson_bold_;
+      break;
     case FontFamily::kOswald:
       regular = &oswald_;
       break;

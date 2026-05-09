@@ -92,11 +92,17 @@ TEST_CASE("availableFonts is a plain-string array with known ids") {
   CHECK(fonts.count("antonioSemiBold") == 1);
   CHECK(fonts.count("antonioBold") == 1);
   CHECK(fonts.count("oswald") == 1);
+  CHECK(fonts.count("oswaldBold") == 1);
   CHECK(fonts.count("inter") == 1);
+  CHECK(fonts.count("interBold") == 1);
   CHECK(fonts.count("sourceSerif") == 1);
+  CHECK(fonts.count("sourceSerifBold") == 1);
   CHECK(fonts.count("merriweather") == 1);
+  CHECK(fonts.count("merriweatherBold") == 1);
   CHECK(fonts.count("bitter") == 1);
+  CHECK(fonts.count("bitterBold") == 1);
   CHECK(fonts.count("atkinson") == 1);
+  CHECK(fonts.count("atkinsonBold") == 1);
   // Retired family — must NOT reappear in the catalogue. A regression
   // here would let the WebUI offer a font the firmware no longer ships
   // and the validation walk silently snap to antonio.

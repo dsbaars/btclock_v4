@@ -45,6 +45,20 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
       // Antonio family this collapses '*bold*' visually but keeps the
       // markdown parser happy.
       return {FontSlot::kAntonioBold, FontSlot::kAntonioBold};
+    case FontFamily::kOswaldBold:
+      return {FontSlot::kOswaldBold, FontSlot::kOswaldBold};
+    case FontFamily::kInterBold:
+      return {FontSlot::kInterBold, FontSlot::kInterBold};
+    case FontFamily::kSourceSerifBold:
+      return {FontSlot::kSourceSerifBold, FontSlot::kSourceSerifBold};
+    case FontFamily::kMerriweatherBold:
+      if (!has_merriweather)
+        return {FontSlot::kSourceSerifBold, FontSlot::kSourceSerifBold};
+      return {FontSlot::kMerriweatherBold, FontSlot::kMerriweatherBold};
+    case FontFamily::kBitterBold:
+      return {FontSlot::kBitterBold, FontSlot::kBitterBold};
+    case FontFamily::kAtkinsonBold:
+      return {FontSlot::kAtkinsonBold, FontSlot::kAtkinsonBold};
     case FontFamily::kOswald:
       return {FontSlot::kOswaldRegular, FontSlot::kOswaldBold};
     case FontFamily::kInter:

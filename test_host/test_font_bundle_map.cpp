@@ -50,6 +50,52 @@ TEST_CASE(
   CHECK(s.bold == FontSlot::kAntonioBold);
 }
 
+TEST_CASE("ResolveBundleSlots maps OswaldBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kOswaldBold, true);
+  CHECK(s.regular == FontSlot::kOswaldBold);
+  CHECK(s.bold == FontSlot::kOswaldBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps InterBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kInterBold, true);
+  CHECK(s.regular == FontSlot::kInterBold);
+  CHECK(s.bold == FontSlot::kInterBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps SourceSerifBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kSourceSerifBold, true);
+  CHECK(s.regular == FontSlot::kSourceSerifBold);
+  CHECK(s.bold == FontSlot::kSourceSerifBold);
+}
+
+TEST_CASE(
+    "ResolveBundleSlots maps MerriweatherBold to its own slot on Rev B / V8") {
+  const auto s = ResolveBundleSlots(FontFamily::kMerriweatherBold,
+                                    /*has_merriweather=*/true);
+  CHECK(s.regular == FontSlot::kMerriweatherBold);
+  CHECK(s.bold == FontSlot::kMerriweatherBold);
+}
+
+TEST_CASE(
+    "ResolveBundleSlots MerriweatherBold collapses to source-serif on Rev A") {
+  const auto s = ResolveBundleSlots(FontFamily::kMerriweatherBold,
+                                    /*has_merriweather=*/false);
+  CHECK(s.regular == FontSlot::kSourceSerifBold);
+  CHECK(s.bold == FontSlot::kSourceSerifBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps BitterBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kBitterBold, true);
+  CHECK(s.regular == FontSlot::kBitterBold);
+  CHECK(s.bold == FontSlot::kBitterBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps AtkinsonBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kAtkinsonBold, true);
+  CHECK(s.regular == FontSlot::kAtkinsonBold);
+  CHECK(s.bold == FontSlot::kAtkinsonBold);
+}
+
 TEST_CASE("ResolveBundleSlots maps Oswald to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kOswald, true);
   CHECK(s.regular == FontSlot::kOswaldRegular);
@@ -106,7 +152,7 @@ TEST_CASE("ResolveBundleSlots covers every FontFamily enumerator") {
   // adds to FontFamily but forgets to handle in ResolveBundleSlots —
   // the default-Atkinson tail covers that case but the test pins it.
   for (uint8_t i = static_cast<uint8_t>(FontFamily::kAntonio);
-       i <= static_cast<uint8_t>(FontFamily::kAntonioBold); ++i) {
+       i <= static_cast<uint8_t>(FontFamily::kAtkinsonBold); ++i) {
     const auto f = static_cast<FontFamily>(i);
     const auto s = ResolveBundleSlots(f, /*has_merriweather=*/true);
     CHECK(static_cast<uint8_t>(s.regular) <=
