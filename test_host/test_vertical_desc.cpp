@@ -31,6 +31,7 @@ enum class SlotKind : std::uint8_t {
   kDigit,
   kSmallGroup,
   kSatsGlyph,
+  kBtcGlyph,
   kCurrencyGlyph,
   kUnitSplit,
   kIconBitmap,
@@ -81,9 +82,10 @@ TEST_CASE("vertical_desc=false keeps logical dims at native (k180 path)") {
   // in the switch would flip at least one of them; the label kinds are
   // the important ones (they MUST NOT rotate when the flag is off).
   const SlotKind kinds[] = {
-      SlotKind::kBlank,         SlotKind::kLabel,      SlotKind::kLabelSplit,
-      SlotKind::kDigit,         SlotKind::kSmallGroup, SlotKind::kSatsGlyph,
-      SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,  SlotKind::kIconBitmap,
+      SlotKind::kBlank,      SlotKind::kLabel,         SlotKind::kLabelSplit,
+      SlotKind::kDigit,      SlotKind::kSmallGroup,    SlotKind::kSatsGlyph,
+      SlotKind::kBtcGlyph,   SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,
+      SlotKind::kIconBitmap,
   };
   for (const auto k : kinds) {
     const auto d = LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, k,
@@ -109,9 +111,9 @@ TEST_CASE("vertical_desc=true rotates label slots 90°, leaves other kinds") {
   // Every non-label kind stays put — the flag must not touch digit /
   // glyph / unit / icon slots.
   const SlotKind leaveAlone[] = {
-      SlotKind::kBlank,      SlotKind::kDigit,         SlotKind::kSmallGroup,
-      SlotKind::kSatsGlyph,  SlotKind::kCurrencyGlyph, SlotKind::kUnitSplit,
-      SlotKind::kIconBitmap,
+      SlotKind::kBlank,     SlotKind::kDigit,      SlotKind::kSmallGroup,
+      SlotKind::kSatsGlyph, SlotKind::kBtcGlyph,   SlotKind::kCurrencyGlyph,
+      SlotKind::kUnitSplit, SlotKind::kIconBitmap,
   };
   for (const auto k : leaveAlone) {
     const auto d = LogicalDimsAfterVerticalDesc(kNativeW, kNativeH, k,

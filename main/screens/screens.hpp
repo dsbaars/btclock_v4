@@ -71,7 +71,7 @@ void RenderMoscowTimeScreen(
     const std::string& currency, const std::string& price,
     const std::string& prev_price = "",
     uint8_t sats_variant = kSatsVariantDefault, bool use_sats_symbol = true,
-    bool use_mscw_time = true,
+    bool use_btc_symbol = false, bool use_mscw_time = true,
     // share_dot mirrors the global decimalShareDot
     // pref. Only meaningful on the sub-1 fractional
     // path; integer-sats path ignores it.
@@ -299,8 +299,8 @@ void RenderNostrZapScreen(
     std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::LatestZap& zap, bool use_sats_symbol = false,
-    uint8_t sats_variant = kSatsVariantDefault, bool full_refresh_mode = true,
-    bool vertical_desc = false);
+    bool use_btc_symbol = false, uint8_t sats_variant = kSatsVariantDefault,
+    bool full_refresh_mode = true, bool vertical_desc = false);
 
 // Format a zap amount (sats) into the string painted on the trailing
 // panels. `max_int_cells` is the panel-tail budget for an integer

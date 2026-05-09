@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 85> kFields = {{
+inline constexpr std::array<FieldSpec, 86> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -370,6 +370,10 @@ inline constexpr std::array<FieldSpec, 85> kFields = {{
     // v3 DEFAULT_USE_BLOCK_COUNTDOWN=true, DEFAULT_USE_MSCW_TIME=true,
     // DEFAULT_USE_SATS_SYMBOL=false, DEFAULT_VERTICAL_DESC=true.
     {prefs::kUseBlkCountdown, FieldKind::kBool, false, 0, 0, true, 0, {}},
+    // useBtcSymbol: ₿ (U+20BF) in the sats-marker cell via the digit font role.
+    // Mutually exclusive with useSatsSymbol — PATCH rejects both true in one
+    // body; enabling either clears the other in NVS.
+    {prefs::kUseBtcSymbol, FieldKind::kBool, false, 0, 0, false, 0, {}},
     {prefs::kUseMscwTime, FieldKind::kBool, false, 0, 0, true, 0, {}},
     {prefs::kUseSatsSymbol, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // verticalDesc: runtime — affects EPD layout on next render.

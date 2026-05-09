@@ -16,6 +16,12 @@
 
 namespace btclock {
 
+namespace {
+
+constexpr const char kPanelTextsBtcSignUtf8[] = "\xe2\x82\xbf";
+
+}  // namespace
+
 // Compact "<value><unit>" string for a GH/s hashrate. A Bitaxe Gamma
 // sits around 1.2 THz; older gens are sub-500 GH. 1 PH is the top of
 // the scale we support — beyond that a single device is off-list and
@@ -368,6 +374,7 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
                                          const std::string& price,
                                          std::size_t n_panels,
                                          bool use_sats_symbol,
+                                         bool use_btc_symbol,
                                          bool use_mscw_time, bool share_dot) {
   // Label rule mirrors RenderMoscowTimeScreen: USD with sats in the
   // classic Moscow-time range (0 < sats < 100_000) gets "MSCW/TIME";
@@ -390,6 +397,7 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   // share_dot is forwarded so the fractional path emits the merged
   // "0." cell when the user has decimalShareDot=true.
   const int32_t sats_int = SatsPerUnitLocal(price);
+  const bool reserve_marker = use_sats_symbol || use_btc_symbol;
   const std::size_t digit_slots = (n_panels >= 1) ? n_panels - 1 : 0;
   // Run the layout in the runtime size by constructing the appropriate
   // template instantiation. n_panels is bounded to {7, 8} on every
@@ -408,14 +416,14 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   };
   if (digit_slots == 7) {
     fill_from_layout(
-        ComputeSatsPerCurrencyLayout<7>(price, use_sats_symbol, share_dot));
+        ComputeSatsPerCurrencyLayout<7>(price, reserve_marker, share_dot));
   } else if (digit_slots == 6) {
     fill_from_layout(
-        ComputeSatsPerCurrencyLayout<6>(price, use_sats_symbol, share_dot));
+        ComputeSatsPerCurrencyLayout<6>(price, reserve_marker, share_dot));
   } else if (digit_slots > 0) {
     // Defensive fallback — shouldn't be hit on shipping boards.
     fill_from_layout(
-        ComputeSatsPerCurrencyLayout<6>(price, use_sats_symbol, share_dot));
+        ComputeSatsPerCurrencyLayout<6>(price, reserve_marker, share_dot));
   }
 
   const bool moscow = use_mscw_time && currency == "USD" && !fractional &&
@@ -423,8 +431,9 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   out.emplace_back(moscow ? std::string("MSCW/TIME") : ("SATS/" + currency));
 
   for (std::size_t i = 0; i < digit_slots; ++i) {
-    if (is_sats[i] && use_sats_symbol) {
-      out.emplace_back("STS");
+    if (is_sats[i] && reserve_marker) {
+      out.emplace_back(use_btc_symbol ? std::string(kPanelTextsBtcSignUtf8)
+                                      : std::string("STS"));
     } else {
       // When use_sats_symbol=false the marker cell stays blank — a
       // stray "STS" on the suppressed side would disagree with what
@@ -674,7 +683,7 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
 
 std::vector<std::string> BuildNostrZap(
     const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
-    std::size_t n_panels) {
+    bool use_btc_symbol, std::size_t n_panels) {
   // Layout mirrors RenderNostrZapScreen in main/screens/nostr_zap.cpp:
   //   [ZAP][bolt][...blanks...][sats glyph][amount...]
   // Same on 7- and 8-panel boards — V8's extra cell widens the blank
@@ -703,8 +712,12 @@ std::vector<std::string> BuildNostrZap(
   if (amount_cells > available_tail) amount_cells = available_tail;
   if (amount_cells < 1) amount_cells = 1;
   const std::size_t first_amount = n_panels - amount_cells;
-  const bool has_glyph = use_sats_symbol && first_amount > bolt_slot + 1;
-  if (has_glyph) out[first_amount - 1] = "STS";
+  const bool reserve_glyph = use_sats_symbol || use_btc_symbol;
+  const bool has_glyph = reserve_glyph && first_amount > bolt_slot + 1;
+  if (has_glyph) {
+    out[first_amount - 1] =
+        use_btc_symbol ? std::string(kPanelTextsBtcSignUtf8) : "STS";
+  }
 
   // Right-justify the scaled amount into the tail cells. Truncate
   // leading chars only when the formatter overshoots (defensive — the
@@ -871,8 +884,8 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
                             in.mcap_big_chars, in.share_dot, n_panels);
     case ScreenType::kMoscowTime:
       return BuildMoscowTime(in.currency, in.price, n_panels,
-                             in.use_sats_symbol, in.use_mscw_time,
-                             in.share_dot);
+                             in.use_sats_symbol, in.use_btc_symbol,
+                             in.use_mscw_time, in.share_dot);
     case ScreenType::kBtcPrice:
       return BuildBtcPrice(in.currency, in.price, n_panels, in.suffix_price,
                            in.mow_mode, in.share_dot);
@@ -896,7 +909,8 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       // (misconfigured wiring) see blanks rather than stale content.
       return std::vector<std::string>(n_panels);
     case ScreenType::kNostrZap:
-      return BuildNostrZap(in.zap_amount_sats, in.use_sats_symbol, n_panels);
+      return BuildNostrZap(in.zap_amount_sats, in.use_sats_symbol,
+                           in.use_btc_symbol, n_panels);
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes
       // per panel; no useful `data[]` mirror. Return a single label in

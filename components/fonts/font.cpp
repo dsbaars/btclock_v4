@@ -330,6 +330,12 @@ Font::GlyphMetrics Font::GetMetrics(int codepoint, float pixel_height) const {
   return m;
 }
 
+bool Font::HasCodepoint(int unicode_codepoint) const {
+  if (info_ == nullptr) return false;
+  const auto* info = static_cast<const stbtt_fontinfo*>(info_);
+  return stbtt_FindGlyphIndex(info, unicode_codepoint) != 0;
+}
+
 void Font::RenderGlyph(int codepoint, float pixel_height, uint8_t* out, int w,
                        int h) const {
   if (info_ == nullptr) return;

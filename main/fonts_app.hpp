@@ -158,6 +158,11 @@ class AppFonts {
   const Font& icon() const { return *role_icon_; }
   const Font& sats_glyph() const { return *role_sats_glyph_; }
 
+  // True when the active digit face cmap maps U+20BF (subset includes ₿).
+  bool digit_has_bitcoin_sign() const {
+    return digit().HasCodepoint(kUnicodeBitcoinSign);
+  }
+
   // Rebind the four swappable roles (digit/label/small_chars/unit) to
   // the given family. `icon` and `sats_glyph` stay on their dedicated
   // fonts. Called from init_screen_manager at boot (reads NVS) and

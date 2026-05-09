@@ -5,6 +5,10 @@
 
 namespace btclock {
 
+// U+20BF BITCOIN SIGN — callers probe `Font::HasCodepoint` on the digit
+// face before painting a ₿ marker from the active bundle.
+inline constexpr int kUnicodeBitcoinSign = 0x20BF;
+
 // Per-render rotation of the logical coordinate system over the native
 // (portrait, MSB-first 1bpp) framebuffer.
 //   k0      — logical (x, y) maps directly to native (x, y).
@@ -78,6 +82,11 @@ class Font {
   };
 
   GlyphMetrics GetMetrics(int codepoint, float pixel_height) const;
+
+  // True when the loaded face's cmap maps `unicode_codepoint` to a glyph
+  // index other than 0 (stb_truetype convention: unmapped → 0 / .notdef).
+  // Cheap lookup — safe to call when choosing digit-font symbols at runtime.
+  bool HasCodepoint(int unicode_codepoint) const;
 
   // Rasterize into caller-provided alpha buffer (w*h bytes). No bounds
   // checks — caller uses metrics.w * metrics.h.

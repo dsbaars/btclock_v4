@@ -87,7 +87,7 @@ struct ZapLayout {
 };
 
 template <std::size_t N>
-ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
+ZapLayout ComputeZapLayout(std::size_t amount_chars, bool reserve_glyph_cell) {
   ZapLayout L{};
   L.zap_slot = 0;
   L.bolt_slot = L.zap_slot + 1;
@@ -102,7 +102,7 @@ ZapLayout ComputeZapLayout(std::size_t amount_chars, bool use_sats_symbol) {
   if (amount < 1) amount = 1;
   L.first_amount = N - amount;
   L.amount_cells = amount;
-  L.glyph_slot = (use_sats_symbol && L.first_amount > L.bolt_slot + 1)
+  L.glyph_slot = (reserve_glyph_cell && L.first_amount > L.bolt_slot + 1)
                      ? L.first_amount - 1
                      : N;  // sentinel "no glyph slot"
   return L;
@@ -115,7 +115,8 @@ void RenderNostrZapScreen(
     std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::LatestZap& zap, bool use_sats_symbol,
-    uint8_t sats_variant, bool full_refresh_mode, bool vertical_desc) {
+    bool use_btc_symbol, uint8_t sats_variant, bool full_refresh_mode,
+    bool vertical_desc) {
   static_assert(N >= 7, "Zap layout needs at least 7 panels");
 
   // Budget = tail cells excluding ZAP + bolt. The glyph isn't reserved
@@ -123,7 +124,8 @@ void RenderNostrZapScreen(
   // drops the glyph rather than truncating the amount.
   constexpr std::size_t kAmountBudget = N - 2;
   const std::string amount = FormatZapAmount(zap.amount_sats, kAmountBudget);
-  const ZapLayout L = ComputeZapLayout<N>(amount.size(), use_sats_symbol);
+  const bool reserve_glyph = use_sats_symbol || use_btc_symbol;
+  const ZapLayout L = ComputeZapLayout<N>(amount.size(), reserve_glyph);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
@@ -153,10 +155,15 @@ void RenderNostrZapScreen(
   // paints the same kSatsGlyph slot the Moscow-time screen uses so the
   // glyph weight matches across screens.
   if (L.glyph_slot < N) {
-    const auto glyph = SatsGlyphUtf8(sats_variant);
     PaintSlot g{};
-    g.kind = PaintSlot::kSatsGlyph;
-    g.text = glyph.c_str();
+    if (use_btc_symbol) {
+      g.kind = PaintSlot::kBtcGlyph;
+      g.text = kBtcSignUtf8;
+    } else {
+      const auto glyph = SatsGlyphUtf8(sats_variant);
+      g.kind = PaintSlot::kSatsGlyph;
+      g.text = glyph.c_str();
+    }
     slots[L.glyph_slot] = g;
   }
 
@@ -189,9 +196,11 @@ void RenderNostrZapScreen(
 
 template void RenderNostrZapScreen<7>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool, bool);
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, bool, uint8_t, bool,
+    bool);
 template void RenderNostrZapScreen<8>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const DataSnapshot::LatestZap&, bool, uint8_t, bool, bool);
+    const AppFonts&, const DataSnapshot::LatestZap&, bool, bool, uint8_t, bool,
+    bool);
 
 }  // namespace btclock

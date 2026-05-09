@@ -677,13 +677,15 @@ val renderSatsPerCurrency(int price_int, std::string currency,
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderMoscowTimeScreen<7>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault, with_sats_symbol, true,
+            btclock::kSatsVariantDefault, with_sats_symbol,
+            /*use_btc_symbol=*/false, true,
             /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderMoscowTimeScreen<8>(
             pans, fbs, c.fonts, currency, price_buf, "",
-            btclock::kSatsVariantDefault, with_sats_symbol, true,
+            btclock::kSatsVariantDefault, with_sats_symbol,
+            /*use_btc_symbol=*/false, true,
             /*share_dot=*/false, /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
@@ -890,14 +892,16 @@ val renderNostrZap(double amount_sats) {
   const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderNostrZapScreen<7>(pans, fbs, c.fonts, zap, false,
-                                         btclock::kSatsVariantDefault,
-                                         /*full_refresh_mode=*/true, vd);
+        btclock::RenderNostrZapScreen<7>(
+            pans, fbs, c.fonts, zap, false,
+            /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
+            /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderNostrZapScreen<8>(pans, fbs, c.fonts, zap, false,
-                                         btclock::kSatsVariantDefault,
-                                         /*full_refresh_mode=*/true, vd);
+        btclock::RenderNostrZapScreen<8>(
+            pans, fbs, c.fonts, zap, false,
+            /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
+            /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -1026,14 +1030,16 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, with_sats_symbol, true,
+          btclock::kSatsVariantDefault, with_sats_symbol,
+          /*use_btc_symbol=*/false, true,
           /*share_dot=*/false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, with_sats_symbol, true,
+          btclock::kSatsVariantDefault, with_sats_symbol,
+          /*use_btc_symbol=*/false, true,
           /*share_dot=*/false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
@@ -1056,14 +1062,16 @@ val renderSatsPerCurrencyWithFlagsAlpha(int price_int, std::string currency,
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderMoscowTimeScreen<8>(
           borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, use_sats_symbol, true,
+          btclock::kSatsVariantDefault, use_sats_symbol,
+          /*use_btc_symbol=*/false, true,
           /*share_dot=*/false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderMoscowTimeScreen<7>(
           borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
-          btclock::kSatsVariantDefault, use_sats_symbol, true,
+          btclock::kSatsVariantDefault, use_sats_symbol,
+          /*use_btc_symbol=*/false, true,
           /*share_dot=*/false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
@@ -1298,15 +1306,17 @@ val renderNostrZapAlpha(double amount_sats) {
     const bool vd = ctx.vertical_desc;
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
-      btclock::RenderNostrZapScreen<8>(borrowed, As8(ctx), ctx.fonts, zap,
-                                       false, btclock::kSatsVariantDefault,
-                                       /*full_refresh_mode=*/true, vd);
+      btclock::RenderNostrZapScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, zap, false,
+          /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
+          /*full_refresh_mode=*/true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
-      btclock::RenderNostrZapScreen<7>(borrowed, As7(ctx), ctx.fonts, zap,
-                                       false, btclock::kSatsVariantDefault,
-                                       /*full_refresh_mode=*/true, vd);
+      btclock::RenderNostrZapScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, zap, false,
+          /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
+          /*full_refresh_mode=*/true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });

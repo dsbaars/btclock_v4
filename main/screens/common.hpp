@@ -43,6 +43,10 @@ namespace btclock {
 // for the regression that motivated pinning this).
 inline constexpr const char* kDigitRef = "0123456789";
 
+// UTF-8 encoding of U+20BF BITCOIN SIGN — Satoshi-symbol alternative when
+// `useBtcSymbol=true` (drawn via the digit font role like currency glyphs).
+inline constexpr const char* kBtcSignUtf8 = "\xe2\x82\xbf";
+
 // Build a LandscapeFb view over panel `i`'s framebuffer. Templated on N
 // so the array-of-arrays type propagates naturally; there's no allocation.
 // Compiles against either the real epd::IEpdPanel (components/epd) or
@@ -202,6 +206,9 @@ struct PaintSlot {
     // Sats-symbol glyph at the sats_glyph font role (130pt). `text`
     // holds the UTF-8 sats glyph string (4 bytes incl. NUL).
     kSatsGlyph,
+    // U+20BF at the digit font role — same px/ref as adjacent digits so the
+    // active `fontName` bundle supplies its native ₿ when subsetted.
+    kBtcGlyph,
     // Currency symbol cell rendered at the digit font role + 180pt
     // (so it lines up with the digit baseline). `text` is a UTF-8
     // currency glyph ("$", "€", "¥", etc.).

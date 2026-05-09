@@ -32,6 +32,7 @@ constexpr time_t kMinPlausibleEpoch = 1577836800;
 // u8 lookup in the already-opened handle.
 struct RenderPrefs {
   bool use_sats_symbol;
+  bool use_btc_symbol;
   bool use_mscw_time;
   bool use_blk_countdown;
   bool supply_percent;
@@ -71,7 +72,13 @@ struct RenderPrefs {
 RenderPrefs ReadRenderPrefs() {
   btclock::Prefs prefs(btclock::prefs::kSettingsNs);
   RenderPrefs out;
-  out.use_sats_symbol = prefs.GetBool(btclock::prefs::kUseSatsSymbol, true);
+  out.use_sats_symbol =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kUseSatsSymbol);
+  out.use_btc_symbol =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kUseBtcSymbol);
+  if (out.use_btc_symbol && out.use_sats_symbol) {
+    out.use_sats_symbol = false;
+  }
   out.use_mscw_time = prefs.GetBool(btclock::prefs::kUseMscwTime, true);
   out.use_blk_countdown = prefs.GetBool(btclock::prefs::kUseBlkCountdown, true);
   out.supply_percent = prefs.GetBool(btclock::prefs::kSupplyPercent, false);
@@ -734,11 +741,11 @@ void ScreenManager::Render(
       break;
     case ScreenType::kMoscowTime:
       if (const auto* p = snap.PriceOf(ccy)) {
-        RenderMoscowTimeScreen(panels, fb, fonts, ccy, *p,
-                               force_repaint ? "" : last_rendered_price_,
-                               sats_variant_, rp.use_sats_symbol,
-                               rp.use_mscw_time, rp.decimal_share_dot,
-                               force_full, rp.vertical_desc);
+        RenderMoscowTimeScreen(
+            panels, fb, fonts, ccy, *p,
+            force_repaint ? "" : last_rendered_price_, sats_variant_,
+            rp.use_sats_symbol, rp.use_btc_symbol, rp.use_mscw_time,
+            rp.decimal_share_dot, force_full, rp.vertical_desc);
         last_rendered_price_ = *p;
         last_price_apply_ms_ = now_ms_policy;
       }
@@ -902,8 +909,8 @@ void ScreenManager::Render(
     }
     case ScreenType::kNostrZap:
       RenderNostrZapScreen(panels, fb, fonts, snap.latest_zap,
-                           rp.use_sats_symbol, sats_variant_, force_full,
-                           rp.vertical_desc);
+                           rp.use_sats_symbol, rp.use_btc_symbol, sats_variant_,
+                           force_full, rp.vertical_desc);
       break;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit at function entry
@@ -949,6 +956,7 @@ void ScreenManager::Render(
   pti.supply_percent = rp.supply_percent;
   pti.mcap_big_chars = rp.mcap_big_char;
   pti.use_sats_symbol = rp.use_sats_symbol;
+  pti.use_btc_symbol = rp.use_btc_symbol;
   pti.use_mscw_time = rp.use_mscw_time;
   pti.suffix_price = rp.suffix_price;
   pti.mow_mode = rp.mow_mode;

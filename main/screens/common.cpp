@@ -173,6 +173,12 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                        px(kSatsGlyphPx * (g_digit_px / kDigitPxDefault)),
                        /*white_text=*/false);
       return;
+    case PaintSlot::kBtcGlyph:
+      if (slot.text.empty()) return;
+      DrawTextCentered(lfb, w, h, slot.text.c_str(),
+                       slot.ref_override ? slot.ref_override : kDigitRef,
+                       fonts.digit(), px(g_digit_px), /*white_text=*/false);
+      return;
     case PaintSlot::kCurrencyGlyph: {
       if (slot.text.empty()) return;
       // Single-codepoint glyphs ($, €, £, ¥) render at the digit

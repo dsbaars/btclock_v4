@@ -611,6 +611,35 @@ TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
   CHECK(prefs.GetBool("stealFocus", true) == false);
 }
 
+TEST_CASE("PATCH useBtcSymbol and useSatsSymbol reject both true in one body") {
+  FakePrefs prefs;
+  auto res = btclock::settings::ApplyPatch(
+      "{\"useBtcSymbol\":true,\"useSatsSymbol\":true}", DefaultCtx(), prefs,
+      prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
+  CHECK(res.error == "useBtcSymbol:mutually_exclusive_with_useSatsSymbol");
+}
+
+TEST_CASE("PATCH useBtcSymbol true clears conflicting useSatsSymbol") {
+  FakePrefs prefs;
+  prefs.SetBool("useSatsSymbol", true);
+  auto res = btclock::settings::ApplyPatch("{\"useBtcSymbol\":true}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.GetBool("useBtcSymbol", false) == true);
+  CHECK(prefs.GetBool("useSatsSymbol", false) == false);
+}
+
+TEST_CASE("PATCH useSatsSymbol true clears conflicting useBtcSymbol") {
+  FakePrefs prefs;
+  prefs.SetBool("useBtcSymbol", true);
+  auto res = btclock::settings::ApplyPatch("{\"useSatsSymbol\":true}",
+                                           DefaultCtx(), prefs, prefs);
+  CHECK(res.status == btclock::settings::PatchStatus::kOk);
+  CHECK(prefs.GetBool("useSatsSymbol", false) == true);
+  CHECK(prefs.GetBool("useBtcSymbol", false) == false);
+}
+
 TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
   FakePrefs prefs;
   // In-range value accepted. ledBrightness default is 128 — same as the
@@ -927,7 +956,7 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // each relay opens a WSS at boot.
   // 84 -> 85: labelFitPct added (uint, range 25..100, default 100) to
   // scale split-label auto-fit width as a user-facing percentage.
-  CHECK(btclock::settings::kFields.size() == 85);
+  CHECK(btclock::settings::kFields.size() == 86);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,

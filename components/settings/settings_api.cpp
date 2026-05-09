@@ -482,6 +482,39 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     return result;
   }
 
+  {
+    bool has_pb = false;
+    bool pb = false;
+    bool has_ps = false;
+    bool ps = false;
+    const cJSON* jbtc =
+        cJSON_GetObjectItemCaseSensitive(root, prefs::kUseBtcSymbol);
+    if (cJSON_IsBool(jbtc)) {
+      has_pb = true;
+      pb = cJSON_IsTrue(jbtc);
+    }
+    const cJSON* jsat =
+        cJSON_GetObjectItemCaseSensitive(root, prefs::kUseSatsSymbol);
+    if (cJSON_IsBool(jsat)) {
+      has_ps = true;
+      ps = cJSON_IsTrue(jsat);
+    }
+    const bool cur_btc = prefs.GetBool(prefs::kUseBtcSymbol,
+                                       DefaultBoolFor(prefs::kUseBtcSymbol));
+    const bool cur_sat = prefs.GetBool(prefs::kUseSatsSymbol,
+                                       DefaultBoolFor(prefs::kUseSatsSymbol));
+
+    const bool eff_btc = has_pb ? pb : cur_btc;
+    const bool eff_sat = has_ps ? ps : cur_sat;
+
+    if (eff_btc && eff_sat && has_pb && pb && has_ps && ps) {
+      result.status = PatchStatus::kBadRequest;
+      result.error = "useBtcSymbol:mutually_exclusive_with_useSatsSymbol";
+      cJSON_Delete(root);
+      return result;
+    }
+  }
+
   // Walk every top-level key. For schema fields we validate + write.
   // Nested objects (`dnd`) and arrays (`screens`, `actCurrencies`)
   // get their own handlers below.
@@ -611,6 +644,15 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
     }
 
     const ApplyOutcome outcome = ApplyScalar(*spec, item, prefs, writer);
+    if (outcome != ApplyOutcome::kRejected) {
+      if (key == prefs::kUseBtcSymbol && cJSON_IsBool(item) &&
+          cJSON_IsTrue(item)) {
+        writer.SetBool(prefs::kUseSatsSymbol, false);
+      } else if (key == prefs::kUseSatsSymbol && cJSON_IsBool(item) &&
+                 cJSON_IsTrue(item)) {
+        writer.SetBool(prefs::kUseBtcSymbol, false);
+      }
+    }
     if (outcome == ApplyOutcome::kRejected) {
       // Type mismatch or out-of-range. Old firmware's generic loop was
       // `settings[k].is<T>()`-gated — a mismatch was silent. Here we

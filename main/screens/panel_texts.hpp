@@ -86,6 +86,9 @@ struct PanelTextInputs {
   // marker cell with a blank, matching the old firmware's
   // parseSatsPerCurrency(..., useSatsSymbol=false) branch.
   bool use_sats_symbol = true;
+  // Mutually exclusive with use_sats_symbol — PATCH enforces; when true the
+  // marker shows U+20BF (Open Runde) instead of the Satoshi Symbol glyph.
+  bool use_btc_symbol = false;
   // `use_mscw_time=false` forces the label to SATS/<CCY> even for the
   // classic-range USD case. Default true preserves the legacy MSCW/TIME
   // label on USD in the classic range.

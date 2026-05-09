@@ -26,8 +26,8 @@ void RenderMoscowTimeScreen(
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const std::string& currency, const std::string& price,
     const std::string& prev_price, uint8_t sats_variant, bool use_sats_symbol,
-    bool use_mscw_time, bool share_dot, bool full_refresh_mode,
-    bool vertical_desc) {
+    bool use_btc_symbol, bool use_mscw_time, bool share_dot,
+    bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "Moscow-time layout needs at least 7 panels");
   constexpr size_t kDigitPanels = N - 1;
   // `cell_diff_reset` forces every cell to repaint; `full_refresh_mode`
@@ -41,14 +41,13 @@ void RenderMoscowTimeScreen(
   // `share_dot` (the global decimalShareDot pref) on the fractional path.
   const int32_t new_sats_int = SatsPerUnit(price);
 
-  // use_sats_symbol=false feeds `use_symbol=false` into the layout so
-  // the marker cell never gets flagged — the EPD paints a blank there.
+  const bool reserve_marker = use_sats_symbol || use_btc_symbol;
   const auto now = ComputeSatsPerCurrencyLayout<kDigitPanels>(
-      price, use_sats_symbol, share_dot);
+      price, reserve_marker, share_dot);
   const auto before = cell_diff_reset
                           ? SatsPerCurrencyLayout<kDigitPanels>{}
                           : ComputeSatsPerCurrencyLayout<kDigitPanels>(
-                                prev_price, use_sats_symbol, share_dot);
+                                prev_price, reserve_marker, share_dot);
 
   const auto glyph = SatsGlyphUtf8(sats_variant);
 
@@ -80,8 +79,15 @@ void RenderMoscowTimeScreen(
   for (size_t i = 0; i < kDigitPanels; ++i) {
     const size_t panel_idx = 1 + i;
     if (now.is_sats[i]) {
-      slots[panel_idx] = PaintSlot{PaintSlot::kSatsGlyph,
-                                   std::string(glyph.c_str()), nullptr, 0, 0};
+      if (use_btc_symbol) {
+        slots[panel_idx] = PaintSlot{PaintSlot::kBtcGlyph,
+                                     std::string(kBtcSignUtf8), nullptr, 0, 0};
+      } else if (use_sats_symbol) {
+        slots[panel_idx] = PaintSlot{PaintSlot::kSatsGlyph,
+                                     std::string(glyph.c_str()), nullptr, 0, 0};
+      } else {
+        slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
+      }
     } else if (now.cells[i].empty()) {
       slots[panel_idx] = PaintSlot{PaintSlot::kBlank, "", nullptr, 0, 0};
     } else {
@@ -100,10 +106,10 @@ void RenderMoscowTimeScreen(
 template void RenderMoscowTimeScreen<7>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
-    uint8_t, bool, bool, bool, bool, bool);
+    uint8_t, bool, bool, bool, bool, bool, bool);
 template void RenderMoscowTimeScreen<8>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const std::string&, const std::string&, const std::string&,
-    uint8_t, bool, bool, bool, bool, bool);
+    uint8_t, bool, bool, bool, bool, bool, bool);
 
 }  // namespace btclock
