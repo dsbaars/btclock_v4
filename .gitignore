@@ -30,3 +30,9 @@ docs/diag/
 
 # MCP server config that pins per-project servers / tokens locally.
 .mcp.json
+
+# components/fonts/CMakeLists.txt gzips each TTF at configure time and
+# writes the result here, then EMBED_FILES the .gz. Regenerated on every
+# clean configure; the .ttf source is the only thing under version
+# control.
+components/fonts/.gz_cache/

@@ -55,8 +55,19 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white);
 
 class Font {
  public:
-  // ttf_data must remain valid for the Font's lifetime.
+  // ttf_data may be raw TTF/OTF bytes OR a gzip-compressed wrapper
+  // (magic 0x1f 0x8b at offset 0). On device the ESP-IDF build embeds
+  // .ttf.gz blobs and the ctor decompresses them into PSRAM via miniz
+  // from ROM; on host / WASM the bytes are uncompressed and used in
+  // place. Raw bytes must remain valid for the Font's lifetime; for
+  // the gzip case the Font takes ownership of the decompressed buffer
+  // and frees it in the dtor.
   Font(const uint8_t* ttf_data, size_t ttf_size);
+  ~Font();
+  Font(const Font&) = delete;
+  Font& operator=(const Font&) = delete;
+  Font(Font&&) = delete;
+  Font& operator=(Font&&) = delete;
 
   struct GlyphMetrics {
     int w = 0;
@@ -95,6 +106,9 @@ class Font {
   void* info_ = nullptr;
   const uint8_t* ttf_;
   size_t ttf_size_;
+  // Non-null iff the ctor decompressed a gzip blob into a PSRAM buffer
+  // that we own. ttf_ then aliases this; freed by the dtor.
+  uint8_t* owned_buffer_ = nullptr;
 };
 
 // Draws text onto a landscape framebuffer with left-edge-of-text at
@@ -182,17 +196,21 @@ void DrawQrCode(LandscapeFb& fb, int panel_w, int panel_h, int size,
                 bool (*get_module)(int x, int y, const void* ctx),
                 const void* ctx, bool white_bg);
 
-// Embedded TTFs.
+// Embedded font blobs.
 //
-// On device these are provided by ESP-IDF's EMBED_FILES (see
-// components/fonts/CMakeLists.txt): the linker exposes
-// _binary_<Name>_ttf_start / _end symbols for each asset, and the decls
-// below use asm() labels to pick those up.
+// On device these are gzipped at configure time (see
+// components/fonts/CMakeLists.txt) and embedded as `<Name>.ttf.gz`,
+// so the linker exposes `_binary_<Name>_ttf_gz_start` / `_end` symbols
+// for each asset. The kFontTtf pointers below alias those compressed
+// payloads via asm() labels; Font's ctor sniffs the gzip magic and
+// decompresses into a PSRAM-resident buffer at boot.
 //
 // Under the WASM host build (tools/wasm/build.sh) no such linker magic
-// exists. A generator script (tools/wasm/gen_font_blobs.py) emits a
-// parallel source file that defines real kAntonioTtf + kAntonioTtfSize
-// arrays/constants. We pick one or the other via BTCLOCK_WASM_BUILD.
+// exists, AND no compression is applied — a generator script
+// (tools/wasm/gen_font_blobs.py) emits a parallel source file that
+// defines real kAntonioTtf + kAntonioTtfSize arrays of *raw* TTF
+// bytes. Font's ctor sees no gzip magic and uses the bytes in place.
+// We pick one or the other via BTCLOCK_WASM_BUILD.
 #ifdef BTCLOCK_WASM_BUILD
 extern const uint8_t kAntonioTtf[];
 extern const size_t kAntonioTtfSize;
@@ -229,59 +247,65 @@ extern const size_t kSatoshiSymbolTtfSize;
 extern const uint8_t kMaterialDesignIconsTtf[];
 extern const size_t kMaterialDesignIconsTtfSize;
 #else
-extern const uint8_t kAntonioTtf[] asm("_binary_Antonio_ttf_start");
-extern const uint8_t kAntonioTtfEnd[] asm("_binary_Antonio_ttf_end");
+extern const uint8_t kAntonioTtf[] asm("_binary_Antonio_ttf_gz_start");
+extern const uint8_t kAntonioTtfEnd[] asm("_binary_Antonio_ttf_gz_end");
 extern const uint8_t kAntonioSemiBoldTtf[] asm(
-    "_binary_AntonioSemiBold_ttf_start");
+    "_binary_AntonioSemiBold_ttf_gz_start");
 extern const uint8_t kAntonioSemiBoldTtfEnd[] asm(
-    "_binary_AntonioSemiBold_ttf_end");
-extern const uint8_t kAntonioBoldTtf[] asm("_binary_AntonioBold_ttf_start");
-extern const uint8_t kAntonioBoldTtfEnd[] asm("_binary_AntonioBold_ttf_end");
-extern const uint8_t kOswaldTtf[] asm("_binary_Oswald_ttf_start");
-extern const uint8_t kOswaldTtfEnd[] asm("_binary_Oswald_ttf_end");
-extern const uint8_t kOswaldBoldTtf[] asm("_binary_OswaldBold_ttf_start");
-extern const uint8_t kOswaldBoldTtfEnd[] asm("_binary_OswaldBold_ttf_end");
-extern const uint8_t kInterTtf[] asm("_binary_Inter_ttf_start");
-extern const uint8_t kInterTtfEnd[] asm("_binary_Inter_ttf_end");
-extern const uint8_t kInterBoldTtf[] asm("_binary_InterBold_ttf_start");
-extern const uint8_t kInterBoldTtfEnd[] asm("_binary_InterBold_ttf_end");
-extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_start");
-extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_end");
+    "_binary_AntonioSemiBold_ttf_gz_end");
+extern const uint8_t kAntonioBoldTtf[] asm("_binary_AntonioBold_ttf_gz_start");
+extern const uint8_t kAntonioBoldTtfEnd[] asm("_binary_AntonioBold_ttf_gz_end");
+extern const uint8_t kOswaldTtf[] asm("_binary_Oswald_ttf_gz_start");
+extern const uint8_t kOswaldTtfEnd[] asm("_binary_Oswald_ttf_gz_end");
+extern const uint8_t kOswaldBoldTtf[] asm("_binary_OswaldBold_ttf_gz_start");
+extern const uint8_t kOswaldBoldTtfEnd[] asm("_binary_OswaldBold_ttf_gz_end");
+extern const uint8_t kInterTtf[] asm("_binary_Inter_ttf_gz_start");
+extern const uint8_t kInterTtfEnd[] asm("_binary_Inter_ttf_gz_end");
+extern const uint8_t kInterBoldTtf[] asm("_binary_InterBold_ttf_gz_start");
+extern const uint8_t kInterBoldTtfEnd[] asm("_binary_InterBold_ttf_gz_end");
+extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_gz_start");
+extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_gz_end");
 extern const uint8_t kSourceSerifBoldTtf[] asm(
-    "_binary_SourceSerifBold_ttf_start");
+    "_binary_SourceSerifBold_ttf_gz_start");
 extern const uint8_t kSourceSerifBoldTtfEnd[] asm(
-    "_binary_SourceSerifBold_ttf_end");
+    "_binary_SourceSerifBold_ttf_gz_end");
 // Rev A drops Merriweather from EMBED_FILES (see fonts/CMakeLists.txt) —
 // declaring the asm symbols here would leave the linker with unresolved
 // references, so gate them out on that board.
 #ifndef BTCLOCK_BOARD_REV_A
-extern const uint8_t kMerriweatherTtf[] asm("_binary_Merriweather_ttf_start");
-extern const uint8_t kMerriweatherTtfEnd[] asm("_binary_Merriweather_ttf_end");
+extern const uint8_t kMerriweatherTtf[] asm(
+    "_binary_Merriweather_ttf_gz_start");
+extern const uint8_t kMerriweatherTtfEnd[] asm(
+    "_binary_Merriweather_ttf_gz_end");
 extern const uint8_t kMerriweatherBoldTtf[] asm(
-    "_binary_MerriweatherBold_ttf_start");
+    "_binary_MerriweatherBold_ttf_gz_start");
 extern const uint8_t kMerriweatherBoldTtfEnd[] asm(
-    "_binary_MerriweatherBold_ttf_end");
+    "_binary_MerriweatherBold_ttf_gz_end");
 #endif
-extern const uint8_t kBitterTtf[] asm("_binary_Bitter_ttf_start");
-extern const uint8_t kBitterTtfEnd[] asm("_binary_Bitter_ttf_end");
-extern const uint8_t kBitterBoldTtf[] asm("_binary_BitterBold_ttf_start");
-extern const uint8_t kBitterBoldTtfEnd[] asm("_binary_BitterBold_ttf_end");
-extern const uint8_t kAtkinsonTtf[] asm("_binary_Atkinson_ttf_start");
-extern const uint8_t kAtkinsonTtfEnd[] asm("_binary_Atkinson_ttf_end");
-extern const uint8_t kAtkinsonBoldTtf[] asm("_binary_AtkinsonBold_ttf_start");
-extern const uint8_t kAtkinsonBoldTtfEnd[] asm("_binary_AtkinsonBold_ttf_end");
-// Satoshi Symbol — subsetted to the single 'S' glyph that renders as the
-// sats-prefix marker. Use this font only for literal "S" text.
-extern const uint8_t kSatoshiSymbolTtf[] asm("_binary_SatoshiSymbol_ttf_start");
+extern const uint8_t kBitterTtf[] asm("_binary_Bitter_ttf_gz_start");
+extern const uint8_t kBitterTtfEnd[] asm("_binary_Bitter_ttf_gz_end");
+extern const uint8_t kBitterBoldTtf[] asm("_binary_BitterBold_ttf_gz_start");
+extern const uint8_t kBitterBoldTtfEnd[] asm("_binary_BitterBold_ttf_gz_end");
+extern const uint8_t kAtkinsonTtf[] asm("_binary_Atkinson_ttf_gz_start");
+extern const uint8_t kAtkinsonTtfEnd[] asm("_binary_Atkinson_ttf_gz_end");
+extern const uint8_t kAtkinsonBoldTtf[] asm(
+    "_binary_AtkinsonBold_ttf_gz_start");
+extern const uint8_t kAtkinsonBoldTtfEnd[] asm(
+    "_binary_AtkinsonBold_ttf_gz_end");
+// Satoshi Symbol — PUA U+E000–U+E00F (16 sat-progress variants of the
+// satoshi unit glyph). NOT the same as ₿ (U+20BF, the Bitcoin Sign /
+// whole-bitcoin unit). Used only by sat-progress / Moscow-time screens.
+extern const uint8_t kSatoshiSymbolTtf[] asm(
+    "_binary_SatoshiSymbol_ttf_gz_start");
 extern const uint8_t kSatoshiSymbolTtfEnd[] asm(
-    "_binary_SatoshiSymbol_ttf_end");
+    "_binary_SatoshiSymbol_ttf_gz_end");
 // Material Design Icons — subsetted to just the icons the firmware
 // actually paints. Regenerate via tools/fonts/regen_mdi.sh; the
 // codepoint constants for each icon live in mdi_codepoints.hpp.
 extern const uint8_t kMaterialDesignIconsTtf[] asm(
-    "_binary_MaterialDesignIcons_ttf_start");
+    "_binary_MaterialDesignIcons_ttf_gz_start");
 extern const uint8_t kMaterialDesignIconsTtfEnd[] asm(
-    "_binary_MaterialDesignIcons_ttf_end");
+    "_binary_MaterialDesignIcons_ttf_gz_end");
 #endif
 
 }  // namespace btclock

@@ -18,11 +18,15 @@
 static inline void* heap_caps_malloc(size_t n, int /*caps*/) {
   return std::malloc(n);
 }
+static inline void heap_caps_free(void* p) {
+  std::free(p);
+}
 #define ESP_LOGE(tag, fmt, ...) (void)(tag)
 #define ESP_LOGI(tag, fmt, ...) (void)(tag)
 #else
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "miniz.h"
 #endif
 #include "fit_text_px.hpp"
 #include "landscape_rotation.hpp"
@@ -163,17 +167,149 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
 
 // --- Font ---
 
+namespace {
+
+// gzip stream produced by `gzip -n -9` (see components/fonts/CMakeLists.txt):
+//   bytes 0..1   magic 0x1f 0x8b
+//   byte  2      method (0x08 = deflate)
+//   byte  3      flags (FLG=0 because of -n: no FNAME, no FEXTRA, etc.)
+//   bytes 4..7   mtime (zeroed by -n)
+//   byte  8      extra flags
+//   byte  9      OS
+//   bytes 10..N  raw deflate stream
+//   bytes N..N+3 CRC32 of decompressed data
+//   bytes N+4..  ISIZE (uncompressed size, mod 2^32, little-endian)
+constexpr size_t kGzipHeaderLen = 10;
+constexpr size_t kGzipTrailerLen = 8;
+
+bool LooksGzipped(const uint8_t* data, size_t size) {
+  return size >= kGzipHeaderLen + kGzipTrailerLen && data[0] == 0x1f &&
+         data[1] == 0x8b && data[2] == 0x08;
+}
+
+#ifdef BTCLOCK_WASM_BUILD
+// WASM never sees compressed bytes — Font's ctor uses the raw input
+// straight through. Provide a stub so the conditional below compiles
+// without dragging miniz into the WASM build.
+uint8_t* DecompressFontGzip(const uint8_t*, size_t, size_t*) {
+  return nullptr;
+}
+#else
+// Decompress a gzip blob produced by `gzip -n -9` into a freshly
+// allocated PSRAM buffer (or internal RAM if PSRAM is exhausted).
+// Returns nullptr on failure; on success writes the decompressed length
+// to *out_size and the caller owns the buffer.
+uint8_t* DecompressFontGzip(const uint8_t* gz, size_t gz_size,
+                            size_t* out_size) {
+  if (!LooksGzipped(gz, gz_size)) return nullptr;
+  // We control the upstream and use `gzip -n` so FLG should be 0 — bail
+  // if any flag bit is set rather than trying to skip optional fields,
+  // because that would mean the build pipeline drifted.
+  if (gz[3] != 0x00) {
+    ESP_LOGE(kTag, "unexpected gzip FLG=0x%02x — want 0", gz[3]);
+    return nullptr;
+  }
+  // ISIZE — uncompressed size mod 2^32, little-endian. Our subsetted
+  // fonts are well under 4 GiB so the truncation is benign.
+  const size_t isize = static_cast<size_t>(gz[gz_size - 4]) |
+                       (static_cast<size_t>(gz[gz_size - 3]) << 8) |
+                       (static_cast<size_t>(gz[gz_size - 2]) << 16) |
+                       (static_cast<size_t>(gz[gz_size - 1]) << 24);
+  const size_t deflate_off = kGzipHeaderLen;
+  const size_t deflate_size = gz_size - kGzipHeaderLen - kGzipTrailerLen;
+  // PSRAM-only on purpose: do NOT fall back to internal RAM. Fonts are
+  // read-only payload; landing them in internal RAM steals from wifi /
+  // mbedTLS / FreeRTOS task stacks, which broke boot on Rev B during
+  // the initial eager-decompress prototype (wifi_create_queue OOM).
+  auto* buf = static_cast<uint8_t*>(
+      heap_caps_malloc(isize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (buf == nullptr) {
+    ESP_LOGE(kTag, "PSRAM OOM decompressing %u-byte font",
+             static_cast<unsigned>(isize));
+    return nullptr;
+  }
+  // Allocate the tinfl_decompressor on the heap, NOT the stack —
+  // sizeof(tinfl_decompressor) is ~12 KB (3 huffman tables) which
+  // overflows the 8 KB main task stack if the splash render path
+  // touches it. tinfl_decompress_mem_to_mem (the convenience wrapper)
+  // also stack-allocates the struct, so we use the streaming API
+  // explicitly with a single shot of input + output.
+  auto* dec = static_cast<tinfl_decompressor*>(heap_caps_malloc(
+      sizeof(tinfl_decompressor), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (dec == nullptr) {
+    ESP_LOGE(kTag, "PSRAM OOM allocating tinfl_decompressor");
+    heap_caps_free(buf);
+    return nullptr;
+  }
+  tinfl_init(dec);
+  size_t in_bytes = deflate_size;
+  size_t out_bytes = isize;
+  // Raw deflate (no zlib header) + the entire output is in one
+  // contiguous buffer (so don't treat it as an LZ77 wrapping window —
+  // that flag would require a power-of-two buffer and reject our
+  // ~10 KB font sizes with TINFL_STATUS_BAD_PARAM). The convenience
+  // wrapper tinfl_decompress_mem_to_mem sets this flag for us; the
+  // explicit streaming API doesn't.
+  const tinfl_status status =
+      tinfl_decompress(dec, gz + deflate_off, &in_bytes, buf, buf, &out_bytes,
+                       TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+  heap_caps_free(dec);
+  if (status != TINFL_STATUS_DONE || out_bytes != isize) {
+    ESP_LOGE(kTag, "tinfl_decompress failed: status=%d wrote=%u/%u",
+             static_cast<int>(status), static_cast<unsigned>(out_bytes),
+             static_cast<unsigned>(isize));
+    heap_caps_free(buf);
+    return nullptr;
+  }
+  *out_size = isize;
+  return buf;
+}
+#endif
+
+}  // namespace
+
 Font::Font(const uint8_t* ttf_data, size_t ttf_size)
     : ttf_(ttf_data), ttf_size_(ttf_size) {
+  // Decompress eagerly at construction — lazy decompression in an
+  // earlier prototype broke text rendering on Rev B (panels stayed
+  // blank even though fonts ended up in PSRAM). The eager path is
+  // safe so long as: (a) tinfl_decompressor is heap-allocated (see
+  // DecompressFontGzip — putting it on the stack overflows the 8 KB
+  // main task), and (b) the decompressed buffer goes to PSRAM ONLY
+  // with no internal-RAM fallback (otherwise the cumulative draw on
+  // internal RAM starves wifi_create_queue).
+  if (LooksGzipped(ttf_data, ttf_size)) {
+    size_t decompressed_size = 0;
+    uint8_t* decompressed =
+        DecompressFontGzip(ttf_data, ttf_size, &decompressed_size);
+    if (decompressed != nullptr) {
+      owned_buffer_ = decompressed;
+      ttf_ = decompressed;
+      ttf_size_ = decompressed_size;
+    } else {
+      // Decompression failed — leave ttf_/ttf_size_ pointing at the raw
+      // (compressed) bytes so stbtt_InitFont fails cleanly below rather
+      // than crashing on an unrelated codepath.
+    }
+  }
   auto* info = new stbtt_fontinfo();
-  if (stbtt_InitFont(info, ttf_data,
-                     stbtt_GetFontOffsetForIndex(ttf_data, 0)) == 0) {
+  if (stbtt_InitFont(info, ttf_, stbtt_GetFontOffsetForIndex(ttf_, 0)) == 0) {
     ESP_LOGE(kTag, "stbtt_InitFont failed");
     delete info;
     return;
   }
   info_ = info;
-  ESP_LOGI(kTag, "font loaded %u bytes", static_cast<unsigned>(ttf_size));
+  ESP_LOGI(kTag, "font loaded %u bytes (%s)", static_cast<unsigned>(ttf_size_),
+           owned_buffer_ != nullptr ? "decompressed" : "raw");
+}
+
+Font::~Font() {
+  if (info_ != nullptr) {
+    delete static_cast<stbtt_fontinfo*>(info_);
+  }
+  if (owned_buffer_ != nullptr) {
+    heap_caps_free(owned_buffer_);
+  }
 }
 
 Font::GlyphMetrics Font::GetMetrics(int codepoint, float pixel_height) const {
