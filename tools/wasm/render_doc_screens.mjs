@@ -577,9 +577,10 @@ const SCREENS = [
   },
   {
     id: "moscow_time_no_sats_symbol",
-    title: "Sats per dollar (useSatsSymbol=false)",
-    // Moscow-time render with the sats-glyph cell suppressed; same
-    // price as moscow_time.png so the docs can A/B the two.
+    title: "Sats per dollar (priceSymMode=0)",
+    // Moscow-time render with the sats-glyph cell suppressed — matches
+    // firmware `priceSymMode` 0 (no marker). Same price as moscow_time.png
+    // so the docs can A/B against `priceSymMode=1`.
     fn: () =>
       mod.renderSatsPerCurrencyWithFlagsAlphaBuffer(95432, "USD", false),
   },

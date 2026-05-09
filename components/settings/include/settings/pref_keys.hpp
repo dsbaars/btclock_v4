@@ -135,6 +135,9 @@ inline constexpr const char* kOtaPass = "otaPass";
 inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
 inline constexpr const char* kPoolLogosUrl = "poolLogosUrl";
 inline constexpr const char* kPoolPollSec = "poolPollSec";
+// BTC price-row marker: 0 none, 1 Satoshi Symbol glyph (PUA font), 2 ₿
+// via digit font. Single pref replaces legacy useSatsSymbol/useBtcSymbol.
+inline constexpr const char* kPriceSymMode = "priceSymMode";
 // Outbound proxy — applied at every esp_http_client / esp_websocket_client
 // init point. proxyType: 0=none, 1=HTTP CONNECT, 2=SOCKS4, 3=SOCKS4a, 4=SOCKS5.
 // Auth (proxyUser/Pass) is honoured for HTTP CONNECT and SOCKS5 only.
@@ -189,9 +192,10 @@ inline constexpr uint32_t kDefaultTimerSeconds = 600u;
 inline constexpr const char* kTxPower = "txPower";
 inline constexpr const char* kTzString = "tzString";
 inline constexpr const char* kUseBlkCountdown = "useBlkCountdown";
-inline constexpr const char* kUseBtcSymbol = "useBtcSymbol";
 inline constexpr const char* kUseMscwTime = "useMscwTime";
-inline constexpr const char* kUseSatsSymbol = "useSatsSymbol";
+// Legacy mutually-exclusive booleans — migrated once to priceSymMode.
+inline constexpr const char* kUseBtcSymbolLegacy = "useBtcSymbol";
+inline constexpr const char* kUseSatsSymbolLegacy = "useSatsSymbol";
 inline constexpr const char* kVerticalDesc = "verticalDesc";
 // ViaBTC: per-account API key (suppressed in GET like httpAuthPass).
 // 13 chars — fits the NVS 15-char cap. Stable on-flash name; do not rename.
@@ -305,6 +309,7 @@ BTCLOCK_PREF_KEY_ASSERT(kOtaPass);
 BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);
 BTCLOCK_PREF_KEY_ASSERT(kPoolLogosUrl);
 BTCLOCK_PREF_KEY_ASSERT(kPoolPollSec);
+BTCLOCK_PREF_KEY_ASSERT(kPriceSymMode);
 BTCLOCK_PREF_KEY_ASSERT(kRefrScrnChange);
 BTCLOCK_PREF_KEY_ASSERT(kSatsVariant);
 BTCLOCK_PREF_KEY_ASSERT(kScreenOrder);
@@ -319,9 +324,9 @@ BTCLOCK_PREF_KEY_ASSERT(kTimerSeconds);
 BTCLOCK_PREF_KEY_ASSERT(kTxPower);
 BTCLOCK_PREF_KEY_ASSERT(kTzString);
 BTCLOCK_PREF_KEY_ASSERT(kUseBlkCountdown);
-BTCLOCK_PREF_KEY_ASSERT(kUseBtcSymbol);
 BTCLOCK_PREF_KEY_ASSERT(kUseMscwTime);
-BTCLOCK_PREF_KEY_ASSERT(kUseSatsSymbol);
+BTCLOCK_PREF_KEY_ASSERT(kUseBtcSymbolLegacy);
+BTCLOCK_PREF_KEY_ASSERT(kUseSatsSymbolLegacy);
 BTCLOCK_PREF_KEY_ASSERT(kVerticalDesc);
 BTCLOCK_PREF_KEY_ASSERT(kWifiConfigured);
 BTCLOCK_PREF_KEY_ASSERT(kWifiRebootMin);

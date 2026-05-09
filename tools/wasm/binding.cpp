@@ -1046,10 +1046,9 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
   });
 }
 
-// Moscow-time renderer with the `useSatsSymbol` flag exposed. When
-// `use_sats_symbol=false` the sats glyph in the marker cell is
-// suppressed (rendered blank), so the docs can show the impact of
-// the `useSatsSymbol` toggle.
+// Moscow-time renderer with the sats-marker flag exposed (`use_sats_symbol`).
+// When false the marker cell is blank — mirrors firmware `priceSymMode`
+// (sats glyph path on when mode is 1).
 val renderSatsPerCurrencyWithFlagsAlpha(int price_int, std::string currency,
                                         bool use_sats_symbol) {
   return RunAlphaRender([&]() {

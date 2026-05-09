@@ -8,7 +8,7 @@ value immediately; the response is `{"rebootRequired": true}` so the
 WebUI can prompt the user.
 
 Source of truth for the list is
-`components/settings/include/settings/schema.hpp` (67 scalar fields),
+`components/settings/include/settings/schema.hpp` (`kFields` — 85 scalar rows),
 plus a handful of special-case keys (`dnd`, `screens`, `actCurrencies`,
 `timePerScreen`, `invertedColor`, `txPower`) handled directly in
 `components/settings/settings_api.cpp::ApplyPatch()`.
@@ -21,6 +21,16 @@ field is added, removed, or its `boot_only` flag flips here, run
 (`settings.generated.spec.ts`) cross-checks "(restart required)"
 labels against this metadata so a stale label fails CI before it
 reaches a device.
+
+### WebUI `minFirmware`
+
+The WebUI bundle declares a semver **`minFirmware`** in
+[`data/src/lib/manifest.json`](../data/src/lib/manifest.json).
+Raise it when this checkout's settings UI or cold-start parsers **require**
+fields or JSON shapes that older firmware cannot emit (see also the comment
+block in `data/gzip_build.py`). The value is copied into `build_gz/www/manifest.json`
+by `pnpm build:gz` and served from the device as `/manifest.json`; System Info
+compares the running firmware `gitRev` against it.
 
 Defaults in the table below come from `components/settings/include/settings/schema.hpp`'s
 `FieldSpec::default_*` fields, ported from the old firmware's
@@ -110,8 +120,8 @@ derived keys the WebUI uses to render that section.
 | `supplyPercent` | bool | `false` | Render bitcoin supply as a percentage of 21M rather than absolute BTC. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `useBlkCountdown` | bool | `true` | Halving screen: count in blocks remaining, not days. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
 | `useMscwTime` | bool | `true` | Show the sats-per-dollar ("Moscow Time") flip layout. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
-| `useSatsSymbol` | bool | `false` | Use the sats-glyph font for price suffixes. | Honored by `ScreenManager::LoadScreenRenderPrefs`. |
-| `satsVariant` | uint (0..15) | `7` | Index into the 16 sats-symbol glyphs at U+E000..U+E00F of the SatoshiSymbol font. Visible on the moscow-time and nostr-zap screens when `useSatsSymbol` is on. The WebUI Settings page renders a visual picker with all 16 glyphs inline; pick by clicking, or PATCH the integer index live. See [the contact sheet](img/fonts/sats_variants.png) for the full set. | Range-checked by the schema (kUint min=0 max=15). The `on_sats_variant_changed` hook in main calls `ScreenManager::SetSatsVariant` + `MarkDirty()` so the new glyph paints on the next render without a reboot. Stored in the `settings` namespace; legacy NVS values under `ui/sats_variant` are picked up at boot for one-time migration. |
+| `priceSymMode` | uint (0..2) | `0` | BTC price-row marker: **0** off, **1** Satoshi Symbol glyph (PUA font), **2** ₿ via digit font. NVS key `priceSymMode` (≤15 chars). Replaces legacy mutually-exclusive `useSatsSymbol` / `useBtcSymbol`; migrated once at boot from those keys when `priceSymMode` was never written. | Honored by `ScreenManager::ReadRenderPrefs` (`RenderPrefs::use_sats_symbol` / `use_btc_symbol`). Out-of-range stored values clamp to 0. |
+| `satsVariant` | uint (0..15) | `7` | Index into the 16 sats-symbol glyphs at U+E000..U+E00F of the SatoshiSymbol font. Visible on the moscow-time and nostr-zap screens when `priceSymMode === 1`. The WebUI Settings page renders a visual picker with all 16 glyphs inline; pick by clicking, or PATCH the integer index live. See [the contact sheet](img/fonts/sats_variants.png) for the full set. | Range-checked by the schema (kUint min=0 max=15). The `on_sats_variant_changed` hook in main calls `ScreenManager::SetSatsVariant` + `MarkDirty()` so the new glyph paints on the next render without a reboot. Stored in the `settings` namespace; legacy NVS values under `ui/sats_variant` are picked up at boot for one-time migration. |
 | `blockFeeDec` | bool | `true` | Show decimal sats/vB on the fee-rate screen when the data source reports a precise value. | Honored in `ScreenManager` rendering path. |
 | `suffixPrice` | bool | `false` | Use k/M suffixes on the price screen. | Honored by `ScreenManager::ReadRenderPrefs` and threaded through `RenderBtcPriceScreen` / `BuildBtcPrice`. |
 | `decimalShareDot` | bool | `false` | When `true`, the decimal-point dot shares the digit panel before it instead of taking its own panel — frees one panel for an extra digit. Applies anywhere the layout includes a `.`: the BTC price K/M-suffix path, market-cap big-chars, and the sub-1 sat-per-currency `0.dddd` path on `SATS/<CCY>`. When `false` (default), the dot occupies its own panel. **Renamed** 2026-05-05 from `suffixShareDot` (the old name implied K/M suffix only). Legacy NVS values are auto-migrated at boot — see `init_screen_manager.cpp`. | Honored by `LayoutBtcPriceSuffixStrings`, market-cap, and `ComputeSatsPerCurrencyLayout` via `ScreenManager::ReadRenderPrefs`. |
@@ -295,7 +305,7 @@ context.
 | `lastBuildTime` | int | compile-time | Firmware build time as Unix seconds (UTC). Omitted when the compiler emitted an unparseable `__DATE__`. |
 | `numScreens` | int | board config | Number of EPD panels on this board (3 on Rev A / Rev B, 7 on V8). Emitted identically by `GET /api/status` so the WebUI's custom-text `maxlength` agrees with both endpoints. Not related to the screen-rotation slot count. |
 | `screens[]` | array of objects | `kScreenKinds` + NVS | Per-screen rotation catalogue, see the Display section. |
-| `availableFonts[]` | string array | `kAvailableFonts` | Font ids the WebUI picker shows. |
+| `availableFonts[]` | array of `{ id, hasBtcSymbol }` | `catalog_available_font_catalog.gen.hpp` | Bundled digit fonts the WebUI picker lists. `hasBtcSymbol` is baked when fonts are regenerated (per-TTF cmap), so the ₿ marker toggle can track `fontName` immediately without a settings refetch. |
 | `availablePools[]` | string array | `AvailablePoolNames()` | Mining-pool ids the WebUI picker shows. |
 | `availableCurrencies[]` | string array | `kAvailableCurrencies` | ISO codes the price feed can serve. |
 | `hasFrontlight` | bool | board capability | Whether this board has a PCA9685 frontlight (Rev B only today). |

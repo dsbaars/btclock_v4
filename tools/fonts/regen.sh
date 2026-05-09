@@ -215,3 +215,8 @@ if missing:
     print("ship the glyph, or the file wasn't refreshed by this script (e.g.")
     print("AntonioSemiBold/AntonioBold/OswaldBold are regenerated out-of-band).")
 PY
+
+echo "→ GET /api/settings font catalogue (hasBtcSymbol per TTF cmap)"
+python3 "${HERE}/gen_available_font_catalog.py" \
+    --assets "${ASSETS}" \
+    --out "${HERE}/../../main/app/catalog_available_font_catalog.gen.hpp"

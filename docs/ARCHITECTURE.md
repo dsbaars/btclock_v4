@@ -872,7 +872,7 @@ and serve the dump over `GET /api/coredump`.
 | `otadata` | data / ota | `0xe000`, 8 KiB | `0xe000`, 8 KiB | `0xe000`, 8 KiB | Boot-slot pointer for `app_update` |
 | `app0` | app / ota_0 | `0x10000`, 1.6875 MiB | `0x10000`, 3.4375 MiB | `0x10000`, 6.9375 MiB | Active firmware (per OTA) |
 | `app1` | app / ota_1 | `0x1C0000`, 1.6875 MiB | `0x380000`, 3.4375 MiB | `0x700000`, 6.9375 MiB | OTA staging slot |
-| `storage` | data / littlefs | `0x370000`, 412 KiB | `0x6F0000`, 820 KiB | `0xDF0000`, 2 MiB | WebUI bundle + per-pool logo cache |
+| `storage` | data / littlefs | `0x370000`, 412 KiB | `0x6F0000`, 820 KiB | `0xDF0000`, 2 MiB | WebUI bundle + per-pool logo cache + `manifest.json` (`commit`, `buildTime`, **`minFirmware`** semver floor — source `data/src/lib/manifest.json`) |
 | `coredump` | data / coredump | `0x3D7000`, 64 KiB (unused) | `0x7BD000`, 64 KiB | `0xFF0000`, 64 KiB | ELF panic dump; pull via `GET /api/coredump`, clear via `DELETE /api/coredump` |
 | _unused tail_ | — | `0x3E7000`, ~100 KiB | `0x7CD000`, ~200 KiB | — | Reserved for future partition growth without re-flashing the table |
 

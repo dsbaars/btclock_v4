@@ -75,7 +75,7 @@
     {
       "kind": "screen",
       "id": "moscow_time_no_sats_symbol",
-      "title": "Sats per dollar (useSatsSymbol=false)",
+      "title": "Sats per dollar (priceSymMode=0)",
       "path": "docs/img/screens/moscow_time_no_sats_symbol.png"
     },
     {

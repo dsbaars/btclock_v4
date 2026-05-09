@@ -155,8 +155,13 @@ Deutsch:
   channel wired.
 - **System info** — Build time, IP, hardware revision, firmware commit,
   WebUI commit, hostname. If firmware-commit and webui-commit ever
-  drift across a partial OTA, you'll see a yellow warning here. The
-  warning has a **Dismiss** button — dismissal is keyed on the
+  drift across a partial OTA, you'll see a yellow warning here. If the
+  running firmware `gitRev` is **strictly older** than the **`minFirmware`**
+  semver declared in this WebUI's bundled `manifest.json` (see
+  `data/src/lib/manifest.json` in the repo — bumped when `/api/settings`
+  shapes change incompatibly), a separate warning banner appears prompting you
+  to upgrade firmware or flash a matching LittleFS bundle.
+  The drift warning has a **Dismiss** button — dismissal is keyed on the
   (gitRev, fsRev) pair and stored in `sessionStorage`, so a fresh
   build of either side re-prompts and closing the tab clears the
   silence. Closing the tab also clears any "I don't care" state, so a
@@ -568,7 +573,7 @@ Affected by: `blockFeeDec`, `verticalDesc`, `fontName`.
 
 The inverse of the BTC price — how many sats one US dollar buys. Shown
 when `useMscwTime=true`. The `=` glyph between the label and the digits
-is the sats prefix (`useSatsSymbol`).
+is the sats prefix (`priceSymMode === 1`).
 
 #### What "Moscow Time" actually means
 
@@ -598,17 +603,17 @@ Worked example at $95,432 / BTC:
 > `100,000,000 / 95,432 ≈ 1,047 sats per USD`
 
 …which the screen renders as "1 047" across the digit panels (with the
-`=` sats-symbol prefix when `useSatsSymbol=true`).
+`=` sats-symbol prefix when `priceSymMode === 1`).
 
-#### Sats glyph toggle (`useSatsSymbol`)
+#### Sats glyph on Moscow Time (`priceSymMode`)
 
-`useSatsSymbol=true` (default) prefixes the digit row with the
+`priceSymMode=1` prefixes the digit row with the
 custom sats glyph (the `=`-flavoured cell from the BTClock font
-stack) and uses the "MSCW / TIME" label slot. With `useSatsSymbol=false`
+stack) and uses the "MSCW / TIME" label slot. With `priceSymMode=0`
 the glyph cell stays blank and the digits start one panel further
 right:
 
-| `useSatsSymbol=true` (default) | `useSatsSymbol=false` |
+| With sats glyph (`priceSymMode=1`) | Off (`priceSymMode=0`) |
 |---|---|
 | ![Moscow time — with sats glyph](img/screens/moscow_time.png) | ![Moscow time — no sats glyph](img/screens/moscow_time_no_sats_symbol.png) |
 
@@ -622,7 +627,7 @@ adding noise.
 The SatoshiSymbol font ships **16 glyph variants** at codepoints
 `U+E000`..`U+E00F`. The `satsVariant` setting (uint, 0..15, default
 7) picks which one renders on the moscow-time screen and the
-nostr-zap overlay when `useSatsSymbol` is on:
+nostr-zap overlay when `priceSymMode === 1`:
 
 ![All 16 sats-symbol variants in a 4×4 contact sheet](img/fonts/sats_variants.png)
 
@@ -645,7 +650,7 @@ Out-of-range values are rejected at PATCH time (the schema declares
 Regenerate the contact sheet from the embedded TTF with
 [`tools/fonts/render_sats_variants.py`](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/tools/fonts/render_sats_variants.py).
 
-Affected by: `useMscwTime`, `useSatsSymbol`, `satsVariant`, active currency, `fontName`.
+Affected by: `useMscwTime`, `priceSymMode`, `satsVariant`, active currency, `fontName`.
 
 ### BTC ticker
 
@@ -716,7 +721,7 @@ around the long-term "Bitcoin is going to a million dollars" frame
 without any of the underlying maths changing.
 
 Affected by: `actCurrencies`, `suffixPrice`, `decimalShareDot`,
-`mowMode`, `useSatsSymbol`, `fontName`.
+`mowMode`, `priceSymMode`, `fontName`.
 
 ### Market cap
 

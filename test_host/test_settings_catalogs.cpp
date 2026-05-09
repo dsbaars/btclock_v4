@@ -47,8 +47,8 @@ class NullPrefs final : public btclock::settings::PrefsReader {
 // DeviceContext. Kept inline so the test fails if either side changes.
 btclock::settings::DeviceContext CtxFromCatalogs() {
   btclock::settings::DeviceContext ctx;
-  for (const auto& f : btclock::catalogs::kAvailableFonts) {
-    ctx.available_fonts.emplace_back(f);
+  for (const auto& e : btclock::catalogs::kAvailableFontCatalog) {
+    ctx.available_fonts.push_back({std::string(e.id), e.has_btc_symbol});
   }
   for (const auto& c : btclock::catalogs::kAvailableCurrencies) {
     ctx.available_currencies.emplace_back(c);
@@ -68,23 +68,37 @@ std::set<std::string> StringArrayToSet(cJSON* arr) {
   return out;
 }
 
+std::set<std::string> AvailableFontIdsFromGetArray(cJSON* arr) {
+  std::set<std::string> out;
+  cJSON* it = nullptr;
+  cJSON_ArrayForEach(it, arr) {
+    REQUIRE(cJSON_IsObject(it));
+    cJSON* id = cJSON_GetObjectItemCaseSensitive(it, "id");
+    REQUIRE(cJSON_IsString(id));
+    REQUIRE(id->valuestring != nullptr);
+    out.insert(id->valuestring);
+  }
+  return out;
+}
+
 }  // namespace
 
-TEST_CASE("availableFonts is a plain-string array with known ids") {
+TEST_CASE("availableFonts is an object array with id + hasBtcSymbol") {
   NullPrefs prefs;
   cJSON* root = btclock::settings::BuildGetResponse(prefs, CtxFromCatalogs());
   REQUIRE(root != nullptr);
 
   cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "availableFonts");
   REQUIRE(cJSON_IsArray(arr));
-  // WebUI's src/lib/types/settings.ts types this as `string[]`, not
-  // `{id,label}[]`. If someone flips the shape, DisplaySettings.svelte
-  // silently drops every font from the picker.
   cJSON* it = nullptr;
   cJSON_ArrayForEach(it, arr) {
-    CHECK(cJSON_IsString(it));
+    REQUIRE(cJSON_IsObject(it));
+    cJSON* id = cJSON_GetObjectItemCaseSensitive(it, "id");
+    REQUIRE(cJSON_IsString(id));
+    cJSON* hb = cJSON_GetObjectItemCaseSensitive(it, "hasBtcSymbol");
+    REQUIRE(cJSON_IsBool(hb));
   }
-  const auto fonts = StringArrayToSet(arr);
+  const auto fonts = AvailableFontIdsFromGetArray(arr);
   // Pin the minimum set. If a build drops one of these, the renderer
   // paths that hard-code fontFamily::kAntonio etc. would still compile
   // but the UI's font picker would suddenly hide options.

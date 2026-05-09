@@ -21,6 +21,15 @@
 namespace btclock {
 namespace settings {
 
+// Single row of GET `availableFonts[]` — id matches NVS `fontName`, and
+// `has_btc_symbol` reflects whether the bundled digit subset maps U+20BF,
+// computed offline when fonts are regenerated (see
+// catalog_available_font_catalog.gen.hpp).
+struct AvailableFontOption {
+  std::string id;
+  bool has_btc_symbol = true;
+};
+
 // Read-side abstraction. In IDF builds the concrete implementation
 // wraps btclock::Prefs; host tests inject an in-memory fake. Kept
 // minimal — the schema table tells us which accessor to call.
@@ -74,7 +83,7 @@ struct DeviceContext {
   // response.
   int64_t last_build_time_unix = 0;
   // Fonts available to the renderer; propagated into `availableFonts`.
-  std::vector<std::string> available_fonts;
+  std::vector<AvailableFontOption> available_fonts;
   // Mining pool list propagated into `availablePools`.
   std::vector<std::string> available_pools;
   // Currencies propagated into `availableCurrencies`. The active subset

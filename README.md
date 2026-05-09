@@ -248,7 +248,7 @@ User-facing:
 
 Developer-facing:
 
-- [docs/SETTINGS.md](docs/SETTINGS.md) — settings reference (every NVS key)
+- [docs/SETTINGS.md](docs/SETTINGS.md) — settings reference (every NVS key); WebUI semver floor lives in [`data/src/lib/manifest.json`](data/src/lib/manifest.json) (`minFirmware`)
 - [docs/WEBUI_MINING_POOL_FIELDS.md](docs/WEBUI_MINING_POOL_FIELDS.md) — mining-pool credential field guide for WebUI authors
 - [docs/HARDCODED_AUDIT.md](docs/HARDCODED_AUDIT.md) — inventory of hardcoded values
 - [docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md) — parity matrix vs. the Arduino btclock_v3 firmware

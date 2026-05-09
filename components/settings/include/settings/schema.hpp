@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 86> kFields = {{
+inline constexpr std::array<FieldSpec, 85> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -328,6 +328,10 @@ inline constexpr std::array<FieldSpec, 86> kFields = {{
     // that publish per-minute stats already, without overwhelming free
     // public endpoints.
     {prefs::kPoolPollSec, FieldKind::kUint, false, 10, 3600, false, 60, {}},
+    // priceSymMode: price-row suffix glyph — 0 off, 1 sats PUA glyph, 2 ₿
+    // (digit font). Replaces legacy useSatsSymbol / useBtcSymbol (migrated
+    // at boot — see init_screen_manager.cpp).
+    {prefs::kPriceSymMode, FieldKind::kUint, false, 0, 2, false, 0, {}},
     // Outbound proxy. Applied at every esp_http_client / esp_websocket_client
     // init point via net_util's ApplyProxyTo* helpers. None of these are
     // boot_only — net_util reads the config per-request, and the
@@ -368,14 +372,10 @@ inline constexpr std::array<FieldSpec, 86> kFields = {{
     {prefs::kTzString, FieldKind::kString, false, 0, 0, false, 0,
      "Europe/Amsterdam"},
     // v3 DEFAULT_USE_BLOCK_COUNTDOWN=true, DEFAULT_USE_MSCW_TIME=true,
-    // DEFAULT_USE_SATS_SYMBOL=false, DEFAULT_VERTICAL_DESC=true.
+    // DEFAULT_VERTICAL_DESC=true. Sats/₿ marker default is priceSymMode=0
+    // (off); legacy bool prefs migrate at boot.
     {prefs::kUseBlkCountdown, FieldKind::kBool, false, 0, 0, true, 0, {}},
-    // useBtcSymbol: ₿ (U+20BF) in the sats-marker cell via the digit font role.
-    // Mutually exclusive with useSatsSymbol — PATCH rejects both true in one
-    // body; enabling either clears the other in NVS.
-    {prefs::kUseBtcSymbol, FieldKind::kBool, false, 0, 0, false, 0, {}},
     {prefs::kUseMscwTime, FieldKind::kBool, false, 0, 0, true, 0, {}},
-    {prefs::kUseSatsSymbol, FieldKind::kBool, false, 0, 0, false, 0, {}},
     // verticalDesc: runtime — affects EPD layout on next render.
     {prefs::kVerticalDesc, FieldKind::kBool, false, 0, 0, true, 0, {}},
     // wifiRebootOutageMinutes: v4-only soft-watchdog (no v3 parallel).

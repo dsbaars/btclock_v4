@@ -44,7 +44,8 @@ namespace btclock {
 inline constexpr const char* kDigitRef = "0123456789";
 
 // UTF-8 encoding of U+20BF BITCOIN SIGN — Satoshi-symbol alternative when
-// `useBtcSymbol=true` (drawn via the digit font role like currency glyphs).
+// `priceSymMode=2` / RenderPrefs::use_btc_symbol (drawn via the digit font
+// role).
 inline constexpr const char* kBtcSignUtf8 = "\xe2\x82\xbf";
 
 // Build a LandscapeFb view over panel `i`'s framebuffer. Templated on N

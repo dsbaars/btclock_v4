@@ -195,6 +195,28 @@ void InitScreenManager(AppCtx& ctx) {
       }
     }
   }
+
+  // One-shot migration: `priceSymMode` (0 none / 1 sats glyph / 2 ₿) replaces
+  // mutually-exclusive `useSatsSymbol` + `useBtcSymbol`. Sentinel 255 means the
+  // new key was never written — derive from the legacy bools, persist, erase
+  // the old keys so NVS stays canonical.
+  {
+    Prefs settings(prefs::kSettingsNs);
+    constexpr uint32_t kUnset = 255;
+    uint32_t raw = settings.GetU32(prefs::kPriceSymMode, kUnset);
+    if (raw > 2) {
+      const bool btc = settings.GetBool(prefs::kUseBtcSymbolLegacy, false);
+      const bool sat = settings.GetBool(prefs::kUseSatsSymbolLegacy, false);
+      const uint32_t mode = btc ? 2u : (sat ? 1u : 0u);
+      settings.SetU32(prefs::kPriceSymMode, mode);
+      settings.Remove(prefs::kUseBtcSymbolLegacy);
+      settings.Remove(prefs::kUseSatsSymbolLegacy);
+      settings.Commit();
+      ESP_LOGI(kTag, "migrated price marker → priceSymMode=%u",
+               static_cast<unsigned>(mode));
+    }
+  }
+
   // Rotation skip hook: honours the pool capability flag so solo pools
   // don't cycle onto the earnings slot even if the user's persisted
   // `screen71Visible` is still true. Evaluated per-tick so a PATCH that

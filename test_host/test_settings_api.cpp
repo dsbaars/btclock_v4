@@ -83,7 +83,10 @@ btclock::settings::DeviceContext DefaultCtx() {
   ctx.hw_rev = "REV_B_EPD_2_13";
   ctx.fs_rev = "fs-42";
   ctx.git_rev = "deadbeef";
-  ctx.available_fonts = {"antonio", "oswald"};
+  ctx.available_fonts = {
+      {"antonio", false},
+      {"oswald", true},
+  };
   ctx.available_pools = {"ocean", "braiins"};
   ctx.available_currencies = {"USD", "EUR", "GBP", "JPY", "AUD", "CAD"};
   ctx.screens = {
@@ -96,6 +99,32 @@ btclock::settings::DeviceContext DefaultCtx() {
 }
 
 }  // namespace
+
+TEST_CASE("GET /api/settings emits availableFonts objects with hasBtcSymbol") {
+  FakePrefs prefs;
+  auto ctx = DefaultCtx();
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  cJSON* arr = cJSON_GetObjectItemCaseSensitive(root, "availableFonts");
+  REQUIRE(cJSON_IsArray(arr));
+  REQUIRE(cJSON_GetArraySize(arr) == 2);
+  cJSON* first = cJSON_GetArrayItem(arr, 0);
+  REQUIRE(cJSON_IsObject(first));
+  cJSON* id = cJSON_GetObjectItemCaseSensitive(first, "id");
+  REQUIRE(cJSON_IsString(id));
+  CHECK(std::string(id->valuestring) == "antonio");
+  cJSON* hb = cJSON_GetObjectItemCaseSensitive(first, "hasBtcSymbol");
+  REQUIRE(cJSON_IsBool(hb));
+  CHECK_FALSE(cJSON_IsTrue(hb));
+  cJSON* second = cJSON_GetArrayItem(arr, 1);
+  REQUIRE(cJSON_IsObject(second));
+  cJSON* hb2 = cJSON_GetObjectItemCaseSensitive(second, "hasBtcSymbol");
+  REQUIRE(cJSON_IsBool(hb2));
+  CHECK(cJSON_IsTrue(hb2));
+  CHECK(cJSON_GetObjectItemCaseSensitive(root, "digitFontHasBitcoinSign") ==
+        nullptr);
+  cJSON_Delete(root);
+}
 
 TEST_CASE("GET /api/settings emits lastBuildTime as Unix seconds integer") {
   // 2026-04-24T15:30:45Z -> 1777044645 (see test_build_time.cpp).
@@ -611,33 +640,36 @@ TEST_CASE("PATCH writes runtime-editable bool without rebootRequired") {
   CHECK(prefs.GetBool("stealFocus", true) == false);
 }
 
-TEST_CASE("PATCH useBtcSymbol and useSatsSymbol reject both true in one body") {
+TEST_CASE("PATCH priceSymMode accepts 0..2") {
+  for (uint32_t v = 0; v <= 2; ++v) {
+    FakePrefs prefs;
+    const std::string body = "{\"priceSymMode\":" + std::to_string(v) + "}";
+    auto res =
+        btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
+    CHECK(res.status == btclock::settings::PatchStatus::kOk);
+    // compare-on-write skips NVS writes that match schema defaults; 0 is the
+    // default so the slot may stay absent — GetU32 must still read back 0.
+    const uint32_t absent_sentinel = v == 0 ? 0 : 255;
+    CHECK(prefs.GetU32("priceSymMode", absent_sentinel) == v);
+  }
+}
+
+TEST_CASE("PATCH priceSymMode rejects 3 (one past max)") {
   FakePrefs prefs;
-  auto res = btclock::settings::ApplyPatch(
-      "{\"useBtcSymbol\":true,\"useSatsSymbol\":true}", DefaultCtx(), prefs,
-      prefs);
+  auto res = btclock::settings::ApplyPatch("{\"priceSymMode\":3}", DefaultCtx(),
+                                           prefs, prefs);
   CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
-  CHECK(res.error == "useBtcSymbol:mutually_exclusive_with_useSatsSymbol");
+  CHECK(res.error == "range:priceSymMode");
+  CHECK(prefs.u32_.count("priceSymMode") == 0);
 }
 
-TEST_CASE("PATCH useBtcSymbol true clears conflicting useSatsSymbol") {
+TEST_CASE("PATCH priceSymMode rejects negative values") {
   FakePrefs prefs;
-  prefs.SetBool("useSatsSymbol", true);
-  auto res = btclock::settings::ApplyPatch("{\"useBtcSymbol\":true}",
+  auto res = btclock::settings::ApplyPatch("{\"priceSymMode\":-1}",
                                            DefaultCtx(), prefs, prefs);
-  CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.GetBool("useBtcSymbol", false) == true);
-  CHECK(prefs.GetBool("useSatsSymbol", false) == false);
-}
-
-TEST_CASE("PATCH useSatsSymbol true clears conflicting useBtcSymbol") {
-  FakePrefs prefs;
-  prefs.SetBool("useBtcSymbol", true);
-  auto res = btclock::settings::ApplyPatch("{\"useSatsSymbol\":true}",
-                                           DefaultCtx(), prefs, prefs);
-  CHECK(res.status == btclock::settings::PatchStatus::kOk);
-  CHECK(prefs.GetBool("useSatsSymbol", false) == true);
-  CHECK(prefs.GetBool("useBtcSymbol", false) == false);
+  CHECK(res.status == btclock::settings::PatchStatus::kBadRequest);
+  CHECK(res.error == "range:priceSymMode");
+  CHECK(prefs.u32_.count("priceSymMode") == 0);
 }
 
 TEST_CASE("PATCH writes runtime-editable uint with range clamping") {
@@ -956,7 +988,7 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // each relay opens a WSS at boot.
   // 84 -> 85: labelFitPct added (uint, range 25..100, default 100) to
   // scale split-label auto-fit width as a user-facing percentage.
-  CHECK(btclock::settings::kFields.size() == 86);
+  CHECK(btclock::settings::kFields.size() == 85);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
@@ -1509,8 +1541,7 @@ TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
       {"scrnRestoreZap", true},   {"stealFocus", true},
       {"suffixPrice", false},     {"decimalShareDot", false},
       {"supplyPercent", false},   {"useBlkCountdown", true},
-      {"useMscwTime", true},      {"useSatsSymbol", false},
-      {"verticalDesc", true},
+      {"useMscwTime", true},      {"verticalDesc", true},
   };
   for (const auto& [k, v] : bools) {
     CAPTURE(k);
@@ -1525,7 +1556,8 @@ TEST_CASE("GET defaults match the v3 firmware for a fresh install") {
       {"flMaxBrightness", 2048},     {"fullRefreshMin", 60},
       {"labelFitPct", 100},          {"ledBrightness", 128},
       {"luxLightToggle", 128},       {"minSecPriceUpd", 30},
-      {"wifiRebootMin", 10},         {"wpTimeout", 15 * 60},
+      {"priceSymMode", 0},           {"wifiRebootMin", 10},
+      {"wpTimeout", 15 * 60},
   };
   for (const auto& [k, v] : uints) {
     CAPTURE(k);

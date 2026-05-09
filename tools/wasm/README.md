@@ -39,6 +39,11 @@ Outputs:
 - `docs/img/MANIFEST.json` — index with metadata (timestamp,
   geometry, per-item path).
 
+**Titles & settings terminology:** prefer firmware-facing names in `title`
+strings (e.g. `priceSymMode=0`, not legacy `useSatsSymbol=false`) so handbook
+cross-references stay aligned with [`docs/SETTINGS.md`](../../docs/SETTINGS.md).
+Re-run this script after renaming so `MANIFEST.json` stays in sync.
+
 Dependencies it borrows:
 
 - The `sharp` install in `data/node_modules/sharp/` (no separate

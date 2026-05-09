@@ -314,12 +314,11 @@ void InitControlApi(AppCtx& ctx) {
               btclock::settings::ReadU32(settings_ns, prefs::kDndEndMin) &
               0xFFu));
     };
-    // Runtime catalogues for GET /api/settings drop-downs. Copies of the
-    // constexpr arrays in app/catalogs.hpp; the settings handler holds
-    // std::vector<std::string> slots so we materialise the views here
-    // rather than refactoring the settings API type.
-    for (const auto& f : catalogs::kAvailableFonts) {
-      ccfg.available_fonts.emplace_back(f);
+    // Runtime catalogues for GET /api/settings drop-downs — font ids and
+    // ₿ cmap facts baked at font-regeneration time (see
+    // catalog_available_font_catalog.gen.hpp).
+    for (const auto& e : catalogs::kAvailableFontCatalog) {
+      ccfg.available_fonts.push_back({std::string(e.id), e.has_btc_symbol});
     }
     // Currencies come from ctx (seeded in InitScreenManager from the
     // catalogue, then overwritten by FetchAvailableCurrencies on

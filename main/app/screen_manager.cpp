@@ -72,13 +72,11 @@ struct RenderPrefs {
 RenderPrefs ReadRenderPrefs() {
   btclock::Prefs prefs(btclock::prefs::kSettingsNs);
   RenderPrefs out;
-  out.use_sats_symbol =
-      btclock::settings::ReadBool(prefs, btclock::prefs::kUseSatsSymbol);
-  out.use_btc_symbol =
-      btclock::settings::ReadBool(prefs, btclock::prefs::kUseBtcSymbol);
-  if (out.use_btc_symbol && out.use_sats_symbol) {
-    out.use_sats_symbol = false;
-  }
+  uint32_t sym_mode =
+      btclock::settings::ReadU32(prefs, btclock::prefs::kPriceSymMode);
+  if (sym_mode > 2) sym_mode = 0;
+  out.use_sats_symbol = (sym_mode == 1);
+  out.use_btc_symbol = (sym_mode == 2);
   out.use_mscw_time = prefs.GetBool(btclock::prefs::kUseMscwTime, true);
   out.use_blk_countdown = prefs.GetBool(btclock::prefs::kUseBlkCountdown, true);
   out.supply_percent = prefs.GetBool(btclock::prefs::kSupplyPercent, false);

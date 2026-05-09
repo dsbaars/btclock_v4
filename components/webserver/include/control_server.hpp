@@ -32,6 +32,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "settings/api.hpp"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -264,7 +265,7 @@ class ControlServer {
     // "availableCurrencies" arrays in GET /api/settings so the WebUI
     // can populate its dropdowns. `currencies` above is the *active*
     // subset; `available_currencies` is the full set.
-    std::vector<std::string> available_fonts;
+    std::vector<settings::AvailableFontOption> available_fonts;
     std::vector<std::string> available_pools;
     std::vector<std::string> available_currencies;
 
@@ -296,7 +297,7 @@ class ControlServer {
 
     // Fires when PATCH /api/settings writes `fontName`. The callback
     // receives the new id string (already validated against
-    // available_fonts by the settings layer) and is expected to call
+    // available_fonts[].id by the settings layer) and is expected to call
     // AppFonts::SetFamily() + ScreenManager::MarkDirty() so the next
     // frame paints with the newly selected family. Nullable — an
     // unwired callback defers the change to reboot, which is what the
