@@ -136,12 +136,12 @@ Deutsch:
 ![Control card close-up](img/webui/control.png)
 
 
-- **Text** — push up to 7 (or 8 on V8) characters, one per panel.
-  `POST /api/show/text` under the hood. The text input is **uppercased
-  on every keystroke** in the WebUI before being sent — the EPD glyph
-  set is uppercase-only, so a lowercase character would otherwise paint
-  as a blank tile. Truncation to `numScreens` happens via the input's
-  `maxlength`. Press "Show text" and the panels paint immediately; any
+- **Text** — push up to 7 (or 8 on V8) characters, one per panel (each
+  non‑ASCII symbol counts as one character when it fits in one Unicode
+  scalar value). `POST /api/show/text` under the hood. Bundled fonts
+  subset printable ASCII (including lowercase `a`–`z`) plus £ ¥ € ₿, so
+  case is preserved end‑to‑end. Truncation to `numScreens` happens via
+  the input's `maxlength`. Press "Show text" and the panels paint immediately; any
   subsequent rotation tick or button press restores the rotation.
 - **LEDs** — pick a colour for each pixel (or "keep same colour" for a
   uniform strip). "Set color" pushes via `POST /api/lights/set`. "Turn
@@ -803,8 +803,8 @@ Affected by: `nostrZapNotify`, `nostrZapPubkey`, `ledFlashOnZap`,
 
 ### Custom text (push)
 
-`POST /api/show/text` with JSON body `{"t":"HELLO"}` (or `POST
-/api/show/custom` with a per-panel array) puts arbitrary text on the
+`POST /api/show/text` with JSON body `{"t":"hello"}` or mixed-case ASCII /
+symbols (or `POST /api/show/custom` with a per-panel array) puts text on the
 panels. Legacy `?t=` query usage still works as a fallback. Stays up until the
 next nav event. Useful for build alerts, notifications, "BACK SOON",
 etc.

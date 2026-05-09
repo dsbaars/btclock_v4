@@ -1,6 +1,5 @@
 #include "show_text_parse.hpp"
 
-#include <cctype>
 #include <cstdint>
 #include <cstring>
 
@@ -8,16 +7,6 @@
 
 namespace btclock {
 namespace {
-
-// Uppercase one ASCII byte. Old firmware uses Arduino's String::toUpperCase
-// which is ASCII-only; non-ASCII bytes (UTF-8 continuation bytes) pass
-// through unchanged. Mirror that — avoids double-applying toupper to
-// already-upper characters and keeps UTF-8 multi-byte sequences intact.
-char UpperAsciiOnly(char c) {
-  const unsigned char u = static_cast<unsigned char>(c);
-  if (u < 0x80) return static_cast<char>(std::toupper(u));
-  return c;
-}
 
 ShowTextParseResult MakeFailure(const char* token) {
   ShowTextParseResult r;
@@ -85,12 +74,7 @@ ShowTextParseResult SplitShowTextAcrossPanels(std::string_view text,
   for (std::size_t i = 0; i < text.size() && panel < n_panels;) {
     const std::size_t seq = Utf8CodepointByteLength(text, i);
     if (seq == 0) break;
-    const unsigned char lead = static_cast<unsigned char>(text[i]);
-    if (seq == 1 && lead < 0x80) {
-      r.cells[panel].assign(1, UpperAsciiOnly(static_cast<char>(lead)));
-    } else {
-      r.cells[panel].assign(text.data() + i, seq);
-    }
+    r.cells[panel].assign(text.data() + i, seq);
     ++panel;
     i += seq;
   }

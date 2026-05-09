@@ -182,8 +182,8 @@ prompts. Tagged prereleases (e.g. `4.0.0-beta.1`) are eligible.
 Two domain-level services, callable on both v3.4 and v4:
 
 - **`btclock.show_text`** — display a short message across the panels,
-  one character per panel. Truncated to fit the number of panels and
-  auto-uppercased (the EPD font set is uppercase-only). Same feature
+  one UTF-8 codepoint per panel. Truncated to fit the number of panels;
+  case is preserved (bundled fonts include lowercase ASCII). Same feature
   as the WebUI's [Control card](HANDBOOK.md#41-control-card-left) text
   input.
 - **`btclock.show_custom`** — display one string per panel, for

@@ -182,7 +182,7 @@ follow-up issue.
 | `POST /api/restart` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/screen` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/show/currency` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
-| `POST /api/show/text` | actions.cpp | [control_server.cpp::HandleShowText](../components/webserver/control_server.cpp) — primary body `{"t":"..."}` (legacy `?t=` fallback still accepted), one char per panel uppercased | Implemented | — |
+| `POST /api/show/text` | actions.cpp | [control_server.cpp::HandleShowText](../components/webserver/control_server.cpp) — primary body `{"t":"..."}` (legacy `?t=` fallback still accepted), one UTF-8 codepoint per panel, case preserved | Implemented | — |
 | `POST /api/show/custom` | (derived: custom screen) | [control_server.cpp::HandleShowCustom](../components/webserver/control_server.cpp) — bare array or `{"cells":[...]}`, verbatim per panel | Implemented | — |
 | `POST /api/screen/next` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |
 | `POST /api/screen/previous` | actions.cpp | [control_server.cpp](../components/webserver/control_server.cpp) | Implemented | — |

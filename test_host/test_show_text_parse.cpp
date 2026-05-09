@@ -21,15 +21,15 @@ TEST_CASE("ParseShowTextBody: missing body yields empty cells on 7 panels") {
   for (const auto& c : r.cells) CHECK(c.empty());
 }
 
-TEST_CASE("ParseShowTextBody: places one character per panel, uppercased") {
+TEST_CASE("ParseShowTextBody: places one character per panel, preserves case") {
   auto r = ParseShowTextBody(R"({"text":"hello"})", 7);
   REQUIRE(r.ok);
   REQUIRE(r.cells.size() == 7);
-  CHECK(r.cells[0] == "H");
-  CHECK(r.cells[1] == "E");
-  CHECK(r.cells[2] == "L");
-  CHECK(r.cells[3] == "L");
-  CHECK(r.cells[4] == "O");
+  CHECK(r.cells[0] == "h");
+  CHECK(r.cells[1] == "e");
+  CHECK(r.cells[2] == "l");
+  CHECK(r.cells[3] == "l");
+  CHECK(r.cells[4] == "o");
   CHECK(r.cells[5].empty());
   CHECK(r.cells[6].empty());
 }
@@ -103,11 +103,14 @@ TEST_CASE("SplitShowTextAcrossPanels: UTF-8 codepoints one per panel") {
   CHECK(r.cells[6].empty());
 }
 
-TEST_CASE("SplitShowTextAcrossPanels: ASCII uppercasing unchanged") {
+TEST_CASE("SplitShowTextAcrossPanels: ASCII case preserved") {
   auto r = SplitShowTextAcrossPanels("hello", 7);
   REQUIRE(r.ok);
-  CHECK(r.cells[0] == "H");
-  CHECK(r.cells[4] == "O");
+  CHECK(r.cells[0] == "h");
+  CHECK(r.cells[4] == "o");
+  auto upper = SplitShowTextAcrossPanels("HELLO", 7);
+  REQUIRE(upper.ok);
+  CHECK(upper.cells[0] == "H");
 }
 
 TEST_CASE("SplitShowTextAcrossPanels: lone continuation byte is one panel") {

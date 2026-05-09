@@ -9,7 +9,9 @@
 // Old-firmware parity source:
 //   src/lib/net/webserver/actions.cpp lines 68..110 (onApiShowText,
 //   onApiShowTextAdvanced). Both clamp to NUM_SCREENS; /api/show/text
-//   uppercases + places one character per panel; /api/show/custom takes
+//   placed one byte per panel with Arduino toUpperCase (ASCII-only). We
+//   instead split UTF-8 codepoints and preserve case — selectable TTFs
+//   subset U+0020-007E (includes a-z). /api/show/custom takes
 //   a bare JSON array and copies each element verbatim into one panel.
 
 #pragma once
@@ -40,8 +42,8 @@ struct ShowTextParseResult {
 //      (QueryParam) *before* this function; when it fires this parser
 //      only sees the JSON body.
 //
-// Heuristic (mirrors old-firmware onApiShowText): ASCII letters are
-// uppercased; each UTF-8 codepoint is placed on one panel left-to-right.
+// Each UTF-8 codepoint is placed on one panel left-to-right; case is kept
+// as sent (font subsets include lowercase ASCII).
 // Panels past the text length stay empty; extra codepoints are dropped.
 // No word-wrap — same placement model as v3, but Unicode-aware (v3 was
 // effectively ASCII-only because it split raw bytes).
