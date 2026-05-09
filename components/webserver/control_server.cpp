@@ -91,6 +91,7 @@ constexpr const char* kWsPreviewPath = "/api/preview/ws";
 constexpr size_t kPreviewHeaderBytes = 34;
 constexpr uint8_t kPreviewVersion = 1;
 constexpr uint8_t kPreviewKindPanelFrame = 1;
+constexpr uint8_t kPreviewCompressionNone = 0;
 constexpr uint8_t kPreviewCompressionDeflate = 1;
 
 void WriteLe16(uint8_t* dst, uint16_t v) {
@@ -105,6 +106,19 @@ void WriteLe32(uint8_t* dst, uint32_t v) {
 }
 
 #if CONFIG_HTTPD_WS_SUPPORT
+// Line-based WebSocket clients (e.g. default websocat linemode) often append
+// `\n` / `\r\n` to each text frame; strict `body == "start"` would otherwise
+// reject the command and skip the streaming ack.
+std::string_view TrimPreviewWsTextPayload(std::string_view body) {
+  while (!body.empty() && (body.back() == '\n' || body.back() == '\r')) {
+    body.remove_suffix(1);
+  }
+  while (!body.empty() && (body.front() == '\n' || body.front() == '\r')) {
+    body.remove_prefix(1);
+  }
+  return body;
+}
+
 bool IsPreviewStartCommand(std::string_view body) {
   if (body == "start") return true;
   cJSON* root = cJSON_ParseWithLength(body.data(), body.size());
@@ -499,6 +513,8 @@ void ControlServer::PreviewWorker() {
     std::vector<int> dead_fds;
     for (const auto& panel : snap.panels) {
       if (panel.raw.empty()) continue;
+      std::vector<uint8_t> payload;
+      uint8_t compression_kind = kPreviewCompressionDeflate;
       std::vector<uint8_t> compressed(std::max<size_t>(128, panel.raw.size()));
       size_t out_size = 0;
       const int tdefl_flags = static_cast<int>(TDEFL_WRITE_ZLIB_HEADER) |
@@ -512,21 +528,24 @@ void ControlServer::PreviewWorker() {
         compressed.resize(compressed.size() * 2);
       }
       if (out_size == 0) {
-        ESP_LOGW(kTag, "preview compress failed panel=%u",
-                 static_cast<unsigned>(panel.panel_index));
-        continue;
+        // Keep the preview stream alive even if the compressor fails on a
+        // specific frame. The frontend accepts compression=0 as raw bytes.
+        compression_kind = kPreviewCompressionNone;
+        payload = panel.raw;
+      } else {
+        compressed.resize(out_size);
+        payload = std::move(compressed);
       }
-      compressed.resize(out_size);
 
       std::vector<uint8_t> packet;
-      packet.resize(kPreviewHeaderBytes + compressed.size());
+      packet.resize(kPreviewHeaderBytes + payload.size());
       packet[0] = 'B';
       packet[1] = 'T';
       packet[2] = 'F';
       packet[3] = 'B';
       packet[4] = kPreviewVersion;
       packet[5] = kPreviewKindPanelFrame;
-      packet[6] = kPreviewCompressionDeflate;
+      packet[6] = compression_kind;
       packet[7] = 1;  // 1-bit source framebuffer
       packet[8] = panel.panel_index;
       packet[9] = 0;
@@ -536,10 +555,10 @@ void ControlServer::PreviewWorker() {
       WriteLe16(packet.data() + 16, panel.rotation_deg);
       WriteLe32(packet.data() + 18, snap.frame_id);
       WriteLe32(packet.data() + 22, static_cast<uint32_t>(snap.timestamp_ms));
-      WriteLe32(packet.data() + 26, static_cast<uint32_t>(compressed.size()));
+      WriteLe32(packet.data() + 26, static_cast<uint32_t>(payload.size()));
       WriteLe32(packet.data() + 30, static_cast<uint32_t>(panel.raw.size()));
-      std::memcpy(packet.data() + kPreviewHeaderBytes, compressed.data(),
-                  compressed.size());
+      std::memcpy(packet.data() + kPreviewHeaderBytes, payload.data(),
+                  payload.size());
 
 #if CONFIG_HTTPD_WS_SUPPORT
       httpd_ws_frame_t frame = {};
@@ -547,7 +566,11 @@ void ControlServer::PreviewWorker() {
       frame.payload = packet.data();
       frame.len = packet.size();
       for (int fd : fds) {
-        if (httpd_ws_send_frame_async(server_, fd, &frame) != ESP_OK) {
+        // Preview frames are produced on a worker task (not the httpd task).
+        // Queue the send onto the httpd thread to keep socket writes on the
+        // server's execution context; direct async frame writes here can fail
+        // intermittently and drop every binary panel packet.
+        if (httpd_ws_send_data(server_, fd, &frame) != ESP_OK) {
           dead_fds.push_back(fd);
         }
       }
@@ -1586,6 +1609,7 @@ esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
 
   if (in.type != HTTPD_WS_TYPE_TEXT) return ESP_OK;
   std::string_view body(reinterpret_cast<const char*>(payload.data()), in.len);
+  body = TrimPreviewWsTextPayload(body);
   bool new_state = false;
   bool touched = false;
   if (IsPreviewStartCommand(body)) {
@@ -1608,6 +1632,11 @@ esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
     } else {
       it->streaming = new_state;
     }
+  }
+
+  if (new_state) {
+    (void)PostCommand(
+        ControlCommand{ControlCommand::Kind::kPublishLiveStatus});
   }
 
   const char* ack = new_state ? "{\"streaming\":true}" : "{\"streaming\":false}";

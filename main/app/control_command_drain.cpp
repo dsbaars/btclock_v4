@@ -130,6 +130,10 @@ bool DrainControlCommands(AppCtx& ctx) {
         re_render = true;
         break;
       }
+      case Kind::kPublishLiveStatus:
+        // No ScreenManager mutation — fan-out cached LiveStatus + framebuffer
+        // preview snapshot from the main task only (WS handler runs on httpd).
+        break;
       case Kind::kRebuildScreens: {
         // Settings PATCH that changed actCurrencies / screenOrder /
         // screen<id>Visible. Re-read NVS here (main task) so all

@@ -198,6 +198,10 @@ struct ControlCommand {
     // setenv("TZ",...) + tzset() so libc tz globals don't race
     // localtime_r reads from the render path.
     kSetTimezone,
+    // WS preview client sent `start`; mirror framebuffer outside the
+    // render path — PublishStatus only ran after hub-driven renders
+    // (`got != 0 && ShouldRender`), leaving idle displays unpublished.
+    kPublishLiveStatus,
   };
   Kind kind;
   int32_t arg_i = 0;

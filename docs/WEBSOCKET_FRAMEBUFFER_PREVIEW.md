@@ -14,6 +14,21 @@ The connection starts in **idle** mode. Streaming is opt-in per client:
 - Start: send text `start` or JSON `{"action":"start"}`
 - Stop: send text `stop` or JSON `{"action":"stop"}`
 
+Clients that send line-oriented text may include a trailing `\n` or `\r\n`;
+the firmware trims those characters before matching `start` / `stop`.
+
+Example with **websocat** (avoid default linemode splitting, or rely on trim):
+
+```bash
+(echo start; sleep 30) | websocat -n --no-line ws://<device-ip>/api/preview/ws
+```
+
+Or default linemode (sends `start` plus newline — accepted after trim):
+
+```bash
+(echo start; sleep 30) | websocat -n ws://<device-ip>/api/preview/ws
+```
+
 Firmware replies with a small JSON ack:
 
 - `{"streaming":true}`
