@@ -43,7 +43,13 @@ esp_err_t SseServer::RegisterRoute(httpd_handle_t server) {
   const httpd_uri_t entry = {.uri = "/events",
                              .method = HTTP_GET,
                              .handler = &SseServer::TrampolineEvents,
-                             .user_ctx = this};
+                             .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                             .is_websocket = false,
+                             .handle_ws_control_frames = false,
+                             .supported_subprotocol = nullptr,
+#endif
+  };
   return httpd_register_uri_handler(server, &entry);
 }
 

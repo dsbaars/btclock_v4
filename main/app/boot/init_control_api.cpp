@@ -1,5 +1,6 @@
 #include "app/boot/init_control_api.hpp"
 
+#include <array>
 #include <cstdio>
 #include <memory>
 #include <sstream>
@@ -25,6 +26,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -611,6 +613,28 @@ void PublishStatus(AppCtx& ctx) {
     Prefs rt(prefs::kRuntimeStateNs);
     rt.SetU32(prefs::kLastSlot, static_cast<uint32_t>(cur));
     last_persisted_slot = cur;
+  }
+  // Mirror the exact rendered 1-bit framebuffers into the preview WS
+  // side-channel. This is "latest wins": if rendering outruns network
+  // IO the control-server worker keeps only the newest snapshot.
+  std::array<ControlServer::FramebufferPanelView, board::kNumPanels> views;
+  size_t panel_count = 0;
+  auto& fb_storage = AppCtx::fb_storage();
+  for (size_t i = 0; i < static_cast<size_t>(board::kNumPanels); ++i) {
+    if (!ctx.panels[i]) continue;
+    ControlServer::FramebufferPanelView v = {};
+    v.panel_index = static_cast<uint8_t>(i);
+    v.width = static_cast<uint16_t>(ctx.panels[i]->Width());
+    v.height = static_cast<uint16_t>(ctx.panels[i]->Height());
+    v.stride = static_cast<uint16_t>(ctx.panels[i]->Stride());
+    v.rotation_deg = 180;
+    v.data = fb_storage[i];
+    v.data_bytes = static_cast<size_t>(ctx.panels[i]->FrameBytes());
+    views[panel_count++] = v;
+  }
+  if (panel_count > 0) {
+    const uint64_t ts_ms = static_cast<uint64_t>(esp_timer_get_time() / 1000);
+    ctx.ctrl->PublishFramebufferSnapshot(views.data(), panel_count, ts_ms);
   }
   // Fan out to SSE subscribers so screen rotations / button presses
   // surface in the WebUI without waiting for the next poll.

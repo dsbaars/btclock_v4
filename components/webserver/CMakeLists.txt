@@ -13,6 +13,7 @@ idf_component_register(
     REQUIRES esp_http_server wifi prefs esp_wifi lwip esp_app_format
              data_core esp_psram cjson btclock_fs vfs settings ota
              app_update net_util epd pool_logo_fetcher espcoredump
+             esp_rom
              queue_metrics
     EMBED_FILES "${_PORTAL_GZ}"
 )

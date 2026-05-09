@@ -123,21 +123,54 @@ esp_err_t ProvisioningServer::Start() {
   const httpd_uri_t portal = {.uri = "/",
                               .method = HTTP_GET,
                               .handler = HandlePortal,
-                              .user_ctx = this};
+                              .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                              .is_websocket = false,
+                              .handle_ws_control_frames = false,
+                              .supported_subprotocol = nullptr,
+#endif
+  };
   const httpd_uri_t scan = {.uri = "/api/scan",
                             .method = HTTP_GET,
                             .handler = HandleScan,
-                            .user_ctx = this};
+                            .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                            .is_websocket = false,
+                            .handle_ws_control_frames = false,
+                            .supported_subprotocol = nullptr,
+#endif
+  };
   const httpd_uri_t version = {.uri = "/api/version",
                                .method = HTTP_GET,
                                .handler = HandleVersion,
-                               .user_ctx = this};
+                               .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                               .is_websocket = false,
+                               .handle_ws_control_frames = false,
+                               .supported_subprotocol = nullptr,
+#endif
+  };
   const httpd_uri_t wifi = {.uri = "/api/wifi",
                             .method = HTTP_POST,
                             .handler = HandleWifi,
-                            .user_ctx = this};
+                            .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                            .is_websocket = false,
+                            .handle_ws_control_frames = false,
+                            .supported_subprotocol = nullptr,
+#endif
+  };
   const httpd_uri_t any = {
-      .uri = "/*", .method = HTTP_GET, .handler = HandleAny, .user_ctx = this};
+      .uri = "/*",
+      .method = HTTP_GET,
+      .handler = HandleAny,
+      .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
+#endif
+  };
   httpd_register_uri_handler(server_, &portal);
   httpd_register_uri_handler(server_, &scan);
   httpd_register_uri_handler(server_, &version);

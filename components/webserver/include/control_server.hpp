@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -30,6 +31,7 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
 #include "wifi.hpp"
 
 namespace btclock {
@@ -548,6 +550,24 @@ class ControlServer {
   // shape rather than the old.
   void SetCurrencies(std::vector<std::string> currencies);
 
+  // 1-bit EPD framebuffer snapshot publisher used by the live WebUI
+  // preview websocket (`/api/preview/ws`). The caller (main task)
+  // passes one entry per active panel after a render completes.
+  struct FramebufferPanelView {
+    uint8_t panel_index = 0;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    uint16_t stride = 0;
+    // Display rotation metadata in clockwise degrees. Current render
+    // pipeline paints the landscape view into a 180°-rotated logical
+    // framebuffer, so this is usually 180.
+    uint16_t rotation_deg = 0;
+    const uint8_t* data = nullptr;
+    size_t data_bytes = 0;
+  };
+  void PublishFramebufferSnapshot(const FramebufferPanelView* panels,
+                                  size_t panel_count, uint64_t timestamp_ms);
+
  private:
   static esp_err_t TrampolineStatus(httpd_req_t* req);
   static esp_err_t TrampolineSystemStatus(httpd_req_t* req);
@@ -592,6 +612,7 @@ class ControlServer {
   static esp_err_t TrampolineHeapTraceStart(httpd_req_t* req);
   static esp_err_t TrampolineHeapTraceStop(httpd_req_t* req);
   static esp_err_t TrampolineDiagHeap(httpd_req_t* req);
+  static esp_err_t TrampolineWsPreview(httpd_req_t* req);
   static esp_err_t TrampolineNotImplemented(httpd_req_t* req);
   static esp_err_t TrampolineOptions(httpd_req_t* req);
   static esp_err_t TrampolineStatic(httpd_req_t* req);
@@ -639,6 +660,7 @@ class ControlServer {
   esp_err_t HandleHeapTraceStart(httpd_req_t* req);
   esp_err_t HandleHeapTraceStop(httpd_req_t* req);
   esp_err_t HandleDiagHeap(httpd_req_t* req);
+  esp_err_t HandleWsPreview(httpd_req_t* req);
   esp_err_t HandleStatic(httpd_req_t* req);
 
   static void ApplyCors(httpd_req_t* req);
@@ -670,6 +692,36 @@ class ControlServer {
   mutable std::mutex pending_custom_mu_;
   bool pending_custom_valid_ = false;
   std::vector<std::string> pending_custom_cells_;
+
+  struct PreviewClientState {
+    int fd = -1;
+    bool streaming = false;
+  };
+  struct PreviewPanelFrame {
+    uint8_t panel_index = 0;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    uint16_t stride = 0;
+    uint16_t rotation_deg = 0;
+    std::vector<uint8_t> raw;
+  };
+  struct PreviewSnapshot {
+    uint32_t frame_id = 0;
+    uint64_t timestamp_ms = 0;
+    std::vector<PreviewPanelFrame> panels;
+  };
+  static void PreviewWorkerTrampoline(void* arg);
+  void PreviewWorker();
+  bool HasPreviewStreamingClientsLocked() const;
+  void RemovePreviewClientLocked(int fd);
+
+  mutable std::mutex preview_mu_;
+  std::vector<PreviewClientState> preview_clients_;
+  PreviewSnapshot preview_pending_;
+  bool preview_pending_valid_ = false;
+  bool preview_worker_stop_ = false;
+  uint32_t preview_frame_seq_ = 0;
+  TaskHandle_t preview_task_ = nullptr;
 };
 
 }  // namespace btclock

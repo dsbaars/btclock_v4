@@ -1,6 +1,7 @@
 #include "control_server.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cerrno>
 #include <cstdint>
@@ -33,9 +34,11 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "heap_metrics.hpp"
 #include "light_metrics.hpp"
 #include "littlefs.hpp"
+#include "miniz.h"
 #include "mime.hpp"
 #include "net_util/hostname.hpp"
 #include "ota_manager.hpp"
@@ -66,6 +69,70 @@ constexpr const char* kTag = "ctrl-api";
 // Response helpers -----------------------------------------------------
 
 constexpr const char* kJsonType = "application/json";
+constexpr const char* kWsPreviewPath = "/api/preview/ws";
+
+// Binary frame header for WebUI framebuffer preview messages.
+// Little-endian, fixed-size 34-byte prelude:
+//   0..3   magic "BTFB"
+//   4      version (1)
+//   5      message kind (1=panel frame)
+//   6      compression kind (1=deflate/zlib)
+//   7      bit depth (1)
+//   8      panel index
+//   9      reserved
+//   10..11 width
+//   12..13 height
+//   14..15 stride (bytes/row)
+//   16..17 rotation deg clockwise
+//   18..21 frame id
+//   22..25 timestamp ms (low 32 bits)
+//   26..29 compressed payload bytes
+//   30..33 raw payload bytes
+constexpr size_t kPreviewHeaderBytes = 34;
+constexpr uint8_t kPreviewVersion = 1;
+constexpr uint8_t kPreviewKindPanelFrame = 1;
+constexpr uint8_t kPreviewCompressionDeflate = 1;
+
+void WriteLe16(uint8_t* dst, uint16_t v) {
+  dst[0] = static_cast<uint8_t>(v & 0xFF);
+  dst[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+}
+void WriteLe32(uint8_t* dst, uint32_t v) {
+  dst[0] = static_cast<uint8_t>(v & 0xFF);
+  dst[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+  dst[2] = static_cast<uint8_t>((v >> 16) & 0xFF);
+  dst[3] = static_cast<uint8_t>((v >> 24) & 0xFF);
+}
+
+#if CONFIG_HTTPD_WS_SUPPORT
+bool IsPreviewStartCommand(std::string_view body) {
+  if (body == "start") return true;
+  cJSON* root = cJSON_ParseWithLength(body.data(), body.size());
+  if (!root || !cJSON_IsObject(root)) {
+    if (root) cJSON_Delete(root);
+    return false;
+  }
+  const cJSON* action = cJSON_GetObjectItemCaseSensitive(root, "action");
+  const bool ok = cJSON_IsString(action) && action->valuestring &&
+                  std::strcmp(action->valuestring, "start") == 0;
+  cJSON_Delete(root);
+  return ok;
+}
+
+bool IsPreviewStopCommand(std::string_view body) {
+  if (body == "stop") return true;
+  cJSON* root = cJSON_ParseWithLength(body.data(), body.size());
+  if (!root || !cJSON_IsObject(root)) {
+    if (root) cJSON_Delete(root);
+    return false;
+  }
+  const cJSON* action = cJSON_GetObjectItemCaseSensitive(root, "action");
+  const bool ok = cJSON_IsString(action) && action->valuestring &&
+                  std::strcmp(action->valuestring, "stop") == 0;
+  cJSON_Delete(root);
+  return ok;
+}
+#endif
 
 esp_err_t SendJson(httpd_req_t* req, const std::string& body) {
   httpd_resp_set_type(req, kJsonType);
@@ -346,6 +413,14 @@ ControlServer::ControlServer(Config cfg) : cfg_(std::move(cfg)) {
 }
 
 ControlServer::~ControlServer() {
+  {
+    std::lock_guard<std::mutex> lk(preview_mu_);
+    preview_worker_stop_ = true;
+  }
+  if (preview_task_) xTaskNotifyGive(preview_task_);
+  for (int i = 0; i < 20 && preview_task_; ++i) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
   if (server_) httpd_stop(server_);
   if (cmd_queue_) vQueueDelete(cmd_queue_);
 }
@@ -353,6 +428,139 @@ ControlServer::~ControlServer() {
 void ControlServer::PublishStatus(const LiveStatus& status) {
   std::lock_guard<std::mutex> lk(status_mu_);
   status_ = status;
+}
+
+bool ControlServer::HasPreviewStreamingClientsLocked() const {
+  for (const auto& c : preview_clients_) {
+    if (c.streaming) return true;
+  }
+  return false;
+}
+
+void ControlServer::RemovePreviewClientLocked(int fd) {
+  preview_clients_.erase(
+      std::remove_if(preview_clients_.begin(), preview_clients_.end(),
+                     [fd](const PreviewClientState& c) { return c.fd == fd; }),
+      preview_clients_.end());
+}
+
+void ControlServer::PublishFramebufferSnapshot(const FramebufferPanelView* panels,
+                                               size_t panel_count,
+                                               uint64_t timestamp_ms) {
+  if (!panels || panel_count == 0) return;
+  std::lock_guard<std::mutex> lk(preview_mu_);
+  if (!HasPreviewStreamingClientsLocked()) return;
+
+  PreviewSnapshot snap;
+  snap.frame_id = ++preview_frame_seq_;
+  snap.timestamp_ms = timestamp_ms;
+  snap.panels.reserve(panel_count);
+  for (size_t i = 0; i < panel_count; ++i) {
+    const FramebufferPanelView& src = panels[i];
+    if (!src.data || src.data_bytes == 0) continue;
+    PreviewPanelFrame dst;
+    dst.panel_index = src.panel_index;
+    dst.width = src.width;
+    dst.height = src.height;
+    dst.stride = src.stride;
+    dst.rotation_deg = src.rotation_deg;
+    dst.raw.assign(src.data, src.data + src.data_bytes);
+    snap.panels.push_back(std::move(dst));
+  }
+  if (snap.panels.empty()) return;
+  preview_pending_ = std::move(snap);
+  preview_pending_valid_ = true;
+  if (preview_task_) xTaskNotifyGive(preview_task_);
+}
+
+void ControlServer::PreviewWorkerTrampoline(void* arg) {
+  static_cast<ControlServer*>(arg)->PreviewWorker();
+}
+
+void ControlServer::PreviewWorker() {
+  while (true) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    PreviewSnapshot snap;
+    std::vector<int> fds;
+    {
+      std::lock_guard<std::mutex> lk(preview_mu_);
+      if (preview_worker_stop_) break;
+      if (!preview_pending_valid_) continue;
+      snap = std::move(preview_pending_);
+      preview_pending_ = {};
+      preview_pending_valid_ = false;
+      for (const auto& c : preview_clients_) {
+        if (c.streaming) fds.push_back(c.fd);
+      }
+    }
+    if (!server_ || fds.empty() || snap.panels.empty()) continue;
+
+    std::vector<int> dead_fds;
+    for (const auto& panel : snap.panels) {
+      if (panel.raw.empty()) continue;
+      std::vector<uint8_t> compressed(std::max<size_t>(128, panel.raw.size()));
+      size_t out_size = 0;
+      const int tdefl_flags = static_cast<int>(TDEFL_WRITE_ZLIB_HEADER) |
+                              static_cast<int>(TDEFL_DEFAULT_MAX_PROBES) |
+                              static_cast<int>(TDEFL_GREEDY_PARSING_FLAG);
+      for (int attempt = 0; attempt < 4; ++attempt) {
+        out_size = tdefl_compress_mem_to_mem(
+            compressed.data(), compressed.size(), panel.raw.data(), panel.raw.size(),
+            tdefl_flags);
+        if (out_size != 0) break;
+        compressed.resize(compressed.size() * 2);
+      }
+      if (out_size == 0) {
+        ESP_LOGW(kTag, "preview compress failed panel=%u",
+                 static_cast<unsigned>(panel.panel_index));
+        continue;
+      }
+      compressed.resize(out_size);
+
+      std::vector<uint8_t> packet;
+      packet.resize(kPreviewHeaderBytes + compressed.size());
+      packet[0] = 'B';
+      packet[1] = 'T';
+      packet[2] = 'F';
+      packet[3] = 'B';
+      packet[4] = kPreviewVersion;
+      packet[5] = kPreviewKindPanelFrame;
+      packet[6] = kPreviewCompressionDeflate;
+      packet[7] = 1;  // 1-bit source framebuffer
+      packet[8] = panel.panel_index;
+      packet[9] = 0;
+      WriteLe16(packet.data() + 10, panel.width);
+      WriteLe16(packet.data() + 12, panel.height);
+      WriteLe16(packet.data() + 14, panel.stride);
+      WriteLe16(packet.data() + 16, panel.rotation_deg);
+      WriteLe32(packet.data() + 18, snap.frame_id);
+      WriteLe32(packet.data() + 22, static_cast<uint32_t>(snap.timestamp_ms));
+      WriteLe32(packet.data() + 26, static_cast<uint32_t>(compressed.size()));
+      WriteLe32(packet.data() + 30, static_cast<uint32_t>(panel.raw.size()));
+      std::memcpy(packet.data() + kPreviewHeaderBytes, compressed.data(),
+                  compressed.size());
+
+#if CONFIG_HTTPD_WS_SUPPORT
+      httpd_ws_frame_t frame = {};
+      frame.type = HTTPD_WS_TYPE_BINARY;
+      frame.payload = packet.data();
+      frame.len = packet.size();
+      for (int fd : fds) {
+        if (httpd_ws_send_frame_async(server_, fd, &frame) != ESP_OK) {
+          dead_fds.push_back(fd);
+        }
+      }
+#endif
+    }
+
+    if (!dead_fds.empty()) {
+      std::lock_guard<std::mutex> lk(preview_mu_);
+      for (int fd : dead_fds) RemovePreviewClientLocked(fd);
+    }
+  }
+  preview_task_ = nullptr;
+  vTaskDelete(nullptr);
 }
 
 bool ControlServer::TryPopCommand(ControlCommand* out) {
@@ -402,7 +610,7 @@ esp_err_t ControlServer::Start() {
   // with headroom for planned additions (OTA, DND, pause/restart). Overflow
   // silently drops the trailing registrations, including /*, which breaks
   // static serving.
-  cfg.max_uri_handlers = 48;
+  cfg.max_uri_handlers = 50;
   cfg.uri_match_fn = httpd_uri_match_wildcard;
   cfg.stack_size = 8192;
   cfg.lru_purge_enable = true;
@@ -412,10 +620,30 @@ esp_err_t ControlServer::Start() {
 
   auto reg = [&](const char* uri, httpd_method_t method,
                  esp_err_t (*h)(httpd_req_t*)) {
-    const httpd_uri_t entry = {
-        .uri = uri, .method = method, .handler = h, .user_ctx = this};
+    const httpd_uri_t entry = {.uri = uri,
+                               .method = method,
+                               .handler = h,
+                               .user_ctx = this,
+#if CONFIG_HTTPD_WS_SUPPORT
+                               .is_websocket = false,
+                               .handle_ws_control_frames = false,
+                               .supported_subprotocol = nullptr,
+#endif
+    };
     return httpd_register_uri_handler(server_, &entry);
   };
+#if CONFIG_HTTPD_WS_SUPPORT
+  auto reg_ws = [&](const char* uri, esp_err_t (*h)(httpd_req_t*)) {
+    const httpd_uri_t entry = {.uri = uri,
+                               .method = HTTP_GET,
+                               .handler = h,
+                               .user_ctx = this,
+                               .is_websocket = true,
+                               .handle_ws_control_frames = false,
+                               .supported_subprotocol = nullptr};
+    return httpd_register_uri_handler(server_, &entry);
+  };
+#endif
 
   // Implemented endpoints.
   reg("/api/status", HTTP_GET, TrampolineStatus);
@@ -475,6 +703,9 @@ esp_err_t ControlServer::Start() {
   // and returns. Use this to triage "/api/status shows huge heap but
   // largestFreeBlock is tiny" fragmentation reports without serial.
   reg("/api/diag/heap", HTTP_GET, TrampolineDiagHeap);
+#if CONFIG_HTTPD_WS_SUPPORT
+  reg_ws(kWsPreviewPath, TrampolineWsPreview);
+#endif
 
   // Long-lived SSE stream for the WebUI's live-refresh. Registered
   // via SseServer::RegisterRoute so the handler owns its own client
@@ -503,6 +734,14 @@ esp_err_t ControlServer::Start() {
   // covers browser CORS preflight, and POST/PATCH routes all live
   // under /api/ — a static-file POST would be nonsense anyway.
   reg("/*", HTTP_GET, TrampolineStatic);
+
+  if (!preview_task_) {
+    if (xTaskCreate(PreviewWorkerTrampoline, "ws_preview", 8192, this, 4,
+                    &preview_task_) != pdPASS) {
+      preview_task_ = nullptr;
+      ESP_LOGW(kTag, "preview worker task create failed");
+    }
+  }
 
   ESP_LOGI(kTag, "control API listening on http://%s/",
            cfg_.wifi ? cfg_.wifi->ip().c_str() : "?");
@@ -649,6 +888,9 @@ esp_err_t ControlServer::TrampolineHeapTraceStop(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineDiagHeap(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleDiagHeap(req);
+}
+esp_err_t ControlServer::TrampolineWsPreview(httpd_req_t* req) {
+  return static_cast<ControlServer*>(req->user_ctx)->HandleWsPreview(req);
 }
 
 esp_err_t ControlServer::TrampolineStatic(httpd_req_t* req) {
@@ -1300,6 +1542,81 @@ esp_err_t ControlServer::HandleDiagHeap(httpd_req_t* req) {
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
   return SendJsonChar(req, txt);
+}
+
+esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
+#if !CONFIG_HTTPD_WS_SUPPORT
+  (void)req;
+  return ESP_ERR_NOT_SUPPORTED;
+#else
+  // Initial HTTP GET does the websocket upgrade handshake. Gate it with
+  // the same Basic auth logic as every other /api route.
+  if (req->method == HTTP_GET) {
+    if (!RequireHttpAuth(req)) return ESP_OK;
+    const int fd = httpd_req_to_sockfd(req);
+    std::lock_guard<std::mutex> lk(preview_mu_);
+    auto it = std::find_if(preview_clients_.begin(), preview_clients_.end(),
+                           [fd](const PreviewClientState& c) {
+                             return c.fd == fd;
+                           });
+    if (it == preview_clients_.end()) {
+      preview_clients_.push_back({.fd = fd, .streaming = false});
+    } else {
+      it->streaming = false;
+    }
+    return ESP_OK;
+  }
+
+  httpd_ws_frame_t in = {};
+  const esp_err_t meta_rc = httpd_ws_recv_frame(req, &in, 0);
+  if (meta_rc != ESP_OK) return meta_rc;
+
+  const int fd = httpd_req_to_sockfd(req);
+  if (in.type == HTTPD_WS_TYPE_CLOSE) {
+    std::lock_guard<std::mutex> lk(preview_mu_);
+    RemovePreviewClientLocked(fd);
+    return ESP_OK;
+  }
+  if (in.len == 0) return ESP_OK;
+
+  std::vector<uint8_t> payload(in.len + 1, 0);
+  in.payload = payload.data();
+  const esp_err_t body_rc = httpd_ws_recv_frame(req, &in, in.len);
+  if (body_rc != ESP_OK) return body_rc;
+
+  if (in.type != HTTPD_WS_TYPE_TEXT) return ESP_OK;
+  std::string_view body(reinterpret_cast<const char*>(payload.data()), in.len);
+  bool new_state = false;
+  bool touched = false;
+  if (IsPreviewStartCommand(body)) {
+    new_state = true;
+    touched = true;
+  } else if (IsPreviewStopCommand(body)) {
+    new_state = false;
+    touched = true;
+  }
+  if (!touched) return ESP_OK;
+
+  {
+    std::lock_guard<std::mutex> lk(preview_mu_);
+    auto it = std::find_if(preview_clients_.begin(), preview_clients_.end(),
+                           [fd](const PreviewClientState& c) {
+                             return c.fd == fd;
+                           });
+    if (it == preview_clients_.end()) {
+      preview_clients_.push_back({.fd = fd, .streaming = new_state});
+    } else {
+      it->streaming = new_state;
+    }
+  }
+
+  const char* ack = new_state ? "{\"streaming\":true}" : "{\"streaming\":false}";
+  httpd_ws_frame_t out = {};
+  out.type = HTTPD_WS_TYPE_TEXT;
+  out.payload = reinterpret_cast<uint8_t*>(const_cast<char*>(ack));
+  out.len = std::strlen(ack);
+  return httpd_ws_send_frame(req, &out);
+#endif
 }
 
 esp_err_t ControlServer::HandleShowScreen(httpd_req_t* req) {

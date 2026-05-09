@@ -893,6 +893,7 @@ flip `otadata`, and reboot.
 - Data: [components/data_core/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/data_core/), [main/sources/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/sources/)
 - Pools: [components/mining_pool_common/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/mining_pool_common/), [components/mining_pool_*/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/)
 - HTTP: [components/webserver/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/webserver/)
+- Framebuffer preview protocol: [`docs/WEBSOCKET_FRAMEBUFFER_PREVIEW.md`](WEBSOCKET_FRAMEBUFFER_PREVIEW.md)
 - IO: [main/io/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/main/io/)
 - Network: [components/wifi/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/wifi/)
 - Settings: [components/settings/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/settings/), [components/prefs/](https://git.btclock.dev/btclock/btclock_v4/src/branch/main/components/prefs/)

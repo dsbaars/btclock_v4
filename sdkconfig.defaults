@@ -189,3 +189,4 @@ CONFIG_ESP_HTTP_CLIENT_ENABLE_CUSTOM_TRANSPORT=y
 
 CONFIG_PARTITION_TABLE_CUSTOM=y
 # Flash size + partition CSV live in the per-variant sdkconfig.defaults.<rev>.
+CONFIG_HTTPD_WS_SUPPORT=y
