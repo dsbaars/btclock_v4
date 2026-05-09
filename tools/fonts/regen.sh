@@ -24,35 +24,47 @@ if ! command -v pyftsubset >/dev/null; then
     exit 127
 fi
 
-# Common subset: printable ASCII + £ ¥ €. Every selectable family
+# Common subset: printable ASCII + £ ¥ € ₿. Every selectable family
 # carries this range so the price screen's currency symbols work
-# regardless of `fontName`.
-COMMON_UNICODES="U+0020-007E,U+00A3,U+00A5,U+20AC"
+# regardless of `fontName`. ₿ (U+20BF) is requested unconditionally;
+# upstreams without the glyph silently drop it (see verify_btc_sign
+# below for which families end up with it).
+COMMON_UNICODES="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF"
 
 subset_full() {
     # $1=input ttf, $2=output ttf — use the canonical subset recipe
-    # (drop layout tables, drop hinting, keep ASCII + £/¥/€).
+    # (drop layout tables, drop hinting, keep ASCII + £/¥/€/₿).
     pyftsubset "$1" \
         "--output-file=$2" \
         "--unicodes=${COMMON_UNICODES}" \
+        "--ignore-missing-unicodes" \
         "--drop-tables+=GPOS,GSUB,DSIG" \
         "--layout-features=*" \
         "--no-hinting"
 }
 
-echo "→ Antonio (Google Fonts main)"
-curl -sSL -o "${TMP}/Antonio.ttf" \
+# Antonio and Oswald upstreams ship variable fonts. stb_truetype doesn't
+# read fvar/gvar — instance to wght=400 first so the subset is a static
+# font and the variable tables are dropped (gvar alone is ~11 KB).
+echo "→ Antonio (Google Fonts main, instance wght=400)"
+curl -sSL -o "${TMP}/Antonio-VF.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
-pyftsubset "${TMP}/Antonio.ttf" \
+python3 -m fontTools.varLib.instancer "${TMP}/Antonio-VF.ttf" wght=400 \
+    -o "${TMP}/Antonio-Regular.ttf"
+pyftsubset "${TMP}/Antonio-Regular.ttf" \
     "--unicodes=${COMMON_UNICODES}" \
+    "--ignore-missing-unicodes" \
     "--drop-tables+=GPOS,GSUB,DSIG" \
     "--output-file=${ASSETS}/Antonio.ttf"
 
-echo "→ Oswald (Google Fonts main)"
-curl -sSL -o "${TMP}/Oswald.ttf" \
+echo "→ Oswald (Google Fonts main, instance wght=400)"
+curl -sSL -o "${TMP}/Oswald-VF.ttf" \
     "https://github.com/google/fonts/raw/main/ofl/oswald/Oswald%5Bwght%5D.ttf"
-pyftsubset "${TMP}/Oswald.ttf" \
-    "--unicodes=U+0020-007E" \
+python3 -m fontTools.varLib.instancer "${TMP}/Oswald-VF.ttf" wght=400 \
+    -o "${TMP}/Oswald-Regular.ttf"
+pyftsubset "${TMP}/Oswald-Regular.ttf" \
+    "--unicodes=${COMMON_UNICODES}" \
+    "--ignore-missing-unicodes" \
     "--drop-tables+=GPOS,GSUB,DSIG" \
     "--output-file=${ASSETS}/Oswald.ttf"
 
@@ -61,6 +73,16 @@ pyftsubset "${TMP}/Oswald.ttf" \
 # instance-pick on its own. Document here and skip — re-do via fonttools
 # instancer if the bundled copy drifts.
 echo "→ OswaldBold: skipped (manual wght=700 instance — see README)"
+
+echo "→ Inter 4.1 (rsms/inter release zip)"
+curl -sSL -o "${TMP}/Inter-4.1.zip" \
+    "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+unzip -q -o "${TMP}/Inter-4.1.zip" -d "${TMP}/inter"
+# Release zip flattens extras/ at the archive root — no Inter-4.1/ wrapper.
+subset_full "${TMP}/inter/extras/ttf/Inter-Regular.ttf" \
+    "${ASSETS}/Inter.ttf"
+subset_full "${TMP}/inter/extras/ttf/Inter-Bold.ttf" \
+    "${ASSETS}/InterBold.ttf"
 
 echo "→ Source Serif 4 (adobe-fonts/source-serif release/TTF)"
 curl -sSL -o "${TMP}/SourceSerif4-Regular.ttf" \
@@ -111,3 +133,40 @@ echo "   ${HERE}/patch_satoshi_symbol.py ${ASSETS}/SatoshiSymbol.ttf"
 echo
 echo "Done. Sizes:"
 wc -c "${ASSETS}"/*.ttf | awk '{printf "  %-40s %d B\n", $2, $1}'
+
+# Sanity-check that ₿ (U+20BF) survived the subset for the body fonts
+# that should carry it. SatoshiSymbol/MaterialDesignIcons are
+# special-purpose (PUA / icon) fonts and are excluded.
+echo
+echo "Verifying ₿ (U+20BF) presence in regenerated body fonts:"
+python3 - "${ASSETS}" <<'PY'
+import os, sys
+from fontTools.ttLib import TTFont
+assets = sys.argv[1]
+expected = [
+    "Antonio.ttf", "AntonioSemiBold.ttf", "AntonioBold.ttf",
+    "Oswald.ttf", "OswaldBold.ttf",
+    "Inter.ttf", "InterBold.ttf",
+    "SourceSerif.ttf", "SourceSerifBold.ttf",
+    "Merriweather.ttf", "MerriweatherBold.ttf",
+    "Bitter.ttf", "BitterBold.ttf",
+    "Atkinson.ttf", "AtkinsonBold.ttf",
+]
+missing = []
+for name in expected:
+    path = os.path.join(assets, name)
+    if not os.path.exists(path):
+        print(f"  {name:32}  ! file not present")
+        continue
+    cmap = TTFont(path).getBestCmap()
+    if 0x20BF in cmap:
+        print(f"  {name:32}  OK  U+20BF -> {cmap[0x20BF]}")
+    else:
+        print(f"  {name:32}  --  no U+20BF (not in upstream, or stale subset)")
+        missing.append(name)
+if missing:
+    print()
+    print(f"NOTE: {len(missing)} font(s) lack U+20BF — either upstream doesn't")
+    print("ship the glyph, or the file wasn't refreshed by this script (e.g.")
+    print("AntonioSemiBold/AntonioBold/OswaldBold are regenerated out-of-band).")
+PY

@@ -3,9 +3,9 @@
 ## Antonio / AntonioSemiBold / AntonioBold / Oswald / OswaldBold
 
 Subsetted with kerning/ligature tables stripped. Both families ship the
-common currency symbols used by the price screen (£, ¥, €) — Oswald is
-selectable as a price-screen family, not just for the split-text label,
-so it needs the same range as Antonio.
+common currency symbols used by the price screen (£, ¥, €, ₿) — Oswald
+is selectable as a price-screen family, not just for the split-text
+label, so it needs the same range as Antonio.
 
 The upstream Antonio TTF is a variable font with a `wght` axis spanning
 100..700 and named instances at Thin (100), Light (300), Regular (400),
@@ -29,13 +29,13 @@ python3 -m fontTools.varLib.instancer /tmp/Antonio-VF.ttf wght=600 \
 python3 -m fontTools.varLib.instancer /tmp/Antonio-VF.ttf wght=700 \
     -o /tmp/Antonio-Bold.ttf
 pyftsubset /tmp/Antonio-Regular.ttf \
-    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=Antonio.ttf
 pyftsubset /tmp/Antonio-SemiBold.ttf \
-    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioSemiBold.ttf
 pyftsubset /tmp/Antonio-Bold.ttf \
-    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=AntonioBold.ttf
 
 # Oswald: instance at 400 / 700, then subset with the same currency range.
@@ -44,16 +44,19 @@ python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=400 \
 python3 -m fontTools.varLib.instancer /tmp/Oswald-VF.ttf wght=700 \
     -o /tmp/Oswald-Bold.ttf
 pyftsubset /tmp/Oswald-Regular.ttf \
-    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=Oswald.ttf
 pyftsubset /tmp/Oswald-Bold.ttf \
-    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC" \
+    --unicodes="U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF" \
     --drop-tables+=GPOS,GSUB,DSIG --output-file=OswaldBold.ttf
 ```
 
 
-Antonio codepoints: printable ASCII + £ (U+00A3) + ¥ (U+00A5) + € (U+20AC).
-`$` (U+0024) is already part of ASCII. Add more symbols here as more
+Antonio codepoints: printable ASCII + £ (U+00A3) + ¥ (U+00A5) + € (U+20AC)
++ ₿ (U+20BF). `$` (U+0024) is already part of ASCII. ₿ is requested
+unconditionally; if a given upstream lacks the glyph, pyftsubset's
+`--ignore-missing-unicodes` lets the build proceed and the verify pass
+in `tools/fonts/regen.sh` flags the gap. Add more symbols here as more
 currencies are wired through to the price screen.
 
 Both licensed OFL (SIL Open Font License), compatible with the project's
@@ -74,21 +77,21 @@ payloads.
 ```sh
 pyftsubset Inter-4.1/extras/ttf/Inter-Regular.ttf \
     --output-file=Inter.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset Inter-4.1/extras/ttf/Inter-Bold.ttf \
     --output-file=InterBold.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 ```
 
 Subset range matches Antonio: printable ASCII (U+0020..U+007E) plus the
-three currency symbols the price screen renders — £ (U+00A3), ¥
-(U+00A5), € (U+20AC). `$` (U+0024) is already in ASCII.
+currency symbols the price screen renders — £ (U+00A3), ¥ (U+00A5),
+€ (U+20AC), ₿ (U+20BF). `$` (U+0024) is already in ASCII.
 
 Hinting is dropped (`--no-hinting`) because the renderer rasterises at
 fixed pixel sizes well above where TrueType hinting helps; this trims
@@ -114,13 +117,13 @@ curl -L -o /tmp/SourceSerif4-Bold.ttf \
 
 pyftsubset /tmp/SourceSerif4-Regular.ttf \
     --output-file=SourceSerif.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset /tmp/SourceSerif4-Bold.ttf \
     --output-file=SourceSerifBold.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
@@ -145,13 +148,13 @@ curl -L -o /tmp/Merriweather-Bold.ttf \
 
 pyftsubset /tmp/Merriweather-Regular.ttf \
     --output-file=Merriweather.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset /tmp/Merriweather-Bold.ttf \
     --output-file=MerriweatherBold.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
@@ -182,13 +185,13 @@ python3 -m fontTools.varLib.instancer /tmp/Bitter-VF.ttf wght=700 \
 
 pyftsubset /tmp/Bitter-Regular.ttf \
     --output-file=Bitter.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset /tmp/Bitter-Bold.ttf \
     --output-file=BitterBold.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
@@ -212,13 +215,13 @@ curl -L -o /tmp/AtkinsonHyperlegible-Bold.ttf \
 
 pyftsubset /tmp/AtkinsonHyperlegible-Regular.ttf \
     --output-file=Atkinson.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
 pyftsubset /tmp/AtkinsonHyperlegible-Bold.ttf \
     --output-file=AtkinsonBold.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --drop-tables+=GPOS,GSUB,DSIG \
     --layout-features='*' \
     --no-hinting
@@ -330,8 +333,11 @@ In-tree byte counts (`wc -c`), rounded:
 
 Subset extents — every selectable family (Antonio, Oswald, Inter,
 SourceSerif, Merriweather, Bitter, Atkinson) carries printable ASCII
-(U+0020..U+007E) plus £/¥/€ (U+00A3, U+00A5, U+20AC) so the price
-screen's currency symbol set works regardless of the chosen `fontName`.
+(U+0020..U+007E) plus £/¥/€/₿ (U+00A3, U+00A5, U+20AC, U+20BF) so the
+price screen's currency symbol set works regardless of the chosen
+`fontName`. ₿ is requested unconditionally; upstreams without the
+glyph silently drop it (the verify pass in `tools/fonts/regen.sh`
+prints which families ended up with it).
 
 The `SatoshiSymbol_source.woff2` archive (2.1 KB) is kept alongside
 the TTF for provenance and is not compiled into firmware.
