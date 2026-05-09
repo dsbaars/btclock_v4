@@ -19,6 +19,9 @@ photos/
 # Build-environment-specific and not useful in version control.
 docs/diag/
 
+# Local Chrome/memlab heap snapshots (debugging only).
+tmp-memlab/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
