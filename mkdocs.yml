@@ -11,7 +11,10 @@ edit_uri: src/branch/main/docs/
 # Use the existing /docs tree as the single source of truth — the
 # Markdown files served on the static site are the same ones we ship
 # and reference from CLAUDE.md / READMEs / external links. No copy or
-# symlink shuffle.
+# symlink shuffle for markdown.
+#
+# docs/assets/favicon.svg symlinks data/static/favicon.svg — MkDocs only
+# serves paths under docs_dir; the WebUI ships the same file from static/.
 docs_dir: docs
 
 # Internal dev references — kept in the repo (linked from CLAUDE.md and
@@ -23,6 +26,7 @@ exclude_docs: |
 
 theme:
   name: material
+  favicon: assets/favicon.svg
   language: en
   palette:
     # Light/dark toggle. Defaults to "auto" (system) on first paint.
