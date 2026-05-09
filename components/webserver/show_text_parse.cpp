@@ -15,7 +15,9 @@ ShowTextParseResult MakeFailure(const char* token) {
   return r;
 }
 
-bool Utf8IsContinuation(unsigned char c) { return (c & 0xC0) == 0x80; }
+bool Utf8IsContinuation(unsigned char c) {
+  return (c & 0xC0) == 0x80;
+}
 
 // Length of one well-formed UTF-8 codepoint starting at `pos`, or 1 when
 // `pos` does not begin a valid sequence (caller treats one raw byte).
@@ -31,8 +33,8 @@ std::size_t Utf8CodepointByteLength(std::string_view s, std::size_t pos) {
   if ((c0 & 0xE0) == 0xC0) {
     if (!cont(pos + 1)) return 1;
     const unsigned char c1 = static_cast<unsigned char>(s[pos + 1]);
-    const std::uint32_t cp = (static_cast<std::uint32_t>(c0 & 0x1Fu) << 6) |
-                             (c1 & 0x3Fu);
+    const std::uint32_t cp =
+        (static_cast<std::uint32_t>(c0 & 0x1Fu) << 6) | (c1 & 0x3Fu);
     if (cp < 0x80u) return 1;
     return 2;
   }
