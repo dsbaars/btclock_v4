@@ -1,4 +1,4 @@
 [submodule "data"]
 	path = data
 	url = https://git.btclock.dev/btclock/webui.git
-	branch = feature/v4-firmware
+	branch = v4
