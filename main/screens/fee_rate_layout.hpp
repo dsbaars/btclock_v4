@@ -18,11 +18,11 @@
 // value yet" → all digit slots blank (do NOT clamp to 0, that would lie
 // about the data state).
 //
-// * Integer-valued fee (e.g. 42.0, 0.0, -0.0) → render as right-
-//   justified integer, no dot. Keeps the visual identical to the
-//   integer-only bring-up for whole-number values, which is what the
-//   old-firmware parity covers too.
-// * Fractional fee (e.g. 12.75, 100.5, 999.99) → format as "X.YY"
+// * Fee strictly below 10 sat/vB (after rounding) → always two decimal
+//   places ("1.00", "0.00"), even when the rounded value is integer-
+//   valued — matches user expectation for low-fee precision.
+// * Integer-valued fee at ≥ 10 (e.g. 42.0, 10.0) → plain integer, no dot.
+// * Otherwise fractional (e.g. 12.75, 100.5, 999.99) → format as "X.YY"
 //   (integer + dot + two decimals, rounded). Right-justified into the
 //   digit slots.
 // * Overflow (value wider than the available slots — e.g. 1234.56 on the
@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 namespace btclock {
 
@@ -73,10 +74,10 @@ inline constexpr const char* kFeeRateDotRef = "0123456789.";
 // Leading positions get ' '. If `fee_sats_vb < 0`, all positions are
 // left as ' ' (not-yet-received state).
 //
-// Integer-valued doubles render without a dot; fractional values render
-// as "X.YY" (two decimals, rounded half-away-from-zero via std::round
-// on the intermediate cents value). On overflow the fractional tail is
-// dropped before leading integer digits.
+// Values below 10 always use two decimals; 10+ integer-valued doubles use
+// no dot; other fractional values use "X.YY" (rounded half-away-from-zero
+// via std::round on the cents). On overflow the fractional tail is dropped
+// before leading integer digits.
 template <size_t Slots>
 inline void LayoutFeeRate(double fee_sats_vb, std::array<char, Slots>& digits) {
   for (size_t i = 0; i < Slots; ++i) digits[i] = ' ';
@@ -91,14 +92,13 @@ inline void LayoutFeeRate(double fee_sats_vb, std::array<char, Slots>& digits) {
   const double rounded = rounded_cents / 100.0;
   const long long cents_int = static_cast<long long>(rounded_cents);
   const bool integer_valued = (cents_int % 100) == 0;
+  const bool force_two_decimals = (rounded < 10.0);
 
   char buf[32];
-  if (integer_valued) {
-    // Plain integer render.
+  if (integer_valued && !force_two_decimals) {
     const long long iv = static_cast<long long>(std::llround(rounded));
     std::snprintf(buf, sizeof(buf), "%lld", iv);
   } else {
-    // Decimal with 2 places.
     std::snprintf(buf, sizeof(buf), "%.2f", rounded);
   }
 
@@ -119,6 +119,62 @@ inline void LayoutFeeRate(double fee_sats_vb, std::array<char, Slots>& digits) {
   for (size_t i = pad; i < Slots; ++i) digits[i] = buf[i - pad];
 }
 
+// `decimalShareDot` path: merge the '.' into one cell with every digit
+// that precedes it ("12." not "2."), then right-pack so blanks stay on
+// the FEE/RATE side — no empty panel between the last fee digit and
+// "sat/vB". No-op when share_dot is false; when true but there is no '.',
+// returns the per-char cells unchanged.
+template <size_t Slots>
+inline std::array<std::string, Slots> FeeRateDigitCells(
+    const std::array<char, Slots>& digits, bool share_dot) {
+  std::array<std::string, Slots> cells{};
+  for (size_t i = 0; i < Slots; ++i) {
+    const char c = digits[i];
+    cells[i] = (c == ' ') ? std::string() : std::string(1, c);
+  }
+  if (!share_dot) return cells;
+
+  size_t dot_idx = Slots;
+  for (size_t i = 0; i < Slots; ++i) {
+    if (cells[i] == ".") {
+      dot_idx = i;
+      break;
+    }
+  }
+  if (dot_idx >= Slots) return cells;
+
+  size_t run_start = dot_idx;
+  while (run_start > 0 && cells[run_start - 1].size() == 1 &&
+         cells[run_start - 1][0] >= '0' && cells[run_start - 1][0] <= '9') {
+    --run_start;
+  }
+  if (run_start == dot_idx) return cells;
+
+  std::string merged;
+  for (size_t k = run_start; k < dot_idx; ++k) merged += cells[k];
+  merged += '.';
+
+  std::array<std::string, Slots> seq_build{};
+  size_t sn = 0;
+  auto push_cell = [&](std::string s) {
+    if (sn < Slots) seq_build[sn++] = std::move(s);
+  };
+  for (size_t k = 0; k < run_start; ++k) {
+    if (!cells[k].empty()) push_cell(std::move(cells[k]));
+  }
+  push_cell(std::move(merged));
+  for (size_t k = dot_idx + 1; k < Slots; ++k) {
+    if (!cells[k].empty()) push_cell(std::move(cells[k]));
+  }
+
+  std::array<std::string, Slots> out{};
+  const size_t n = sn;
+  const size_t lead = Slots - n;
+  for (size_t i = 0; i < lead; ++i) out[i].clear();
+  for (size_t i = 0; i < n; ++i) out[lead + i] = std::move(seq_build[i]);
+  return out;
+}
+
 // Compute the per-panel "needs refresh" mask for a fee-rate transition.
 // `full_refresh` forces all slots to true. Otherwise only the digit
 // positions whose glyph changed are flagged.
@@ -126,6 +182,17 @@ template <size_t Slots>
 inline std::array<bool, Slots> DiffFeeRateDigits(
     const std::array<char, Slots>& now, const std::array<char, Slots>& before,
     bool full_refresh) {
+  std::array<bool, Slots> update{};
+  for (size_t i = 0; i < Slots; ++i) {
+    update[i] = full_refresh || now[i] != before[i];
+  }
+  return update;
+}
+
+template <size_t Slots>
+inline std::array<bool, Slots> DiffFeeRateCells(
+    const std::array<std::string, Slots>& now,
+    const std::array<std::string, Slots>& before, bool full_refresh) {
   std::array<bool, Slots> update{};
   for (size_t i = 0; i < Slots; ++i) {
     update[i] = full_refresh || now[i] != before[i];

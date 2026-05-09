@@ -1305,6 +1305,37 @@ TEST_CASE("panel_texts — fee rate decimal form below 10") {
   CHECK(out[1] == "");
 }
 
+TEST_CASE("panel_texts — fee rate decimalShareDot folds dot") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockFeeRate;
+  in.block_fee_sats_vb = 4.02;
+  in.share_dot = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "FEE/RATE");
+  CHECK(out[6] == "sat/vB");
+  CHECK(out[1] == "");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "4.");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "2");
+}
+
+TEST_CASE("panel_texts — fee rate whole number below 10 shows .00") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockFeeRate;
+  in.block_fee_sats_vb = 1.0;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "FEE/RATE");
+  // " 1.00" in digit slots 1..5
+  CHECK(out[1] == "");
+  CHECK(out[2] == "1");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+}
+
 TEST_CASE("panel_texts — fee rate missing value → blank digits, label + unit") {
   PanelTextInputs in;
   in.kind = ScreenType::kBlockFeeRate;

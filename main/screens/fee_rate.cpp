@@ -44,8 +44,8 @@ template <size_t N>
 void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, double fee_sats_vb,
-                         double prev_fee_sats_vb, bool full_refresh_mode,
-                         bool vertical_desc) {
+                         double prev_fee_sats_vb, bool share_dot,
+                         bool full_refresh_mode, bool vertical_desc) {
   static_assert(N >= 7, "fee-rate layout needs at least 7 panels");
   constexpr size_t kDigitPanels = kFeeRateDigitPanels<N>;
   constexpr size_t kUnitPanel = N - 1;
@@ -63,11 +63,14 @@ void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     for (size_t i = 0; i < kDigitPanels; ++i) old_digits[i] = ' ';
   }
 
-  // DiffFeeRateDigits's `full_refresh` argument forces every digit to
-  // repaint when true — feed it the combined cell-diff-reset signal
-  // so either a sentinel prev OR an EPD full frame paints everything.
-  const auto digit_update = DiffFeeRateDigits(
-      new_digits, old_digits, cell_diff_reset || full_refresh_mode);
+  const auto new_cells = FeeRateDigitCells(new_digits, share_dot);
+  const auto old_cells = FeeRateDigitCells(old_digits, share_dot);
+
+  // DiffFeeRateCells's `full_refresh` forces every digit to repaint —
+  // feed it the combined cell-diff-reset signal so either a sentinel
+  // prev OR an EPD full frame paints everything.
+  const auto digit_update = DiffFeeRateCells(
+      new_cells, old_cells, cell_diff_reset || full_refresh_mode);
 
   std::array<PaintSlot, N> slots{};
   std::array<bool, N> update{};
@@ -76,14 +79,16 @@ void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
   slots[0] = PaintSlot{PaintSlot::kLabelSplit, "FEE/RATE", nullptr, 0, 0};
   update[0] = cell_diff_reset || full_refresh_mode;
 
-  // Digit panels 1..N-2 — per-cell digits. Skips ' ' automatically via
-  // kDigit. '.' is painted through kDigit + kDigitRef; '.' has no
-  // descenders so the reference box is equivalent to the pre-refactor
-  // kFeeRateDotRef (verified via SHA-256 framebuffer hash diff).
+  // Digit panels 1..N-2 — one cell per slot; `decimalShareDot` folds "."
+  // into the preceding digit ("4."). Cells that contain '.' use
+  // kFeeRateDotRef so the digit font's reference box matches isolated
+  // '.' panels.
   for (size_t i = 0; i < kDigitPanels; ++i) {
     const size_t panel_idx = 1 + i;
-    slots[panel_idx] = PaintSlot{PaintSlot::kDigit,
-                                 std::string(1, new_digits[i]), nullptr, 0, 0};
+    const std::string& t = new_cells[i];
+    const char* ref =
+        (t.find('.') != std::string::npos) ? kFeeRateDotRef : nullptr;
+    slots[panel_idx] = PaintSlot{PaintSlot::kDigit, t, nullptr, 0, 0, ref};
     update[panel_idx] = digit_update[i];
   }
 
@@ -100,9 +105,9 @@ void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
 
 template void RenderFeeRateScreen<7>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, double, double, bool, bool);
+    const AppFonts&, double, double, bool, bool, bool);
 template void RenderFeeRateScreen<8>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, double, double, bool, bool);
+    const AppFonts&, double, double, bool, bool, bool);
 
 }  // namespace btclock

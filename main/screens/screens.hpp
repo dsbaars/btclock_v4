@@ -115,7 +115,7 @@ template <size_t N>
 void RenderFeeRateScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                          uint8_t (&fb_storage)[N][16 * 296],
                          const AppFonts& fonts, double fee_sats_vb,
-                         double prev_fee_sats_vb = -1.0,
+                         double prev_fee_sats_vb = -1.0, bool share_dot = false,
                          bool full_refresh_mode = true,
                          bool vertical_desc = false);
 

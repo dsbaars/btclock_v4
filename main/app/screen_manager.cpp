@@ -43,9 +43,9 @@ struct RenderPrefs {
   // decimalShareDot: pack the decimal point into the digit cell before
   // it instead of using a dedicated panel. Applies wherever the layout
   // includes a '.': K/M/B suffix on the BTC price screen (v3
-  // parsePriceData shareDot branch), market-cap big-chars, and the
-  // sub-1 sat-per-currency "0.dddd" path on SATS/<CCY>. No effect on
-  // pure-integer layouts.
+  // parsePriceData shareDot branch), market-cap big-chars, block fee
+  // rate when blockFeeDec shows decimals, and the sub-1 sat-per-currency
+  // "0.dddd" path on SATS/<CCY>. No effect on pure-integer layouts.
   bool decimal_share_dot;
   // Clock screen: drop the leading zero on single-digit hours.
   bool hide_lead_zero;
@@ -781,8 +781,8 @@ void ScreenManager::Render(
         fee = -1.0;
       }
       RenderFeeRateScreen(panels, fb, fonts, fee,
-                          force_repaint ? -1.0 : last_rendered_fee_, force_full,
-                          rp.vertical_desc);
+                          force_repaint ? -1.0 : last_rendered_fee_,
+                          rp.decimal_share_dot, force_full, rp.vertical_desc);
       last_rendered_fee_ = fee;
       break;
     }

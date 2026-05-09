@@ -699,10 +699,12 @@ val renderBlockFees(int fee_sats_vb) {
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
         btclock::RenderFeeRateScreen<7>(pans, fbs, c.fonts, fee, -1,
+                                        /*share_dot=*/false,
                                         /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
         btclock::RenderFeeRateScreen<8>(pans, fbs, c.fonts, fee, -1,
+                                        /*share_dot=*/false,
                                         /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
@@ -1085,12 +1087,12 @@ val renderBlockFeesAlpha(int fee_sats_vb) {
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderFeeRateScreen<8>(borrowed, As8(ctx), ctx.fonts, fee, -1,
-                                      true, vd);
+                                      false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderFeeRateScreen<7>(borrowed, As7(ctx), ctx.fonts, fee, -1,
-                                      true, vd);
+                                      false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });
@@ -1109,12 +1111,12 @@ val renderBlockFeesDecimalAlpha(double fee_sats_vb) {
     if (ctx.panels_active == 8) {
       auto borrowed = BorrowPanels<8>(ctx);
       btclock::RenderFeeRateScreen<8>(borrowed, As8(ctx), ctx.fonts, fee, -1,
-                                      true, vd);
+                                      false, true, vd);
       ReturnPanels<8>(ctx, borrowed);
     } else {
       auto borrowed = BorrowPanels<7>(ctx);
       btclock::RenderFeeRateScreen<7>(borrowed, As7(ctx), ctx.fonts, fee, -1,
-                                      true, vd);
+                                      false, true, vd);
       ReturnPanels<7>(ctx, borrowed);
     }
   });

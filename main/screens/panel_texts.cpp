@@ -538,7 +538,7 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
 }
 
 std::vector<std::string> BuildFeeRate(const std::optional<double>& fee_opt,
-                                      std::size_t n_panels) {
+                                      std::size_t n_panels, bool share_dot) {
   // Panel 0 = "FEE/RATE" (split), panels 1..N-2 = digits, panel N-1 =
   // "sat/vB" (split). Both label slots use the same slash-delimited
   // encoding the WebUI already renders as a paired top/bottom stack
@@ -557,11 +557,11 @@ std::vector<std::string> BuildFeeRate(const std::optional<double>& fee_opt,
   if (digit_slots == 5) {
     std::array<char, 5> digits{' ', ' ', ' ', ' ', ' '};
     LayoutFeeRate(fee, digits);
-    AppendDigits(digits.data(), 5, out);
+    for (const auto& s : FeeRateDigitCells(digits, share_dot)) out.push_back(s);
   } else if (digit_slots == 6) {
     std::array<char, 6> digits{' ', ' ', ' ', ' ', ' ', ' '};
     LayoutFeeRate(fee, digits);
-    AppendDigits(digits.data(), 6, out);
+    for (const auto& s : FeeRateDigitCells(digits, share_dot)) out.push_back(s);
   } else {
     for (std::size_t i = 0; i < digit_slots; ++i) out.emplace_back();
   }
@@ -890,7 +890,7 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       return BuildBtcPrice(in.currency, in.price, n_panels, in.suffix_price,
                            in.mow_mode, in.share_dot);
     case ScreenType::kBlockFeeRate:
-      return BuildFeeRate(in.block_fee_sats_vb, n_panels);
+      return BuildFeeRate(in.block_fee_sats_vb, n_panels, in.share_dot);
     case ScreenType::kClock:
       return BuildClock(in.clock_valid, in.hour, in.minute, in.mday, in.month,
                         n_panels, in.hide_lead_zero);

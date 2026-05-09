@@ -106,8 +106,9 @@ struct PanelTextInputs {
   // decimalShareDot: see RenderPrefs::decimal_share_dot — pack the
   // decimal point into its preceding digit cell so any decimal layout
   // gets one more digit panel of width. Applies to BTC-price suffix +
-  // MOW modes, market-cap big-chars, and the sub-1 sat-per-currency
-  // "0.dddd" layout on SATS/<CCY>.
+  // MOW modes, market-cap big-chars, block fee rate (fractional
+  // sats/vB), and the sub-1 sat-per-currency "0.dddd" layout on
+  // SATS/<CCY>.
   bool share_dot = false;
   // Mining-pool stats. Only consulted by the MiningPool* screen kinds.
   MiningPoolMirror pool{};

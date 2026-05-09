@@ -10,8 +10,8 @@
 //     = N - 2 slots available for the fee text.
 //   - Rev A / Rev B (7 panels) → 5 digit slots
 //   - V8           (8 panels) → 6 digit slots
-//   - Integer-valued doubles render as plain right-justified ints; any
-//     non-zero fractional part renders as "X.YY"; overflow drops the
+//   - Values below 10 render as "X.YY" always; 10+ integer-valued doubles
+//     as plain ints; other fractional values as "X.YY"; overflow drops the
 //     fractional tail first, then truncates leading integer digits.
 
 #include <array>
@@ -51,17 +51,16 @@ std::string ReadFile(const std::string& relpath) {
 
 // --- Integer-valued doubles render without a dot ---
 
-TEST_CASE("fee=1.0 right-justifies with blanks on 7-panel board") {
+TEST_CASE("fee=1.0 shows two decimals below 10") {
   std::array<char, kDigits7> d;
   btclock::LayoutFeeRate(1.0, d);
-  // 5 digit slots — expect 4 spaces + '1'.
-  CHECK(Render(d) == "    1");
+  CHECK(Render(d) == " 1.00");
 }
 
-TEST_CASE("fee=1.0 right-justifies with blanks on 8-panel board") {
+TEST_CASE("fee=1.0 pads on 8-panel board") {
   std::array<char, kDigits8> d;
   btclock::LayoutFeeRate(1.0, d);
-  CHECK(Render(d) == "     1");
+  CHECK(Render(d) == "  1.00");
 }
 
 TEST_CASE("fee=42.0 (integer-valued) renders as plain '42'") {
@@ -70,13 +69,28 @@ TEST_CASE("fee=42.0 (integer-valued) renders as plain '42'") {
   CHECK(Render(d) == "   42");
 }
 
-TEST_CASE("fee=0.0 renders a single '0' (integer-valued zero)") {
-  // Pinned: integer-valued zero stays as "    0" (5 slots), matching the
-  // whole-number treatment of other integer-valued doubles. "0.00" was
-  // considered but looks wrong when the value legitimately is zero.
+TEST_CASE("fee=10.0 boundary: integer form without decimals") {
+  std::array<char, kDigits7> d;
+  btclock::LayoutFeeRate(10.0, d);
+  CHECK(Render(d) == "   10");
+}
+
+TEST_CASE("fee=11.0 integer: no forced .00 above 10") {
+  std::array<char, kDigits7> d;
+  btclock::LayoutFeeRate(11.0, d);
+  CHECK(Render(d) == "   11");
+}
+
+TEST_CASE("fee=11.25 keeps fractional X.YY at 11 and above") {
+  std::array<char, kDigits7> d;
+  btclock::LayoutFeeRate(11.25, d);
+  CHECK(Render(d) == "11.25");
+}
+
+TEST_CASE("fee=0.0 shows two decimals (below 10)") {
   std::array<char, kDigits7> d;
   btclock::LayoutFeeRate(0.0, d);
-  CHECK(Render(d) == "    0");
+  CHECK(Render(d) == " 0.00");
 }
 
 TEST_CASE("fee=-1.0 paints all blanks (pre-data state)") {
@@ -239,6 +253,39 @@ TEST_CASE("diff: full_refresh=true forces every slot") {
     CAPTURE(i);
     CHECK(update[i] == true);
   }
+}
+
+TEST_CASE("FeeRateDigitCells merges dot when share_dot") {
+  std::array<char, kDigits7> d{};
+  btclock::LayoutFeeRate(4.02, d);
+  const auto folded = btclock::FeeRateDigitCells(d, true);
+  CHECK(folded[0].empty());
+  CHECK(folded[1].empty());
+  CHECK(folded[2] == "4.");
+  CHECK(folded[3] == "0");
+  CHECK(folded[4] == "2");
+}
+
+TEST_CASE("FeeRateDigitCells share_dot folds multi-digit integer part") {
+  std::array<char, kDigits7> d{};
+  btclock::LayoutFeeRate(12.75, d);
+  const auto folded = btclock::FeeRateDigitCells(d, true);
+  CHECK(folded[0].empty());
+  CHECK(folded[1].empty());
+  CHECK(folded[2] == "12.");
+  CHECK(folded[3] == "7");
+  CHECK(folded[4] == "5");
+}
+
+TEST_CASE("FeeRateDigitCells leaves chars separate when share_dot=false") {
+  std::array<char, kDigits7> d{};
+  btclock::LayoutFeeRate(4.02, d);
+  const auto cells = btclock::FeeRateDigitCells(d, false);
+  CHECK(cells[0].empty());
+  CHECK(cells[1] == "4");
+  CHECK(cells[2] == ".");
+  CHECK(cells[3] == "0");
+  CHECK(cells[4] == "2");
 }
 
 // --- Renderer source-text guards ---
