@@ -13,17 +13,24 @@ namespace {
 // showDigit paths both sat on the digit-height baseline.
 constexpr const char* kAnyRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-// Pick a render size scaling roughly with the cell length:
+// Pick a render size scaling roughly with the cell's *codepoint*
+// length:
 // - 1 char  → large (digit-sized).
 // - 2 chars → medium (old firmware routed length==2 to fontBig; we use
 //             the same Antonio glyph at a slightly smaller size to fit
 //             two digits side-by-side without clipping).
 // - >=3 chars → auto-fit, bounded so single-word labels still read.
 float PickPixelHeight(const char* text, int panel_w, const Font& font) {
-  // Cheap single-byte length — enough for ASCII. UTF-8 tokens wider than
-  // their byte count still FitTextPx-clamp correctly below.
+  // Count UTF-8 codepoints, NOT bytes — a single non-ASCII glyph like
+  // ₿ (U+20BF, 3 bytes in UTF-8) would otherwise route to the >=3
+  // branch and render at half the digit-cell size. UTF-8 leading bytes
+  // have either bit pattern 0xxxxxxx (ASCII) or 11xxxxxx (start of
+  // multi-byte sequence); continuation bytes are 10xxxxxx and we skip
+  // those when counting codepoints.
   int n = 0;
-  while (text[n] != '\0' && n < 64) ++n;
+  for (const char* p = text; *p != '\0' && n < 64; ++p) {
+    if ((static_cast<uint8_t>(*p) & 0xC0) != 0x80) ++n;
+  }
   if (n == 0) return 0.0f;
   if (n == 1) return FitTextPx(text, font, 120.0f, 20.0f, panel_w - 4);
   if (n == 2) return FitTextPx(text, font, 90.0f, 18.0f, panel_w - 4);
