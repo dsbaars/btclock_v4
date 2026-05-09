@@ -850,15 +850,24 @@ table); only the digit / suffix / unit glyphs swap.
 | **Antonio SemiBold** | `antonioSemiBold` | ![antonioSemiBold](img/fonts/antonioSemiBold.png) |
 | **Antonio Bold** | `antonioBold` | ![antonioBold](img/fonts/antonioBold.png) |
 | **Oswald** | `oswald` | ![oswald](img/fonts/oswald.png) |
+| **Oswald Bold** | `oswaldBold` | ![oswaldBold](img/fonts/oswaldBold.png) |
 | **Inter** | `inter` | ![inter](img/fonts/inter.png) |
+| **Inter Bold** | `interBold` | ![interBold](img/fonts/interBold.png) |
 | **Source Serif** | `sourceSerif` | ![sourceSerif](img/fonts/sourceSerif.png) |
+| **Source Serif Bold** | `sourceSerifBold` | ![sourceSerifBold](img/fonts/sourceSerifBold.png) |
 | **Merriweather** | `merriweather` | ![merriweather](img/fonts/merriweather.png) |
+| **Merriweather Bold** | `merriweatherBold` | ![merriweatherBold](img/fonts/merriweatherBold.png) |
 | **Bitter** | `bitter` | ![bitter](img/fonts/bitter.png) |
+| **Bitter Bold** | `bitterBold` | ![bitterBold](img/fonts/bitterBold.png) |
 | **Atkinson Hyperlegible** | `atkinson` | ![atkinson](img/fonts/atkinson.png) |
+| **Atkinson Hyperlegible Bold** | `atkinsonBold` | ![atkinsonBold](img/fonts/atkinsonBold.png) |
 | **Open Runde** | `openRunde` | ![openRunde](img/fonts/openRunde.png) |
 | **Roboto** | `roboto` | ![roboto](img/fonts/roboto.png) |
+| **Roboto Bold** | `robotoBold` | ![robotoBold](img/fonts/robotoBold.png) |
 | **Noto Sans** | `notoSans` | ![notoSans](img/fonts/notoSans.png) |
+| **Noto Sans Bold** | `notoSansBold` | ![notoSansBold](img/fonts/notoSansBold.png) |
 | **Ubuntu** | `ubuntu` | ![ubuntu](img/fonts/ubuntu.png) |
+| **Ubuntu Bold** | `ubuntuBold` | ![ubuntuBold](img/fonts/ubuntuBold.png) |
 
 Antonio is a condensed display sans, designed for tight digit columns
 on the BTClock's narrow 2.13" panels. The three Antonio cuts share the

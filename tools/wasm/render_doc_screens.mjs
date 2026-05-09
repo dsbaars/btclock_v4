@@ -683,10 +683,19 @@ const FONTS = [
   { id: "atkinson", title: "Atkinson Hyperlegible", family: 6 },
   { id: "antonioSemiBold", title: "Antonio SemiBold", family: 7 },
   { id: "antonioBold", title: "Antonio Bold", family: 8 },
+  { id: "oswaldBold", title: "Oswald Bold", family: 9 },
+  { id: "interBold", title: "Inter Bold", family: 10 },
+  { id: "sourceSerifBold", title: "Source Serif Bold", family: 11 },
+  { id: "merriweatherBold", title: "Merriweather Bold", family: 12 },
+  { id: "bitterBold", title: "Bitter Bold", family: 13 },
+  { id: "atkinsonBold", title: "Atkinson Hyperlegible Bold", family: 14 },
   { id: "openRunde", title: "Open Runde", family: 15 },
   { id: "roboto", title: "Roboto", family: 16 },
+  { id: "robotoBold", title: "Roboto Bold", family: 17 },
   { id: "notoSans", title: "Noto Sans", family: 18 },
+  { id: "notoSansBold", title: "Noto Sans Bold", family: 19 },
   { id: "ubuntu", title: "Ubuntu", family: 20 },
+  { id: "ubuntuBold", title: "Ubuntu Bold", family: 21 },
 ];
 
 const generated = [];

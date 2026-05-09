@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-05-09T11:11:15.849Z",
+  "rendered_at": "2026-05-09T11:29:07.110Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -212,6 +212,42 @@
     },
     {
       "kind": "font",
+      "id": "oswaldBold",
+      "title": "Oswald Bold",
+      "path": "docs/img/fonts/oswaldBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "interBold",
+      "title": "Inter Bold",
+      "path": "docs/img/fonts/interBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "sourceSerifBold",
+      "title": "Source Serif Bold",
+      "path": "docs/img/fonts/sourceSerifBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "merriweatherBold",
+      "title": "Merriweather Bold",
+      "path": "docs/img/fonts/merriweatherBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "bitterBold",
+      "title": "Bitter Bold",
+      "path": "docs/img/fonts/bitterBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "atkinsonBold",
+      "title": "Atkinson Hyperlegible Bold",
+      "path": "docs/img/fonts/atkinsonBold.png"
+    },
+    {
+      "kind": "font",
       "id": "openRunde",
       "title": "Open Runde",
       "path": "docs/img/fonts/openRunde.png"
@@ -224,15 +260,33 @@
     },
     {
       "kind": "font",
+      "id": "robotoBold",
+      "title": "Roboto Bold",
+      "path": "docs/img/fonts/robotoBold.png"
+    },
+    {
+      "kind": "font",
       "id": "notoSans",
       "title": "Noto Sans",
       "path": "docs/img/fonts/notoSans.png"
     },
     {
       "kind": "font",
+      "id": "notoSansBold",
+      "title": "Noto Sans Bold",
+      "path": "docs/img/fonts/notoSansBold.png"
+    },
+    {
+      "kind": "font",
       "id": "ubuntu",
       "title": "Ubuntu",
       "path": "docs/img/fonts/ubuntu.png"
+    },
+    {
+      "kind": "font",
+      "id": "ubuntuBold",
+      "title": "Ubuntu Bold",
+      "path": "docs/img/fonts/ubuntuBold.png"
     }
   ]
 }
