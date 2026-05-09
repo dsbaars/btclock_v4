@@ -7,7 +7,7 @@
 // helper and then looks up the actual Font* for each slot from its
 // owning storage. Tests verify the mapping table is consistent
 // (no FontFamily falls through, Antonio doubles its regular into the
-// bold slot, kMerriweather collapses to source-serif on Rev A).
+// bold slot).
 
 #pragma once
 
@@ -20,13 +20,7 @@ struct BundleSlots {
   FontSlot bold;
 };
 
-// `has_merriweather` is true on Rev B / V8 (the Merriweather pair is
-// embedded), false on Rev A (dropped to fit the 4 MB flash budget). On
-// Rev A a stored or WebUI-set kMerriweather still resolves — it just
-// substitutes the closest serif (source-serif) so the WebUI selection
-// renders something serif-y instead of falling back to antonio.
-inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
-                                                bool has_merriweather) {
+inline constexpr BundleSlots ResolveBundleSlots(FontFamily f) {
   switch (f) {
     case FontFamily::kAntonio:
       // The base Antonio family carries only the wght=400 cut. Doubling
@@ -52,8 +46,6 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
     case FontFamily::kSourceSerifBold:
       return {FontSlot::kSourceSerifBold, FontSlot::kSourceSerifBold};
     case FontFamily::kMerriweatherBold:
-      if (!has_merriweather)
-        return {FontSlot::kSourceSerifBold, FontSlot::kSourceSerifBold};
       return {FontSlot::kMerriweatherBold, FontSlot::kMerriweatherBold};
     case FontFamily::kBitterBold:
       return {FontSlot::kBitterBold, FontSlot::kBitterBold};
@@ -72,9 +64,6 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
     case FontFamily::kSourceSerif:
       return {FontSlot::kSourceSerifRegular, FontSlot::kSourceSerifBold};
     case FontFamily::kMerriweather:
-      if (!has_merriweather) {
-        return {FontSlot::kSourceSerifRegular, FontSlot::kSourceSerifBold};
-      }
       return {FontSlot::kMerriweatherRegular, FontSlot::kMerriweatherBold};
     case FontFamily::kBitter:
       return {FontSlot::kBitterRegular, FontSlot::kBitterBold};

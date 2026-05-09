@@ -5,11 +5,6 @@
 # tracked via CMAKE_CONFIGURE_DEPENDS so re-running cmake refreshes the
 # .gz blobs whenever an upstream .ttf changes.
 #
-# Rev A's 4MB flash leaves no room for the Merriweather pair under
-# IDF v6 — drop them on that board only. Selecting `merriweather` in
-# the WebUI on a Rev A silently renders SourceSerif (handled in
-# main/fonts_app.cpp); the WebUI bundle itself stays identical across
-# boards.
 set(_FONT_SOURCES
     Antonio.ttf
     AntonioSemiBold.ttf AntonioBold.ttf
@@ -21,15 +16,12 @@ set(_FONT_SOURCES
     NotoSans.ttf NotoSansBold.ttf
     Ubuntu.ttf UbuntuBold.ttf
     SourceSerif.ttf SourceSerifBold.ttf
+    Merriweather.ttf MerriweatherBold.ttf
     Bitter.ttf BitterBold.ttf
     Atkinson.ttf AtkinsonBold.ttf
     SatoshiSymbol.ttf
     MaterialDesignIcons.ttf
 )
-if(NOT BTCLOCK_BOARD STREQUAL "REV_A")
-    list(APPEND _FONT_SOURCES
-        Merriweather.ttf MerriweatherBold.ttf)
-endif()
 
 # Write generated .gz blobs under the component dir (gitignored)
 # rather than CMAKE_CURRENT_BINARY_DIR — IDF processes each component's

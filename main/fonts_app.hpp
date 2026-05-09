@@ -199,10 +199,8 @@ class AppFonts {
   Font ubuntu_bold_;
   Font source_serif_;
   Font source_serif_bold_;
-#ifndef BTCLOCK_BOARD_REV_A
   Font merriweather_;
   Font merriweather_bold_;
-#endif
   Font bitter_;
   Font bitter_bold_;
   Font atkinson_;

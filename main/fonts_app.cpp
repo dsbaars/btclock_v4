@@ -27,17 +27,14 @@ AppFonts::AppFonts()
       ubuntu_bold_(kUbuntuBoldTtf, kUbuntuBoldTtfSize),
       source_serif_(kSourceSerifTtf, kSourceSerifTtfSize),
       source_serif_bold_(kSourceSerifBoldTtf, kSourceSerifBoldTtfSize),
-#ifndef BTCLOCK_BOARD_REV_A
       merriweather_(kMerriweatherTtf, kMerriweatherTtfSize),
       merriweather_bold_(kMerriweatherBoldTtf, kMerriweatherBoldTtfSize),
-#endif
       bitter_(kBitterTtf, kBitterTtfSize),
       bitter_bold_(kBitterBoldTtf, kBitterBoldTtfSize),
       atkinson_(kAtkinsonTtf, kAtkinsonTtfSize),
       atkinson_bold_(kAtkinsonBoldTtf, kAtkinsonBoldTtfSize),
       sats_symbol_(kSatoshiSymbolTtf, kSatoshiSymbolTtfSize),
-      mdi_(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfSize) {
-}
+      mdi_(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfSize) {}
 #else
 namespace {
 size_t SizeBetween(const uint8_t* a, const uint8_t* b) {
@@ -74,13 +71,11 @@ AppFonts::AppFonts()
       source_serif_bold_(
           kSourceSerifBoldTtf,
           SizeBetween(kSourceSerifBoldTtf, kSourceSerifBoldTtfEnd)),
-#ifndef BTCLOCK_BOARD_REV_A
       merriweather_(kMerriweatherTtf,
                     SizeBetween(kMerriweatherTtf, kMerriweatherTtfEnd)),
       merriweather_bold_(
           kMerriweatherBoldTtf,
           SizeBetween(kMerriweatherBoldTtf, kMerriweatherBoldTtfEnd)),
-#endif
       bitter_(kBitterTtf, SizeBetween(kBitterTtf, kBitterTtfEnd)),
       bitter_bold_(kBitterBoldTtf,
                    SizeBetween(kBitterBoldTtf, kBitterBoldTtfEnd)),
@@ -90,19 +85,11 @@ AppFonts::AppFonts()
       sats_symbol_(kSatoshiSymbolTtf,
                    SizeBetween(kSatoshiSymbolTtf, kSatoshiSymbolTtfEnd)),
       mdi_(kMaterialDesignIconsTtf,
-           SizeBetween(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfEnd)) {
-}
+           SizeBetween(kMaterialDesignIconsTtf, kMaterialDesignIconsTtfEnd)) {}
 #endif
 
 FontBundle AppFonts::Bundle(FontFamily f) const {
-  // Rev A drops the Merriweather pair from EMBED_FILES (4 MB flash
-  // budget) — see ResolveBundleSlots's substitution branch.
-#ifdef BTCLOCK_BOARD_REV_A
-  constexpr bool kHasMerriweather = false;
-#else
-  constexpr bool kHasMerriweather = true;
-#endif
-  const auto slots = ResolveBundleSlots(f, kHasMerriweather);
+  const auto slots = ResolveBundleSlots(f);
   return {SlotToFont(slots.regular), SlotToFont(slots.bold)};
 }
 
@@ -127,19 +114,9 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
     case FontSlot::kSourceSerifBold:
       return &source_serif_bold_;
     case FontSlot::kMerriweatherRegular:
-#ifdef BTCLOCK_BOARD_REV_A
-      // Slot is unreachable on Rev A — ResolveBundleSlots redirects
-      // kMerriweather to the source-serif slots before we get here.
-      return &source_serif_;
-#else
       return &merriweather_;
-#endif
     case FontSlot::kMerriweatherBold:
-#ifdef BTCLOCK_BOARD_REV_A
-      return &source_serif_bold_;
-#else
       return &merriweather_bold_;
-#endif
     case FontSlot::kBitterRegular:
       return &bitter_;
     case FontSlot::kBitterBold:
@@ -190,11 +167,7 @@ void AppFonts::SetFamily(FontFamily f) {
       regular = &source_serif_bold_;
       break;
     case FontFamily::kMerriweatherBold:
-#ifdef BTCLOCK_BOARD_REV_A
-      regular = &source_serif_bold_;
-#else
       regular = &merriweather_bold_;
-#endif
       break;
     case FontFamily::kBitterBold:
       regular = &bitter_bold_;
@@ -224,11 +197,7 @@ void AppFonts::SetFamily(FontFamily f) {
       regular = &source_serif_;
       break;
     case FontFamily::kMerriweather:
-#ifdef BTCLOCK_BOARD_REV_A
-      regular = &source_serif_;
-#else
       regular = &merriweather_;
-#endif
       break;
     case FontFamily::kBitter:
       regular = &bitter_;

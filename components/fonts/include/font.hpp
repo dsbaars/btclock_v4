@@ -319,10 +319,6 @@ extern const uint8_t kSourceSerifBoldTtf[] asm(
     "_binary_SourceSerifBold_ttf_gz_start");
 extern const uint8_t kSourceSerifBoldTtfEnd[] asm(
     "_binary_SourceSerifBold_ttf_gz_end");
-// Rev A drops Merriweather from EMBED_FILES (see fonts/CMakeLists.txt) —
-// declaring the asm symbols here would leave the linker with unresolved
-// references, so gate them out on that board.
-#ifndef BTCLOCK_BOARD_REV_A
 extern const uint8_t kMerriweatherTtf[] asm(
     "_binary_Merriweather_ttf_gz_start");
 extern const uint8_t kMerriweatherTtfEnd[] asm(
@@ -331,7 +327,6 @@ extern const uint8_t kMerriweatherBoldTtf[] asm(
     "_binary_MerriweatherBold_ttf_gz_start");
 extern const uint8_t kMerriweatherBoldTtfEnd[] asm(
     "_binary_MerriweatherBold_ttf_gz_end");
-#endif
 extern const uint8_t kBitterTtf[] asm("_binary_Bitter_ttf_gz_start");
 extern const uint8_t kBitterTtfEnd[] asm("_binary_Bitter_ttf_gz_end");
 extern const uint8_t kBitterBoldTtf[] asm("_binary_BitterBold_ttf_gz_start");
