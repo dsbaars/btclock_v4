@@ -96,10 +96,46 @@ TEST_CASE("ResolveBundleSlots maps AtkinsonBold to its bold slot") {
   CHECK(s.bold == FontSlot::kAtkinsonBold);
 }
 
+TEST_CASE("ResolveBundleSlots maps RobotoBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kRobotoBold, true);
+  CHECK(s.regular == FontSlot::kRobotoBold);
+  CHECK(s.bold == FontSlot::kRobotoBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps NotoSansBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kNotoSansBold, true);
+  CHECK(s.regular == FontSlot::kNotoSansBold);
+  CHECK(s.bold == FontSlot::kNotoSansBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps UbuntuBold to its bold slot") {
+  const auto s = ResolveBundleSlots(FontFamily::kUbuntuBold, true);
+  CHECK(s.regular == FontSlot::kUbuntuBold);
+  CHECK(s.bold == FontSlot::kUbuntuBold);
+}
+
 TEST_CASE("ResolveBundleSlots maps OpenRunde to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kOpenRunde, true);
   CHECK(s.regular == FontSlot::kOpenRundeRegular);
   CHECK(s.bold == FontSlot::kOpenRundeBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps Roboto to its (regular, bold) pair") {
+  const auto s = ResolveBundleSlots(FontFamily::kRoboto, true);
+  CHECK(s.regular == FontSlot::kRobotoRegular);
+  CHECK(s.bold == FontSlot::kRobotoBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps NotoSans to its (regular, bold) pair") {
+  const auto s = ResolveBundleSlots(FontFamily::kNotoSans, true);
+  CHECK(s.regular == FontSlot::kNotoSansRegular);
+  CHECK(s.bold == FontSlot::kNotoSansBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps Ubuntu to its (regular, bold) pair") {
+  const auto s = ResolveBundleSlots(FontFamily::kUbuntu, true);
+  CHECK(s.regular == FontSlot::kUbuntuRegular);
+  CHECK(s.bold == FontSlot::kUbuntuBold);
 }
 
 TEST_CASE("ResolveBundleSlots maps Oswald to its (regular, bold) pair") {
@@ -158,13 +194,13 @@ TEST_CASE("ResolveBundleSlots covers every FontFamily enumerator") {
   // adds to FontFamily but forgets to handle in ResolveBundleSlots —
   // the default-Atkinson tail covers that case but the test pins it.
   for (uint8_t i = static_cast<uint8_t>(FontFamily::kAntonio);
-       i <= static_cast<uint8_t>(FontFamily::kOpenRunde); ++i) {
+       i <= static_cast<uint8_t>(FontFamily::kUbuntuBold); ++i) {
     const auto f = static_cast<FontFamily>(i);
     const auto s = ResolveBundleSlots(f, /*has_merriweather=*/true);
     CHECK(static_cast<uint8_t>(s.regular) <=
-          static_cast<uint8_t>(FontSlot::kOpenRundeBold));
+          static_cast<uint8_t>(FontSlot::kUbuntuBold));
     CHECK(static_cast<uint8_t>(s.bold) <=
-          static_cast<uint8_t>(FontSlot::kOpenRundeBold));
+          static_cast<uint8_t>(FontSlot::kUbuntuBold));
   }
 }
 
@@ -189,7 +225,10 @@ TEST_CASE("FontSlot enumerators are unique") {
       FontSlot::kBitterBold,       FontSlot::kAtkinsonRegular,
       FontSlot::kAtkinsonBold,     FontSlot::kAntonioSemiBold,
       FontSlot::kAntonioBold,      FontSlot::kOpenRundeRegular,
-      FontSlot::kOpenRundeBold,
+      FontSlot::kOpenRundeBold,    FontSlot::kRobotoRegular,
+      FontSlot::kRobotoBold,       FontSlot::kNotoSansRegular,
+      FontSlot::kNotoSansBold,     FontSlot::kUbuntuRegular,
+      FontSlot::kUbuntuBold,
   };
   const std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {

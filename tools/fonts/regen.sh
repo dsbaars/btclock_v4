@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate every bundled font from its upstream source. Pulls Antonio,
-# Oswald, Inter, Source Serif 4, Merriweather, Bitter, and Atkinson
-# Hyperlegible from their upstream GitHub repos, and re-converts
-# SatoshiSymbol.ttf from the preserved `SatoshiSymbol_source.woff2`.
+# Oswald, Inter, Source Serif 4, Merriweather, Bitter, Atkinson
+# Hyperlegible, Roboto, Noto Sans, and Ubuntu from their upstream
+# GitHub repos, and re-converts SatoshiSymbol.ttf from the preserved
+# `SatoshiSymbol_source.woff2`.
 # Leaves all TTFs byte-identical if nothing upstream changed; otherwise
 # the diff is the upstream glyph change.
 #
@@ -131,6 +132,36 @@ curl -sSL -o "${TMP}/OpenRunde-Bold.otf" \
 subset_full "${TMP}/OpenRunde-Semibold.otf" "${ASSETS}/OpenRunde.ttf"
 subset_full "${TMP}/OpenRunde-Bold.otf"    "${ASSETS}/OpenRundeBold.ttf"
 
+echo "→ Roboto (Google Fonts VF -> instance at wght=600/700 -> subset)"
+curl -sSL -o "${TMP}/Roboto-VF.ttf" \
+    "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto%5Bwdth,wght%5D.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/Roboto-VF.ttf" wght=600 \
+    -o "${TMP}/Roboto-SemiBold.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/Roboto-VF.ttf" wght=700 \
+    -o "${TMP}/Roboto-Bold.ttf"
+subset_full "${TMP}/Roboto-SemiBold.ttf" "${ASSETS}/Roboto.ttf"
+subset_full "${TMP}/Roboto-Bold.ttf"     "${ASSETS}/RobotoBold.ttf"
+
+echo "→ Noto Sans (Google Fonts VF -> instance at wght=600/700 -> subset)"
+curl -sSL -o "${TMP}/NotoSans-VF.ttf" \
+    "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/NotoSans-VF.ttf" wght=600 \
+    -o "${TMP}/NotoSans-SemiBold.ttf"
+python3 -m fontTools.varLib.instancer "${TMP}/NotoSans-VF.ttf" wght=700 \
+    -o "${TMP}/NotoSans-Bold.ttf"
+subset_full "${TMP}/NotoSans-SemiBold.ttf" "${ASSETS}/NotoSans.ttf"
+subset_full "${TMP}/NotoSans-Bold.ttf"     "${ASSETS}/NotoSansBold.ttf"
+
+# Ubuntu classic ships Medium instead of SemiBold in upstream static TTFs;
+# Medium is the closest weight to our Semibold-vs-Regular A/B decision.
+echo "→ Ubuntu (Google Fonts static TTFs; base cut = Medium)"
+curl -sSL -o "${TMP}/Ubuntu-Medium.ttf" \
+    "https://github.com/google/fonts/raw/main/ufl/ubuntu/Ubuntu-Medium.ttf"
+curl -sSL -o "${TMP}/Ubuntu-Bold.ttf" \
+    "https://github.com/google/fonts/raw/main/ufl/ubuntu/Ubuntu-Bold.ttf"
+subset_full "${TMP}/Ubuntu-Medium.ttf" "${ASSETS}/Ubuntu.ttf"
+subset_full "${TMP}/Ubuntu-Bold.ttf"   "${ASSETS}/UbuntuBold.ttf"
+
 echo "→ SatoshiSymbol (from preserved woff2)"
 pyftsubset "${ASSETS}/SatoshiSymbol_source.woff2" \
     "--unicodes=U+E000-E00F" \
@@ -162,6 +193,9 @@ expected = [
     "Bitter.ttf", "BitterBold.ttf",
     "Atkinson.ttf", "AtkinsonBold.ttf",
     "OpenRunde.ttf", "OpenRundeBold.ttf",
+    "Roboto.ttf", "RobotoBold.ttf",
+    "NotoSans.ttf", "NotoSansBold.ttf",
+    "Ubuntu.ttf", "UbuntuBold.ttf",
 ]
 missing = []
 for name in expected:

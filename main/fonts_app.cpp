@@ -19,6 +19,12 @@ AppFonts::AppFonts()
       inter_bold_(kInterBoldTtf, kInterBoldTtfSize),
       open_runde_(kOpenRundeTtf, kOpenRundeTtfSize),
       open_runde_bold_(kOpenRundeBoldTtf, kOpenRundeBoldTtfSize),
+      roboto_(kRobotoTtf, kRobotoTtfSize),
+      roboto_bold_(kRobotoBoldTtf, kRobotoBoldTtfSize),
+      noto_sans_(kNotoSansTtf, kNotoSansTtfSize),
+      noto_sans_bold_(kNotoSansBoldTtf, kNotoSansBoldTtfSize),
+      ubuntu_(kUbuntuTtf, kUbuntuTtfSize),
+      ubuntu_bold_(kUbuntuBoldTtf, kUbuntuBoldTtfSize),
       source_serif_(kSourceSerifTtf, kSourceSerifTtfSize),
       source_serif_bold_(kSourceSerifBoldTtf, kSourceSerifBoldTtfSize),
 #ifndef BTCLOCK_BOARD_REV_A
@@ -54,6 +60,13 @@ AppFonts::AppFonts()
       open_runde_(kOpenRundeTtf, SizeBetween(kOpenRundeTtf, kOpenRundeTtfEnd)),
       open_runde_bold_(kOpenRundeBoldTtf,
                        SizeBetween(kOpenRundeBoldTtf, kOpenRundeBoldTtfEnd)),
+      roboto_(kRobotoTtf, SizeBetween(kRobotoTtf, kRobotoTtfEnd)),
+      roboto_bold_(kRobotoBoldTtf, SizeBetween(kRobotoBoldTtf, kRobotoBoldTtfEnd)),
+      noto_sans_(kNotoSansTtf, SizeBetween(kNotoSansTtf, kNotoSansTtfEnd)),
+      noto_sans_bold_(kNotoSansBoldTtf,
+                      SizeBetween(kNotoSansBoldTtf, kNotoSansBoldTtfEnd)),
+      ubuntu_(kUbuntuTtf, SizeBetween(kUbuntuTtf, kUbuntuTtfEnd)),
+      ubuntu_bold_(kUbuntuBoldTtf, SizeBetween(kUbuntuBoldTtf, kUbuntuBoldTtfEnd)),
       source_serif_(kSourceSerifTtf,
                     SizeBetween(kSourceSerifTtf, kSourceSerifTtfEnd)),
       source_serif_bold_(
@@ -137,6 +150,18 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
       return &open_runde_;
     case FontSlot::kOpenRundeBold:
       return &open_runde_bold_;
+    case FontSlot::kRobotoRegular:
+      return &roboto_;
+    case FontSlot::kRobotoBold:
+      return &roboto_bold_;
+    case FontSlot::kNotoSansRegular:
+      return &noto_sans_;
+    case FontSlot::kNotoSansBold:
+      return &noto_sans_bold_;
+    case FontSlot::kUbuntuRegular:
+      return &ubuntu_;
+    case FontSlot::kUbuntuBold:
+      return &ubuntu_bold_;
   }
   return &atkinson_;
 }
@@ -178,6 +203,15 @@ void AppFonts::SetFamily(FontFamily f) {
     case FontFamily::kOpenRunde:
       regular = &open_runde_;
       break;
+    case FontFamily::kRobotoBold:
+      regular = &roboto_bold_;
+      break;
+    case FontFamily::kNotoSansBold:
+      regular = &noto_sans_bold_;
+      break;
+    case FontFamily::kUbuntuBold:
+      regular = &ubuntu_bold_;
+      break;
     case FontFamily::kOswald:
       regular = &oswald_;
       break;
@@ -199,6 +233,15 @@ void AppFonts::SetFamily(FontFamily f) {
       break;
     case FontFamily::kAtkinson:
       regular = &atkinson_;
+      break;
+    case FontFamily::kRoboto:
+      regular = &roboto_;
+      break;
+    case FontFamily::kNotoSans:
+      regular = &noto_sans_;
+      break;
+    case FontFamily::kUbuntu:
+      regular = &ubuntu_;
       break;
   }
   role_digit_ = regular;

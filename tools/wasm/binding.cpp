@@ -90,7 +90,8 @@ struct RenderContext {
   // 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
   // 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
   // 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
-  // 14=atkinsonBold, 15=openRunde.
+  // 14=atkinsonBold, 15=openRunde, 16=roboto, 17=robotoBold,
+  // 18=notoSans, 19=notoSansBold, 20=ubuntu, 21=ubuntuBold.
   // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
   // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
   // axis. Default false matches the device boot default.
@@ -160,7 +161,9 @@ void ReturnPanels(
 // 4 = merriweather, 5 = bitter, 6 = atkinson, 7 = antonioSemiBold,
 // 8 = antonioBold, 9 = oswaldBold, 10 = interBold,
 // 11 = sourceSerifBold, 12 = merriweatherBold, 13 = bitterBold,
-// 14 = atkinsonBold, 15 = openRunde. Unknown families fall back to
+// 14 = atkinsonBold, 15 = openRunde, 16 = roboto, 17 = robotoBold,
+// 18 = notoSans, 19 = notoSansBold, 20 = ubuntu, 21 = ubuntuBold.
+// Unknown families fall back to
 // antonio — same
 // semantics as the old ApplyFontOverride. Numeric ids match
 // FontFamily's enum values in main/fonts_app.hpp; keep the cases in
@@ -212,6 +215,24 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
       break;
     case 15:
       f = btclock::FontFamily::kOpenRunde;
+      break;
+    case 16:
+      f = btclock::FontFamily::kRoboto;
+      break;
+    case 17:
+      f = btclock::FontFamily::kRobotoBold;
+      break;
+    case 18:
+      f = btclock::FontFamily::kNotoSans;
+      break;
+    case 19:
+      f = btclock::FontFamily::kNotoSansBold;
+      break;
+    case 20:
+      f = btclock::FontFamily::kUbuntu;
+      break;
+    case 21:
+      f = btclock::FontFamily::kUbuntuBold;
       break;
     default:
       f = btclock::FontFamily::kAntonio;
@@ -1361,13 +1382,14 @@ val renderDebugAlpha(std::string ip, std::string ssid, int free_heap_bytes,
 // 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
 // 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
 // 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
-// 14=atkinsonBold, 15=openRunde. Unknown font families fall back to
+// 14=atkinsonBold, 15=openRunde, 16=roboto, 17=robotoBold, 18=notoSans,
+// 19=notoSansBold, 20=ubuntu, 21=ubuntuBold. Unknown font families fall back to
 // stock. Call whenever the user changes the UI selector; safe to call
 // before every render.
 void setRenderOptions(int panels, int font_family) {
   auto& ctx = Ctx();
   ctx.panels_active = (panels == 8) ? 8 : 7;
-  if (font_family < 0 || font_family > 15) font_family = 0;
+  if (font_family < 0 || font_family > 21) font_family = 0;
   ctx.font_family = font_family;
 }
 

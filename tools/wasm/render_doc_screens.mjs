@@ -684,6 +684,9 @@ const FONTS = [
   { id: "antonioSemiBold", title: "Antonio SemiBold", family: 7 },
   { id: "antonioBold", title: "Antonio Bold", family: 8 },
   { id: "openRunde", title: "Open Runde", family: 15 },
+  { id: "roboto", title: "Roboto", family: 16 },
+  { id: "notoSans", title: "Noto Sans", family: 18 },
+  { id: "ubuntu", title: "Ubuntu", family: 20 },
 ];
 
 const generated = [];

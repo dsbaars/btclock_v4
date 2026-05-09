@@ -855,6 +855,10 @@ table); only the digit / suffix / unit glyphs swap.
 | **Merriweather** | `merriweather` | ![merriweather](img/fonts/merriweather.png) |
 | **Bitter** | `bitter` | ![bitter](img/fonts/bitter.png) |
 | **Atkinson Hyperlegible** | `atkinson` | ![atkinson](img/fonts/atkinson.png) |
+| **Open Runde** | `openRunde` | ![openRunde](img/fonts/openRunde.png) |
+| **Roboto** | `roboto` | ![roboto](img/fonts/roboto.png) |
+| **Noto Sans** | `notoSans` | ![notoSans](img/fonts/notoSans.png) |
+| **Ubuntu** | `ubuntu` | ![ubuntu](img/fonts/ubuntu.png) |
 
 Antonio is a condensed display sans, designed for tight digit columns
 on the BTClock's narrow 2.13" panels. The three Antonio cuts share the

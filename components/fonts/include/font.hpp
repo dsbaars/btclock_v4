@@ -230,6 +230,18 @@ extern const uint8_t kOpenRundeTtf[];
 extern const size_t kOpenRundeTtfSize;
 extern const uint8_t kOpenRundeBoldTtf[];
 extern const size_t kOpenRundeBoldTtfSize;
+extern const uint8_t kRobotoTtf[];
+extern const size_t kRobotoTtfSize;
+extern const uint8_t kRobotoBoldTtf[];
+extern const size_t kRobotoBoldTtfSize;
+extern const uint8_t kNotoSansTtf[];
+extern const size_t kNotoSansTtfSize;
+extern const uint8_t kNotoSansBoldTtf[];
+extern const size_t kNotoSansBoldTtfSize;
+extern const uint8_t kUbuntuTtf[];
+extern const size_t kUbuntuTtfSize;
+extern const uint8_t kUbuntuBoldTtf[];
+extern const size_t kUbuntuBoldTtfSize;
 extern const uint8_t kSourceSerifTtf[];
 extern const size_t kSourceSerifTtfSize;
 extern const uint8_t kSourceSerifBoldTtf[];
@@ -273,6 +285,20 @@ extern const uint8_t kOpenRundeBoldTtf[] asm(
     "_binary_OpenRundeBold_ttf_gz_start");
 extern const uint8_t kOpenRundeBoldTtfEnd[] asm(
     "_binary_OpenRundeBold_ttf_gz_end");
+extern const uint8_t kRobotoTtf[] asm("_binary_Roboto_ttf_gz_start");
+extern const uint8_t kRobotoTtfEnd[] asm("_binary_Roboto_ttf_gz_end");
+extern const uint8_t kRobotoBoldTtf[] asm("_binary_RobotoBold_ttf_gz_start");
+extern const uint8_t kRobotoBoldTtfEnd[] asm("_binary_RobotoBold_ttf_gz_end");
+extern const uint8_t kNotoSansTtf[] asm("_binary_NotoSans_ttf_gz_start");
+extern const uint8_t kNotoSansTtfEnd[] asm("_binary_NotoSans_ttf_gz_end");
+extern const uint8_t kNotoSansBoldTtf[] asm(
+    "_binary_NotoSansBold_ttf_gz_start");
+extern const uint8_t kNotoSansBoldTtfEnd[] asm(
+    "_binary_NotoSansBold_ttf_gz_end");
+extern const uint8_t kUbuntuTtf[] asm("_binary_Ubuntu_ttf_gz_start");
+extern const uint8_t kUbuntuTtfEnd[] asm("_binary_Ubuntu_ttf_gz_end");
+extern const uint8_t kUbuntuBoldTtf[] asm("_binary_UbuntuBold_ttf_gz_start");
+extern const uint8_t kUbuntuBoldTtfEnd[] asm("_binary_UbuntuBold_ttf_gz_end");
 extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_gz_start");
 extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_gz_end");
 extern const uint8_t kSourceSerifBoldTtf[] asm(

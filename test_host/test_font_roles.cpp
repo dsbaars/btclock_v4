@@ -52,6 +52,12 @@ struct RoleFixture {
   int atkinson_bold = 0;
   int open_runde = 0;
   int open_runde_bold = 0;
+  int roboto = 0;
+  int roboto_bold = 0;
+  int noto_sans = 0;
+  int noto_sans_bold = 0;
+  int ubuntu = 0;
+  int ubuntu_bold = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -95,6 +101,15 @@ struct RoleFixture {
       case FontFamily::kOpenRunde:
         regular = &open_runde;
         break;
+      case FontFamily::kRobotoBold:
+        regular = &roboto_bold;
+        break;
+      case FontFamily::kNotoSansBold:
+        regular = &noto_sans_bold;
+        break;
+      case FontFamily::kUbuntuBold:
+        regular = &ubuntu_bold;
+        break;
       case FontFamily::kOswald:
         regular = &oswald;
         break;
@@ -112,6 +127,15 @@ struct RoleFixture {
         break;
       case FontFamily::kAtkinson:
         regular = &atkinson;
+        break;
+      case FontFamily::kRoboto:
+        regular = &roboto;
+        break;
+      case FontFamily::kNotoSans:
+        regular = &noto_sans;
+        break;
+      case FontFamily::kUbuntu:
+        regular = &ubuntu;
         break;
     }
     digit = regular;
@@ -229,6 +253,12 @@ TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("atkinson") == FontFamily::kAtkinson);
   CHECK(ParseFontFamily("atkinsonBold") == FontFamily::kAtkinsonBold);
   CHECK(ParseFontFamily("openRunde") == FontFamily::kOpenRunde);
+  CHECK(ParseFontFamily("roboto") == FontFamily::kRoboto);
+  CHECK(ParseFontFamily("robotoBold") == FontFamily::kRobotoBold);
+  CHECK(ParseFontFamily("notoSans") == FontFamily::kNotoSans);
+  CHECK(ParseFontFamily("notoSansBold") == FontFamily::kNotoSansBold);
+  CHECK(ParseFontFamily("ubuntu") == FontFamily::kUbuntu);
+  CHECK(ParseFontFamily("ubuntuBold") == FontFamily::kUbuntuBold);
 }
 
 TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
@@ -273,6 +303,33 @@ TEST_CASE("SetFamily(kOpenRunde) rebinds swappable roles") {
   CHECK(f.unit == &f.open_runde);
   CHECK(f.icon == &f.mdi);
   CHECK(f.sats_glyph == &f.sats);
+}
+
+TEST_CASE("SetFamily(kRoboto) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kRoboto);
+  CHECK(f.digit == &f.roboto);
+  CHECK(f.label == &f.roboto);
+  CHECK(f.small_chars == &f.roboto);
+  CHECK(f.unit == &f.roboto);
+}
+
+TEST_CASE("SetFamily(kNotoSans) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kNotoSans);
+  CHECK(f.digit == &f.noto_sans);
+  CHECK(f.label == &f.noto_sans);
+  CHECK(f.small_chars == &f.noto_sans);
+  CHECK(f.unit == &f.noto_sans);
+}
+
+TEST_CASE("SetFamily(kUbuntu) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kUbuntu);
+  CHECK(f.digit == &f.ubuntu);
+  CHECK(f.label == &f.ubuntu);
+  CHECK(f.small_chars == &f.ubuntu);
+  CHECK(f.unit == &f.ubuntu);
 }
 
 TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {

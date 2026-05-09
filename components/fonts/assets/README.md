@@ -137,6 +137,103 @@ pyftsubset /tmp/OpenRunde-Bold.otf \
 
 Licensed under SIL Open Font License 1.1 (see upstream `LICENSE.txt`).
 
+## Roboto / RobotoBold
+
+Roboto (Google Fonts) via the upstream variable font in `ofl/roboto`.
+BTClock uses **SemiBold as the family base cut** for `Roboto.ttf`
+(chosen by A/B render comparison for stronger panel legibility), with
+`RobotoBold.ttf` as the markdown bold role cut.
+
+```sh
+curl -L -o /tmp/Roboto-VF.ttf \
+    "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto%5Bwdth,wght%5D.ttf"
+python3 -m fontTools.varLib.instancer /tmp/Roboto-VF.ttf wght=600 \
+    -o /tmp/Roboto-SemiBold.ttf
+python3 -m fontTools.varLib.instancer /tmp/Roboto-VF.ttf wght=700 \
+    -o /tmp/Roboto-Bold.ttf
+
+pyftsubset /tmp/Roboto-SemiBold.ttf \
+    --output-file=Roboto.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/Roboto-Bold.ttf \
+    --output-file=RobotoBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under Apache-2.0 via Google Fonts.
+
+## NotoSans / NotoSansBold
+
+Noto Sans (Google Fonts) via the upstream variable font in
+`ofl/notosans`. BTClock uses **SemiBold as the family base cut** for
+`NotoSans.ttf`, with `NotoSansBold.ttf` for markdown bold.
+
+```sh
+curl -L -o /tmp/NotoSans-VF.ttf \
+    "https://github.com/google/fonts/raw/main/ofl/notosans/NotoSans%5Bwdth,wght%5D.ttf"
+python3 -m fontTools.varLib.instancer /tmp/NotoSans-VF.ttf wght=600 \
+    -o /tmp/NotoSans-SemiBold.ttf
+python3 -m fontTools.varLib.instancer /tmp/NotoSans-VF.ttf wght=700 \
+    -o /tmp/NotoSans-Bold.ttf
+
+pyftsubset /tmp/NotoSans-SemiBold.ttf \
+    --output-file=NotoSans.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/NotoSans-Bold.ttf \
+    --output-file=NotoSansBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1.
+
+## Ubuntu / UbuntuBold
+
+Ubuntu (Canonical / Dalton Maag), sourced from Google Fonts static TTFs.
+The classic Ubuntu family does not ship a `SemiBold`; BTClock's base cut
+uses **Ubuntu Medium** as the nearest equivalent for the Semibold-vs-
+Regular legibility decision, while `UbuntuBold.ttf` is the markdown bold
+role cut.
+
+```sh
+curl -L -o /tmp/Ubuntu-Medium.ttf \
+    "https://github.com/google/fonts/raw/main/ufl/ubuntu/Ubuntu-Medium.ttf"
+curl -L -o /tmp/Ubuntu-Bold.ttf \
+    "https://github.com/google/fonts/raw/main/ufl/ubuntu/Ubuntu-Bold.ttf"
+
+pyftsubset /tmp/Ubuntu-Medium.ttf \
+    --output-file=Ubuntu.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/Ubuntu-Bold.ttf \
+    --output-file=UbuntuBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under Ubuntu Font Licence 1.0.
+
 ## SourceSerif / SourceSerifBold
 
 Source Serif 4 (Adobe). A modern transitional serif designed for
@@ -368,14 +465,21 @@ In-tree byte counts (`wc -c`), rounded:
 | BitterBold            |  11.0 KB |
 | Atkinson              |   9.0 KB |
 | AtkinsonBold          |   8.8 KB |
+| Roboto                |  17.5 KB |
+| RobotoBold            |  17.6 KB |
+| NotoSans              |  16.7 KB |
+| NotoSansBold          |  16.8 KB |
+| Ubuntu                |   9.4 KB |
+| UbuntuBold            |   9.3 KB |
 | SatoshiSymbol         |   3.5 KB |
 | MaterialDesignIcons   |   1.0 KB |
 
 Subset extents — every selectable family (Antonio, Oswald, Inter,
-SourceSerif, Merriweather, Bitter, Atkinson) carries printable ASCII
-(U+0020..U+007E) plus £/¥/€/₿ (U+00A3, U+00A5, U+20AC, U+20BF) so the
-price screen's currency symbol set works regardless of the chosen
-`fontName`. ₿ is requested unconditionally; upstreams without the
+SourceSerif, Merriweather, Bitter, Atkinson, OpenRunde, Roboto,
+NotoSans, Ubuntu) carries printable ASCII (U+0020..U+007E) plus
+£/¥/€/₿ (U+00A3, U+00A5, U+20AC, U+20BF) so the price screen's currency
+symbol set works regardless of the chosen `fontName`. ₿ is requested
+unconditionally; upstreams without the
 glyph silently drop it (the verify pass in `tools/fonts/regen.sh`
 prints which families ended up with it).
 

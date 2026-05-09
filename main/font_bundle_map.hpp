@@ -59,6 +59,12 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
       return {FontSlot::kBitterBold, FontSlot::kBitterBold};
     case FontFamily::kAtkinsonBold:
       return {FontSlot::kAtkinsonBold, FontSlot::kAtkinsonBold};
+    case FontFamily::kRobotoBold:
+      return {FontSlot::kRobotoBold, FontSlot::kRobotoBold};
+    case FontFamily::kNotoSansBold:
+      return {FontSlot::kNotoSansBold, FontSlot::kNotoSansBold};
+    case FontFamily::kUbuntuBold:
+      return {FontSlot::kUbuntuBold, FontSlot::kUbuntuBold};
     case FontFamily::kOswald:
       return {FontSlot::kOswaldRegular, FontSlot::kOswaldBold};
     case FontFamily::kInter:
@@ -76,6 +82,12 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f,
       return {FontSlot::kAtkinsonRegular, FontSlot::kAtkinsonBold};
     case FontFamily::kOpenRunde:
       return {FontSlot::kOpenRundeRegular, FontSlot::kOpenRundeBold};
+    case FontFamily::kRoboto:
+      return {FontSlot::kRobotoRegular, FontSlot::kRobotoBold};
+    case FontFamily::kNotoSans:
+      return {FontSlot::kNotoSansRegular, FontSlot::kNotoSansBold};
+    case FontFamily::kUbuntu:
+      return {FontSlot::kUbuntuRegular, FontSlot::kUbuntuBold};
   }
   // Atkinson is the body-text fallback (legibility-first replacement
   // for the retired DejaVu pair).

@@ -17,6 +17,9 @@ set(_FONT_SOURCES
     OswaldBold.ttf
     Inter.ttf InterBold.ttf
     OpenRunde.ttf OpenRundeBold.ttf
+    Roboto.ttf RobotoBold.ttf
+    NotoSans.ttf NotoSansBold.ttf
+    Ubuntu.ttf UbuntuBold.ttf
     SourceSerif.ttf SourceSerifBold.ttf
     Bitter.ttf BitterBold.ttf
     Atkinson.ttf AtkinsonBold.ttf

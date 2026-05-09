@@ -104,6 +104,12 @@ TEST_CASE("availableFonts is a plain-string array with known ids") {
   CHECK(fonts.count("atkinson") == 1);
   CHECK(fonts.count("atkinsonBold") == 1);
   CHECK(fonts.count("openRunde") == 1);
+  CHECK(fonts.count("roboto") == 1);
+  CHECK(fonts.count("robotoBold") == 1);
+  CHECK(fonts.count("notoSans") == 1);
+  CHECK(fonts.count("notoSansBold") == 1);
+  CHECK(fonts.count("ubuntu") == 1);
+  CHECK(fonts.count("ubuntuBold") == 1);
   // Retired family — must NOT reappear in the catalogue. A regression
   // here would let the WebUI offer a font the firmware no longer ships
   // and the validation walk silently snap to antonio.
