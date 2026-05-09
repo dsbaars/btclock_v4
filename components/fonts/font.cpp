@@ -744,9 +744,9 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    bool white_text, int fit_target_w_override) {
   // Layout mirrors the existing firmware's splitText
   // (src/lib/drivers/epd/epd.cpp): a 6 px pill-ended separator at the
-  // panel vertical centre, each text's reference box offset by `kGap`
-  // from the centre line, and the separator as wide as the narrower of
-  // the two ink widths.
+  // panel vertical centre, each half offset by `kGap` from the centre
+  // using that string's ink extents, and the separator as wide as the
+  // narrower of the two ink widths.
   constexpr int kGap = 12;  // pixels between centre and text edge
   constexpr int kLineThickness = 6;
   constexpr int kLineRadius = 3;
@@ -773,15 +773,22 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
     pixel_height = top_fit < bot_fit ? top_fit : bot_fit;
   }
 
-  const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
+  // Per-string vertical extents so "BLOCK"/"HEIGHT"-style pairs sit
+  // equidistant from the divider: a shared A–Z ref box left asymmetric
+  // slack when only one half had descenders (e.g. none in "BLOCK").
+  const auto rb_top = font.GetReferenceBox(
+      (top_text != nullptr && top_text[0] != '\0') ? top_text : ref_chars,
+      pixel_height);
+  const auto rb_bot = font.GetReferenceBox(
+      (bottom_text != nullptr && bottom_text[0] != '\0') ? bottom_text
+                                                         : ref_chars,
+      pixel_height);
   const int centre_y = panel_h / 2;
 
-  // Top text: place its baseline so the reference box's lowest point
-  // (below_baseline extent) sits exactly `kGap` above centre_y.
-  const int top_baseline = centre_y - kGap - rb.below_baseline;
-  // Bottom text: baseline so the reference box's highest point starts
-  // `kGap` below centre_y.
-  const int bottom_baseline = centre_y + kGap + rb.above_baseline;
+  // Top: lowest ink of this string sits `kGap` above the panel centre.
+  const int top_baseline = centre_y - kGap - rb_top.below_baseline;
+  // Bottom: highest ink of this string starts `kGap` below the centre.
+  const int bottom_baseline = centre_y + kGap + rb_bot.above_baseline;
 
   int top_lb = 0, bot_lb = 0;
   const int top_ink_w = MeasureInkWidth(top_text, font, pixel_height, &top_lb);

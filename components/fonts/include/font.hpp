@@ -164,12 +164,13 @@ void DrawTextCentered(LandscapeFb& fb, int panel_w, int panel_h,
                       float pixel_height, bool white_text, int x_offset_px = 0,
                       int y_offset_px = 0);
 
-// Two-line layout. Top text is centred in the upper half, bottom text
-// in the lower half. Each half uses `ref_chars` to pick a consistent
-// baseline so "." etc. doesn't float to the mid-line. Typical use:
+// Two-line layout with a horizontal separator at the panel vertical
+// centre. Each half is centred horizontally; vertically, each half is
+// offset from the divider using that string's own glyph extents (union
+// bbox) so upper/lower ink is symmetric — `ref_chars` is only used when
+// a half is empty (fallback baseline). Typical use:
 // DrawSplitText(lfb, W, H, "BLOCK", "HEIGHT",
-// "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-//               antonio, 70.0f, false).
+// "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", antonio, 70.0f, false).
 void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* top_text, const char* bottom_text,
                    const char* ref_chars, const Font& font, float pixel_height,
