@@ -120,44 +120,48 @@ esp_err_t ProvisioningServer::Start() {
   esp_err_t err = httpd_start(&server_, &cfg);
   if (err != ESP_OK) return err;
 
-  const httpd_uri_t portal = {.uri = "/",
-                              .method = HTTP_GET,
-                              .handler = HandlePortal,
-                              .user_ctx = this,
+  const httpd_uri_t portal = {
+      .uri = "/",
+      .method = HTTP_GET,
+      .handler = HandlePortal,
+      .user_ctx = this,
 #if CONFIG_HTTPD_WS_SUPPORT
-                              .is_websocket = false,
-                              .handle_ws_control_frames = false,
-                              .supported_subprotocol = nullptr,
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
 #endif
   };
-  const httpd_uri_t scan = {.uri = "/api/scan",
-                            .method = HTTP_GET,
-                            .handler = HandleScan,
-                            .user_ctx = this,
+  const httpd_uri_t scan = {
+      .uri = "/api/scan",
+      .method = HTTP_GET,
+      .handler = HandleScan,
+      .user_ctx = this,
 #if CONFIG_HTTPD_WS_SUPPORT
-                            .is_websocket = false,
-                            .handle_ws_control_frames = false,
-                            .supported_subprotocol = nullptr,
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
 #endif
   };
-  const httpd_uri_t version = {.uri = "/api/version",
-                               .method = HTTP_GET,
-                               .handler = HandleVersion,
-                               .user_ctx = this,
+  const httpd_uri_t version = {
+      .uri = "/api/version",
+      .method = HTTP_GET,
+      .handler = HandleVersion,
+      .user_ctx = this,
 #if CONFIG_HTTPD_WS_SUPPORT
-                               .is_websocket = false,
-                               .handle_ws_control_frames = false,
-                               .supported_subprotocol = nullptr,
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
 #endif
   };
-  const httpd_uri_t wifi = {.uri = "/api/wifi",
-                            .method = HTTP_POST,
-                            .handler = HandleWifi,
-                            .user_ctx = this,
+  const httpd_uri_t wifi = {
+      .uri = "/api/wifi",
+      .method = HTTP_POST,
+      .handler = HandleWifi,
+      .user_ctx = this,
 #if CONFIG_HTTPD_WS_SUPPORT
-                            .is_websocket = false,
-                            .handle_ws_control_frames = false,
-                            .supported_subprotocol = nullptr,
+      .is_websocket = false,
+      .handle_ws_control_frames = false,
+      .supported_subprotocol = nullptr,
 #endif
   };
   const httpd_uri_t any = {

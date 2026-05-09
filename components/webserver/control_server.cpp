@@ -38,8 +38,8 @@
 #include "heap_metrics.hpp"
 #include "light_metrics.hpp"
 #include "littlefs.hpp"
-#include "miniz.h"
 #include "mime.hpp"
+#include "miniz.h"
 #include "net_util/hostname.hpp"
 #include "ota_manager.hpp"
 #include "ota_upload_bounds.hpp"
@@ -458,9 +458,9 @@ void ControlServer::RemovePreviewClientLocked(int fd) {
       preview_clients_.end());
 }
 
-void ControlServer::PublishFramebufferSnapshot(const FramebufferPanelView* panels,
-                                               size_t panel_count,
-                                               uint64_t timestamp_ms) {
+void ControlServer::PublishFramebufferSnapshot(
+    const FramebufferPanelView* panels, size_t panel_count,
+    uint64_t timestamp_ms) {
   if (!panels || panel_count == 0) return;
   std::lock_guard<std::mutex> lk(preview_mu_);
   if (!HasPreviewStreamingClientsLocked()) return;
@@ -522,8 +522,8 @@ void ControlServer::PreviewWorker() {
                               static_cast<int>(TDEFL_GREEDY_PARSING_FLAG);
       for (int attempt = 0; attempt < 4; ++attempt) {
         out_size = tdefl_compress_mem_to_mem(
-            compressed.data(), compressed.size(), panel.raw.data(), panel.raw.size(),
-            tdefl_flags);
+            compressed.data(), compressed.size(), panel.raw.data(),
+            panel.raw.size(), tdefl_flags);
         if (out_size != 0) break;
         compressed.resize(compressed.size() * 2);
       }
@@ -643,14 +643,15 @@ esp_err_t ControlServer::Start() {
 
   auto reg = [&](const char* uri, httpd_method_t method,
                  esp_err_t (*h)(httpd_req_t*)) {
-    const httpd_uri_t entry = {.uri = uri,
-                               .method = method,
-                               .handler = h,
-                               .user_ctx = this,
+    const httpd_uri_t entry = {
+        .uri = uri,
+        .method = method,
+        .handler = h,
+        .user_ctx = this,
 #if CONFIG_HTTPD_WS_SUPPORT
-                               .is_websocket = false,
-                               .handle_ws_control_frames = false,
-                               .supported_subprotocol = nullptr,
+        .is_websocket = false,
+        .handle_ws_control_frames = false,
+        .supported_subprotocol = nullptr,
 #endif
     };
     return httpd_register_uri_handler(server_, &entry);
@@ -1578,10 +1579,9 @@ esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
     if (!RequireHttpAuth(req)) return ESP_OK;
     const int fd = httpd_req_to_sockfd(req);
     std::lock_guard<std::mutex> lk(preview_mu_);
-    auto it = std::find_if(preview_clients_.begin(), preview_clients_.end(),
-                           [fd](const PreviewClientState& c) {
-                             return c.fd == fd;
-                           });
+    auto it =
+        std::find_if(preview_clients_.begin(), preview_clients_.end(),
+                     [fd](const PreviewClientState& c) { return c.fd == fd; });
     if (it == preview_clients_.end()) {
       preview_clients_.push_back({.fd = fd, .streaming = false});
     } else {
@@ -1623,10 +1623,9 @@ esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
 
   {
     std::lock_guard<std::mutex> lk(preview_mu_);
-    auto it = std::find_if(preview_clients_.begin(), preview_clients_.end(),
-                           [fd](const PreviewClientState& c) {
-                             return c.fd == fd;
-                           });
+    auto it =
+        std::find_if(preview_clients_.begin(), preview_clients_.end(),
+                     [fd](const PreviewClientState& c) { return c.fd == fd; });
     if (it == preview_clients_.end()) {
       preview_clients_.push_back({.fd = fd, .streaming = new_state});
     } else {
@@ -1635,11 +1634,11 @@ esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {
   }
 
   if (new_state) {
-    (void)PostCommand(
-        ControlCommand{ControlCommand::Kind::kPublishLiveStatus});
+    (void)PostCommand(ControlCommand{ControlCommand::Kind::kPublishLiveStatus});
   }
 
-  const char* ack = new_state ? "{\"streaming\":true}" : "{\"streaming\":false}";
+  const char* ack =
+      new_state ? "{\"streaming\":true}" : "{\"streaming\":false}";
   httpd_ws_frame_t out = {};
   out.type = HTTPD_WS_TYPE_TEXT;
   out.payload = reinterpret_cast<uint8_t*>(const_cast<char*>(ack));
