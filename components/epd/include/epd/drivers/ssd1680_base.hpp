@@ -1,4 +1,4 @@
-// Shared SSD1680 base for the GDEY0213B74 (2.13", 122x250) and
+// Shared SSD1680 base for the GDEY0213B74 (2.13", 122×250 visible) and
 // GDEY029T94 (2.9", 128x296). The two panels share the SSD1680
 // command set; only the driver-output-control / RAM-area parameters
 // and a few init details differ. The base captures the bring-up

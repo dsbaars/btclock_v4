@@ -1,4 +1,9 @@
-// GDEY0213B74 — 2.13" SSD1680, 122x250 visible (128 addressable wide).
+// GDEY0213B74 — 2.13" SSD1680. Visible ink is 122×250 px; each RAM row is
+// 16 bytes (128 bits). Width()/Height() match the visible lattice — layout,
+// preview WS headers, and SetPixelLandscape clamping stay WYSIWYG. VRAM
+// writes still ship Stride()*Height() bytes (see
+// Ssd1680Base::SetPartialRamArea: w=122 and w=128 both byte-span columns
+// 0..15).
 
 #pragma once
 

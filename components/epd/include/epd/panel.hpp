@@ -1,5 +1,5 @@
 // Pure-virtual EPD panel interface. Concrete drivers live under
-// drivers/ — gdey0213b74.{hpp,cpp} (SSD1680, 122x250),
+// drivers/ — gdey0213b74.{hpp,cpp} (SSD1680, 122×250 visible),
 // gdey029t94.{hpp,cpp} (SSD1680, 128x296), gdey075t7.{hpp,cpp}
 // (UC8179, 800x480 — un-tested scaffold).
 //
