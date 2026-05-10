@@ -1,6 +1,7 @@
 #include <array>
 #include <cstddef>
 
+#include "mdi_custom_cell.hpp"
 #include "screens/common.hpp"
 #include "screens/screens.hpp"
 
@@ -46,6 +47,16 @@ void PaintOne(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
   auto lfb = PrepFb(panels, fb_storage, i);
   ClearFb(lfb, /*white=*/true);
   if (cell.empty()) return;
+
+  std::uint32_t mdi_cp = 0;
+  if (ParseCustomCellMdi(cell, &mdi_cp)) {
+    if (mdi_cp != 0) {
+      DrawCodepointCentered(lfb, lfb.native_width, lfb.native_height, mdi_cp,
+                            fonts.icon(), kMdiCustomCellPixelPx,
+                            /*white_text=*/false);
+    }
+    return;
+  }
 
   // Split-text path: a single '/' interior separator gets top/bottom
   // layout, matching the old EPDManager::splitText dispatch for labels

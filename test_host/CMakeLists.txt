@@ -103,6 +103,7 @@ add_executable(btclock_host_tests
     test_panel_texts.cpp
     test_price_layout.cpp
     test_show_text_parse.cpp
+    test_mdi_custom_cell.cpp
     test_url_decode.cpp
     test_sse_frame.cpp
     test_heap_metrics.cpp
@@ -154,6 +155,7 @@ add_executable(btclock_host_tests
     ../components/secp256k1/src/precomputed_ecmult_gen.c
     ../components/webserver/mime.cpp
     ../components/webserver/show_text_parse.cpp
+    ../components/fonts/mdi_custom_cell.cpp
     ../components/webserver/url_decode.cpp
     ../components/webserver/sse_frame.cpp
     ../components/webserver/auth_gate_logic.cpp

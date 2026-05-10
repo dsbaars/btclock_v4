@@ -18,6 +18,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Icons the firmware renders. Keep sorted to minimise diff noise.
+# Also extend components/fonts/mdi_custom_cell.cpp `kSubset` so POST
+# /api/show/custom cells `mdi:<name>` resolve for every listed icon.
 ICONS=(
     alarm
     arrow-down-bold

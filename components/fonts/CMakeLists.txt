@@ -51,7 +51,7 @@ foreach(_font IN LISTS _FONT_SOURCES)
 endforeach()
 
 idf_component_register(
-    SRCS "font.cpp" "stb_truetype_impl.c"
+    SRCS "font.cpp" "mdi_custom_cell.cpp" "stb_truetype_impl.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "."
     REQUIRES esp_psram esp_rom
