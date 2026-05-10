@@ -9,11 +9,18 @@
 namespace btclock {
 namespace mdi {
 
+inline constexpr std::uint32_t kIconAlarm = 0xF0020;  // mdi-alarm
 inline constexpr std::uint32_t kIconArrowDownBold = 0xF072E;  // mdi-arrow-down-bold
 inline constexpr std::uint32_t kIconArrowUpBold = 0xF0737;  // mdi-arrow-up-bold
+inline constexpr std::uint32_t kIconBell = 0xF009A;  // mdi-bell
+inline constexpr std::uint32_t kIconBitcoin = 0xF0813;  // mdi-bitcoin
+inline constexpr std::uint32_t kIconClockOutline = 0xF0150;  // mdi-clock-outline
 inline constexpr std::uint32_t kIconLightningBolt = 0xF140B;  // mdi-lightning-bolt
 inline constexpr std::uint32_t kIconPickaxe = 0xF08B7;  // mdi-pickaxe
 inline constexpr std::uint32_t kIconRocketLaunch = 0xF14DE;  // mdi-rocket-launch
+inline constexpr std::uint32_t kIconWifi = 0xF05A9;  // mdi-wifi
+inline constexpr std::uint32_t kIconWifiAlert = 0xF16B5;  // mdi-wifi-alert
+inline constexpr std::uint32_t kIconWifiOff = 0xF05AA;  // mdi-wifi-off
 
 }  // namespace mdi
 }  // namespace btclock

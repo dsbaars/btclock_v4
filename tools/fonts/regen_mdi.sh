@@ -19,11 +19,18 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Icons the firmware renders. Keep sorted to minimise diff noise.
 ICONS=(
+    alarm
     arrow-down-bold
     arrow-up-bold
+    bell
+    bitcoin
+    clock-outline
     lightning-bolt
     pickaxe
     rocket-launch
+    wifi
+    wifi-alert
+    wifi-off
 )
 
 # MDI git ref. Pin to a tag when a stable release is needed; `master`
