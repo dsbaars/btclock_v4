@@ -16,17 +16,19 @@ Outputs (relative to the repo root):
   - components/fonts/assets/MaterialDesignIcons.ttf
   - components/fonts/include/mdi_codepoints.hpp
 
-Requires: python3.10+, fonttools, curl.
+Requires: python3.10+, fonttools, curl. Uses clang-format (when CLANG_FORMAT
+is found on PATH) to format mdi_codepoints.hpp so CI format-check stays green.
 """
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
-import textwrap
 import urllib.request
 
 
@@ -171,6 +173,11 @@ def main(argv: list[str]) -> int:
     args.out_ttf.parent.mkdir(parents=True, exist_ok=True)
     args.out_header.parent.mkdir(parents=True, exist_ok=True)
     args.out_header.write_text(build_header(wanted))
+    clang_fmt = os.environ.get("CLANG_FORMAT", "clang-format")
+    clang_exe = shutil.which(clang_fmt)
+    if clang_exe:
+        subprocess.run([clang_exe, "-i", str(args.out_header)], check=True)
+        print(f"→ clang-format {args.out_header.name}", file=sys.stderr)
     print(f"→ wrote {args.out_ttf} ({args.out_ttf.stat().st_size} B)", file=sys.stderr)
     print(f"→ wrote {args.out_header}", file=sys.stderr)
     return 0
