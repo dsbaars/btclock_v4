@@ -37,13 +37,15 @@ constexpr const char* kLegacyNvsNamespace = "led";
 struct Rgb {
   uint8_t r, g, b;
 };
+// Saturated stops so boot rainbow reflects ledBrightness; PushPixel still
+// scales by CurrentBrightness() (same hues as the old 64-capped palette).
 constexpr std::array<Rgb, 6> kBootPalette = {{
-    {64, 0, 0},
-    {64, 32, 0},
-    {64, 64, 0},
-    {0, 64, 0},
-    {0, 0, 64},
-    {32, 0, 64},
+    {255, 0, 0},
+    {255, 128, 0},
+    {255, 255, 0},
+    {0, 255, 0},
+    {0, 0, 255},
+    {148, 0, 211},
 }};
 
 // --- Shared state ---------------------------------------------------
