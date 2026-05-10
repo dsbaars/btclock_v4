@@ -1364,6 +1364,53 @@ TEST_CASE("PATCH verticalDesc wrong type rejected") {
   CHECK(res.error == "verticalDesc:bad_type");
 }
 
+// Renderer prefs (`screen_manager.cpp` ReadRenderPrefs) must use
+// `settings::ReadBool` for verticalDesc — not GetBool(..., false) — so a
+// missing NVS key matches GET/schema default (`true`). Wrong fallback
+// made labels ignore verticalDesc until the Web UI wrote an explicit bool.
+TEST_CASE("ReadBool verticalDesc uses schema default when key absent") {
+  FakePrefs prefs;
+  CHECK(!prefs.HasBool(btclock::prefs::kVerticalDesc));
+  CHECK(btclock::settings::DefaultBoolFor(btclock::prefs::kVerticalDesc));
+  CHECK(btclock::settings::ReadBool(prefs, btclock::prefs::kVerticalDesc));
+}
+
+// Same drift class as verticalDesc: schema default true (v3
+// DEFAULT_BLOCK_FEE_DECIMALS) but older reads used GetBool(..., false).
+TEST_CASE("ReadBool blockFeeDec uses schema default when key absent") {
+  FakePrefs prefs;
+  CHECK(!prefs.HasBool(btclock::prefs::kBlockFeeDec));
+  CHECK(btclock::settings::DefaultBoolFor(btclock::prefs::kBlockFeeDec));
+  CHECK(btclock::settings::ReadBool(prefs, btclock::prefs::kBlockFeeDec));
+}
+
+// poolGlobalStats defaulted true in schema; boot mirror into `pool`
+// namespace used false when the key was missing.
+TEST_CASE("ReadBool poolGlobalStats uses schema default when key absent") {
+  FakePrefs prefs;
+  CHECK(!prefs.HasBool(btclock::prefs::kPoolGlobalStats));
+  CHECK(btclock::settings::DefaultBoolFor(btclock::prefs::kPoolGlobalStats));
+  CHECK(btclock::settings::ReadBool(prefs, btclock::prefs::kPoolGlobalStats));
+}
+
+// miningPoolStats defaults false — ReadBool must agree with GET for absent key.
+TEST_CASE("ReadBool miningPoolStats uses schema default when key absent") {
+  FakePrefs prefs;
+  CHECK(!prefs.HasBool(btclock::prefs::kMiningPoolStats));
+  CHECK_FALSE(
+      btclock::settings::DefaultBoolFor(btclock::prefs::kMiningPoolStats));
+  CHECK_FALSE(
+      btclock::settings::ReadBool(prefs, btclock::prefs::kMiningPoolStats));
+}
+
+// ledFlashOnUpd PATCH hook must not fall back to false when NVS omits the key.
+TEST_CASE("ReadBool ledFlashOnUpd uses schema default when key absent") {
+  FakePrefs prefs;
+  CHECK(!prefs.HasBool(btclock::prefs::kLedFlashOnUpd));
+  CHECK(btclock::settings::DefaultBoolFor(btclock::prefs::kLedFlashOnUpd));
+  CHECK(btclock::settings::ReadBool(prefs, btclock::prefs::kLedFlashOnUpd));
+}
+
 // -- wpTimeout -------------------------------------------------------
 
 TEST_CASE("PATCH wpTimeout accepted, triggers reboot") {

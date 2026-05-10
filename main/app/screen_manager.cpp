@@ -77,20 +77,29 @@ RenderPrefs ReadRenderPrefs() {
   if (sym_mode > 2) sym_mode = 0;
   out.use_sats_symbol = (sym_mode == 1);
   out.use_btc_symbol = (sym_mode == 2);
-  out.use_mscw_time = prefs.GetBool(btclock::prefs::kUseMscwTime, true);
-  out.use_blk_countdown = prefs.GetBool(btclock::prefs::kUseBlkCountdown, true);
-  out.supply_percent = prefs.GetBool(btclock::prefs::kSupplyPercent, false);
-  out.mcap_big_char = prefs.GetBool(btclock::prefs::kMcapBigChar, true);
-  out.block_fee_dec = prefs.GetBool(btclock::prefs::kBlockFeeDec, false);
-  out.suffix_price = prefs.GetBool(btclock::prefs::kSuffixPrice, false);
-  out.mow_mode = prefs.GetBool(btclock::prefs::kMowMode, false);
+  out.use_mscw_time =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kUseMscwTime);
+  out.use_blk_countdown =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kUseBlkCountdown);
+  out.supply_percent =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kSupplyPercent);
+  out.mcap_big_char =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kMcapBigChar);
+  out.block_fee_dec =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kBlockFeeDec);
+  out.suffix_price =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kSuffixPrice);
+  out.mow_mode = btclock::settings::ReadBool(prefs, btclock::prefs::kMowMode);
   out.decimal_share_dot =
-      prefs.GetBool(btclock::prefs::kDecimalShareDot, false);
-  out.hide_lead_zero = prefs.GetBool(btclock::prefs::kHideLeadZero, false);
-  out.vertical_desc = prefs.GetBool(btclock::prefs::kVerticalDesc, false);
-  out.refr_scrn_change = prefs.GetBool(btclock::prefs::kRefrScrnChange, false);
-  out.full_refresh_min =
-      static_cast<int>(prefs.GetU32(btclock::prefs::kFullRefreshMin, 60));
+      btclock::settings::ReadBool(prefs, btclock::prefs::kDecimalShareDot);
+  out.hide_lead_zero =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kHideLeadZero);
+  out.vertical_desc =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kVerticalDesc);
+  out.refr_scrn_change =
+      btclock::settings::ReadBool(prefs, btclock::prefs::kRefrScrnChange);
+  out.full_refresh_min = static_cast<int>(
+      btclock::settings::ReadU32(prefs, btclock::prefs::kFullRefreshMin));
   out.digit_font_px =
       btclock::settings::ReadU32(prefs, btclock::prefs::kDigitFontPx);
   out.label_fit_pct =
@@ -536,8 +545,8 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
   // bypass the throttle so user input always paints.
   auto price_throttle_blocks = [&]() {
     Prefs throttle_prefs(btclock::prefs::kSettingsNs);
-    const uint32_t min_s =
-        throttle_prefs.GetU32(btclock::prefs::kMinSecPriceUpd, 30);
+    const uint32_t min_s = btclock::settings::ReadU32(
+        throttle_prefs, btclock::prefs::kMinSecPriceUpd);
     if (min_s == 0) return false;
     const int64_t elapsed_ms = MsNow() - last_price_apply_ms_;
     return elapsed_ms < static_cast<int64_t>(min_s) * 1000;

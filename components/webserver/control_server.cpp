@@ -2805,8 +2805,9 @@ btclock::settings::DeviceContext BuildDeviceContext(
   // here while mDNS used 6, so the WebUI reported a name nobody could
   // actually ping.
   {
-    btclock::Prefs p("settings");
-    const std::string prefix = p.GetString("hostnamePrefix", "btclock");
+    btclock::Prefs p(btclock::prefs::kSettingsNs);
+    const std::string prefix =
+        btclock::settings::ReadString(p, btclock::prefs::kHostnamePrefix);
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     ctx.hostname = btclock::net_util::ComputeHostname(prefix, mac);
@@ -2972,8 +2973,8 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   if (cfg_.on_tz_changed) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kTzString) {
-        const std::string zone = prefs.GetString(btclock::prefs::kTzString, "");
-        cfg_.on_tz_changed(zone);
+        cfg_.on_tz_changed(
+            btclock::settings::ReadString(prefs, btclock::prefs::kTzString));
         break;
       }
     }
@@ -2988,7 +2989,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == "invertedColor") {
         cfg_.on_inverted_color_changed(
-            prefs.GetBool(btclock::prefs::kInvertedColor, false));
+            btclock::settings::ReadBool(prefs, btclock::prefs::kInvertedColor));
         break;
       }
     }
@@ -3003,20 +3004,21 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == "fontName") {
         cfg_.on_font_changed(
-            prefs.GetString(btclock::prefs::kFontName, "antonio"));
+            btclock::settings::ReadString(prefs, btclock::prefs::kFontName));
         break;
       }
     }
   }
 
   // satsVariant: rebind the renderer's glyph index live. Schema
-  // already range-clamped 0..15; cast is safe because GetU32 is
-  // guaranteed to return a value within the kUint default for the
-  // key, but ClampSatsVariant on the read side belt-and-braces it.
+  // already range-clamped 0..15; cast is safe because ReadU32 folds to
+  // the kUint default for the key, but ClampSatsVariant on the read
+  // side belt-and-braces it.
   if (cfg_.on_sats_variant_changed) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kSatsVariant) {
-        const uint32_t v = prefs.GetU32(btclock::prefs::kSatsVariant, 7);
+        const uint32_t v =
+            btclock::settings::ReadU32(prefs, btclock::prefs::kSatsVariant);
         cfg_.on_sats_variant_changed(static_cast<uint8_t>(v & 0x0Fu));
         break;
       }
@@ -3031,8 +3033,8 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   if (cfg_.on_block_flash_color_changed) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kBlockFlashColor) {
-        cfg_.on_block_flash_color_changed(
-            prefs.GetU32(btclock::prefs::kBlockFlashColor, 0xE04300));
+        cfg_.on_block_flash_color_changed(btclock::settings::ReadU32(
+            prefs, btclock::prefs::kBlockFlashColor));
         break;
       }
     }
@@ -3046,7 +3048,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kBlockFeeDec) {
         cfg_.on_block_fee_dec_changed(
-            prefs.GetBool(btclock::prefs::kBlockFeeDec, true));
+            btclock::settings::ReadBool(prefs, btclock::prefs::kBlockFeeDec));
         break;
       }
     }
@@ -3061,7 +3063,8 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kLedBrightness) {
         cfg_.on_led_brightness_changed(static_cast<uint8_t>(
-            prefs.GetU32(btclock::prefs::kLedBrightness, 128) & 0xFFu));
+            btclock::settings::ReadU32(prefs, btclock::prefs::kLedBrightness) &
+            0xFFu));
         break;
       }
     }
@@ -3070,7 +3073,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kDisableLeds) {
         cfg_.on_disable_leds_changed(
-            prefs.GetBool(btclock::prefs::kDisableLeds, false));
+            btclock::settings::ReadBool(prefs, btclock::prefs::kDisableLeds));
         break;
       }
     }
@@ -3079,7 +3082,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
     for (const auto& k : result.touched_keys) {
       if (k == btclock::prefs::kLedFlashOnUpd) {
         cfg_.on_led_flash_on_upd_changed(
-            prefs.GetBool(btclock::prefs::kLedFlashOnUpd, false));
+            btclock::settings::ReadBool(prefs, btclock::prefs::kLedFlashOnUpd));
         break;
       }
     }

@@ -17,6 +17,7 @@
 #include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
+#include "settings/schema.hpp"
 
 namespace btclock {
 namespace mining_pools {
@@ -49,7 +50,7 @@ void MirrorSettingsIntoPoolNs() {
   pool.SetString(kPoolUserKey, user.c_str());
 
   const bool global_stats =
-      settings.GetBool(btclock::prefs::kPoolGlobalStats, false);
+      btclock::settings::ReadBool(settings, btclock::prefs::kPoolGlobalStats);
   pool.SetBool(kPoolGlobalKey, global_stats);
 
   const std::string local_host =
@@ -116,7 +117,7 @@ std::vector<std::string> AvailablePoolNames() {
 std::unique_ptr<DataSource> MakeActivePoolSource() {
   btclock::Prefs settings(btclock::prefs::kSettingsNs);
   const bool enabled =
-      settings.GetBool(btclock::prefs::kMiningPoolStats, false);
+      btclock::settings::ReadBool(settings, btclock::prefs::kMiningPoolStats);
   if (!enabled) {
     ESP_LOGI(kTag, "mining-pool stats disabled (settings/%s=false)",
              btclock::prefs::kMiningPoolStats);
