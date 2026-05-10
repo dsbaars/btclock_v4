@@ -157,7 +157,9 @@ def main(argv: list[str]) -> int:
 
         unicodes = ",".join(f"U+{cp:X}" for cp in cps)
         cmd = [
-            "pyftsubset",
+            sys.executable,
+            "-m",
+            "fontTools.subset",
             str(src_ttf),
             f"--unicodes={unicodes}",
             "--drop-tables+=GPOS,GSUB,DSIG",

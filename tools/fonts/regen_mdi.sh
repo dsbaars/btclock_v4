@@ -19,6 +19,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Icons the firmware renders. Keep sorted to minimise diff noise.
 ICONS=(
+    arrow-down-bold
+    arrow-up-bold
     lightning-bolt
     pickaxe
     rocket-launch
