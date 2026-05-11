@@ -28,7 +28,8 @@ TEST_CASE("IsAcceptableBodySize: rejects empty bodies and oversize bodies") {
   CHECK_FALSE(btclock::IsAcceptableBodySize(16 * 1024 + 1, 16 * 1024));
 }
 
-TEST_CASE("IsAcceptableBodySize: closed upper bound — exactly max_bytes is OK") {
+TEST_CASE(
+    "IsAcceptableBodySize: closed upper bound — exactly max_bytes is OK") {
   // Closed-bound contract — the per-handler buffer (e.g. char body[kMaxBody+1])
   // is sized to fit exactly kMaxBody payload bytes plus a NUL.
   CHECK(btclock::IsAcceptableBodySize(1, 128));

@@ -55,7 +55,8 @@ TEST_CASE("preview_packet: header constants match WebUI contract") {
   CHECK(kPreviewMagic[3] == 'B');
 }
 
-TEST_CASE("preview_packet: WritePreviewPanelHeader places magic + fixed fields") {
+TEST_CASE(
+    "preview_packet: WritePreviewPanelHeader places magic + fixed fields") {
   std::array<uint8_t, kPreviewHeaderBytes> buf{};
   WritePreviewPanelHeader(buf.data(), MakeHeader());
 

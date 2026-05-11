@@ -17,7 +17,8 @@ TEST_CASE("symbol_mode: no markers requested → both flags stay off") {
   CHECK_FALSE(out.use_btc_symbol);
 }
 
-TEST_CASE("symbol_mode: sats requested → sats stays on regardless of btc font") {
+TEST_CASE(
+    "symbol_mode: sats requested → sats stays on regardless of btc font") {
   // The sats glyph rides a dedicated PUA font role (kSatsGlyph) that
   // is independent of the digit-font's U+20BF coverage; the resolver
   // must not touch use_sats_symbol when has_btc=false.

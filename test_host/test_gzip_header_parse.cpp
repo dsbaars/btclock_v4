@@ -82,7 +82,8 @@ TEST_CASE("gzip: LooksGzipped rejects non-gzip and short blobs") {
   std::vector<uint8_t> wrong_magic(20, 0);
   CHECK_FALSE(LooksGzipped(wrong_magic.data(), wrong_magic.size()));
   // Right size but wrong CM (not deflate).
-  std::vector<uint8_t> wrong_cm = MakeGzip(0, {}, {}, {}, false, {0xAB, 0xCD}, 7);
+  std::vector<uint8_t> wrong_cm =
+      MakeGzip(0, {}, {}, {}, false, {0xAB, 0xCD}, 7);
   wrong_cm[2] = 0x07;
   CHECK_FALSE(LooksGzipped(wrong_cm.data(), wrong_cm.size()));
 }

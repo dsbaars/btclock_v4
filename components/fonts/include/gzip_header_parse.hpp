@@ -67,9 +67,8 @@ inline bool ParseGzipMemberHeader(const uint8_t* gz, std::size_t gz_size,
 
   if ((flg & kGzipFlagFextra) != 0) {
     if (off + 2 > end_of_payload) return false;
-    const std::size_t xlen =
-        static_cast<std::size_t>(gz[off]) |
-        (static_cast<std::size_t>(gz[off + 1]) << 8);
+    const std::size_t xlen = static_cast<std::size_t>(gz[off]) |
+                             (static_cast<std::size_t>(gz[off + 1]) << 8);
     off += 2;
     if (off + xlen > end_of_payload) return false;
     off += xlen;
