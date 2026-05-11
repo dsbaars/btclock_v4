@@ -103,6 +103,7 @@ add_executable(btclock_host_tests
     test_panel_texts.cpp
     test_price_layout.cpp
     test_show_text_parse.cpp
+    test_preview_packet.cpp
     test_mdi_custom_cell.cpp
     test_url_decode.cpp
     test_sse_frame.cpp

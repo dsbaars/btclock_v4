@@ -44,6 +44,7 @@
 #include "ota_manager.hpp"
 #include "ota_upload_bounds.hpp"
 #include "pool_logo_fetcher/pool_logo_fetcher.hpp"
+#include "preview_packet.hpp"
 #include "queue_metrics.hpp"
 #include "settings/api.hpp"
 #include "settings/build_time.hpp"
@@ -71,39 +72,9 @@ constexpr const char* kTag = "ctrl-api";
 constexpr const char* kJsonType = "application/json";
 constexpr const char* kWsPreviewPath = "/api/preview/ws";
 
-// Binary frame header for WebUI framebuffer preview messages.
-// Little-endian, fixed-size 34-byte prelude:
-//   0..3   magic "BTFB"
-//   4      version (1)
-//   5      message kind (1=panel frame)
-//   6      compression kind (1=deflate/zlib)
-//   7      bit depth (1)
-//   8      panel index
-//   9      reserved
-//   10..11 width
-//   12..13 height
-//   14..15 stride (bytes/row)
-//   16..17 rotation deg clockwise
-//   18..21 frame id
-//   22..25 timestamp ms (low 32 bits)
-//   26..29 compressed payload bytes
-//   30..33 raw payload bytes
-constexpr size_t kPreviewHeaderBytes = 34;
-constexpr uint8_t kPreviewVersion = 1;
-constexpr uint8_t kPreviewKindPanelFrame = 1;
-constexpr uint8_t kPreviewCompressionNone = 0;
-constexpr uint8_t kPreviewCompressionDeflate = 1;
-
-void WriteLe16(uint8_t* dst, uint16_t v) {
-  dst[0] = static_cast<uint8_t>(v & 0xFF);
-  dst[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
-}
-void WriteLe32(uint8_t* dst, uint32_t v) {
-  dst[0] = static_cast<uint8_t>(v & 0xFF);
-  dst[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
-  dst[2] = static_cast<uint8_t>((v >> 16) & 0xFF);
-  dst[3] = static_cast<uint8_t>((v >> 24) & 0xFF);
-}
+// Binary preview frame layout lives in include/preview_packet.hpp so
+// the host-tests (test_host/test_preview_packet.cpp) can verify the
+// magic / version / byte order without dragging in IDF headers.
 
 #if CONFIG_HTTPD_WS_SUPPORT
 // Line-based WebSocket clients (e.g. default websocat linemode) often append
@@ -558,24 +529,19 @@ void ControlServer::PreviewWorker() {
 
       std::vector<uint8_t> packet;
       packet.resize(kPreviewHeaderBytes + payload.size());
-      packet[0] = 'B';
-      packet[1] = 'T';
-      packet[2] = 'F';
-      packet[3] = 'B';
-      packet[4] = kPreviewVersion;
-      packet[5] = kPreviewKindPanelFrame;
-      packet[6] = compression_kind;
-      packet[7] = 1;  // 1-bit source framebuffer
-      packet[8] = panel.panel_index;
-      packet[9] = 0;
-      WriteLe16(packet.data() + 10, panel.width);
-      WriteLe16(packet.data() + 12, panel.height);
-      WriteLe16(packet.data() + 14, panel.stride);
-      WriteLe16(packet.data() + 16, panel.rotation_deg);
-      WriteLe32(packet.data() + 18, snap.frame_id);
-      WriteLe32(packet.data() + 22, static_cast<uint32_t>(snap.timestamp_ms));
-      WriteLe32(packet.data() + 26, static_cast<uint32_t>(payload.size()));
-      WriteLe32(packet.data() + 30, static_cast<uint32_t>(panel.raw.size()));
+      const PreviewPanelHeader header{
+          .compression_kind = compression_kind,
+          .panel_index = panel.panel_index,
+          .width = panel.width,
+          .height = panel.height,
+          .stride = panel.stride,
+          .rotation_deg = panel.rotation_deg,
+          .frame_id = snap.frame_id,
+          .timestamp_ms = static_cast<uint32_t>(snap.timestamp_ms),
+          .payload_size = static_cast<uint32_t>(payload.size()),
+          .raw_size = static_cast<uint32_t>(panel.raw.size()),
+      };
+      WritePreviewPanelHeader(packet.data(), header);
       std::memcpy(packet.data() + kPreviewHeaderBytes, payload.data(),
                   payload.size());
 
