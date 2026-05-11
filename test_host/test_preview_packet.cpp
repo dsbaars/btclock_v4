@@ -26,23 +26,17 @@ namespace {
 PreviewPanelHeader MakeHeader() {
   // Distinct, non-zero values per field so a swapped offset shows up
   // as a numeric mismatch instead of a coincidental zero match.
-  // Positional aggregate init (not designated) keeps the C++17 host
-  // build clean — designated initializers are a C++20 feature and
-  // libstdc++ on Ubuntu CI warns even at compile-only severity.
-  // Order MUST match struct PreviewPanelHeader in preview_packet.hpp:
-  //   compression_kind, panel_index, width, height, stride,
-  //   rotation_deg, frame_id, timestamp_ms, payload_size, raw_size.
   return PreviewPanelHeader{
-      kPreviewCompressionDeflate,  // compression_kind
-      5,                           // panel_index
-      0x1234,                      // width
-      0x5678,                      // height
-      0x9ABC,                      // stride
-      270,                         // rotation_deg
-      0xDEADBEEFu,                 // frame_id
-      0x01020304u,                 // timestamp_ms
-      0xCAFEBABEu,                 // payload_size
-      0x10203040u,                 // raw_size
+      .compression_kind = kPreviewCompressionDeflate,
+      .panel_index = 5,
+      .width = 0x1234,
+      .height = 0x5678,
+      .stride = 0x9ABC,
+      .rotation_deg = 270,
+      .frame_id = 0xDEADBEEFu,
+      .timestamp_ms = 0x01020304u,
+      .payload_size = 0xCAFEBABEu,
+      .raw_size = 0x10203040u,
   };
 }
 

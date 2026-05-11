@@ -12,9 +12,20 @@
 cmake_minimum_required(VERSION 3.16)
 project(btclock_host_tests CXX C)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Match the firmware build (ESP-IDF v6.0.1 defaults to C++23 for the
+# device target). Keeping host on C++17 created a class of CI surprises:
+# designated initializers (`.field = v`) compile fine on the firmware
+# but warn under -std=c++17 with -Wpedantic. Aligning the standards
+# removes the gap.
+#
+# Forgejo CI uses gcc 13 (Ubuntu 24.04), which has the C++23 features
+# this codebase touches: `if consteval`, `std::expected`, designated
+# initializers (already C++20), deducing-this. We do NOT use the
+# library bits gcc 13 lacks (`std::print` / `std::println` / `<format>`
+# pieces that landed in gcc 14).
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion)
 
