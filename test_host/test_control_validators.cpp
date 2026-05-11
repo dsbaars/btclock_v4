@@ -25,7 +25,7 @@ TEST_CASE("IsAcceptableBodySize: rejects empty bodies and oversize bodies") {
   // larger than max_bytes is rejected.
   CHECK_FALSE(btclock::IsAcceptableBodySize(0, 128));
   CHECK_FALSE(btclock::IsAcceptableBodySize(129, 128));
-  CHECK_FALSE(btclock::IsAcceptableBodySize(16 * 1024 + 1, 16 * 1024));
+  CHECK_FALSE(btclock::IsAcceptableBodySize(16U * 1024U + 1U, 16U * 1024U));
 }
 
 TEST_CASE(
@@ -34,7 +34,7 @@ TEST_CASE(
   // is sized to fit exactly kMaxBody payload bytes plus a NUL.
   CHECK(btclock::IsAcceptableBodySize(1, 128));
   CHECK(btclock::IsAcceptableBodySize(128, 128));
-  CHECK(btclock::IsAcceptableBodySize(16 * 1024, 16 * 1024));
+  CHECK(btclock::IsAcceptableBodySize(16U * 1024U, 16U * 1024U));
 }
 
 TEST_CASE("IsAcceptableBodySize: max_bytes=0 rejects every body") {
