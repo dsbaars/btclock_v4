@@ -363,7 +363,7 @@ cJSON* BuildLightsStatusArray(const LedsIface::Status& st) {
 // /api/show/text + /api/show/custom handlers now share the same
 // pattern and live earlier in the file.
 char* ReadFullBody(httpd_req_t* req, size_t max_bytes) {
-  if (req->content_len == 0 || req->content_len > max_bytes) return nullptr;
+  if (!IsAcceptableBodySize(req->content_len, max_bytes)) return nullptr;
   char* buf = static_cast<char*>(heap_caps_malloc_prefer(
       req->content_len + 1, 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT,
       MALLOC_CAP_8BIT));
@@ -2261,7 +2261,7 @@ esp_err_t ControlServer::HandleLightsEffect(httpd_req_t* req) {
 esp_err_t ControlServer::HandleWifiTxPower(httpd_req_t* req) {
   if (!RequireHttpAuth(req)) return ESP_OK;
   constexpr size_t kMaxBody = 128;
-  if (req->content_len == 0 || req->content_len > kMaxBody) {
+  if (!IsAcceptableBodySize(req->content_len, kMaxBody)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
     return ESP_FAIL;
   }
@@ -2911,7 +2911,7 @@ esp_err_t ControlServer::HandleSettingsPatch(httpd_req_t* req) {
   // the WebUI sending a full object (rare — it PATCHes deltas) or an
   // attacker probing; bounce either way.
   constexpr size_t kMaxBody = 16 * 1024;
-  if (req->content_len == 0 || req->content_len > kMaxBody) {
+  if (!IsAcceptableBodySize(req->content_len, kMaxBody)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad body");
     return ESP_FAIL;
   }

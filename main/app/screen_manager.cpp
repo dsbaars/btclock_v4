@@ -12,6 +12,7 @@
 #include "prefs.hpp"
 #include "screens/common.hpp"
 #include "screens/panel_texts.hpp"
+#include "screens/symbol_mode.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
 
@@ -676,7 +677,16 @@ void ScreenManager::Render(
   if (debug_mode_) return;
   const ScreenType kind = current_kind();
   const std::string& ccy = current_currency();
-  const RenderPrefs rp = ReadRenderPrefs();
+  RenderPrefs rp = ReadRenderPrefs();
+  // Downgrade priceSymMode=2 (₿) to no-marker when the active digit
+  // font lacks U+20BF — see screens/symbol_mode.hpp for the truth
+  // table and the host-test (test_symbol_mode.cpp) that pins it.
+  {
+    const SymbolModeOutcome eff = ResolveSymbolMode(
+        rp.use_sats_symbol, rp.use_btc_symbol, fonts.digit_has_bitcoin_sign());
+    rp.use_sats_symbol = eff.use_sats_symbol;
+    rp.use_btc_symbol = eff.use_btc_symbol;
+  }
   // Push the live digitFontPx setting into the screens/common.cpp
   // process-global before any per-screen renderer constructs PaintSlots.
   // SetGlobalDigitPx clamps to the schema bounds defensively, so a stale

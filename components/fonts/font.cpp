@@ -1,5 +1,6 @@
 #include "font.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <new>
 #include <string>
@@ -26,6 +27,8 @@ static inline void heap_caps_free(void* p) {
 #else
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "miniz.h"
 #endif
 #include "fit_text_px.hpp"
@@ -359,10 +362,31 @@ Font::ReferenceBox Font::GetReferenceBox(const char* chars,
 namespace {
 
 // Scratch buffer for the biggest glyph we expect to rasterize. Lives in
-// PSRAM so it doesn't eat internal RAM.
+// PSRAM so it doesn't eat internal RAM. SHARED across every Draw* call:
+// the buffer is owned by whichever task owns the current text render,
+// and the rendering path is single-threaded by contract — only the main
+// task drives the EPD framebuffer and only the main task calls into
+// font.cpp. If a future caller pulls rendering onto a worker (the
+// preview compressor was a near miss — it operates on the already-
+// rendered framebuffer instead), it MUST gain its own scratch buffer
+// or wrap calls in a mutex. The runtime assert below catches the first
+// time a second task tries to share the buffer rather than letting it
+// silently corrupt mid-glyph.
 constexpr size_t kMaxGlyphBytes = 200 * 200;  // 40 KB
 uint8_t* glyph_buf() {
   static uint8_t* buf = nullptr;
+#ifndef BTCLOCK_WASM_BUILD
+  static TaskHandle_t owner = nullptr;
+  TaskHandle_t self = xTaskGetCurrentTaskHandle();
+  if (owner == nullptr) {
+    owner = self;
+  } else if (owner != self) {
+    // Renderer is being called from a second task. The shared scratch
+    // buffer is not safe; fail loudly instead of corrupting silently.
+    ESP_LOGE(kTag, "glyph_buf called from second task — render is not MT-safe");
+    std::abort();
+  }
+#endif
   if (buf == nullptr) {
     buf = static_cast<uint8_t*>(
         heap_caps_malloc(kMaxGlyphBytes, MALLOC_CAP_SPIRAM));
