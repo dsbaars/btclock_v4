@@ -1,3 +1,5 @@
+#include <cstddef>
+
 #include "control_validators.hpp"
 #include "doctest.h"
 
@@ -23,18 +25,20 @@ TEST_CASE("IsAcceptableBodySize: rejects empty bodies and oversize bodies") {
   // on this contract: 0-length bodies are rejected (handler returns
   // 400, not a confused half-read), and any content_len strictly
   // larger than max_bytes is rejected.
+  constexpr std::size_t k16K = 16U * 1024U;
   CHECK_FALSE(btclock::IsAcceptableBodySize(0, 128));
   CHECK_FALSE(btclock::IsAcceptableBodySize(129, 128));
-  CHECK_FALSE(btclock::IsAcceptableBodySize(16U * 1024U + 1U, 16U * 1024U));
+  CHECK_FALSE(btclock::IsAcceptableBodySize(k16K + 1U, k16K));
 }
 
 TEST_CASE(
     "IsAcceptableBodySize: closed upper bound — exactly max_bytes is OK") {
   // Closed-bound contract — the per-handler buffer (e.g. char body[kMaxBody+1])
   // is sized to fit exactly kMaxBody payload bytes plus a NUL.
+  constexpr std::size_t k16K = 16U * 1024U;
   CHECK(btclock::IsAcceptableBodySize(1, 128));
   CHECK(btclock::IsAcceptableBodySize(128, 128));
-  CHECK(btclock::IsAcceptableBodySize(16U * 1024U, 16U * 1024U));
+  CHECK(btclock::IsAcceptableBodySize(k16K, k16K));
 }
 
 TEST_CASE("IsAcceptableBodySize: max_bytes=0 rejects every body") {
