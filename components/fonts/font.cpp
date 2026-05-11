@@ -29,6 +29,7 @@ static inline void heap_caps_free(void* p) {
 #include "miniz.h"
 #endif
 #include "fit_text_px.hpp"
+#include "gzip_header_parse.hpp"
 #include "landscape_rotation.hpp"
 #include "markdown_parse.hpp"
 #include "stb_truetype.h"
@@ -169,23 +170,10 @@ void SetPixelLandscape(LandscapeFb& fb, int lx, int ly, bool white) {
 
 namespace {
 
-// gzip stream produced by `gzip -n -9` (see components/fonts/CMakeLists.txt):
-//   bytes 0..1   magic 0x1f 0x8b
-//   byte  2      method (0x08 = deflate)
-//   byte  3      flags (FLG=0 because of -n: no FNAME, no FEXTRA, etc.)
-//   bytes 4..7   mtime (zeroed by -n)
-//   byte  8      extra flags
-//   byte  9      OS
-//   bytes 10..N  raw deflate stream
-//   bytes N..N+3 CRC32 of decompressed data
-//   bytes N+4..  ISIZE (uncompressed size, mod 2^32, little-endian)
-constexpr size_t kGzipHeaderLen = 10;
-constexpr size_t kGzipTrailerLen = 8;
-
-bool LooksGzipped(const uint8_t* data, size_t size) {
-  return size >= kGzipHeaderLen + kGzipTrailerLen && data[0] == 0x1f &&
-         data[1] == 0x8b && data[2] == 0x08;
-}
+// gzip header parsing (magic, FLG bits, optional FEXTRA / FNAME /
+// FCOMMENT / FHCRC, ISIZE) lives in include/gzip_header_parse.hpp so
+// the host-tests in test_host/ can exercise the FLG bit handling
+// without dragging in miniz or ESP_LOG.
 
 #ifdef BTCLOCK_WASM_BUILD
 // WASM never sees compressed bytes — Font's ctor uses the raw input
@@ -201,22 +189,18 @@ uint8_t* DecompressFontGzip(const uint8_t*, size_t, size_t*) {
 // to *out_size and the caller owns the buffer.
 uint8_t* DecompressFontGzip(const uint8_t* gz, size_t gz_size,
                             size_t* out_size) {
-  if (!LooksGzipped(gz, gz_size)) return nullptr;
-  // We control the upstream and use `gzip -n` so FLG should be 0 — bail
-  // if any flag bit is set rather than trying to skip optional fields,
-  // because that would mean the build pipeline drifted.
-  if (gz[3] != 0x00) {
-    ESP_LOGE(kTag, "unexpected gzip FLG=0x%02x — want 0", gz[3]);
+  GzipMemberInfo info{};
+  if (!ParseGzipMemberHeader(gz, gz_size, &info)) {
+    ESP_LOGE(kTag, "gzip header parse failed (size=%u FLG=0x%02x)",
+             static_cast<unsigned>(gz_size),
+             static_cast<unsigned>(gz_size >= 4 ? gz[3] : 0));
     return nullptr;
   }
-  // ISIZE — uncompressed size mod 2^32, little-endian. Our subsetted
-  // fonts are well under 4 GiB so the truncation is benign.
-  const size_t isize = static_cast<size_t>(gz[gz_size - 4]) |
-                       (static_cast<size_t>(gz[gz_size - 3]) << 8) |
-                       (static_cast<size_t>(gz[gz_size - 2]) << 16) |
-                       (static_cast<size_t>(gz[gz_size - 1]) << 24);
-  const size_t deflate_off = kGzipHeaderLen;
-  const size_t deflate_size = gz_size - kGzipHeaderLen - kGzipTrailerLen;
+  // ISIZE — uncompressed size mod 2^32. Our subsetted fonts are well
+  // under 4 GiB so the truncation is benign.
+  const size_t isize = info.isize;
+  const size_t deflate_off = info.deflate_offset;
+  const size_t deflate_size = info.deflate_size;
   // PSRAM-only on purpose: do NOT fall back to internal RAM. Fonts are
   // read-only payload; landing them in internal RAM steals from wifi /
   // mbedTLS / FreeRTOS task stacks, which broke boot on Rev B during
