@@ -5,6 +5,7 @@
 // strict FLG=0 check rejected outright.
 
 #include <cstdint>
+#include <initializer_list>
 #include <vector>
 
 #include "doctest.h"

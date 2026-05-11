@@ -7,6 +7,8 @@
 // Argument order matches ResolveSymbolMode's signature:
 //   (requested_sats_symbol, requested_btc_symbol, digit_font_has_btc_sign)
 
+#include <initializer_list>
+
 #include "doctest.h"
 #include "screens/symbol_mode.hpp"
 
