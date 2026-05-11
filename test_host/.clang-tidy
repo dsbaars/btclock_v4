@@ -1,0 +1,25 @@
+# Test-only relaxations on top of the project root .clang-tidy.
+#
+# Tests construct deliberate edge cases (oversize bodies, magic
+# constants, mismatched argument labels for clarity) and the costs of
+# being strict here are visible: every churn-grade nit blocks the push
+# gate and forces a follow-up commit. Production code stays under the
+# full check set; we only loosen the inputs to test_host/.
+#
+# `InheritParentConfig: true` keeps every check from the root
+# `.clang-tidy` enabled — we only subtract the two checks that have
+# repeatedly fired on test files without flagging real bugs:
+#
+#   bugprone-implicit-widening-of-multiplication-result
+#     Hit by `16U * 1024U` literals passed to size_t parameters; the
+#     widening is intentional and the constants are obvious.
+#
+#   bugprone-argument-comment
+#     Tests use shorter `/*sats=*/` style comments for readability;
+#     the parameter-name match against the production header isn't
+#     load-bearing in test code.
+
+InheritParentConfig: true
+Checks: >
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-argument-comment
