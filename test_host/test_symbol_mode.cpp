@@ -3,6 +3,9 @@
 // a font swap can leave use_btc_symbol=true on a font that lacks
 // U+20BF; ScreenManager::Render runs this resolver every frame so
 // the marker collapses to "no marker" instead of painting tofu.
+//
+// Argument order matches ResolveSymbolMode's signature:
+//   (requested_sats_symbol, requested_btc_symbol, digit_font_has_btc_sign)
 
 #include "doctest.h"
 #include "screens/symbol_mode.hpp"
@@ -11,8 +14,7 @@ using btclock::ResolveSymbolMode;
 using btclock::SymbolModeOutcome;
 
 TEST_CASE("symbol_mode: no markers requested → both flags stay off") {
-  const auto out = ResolveSymbolMode(/*sats=*/false, /*btc=*/false,
-                                     /*has_btc=*/true);
+  const auto out = ResolveSymbolMode(false, false, true);
   CHECK_FALSE(out.use_sats_symbol);
   CHECK_FALSE(out.use_btc_symbol);
 }
@@ -24,22 +26,20 @@ TEST_CASE(
   // must not touch use_sats_symbol when has_btc=false.
   for (bool has_btc : {false, true}) {
     CAPTURE(has_btc);
-    const auto out = ResolveSymbolMode(/*sats=*/true, /*btc=*/false, has_btc);
+    const auto out = ResolveSymbolMode(true, false, has_btc);
     CHECK(out.use_sats_symbol);
     CHECK_FALSE(out.use_btc_symbol);
   }
 }
 
 TEST_CASE("symbol_mode: ₿ requested + font has U+20BF → ₿ stays on") {
-  const auto out = ResolveSymbolMode(/*sats=*/false, /*btc=*/true,
-                                     /*has_btc=*/true);
+  const auto out = ResolveSymbolMode(false, true, true);
   CHECK_FALSE(out.use_sats_symbol);
   CHECK(out.use_btc_symbol);
 }
 
 TEST_CASE("symbol_mode: ₿ requested + font lacks U+20BF → ₿ downgraded off") {
-  const auto out = ResolveSymbolMode(/*sats=*/false, /*btc=*/true,
-                                     /*has_btc=*/false);
+  const auto out = ResolveSymbolMode(false, true, false);
   CHECK_FALSE(out.use_sats_symbol);
   CHECK_FALSE(out.use_btc_symbol);
 }
@@ -48,8 +48,7 @@ TEST_CASE("symbol_mode: ₿ downgrade does NOT promote to sats") {
   // Deliberate: the user picked ₿ explicitly. Falling back to a
   // different glyph (sats) would be a quieter form of the same
   // surprise. Marker cell is left empty; layout collapses cleanly.
-  const auto out = ResolveSymbolMode(/*sats=*/false, /*btc=*/true,
-                                     /*has_btc=*/false);
+  const auto out = ResolveSymbolMode(false, true, false);
   CHECK_FALSE(out.use_sats_symbol);
 }
 
@@ -59,8 +58,7 @@ TEST_CASE("symbol_mode: simultaneous sats+btc on a btc-capable font") {
   // the resolver still behaves cleanly if some other caller passes
   // both true. The resolver does not arbitrate between them — the
   // mutually-exclusive contract is enforced upstream.
-  const auto out = ResolveSymbolMode(/*sats=*/true, /*btc=*/true,
-                                     /*has_btc=*/true);
+  const auto out = ResolveSymbolMode(true, true, true);
   CHECK(out.use_sats_symbol);
   CHECK(out.use_btc_symbol);
 }
@@ -68,8 +66,7 @@ TEST_CASE("symbol_mode: simultaneous sats+btc on a btc-capable font") {
 TEST_CASE("symbol_mode: simultaneous sats+btc downgraded if font lacks ₿") {
   // Same case as above, but the font cannot draw U+20BF; the resolver
   // strips ₿ and lets the upstream sats request through unchanged.
-  const auto out = ResolveSymbolMode(/*sats=*/true, /*btc=*/true,
-                                     /*has_btc=*/false);
+  const auto out = ResolveSymbolMode(true, true, false);
   CHECK(out.use_sats_symbol);
   CHECK_FALSE(out.use_btc_symbol);
 }
