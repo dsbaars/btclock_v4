@@ -24,8 +24,20 @@
 
 namespace btclock {
 
-AppCtx::AppCtx() = default;
-AppCtx::~AppCtx() = default;
+AppCtx::AppCtx() {
+  // Binary semaphore the main loop posts after rendering the OTA
+  // overlay. Constructed in not-signalled state so the first
+  // xSemaphoreTake() in the pre-flash hook blocks until the main
+  // loop's drain path posts.
+  ota_overlay_rendered_sem = xSemaphoreCreateBinary();
+}
+
+AppCtx::~AppCtx() {
+  if (ota_overlay_rendered_sem != nullptr) {
+    vSemaphoreDelete(ota_overlay_rendered_sem);
+    ota_overlay_rendered_sem = nullptr;
+  }
+}
 
 uint8_t (&AppCtx::fb_storage()) [btclock::board::kNumPanels][16 * 296] {
   static uint8_t storage[btclock::board::kNumPanels][16 * 296];

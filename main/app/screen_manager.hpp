@@ -32,6 +32,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -155,8 +156,8 @@ class ScreenManager {
   // RenderOtaUpdateScreen — the main loop stays out of the renderer
   // entirely while this is active, which avoids needing a separate EPD
   // mutex for the brief window.
-  bool IsOtaActive() const { return ota_active_; }
-  void SetOtaOverlay(bool active) { ota_active_ = active; }
+  bool IsOtaActive() const { return ota_active_.load(); }
+  void SetOtaOverlay(bool active) { ota_active_.store(active); }
 
   // --- Off-rotation debug overlay ---
   //
@@ -387,13 +388,14 @@ class ScreenManager {
   // True while the off-rotation debug overlay is up.
   bool debug_mode_ = false;
   // True while a firmware OTA push upload is streaming bytes to flash.
-  // Plain scalar — the HTTP worker sets it before Render and the main
-  // task reads it to short-circuit ShouldRender / MaybeAutoRotate.
-  // No lock: scalar writes on the S3 are atomic wrt reads, and the
-  // only contended path is the main loop's "should I re-render?"
-  // check which tolerates a one-tick stale value (worst case: it
-  // paints a data screen once before the next loop iteration clamps).
-  bool ota_active_ = false;
+  // The OTA worker (auto-update task / push-OTA httpd worker) sets
+  // this through SetOtaOverlay before the EPD render handoff; the
+  // main task reads it via ShouldRender / MaybeAutoRotate / current_kind
+  // to short-circuit the data-driven render path. Made std::atomic so
+  // the cross-task write is well-defined; non-atomic int writes on
+  // Xtensa LX7 are atomic in practice but formally UB, and the
+  // sanitizer build correctly flagged it as a data race.
+  std::atomic<bool> ota_active_{false};
   // Runtime skip hook: invoked against the *would-be* next slot's kind
   // during rotation advance. Wired by main.cpp to the mining-pool
   // capability check so users who saved `screens[{id:71,enabled:true}]`

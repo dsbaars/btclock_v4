@@ -29,6 +29,7 @@
 #include "esp_timer.h"
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
@@ -483,17 +484,52 @@ void InitControlApi(AppCtx& ctx) {
   // /api/firmware/auto_update handler can kick off a pull update.
   GetOtaManager().Init(MakeOtaConfig());
 
-  // Pre-flash hook: fires once on the httpd worker before esp_ota_begin
-  // erases the partition. We stop every data source (WS client, nostr
-  // relay + zap listener, mining-pool + bitaxe pollers) to free the
-  // internal heap their TLS / recv buffers were holding, then paint the
-  // "UPDATE!" overlay on every panel and latch ScreenManager into OTA
-  // mode so the main loop can't stomp it. The main render loop stops
+  // Pre-flash hook: fires once on a worker task (auto-update spawns
+  // its own ota_auto task; push-OTA fires on the httpd worker) before
+  // esp_ota_begin erases the partition. We stop every data source
+  // (WS client, nostr relay + zap listener, mining-pool + bitaxe
+  // pollers) to free the internal heap their TLS / recv buffers were
+  // holding, then hand off the "UPDATE!" overlay paint to the main
+  // task and latch ScreenManager into OTA mode so the main loop won't
+  // stomp it on a subsequent data push. The main render loop stops
   // painting once SetOtaOverlay(true) is observed — subsequent panel
   // writes come only from this handler's completion-blink branch (LED
   // only; the EPD stays on the "UPDATE!" screen until esp_restart).
+  //
+  // The overlay render is dispatched onto the main task (not painted
+  // inline) because font.cpp's glyph_buf is owned by whichever task
+  // first claims it — that's always the main task, and a second
+  // claimant aborts. We set ota_overlay_render_pending, kick the main
+  // task, and block on the rendered semaphore so the OTA flow only
+  // begins erasing the partition after the EPD shows UPDATE.
   GetOtaManager().SetPreFlashHook([ctx_ptr]() {
-    ESP_LOGW("ota-ux", "pre-flash hook: quiescing data + painting UPDATE");
+    ESP_LOGW("ota-ux", "pre-flash hook: painting UPDATE + quiescing data");
+    // Paint the "UPDATE!" overlay FIRST so the user sees it within a
+    // single EPD refresh, regardless of how long the data quiesce
+    // below takes. Safe to reorder: SetOtaOverlay(true) makes
+    // ShouldRender() return false, so even if a data source pushes
+    // one last frame before its Stop() returns, the main loop won't
+    // stomp the overlay. The 5 s deadline is generous — the actual
+    // render is a static-text paint (<300 ms on a 2.13"), but a
+    // partial-refresh that hit just before the hook fired can hold
+    // the EPD bus for ~1.7 s; missing the deadline is still
+    // recoverable (EPD just won't show "UPDATE!" but the LED bar
+    // still indicates progress).
+    if (ctx_ptr->sm) {
+      ctx_ptr->sm->SetOtaOverlay(true);
+      ctx_ptr->ota_overlay_render_pending.store(true);
+      if (ctx_ptr->main_task != nullptr) {
+        xTaskNotifyGive(ctx_ptr->main_task);
+      }
+      if (ctx_ptr->ota_overlay_rendered_sem != nullptr) {
+        if (xSemaphoreTake(ctx_ptr->ota_overlay_rendered_sem,
+                           pdMS_TO_TICKS(5000)) != pdTRUE) {
+          ESP_LOGW("ota-ux",
+                   "main task did not render OTA overlay within 5s; "
+                   "proceeding with flash anyway");
+        }
+      }
+    }
     // Order is non-obvious — see ota_quiesce.hpp. Host-tested in
     // test_ota_quiesce.cpp. Multi-relay: stop EVERY listener before any
     // relay (they may borrow a sibling NostrDataSource's
@@ -508,15 +544,6 @@ void InitControlApi(AppCtx& ctx) {
       if (relay) relay->Stop();
     }
     if (ctx_ptr->hub) ctx_ptr->hub->StopAll();
-    // Latch ScreenManager into OTA mode before painting — ShouldRender
-    // now returns false so the main loop stays out of the EPD for the
-    // remainder of the flash. Rotation timer is frozen via the same
-    // predicate in MaybeAutoRotate.
-    if (ctx_ptr->sm) {
-      ctx_ptr->sm->SetOtaOverlay(true);
-      RenderOtaUpdateScreen(ctx_ptr->panels, AppCtx::fb_storage(),
-                            ctx_ptr->fonts);
-    }
     // Seed the LED bar so the user sees "something is happening"
     // before the first real progress event fires.
     ShowOtaProgressLedCount(1);

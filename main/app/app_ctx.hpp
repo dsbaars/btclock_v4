@@ -30,6 +30,7 @@
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "i2c_bus.hpp"
 #include "mcp23017.hpp"
@@ -177,6 +178,18 @@ struct AppCtx {
   std::atomic<bool> zap_notify_screen_enabled{true};
   std::atomic<bool> zap_screen_auto_restore{true};
   std::atomic<bool> zap_notify_pending{false};
+
+  // OTA "UPDATE!" overlay render-on-main-task handoff. The pre-flash
+  // hook fires on the ota_auto worker task (auto-update) or the httpd
+  // worker (push-OTA); both are not the task that owns font.cpp's
+  // glyph_buf scratch. Rendering directly from those tasks tripped
+  // the single-thread invariant and aborted the process. Set
+  // ota_overlay_render_pending=true + xTaskNotifyGive(main_task), then
+  // wait on ota_overlay_rendered_sem so the hook returns only after
+  // the main loop has painted the overlay. Semaphore is created at
+  // AppCtx construction (binary, starts not-signalled).
+  std::atomic<bool> ota_overlay_render_pending{false};
+  SemaphoreHandle_t ota_overlay_rendered_sem = nullptr;
 
   // Control API + SSE fan-out. Adapters are owned here so their
   // lifetime spans the whole run (ControlServer holds raw pointers

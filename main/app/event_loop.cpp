@@ -53,6 +53,8 @@ constexpr const char* kTag = "btclock";
   QueueHandle_t button_q = ctx.button_q;
   auto& zap_notify_pending = ctx.zap_notify_pending;
   auto& zap_screen_auto_restore = ctx.zap_screen_auto_restore;
+  auto& ota_overlay_render_pending = ctx.ota_overlay_render_pending;
+  SemaphoreHandle_t ota_overlay_rendered_sem = ctx.ota_overlay_rendered_sem;
   auto& flash_frontlight_on_zap_enabled = ctx.flash_frontlight_on_zap_enabled;
   auto& flash_on_zap_enabled = ctx.flash_on_zap_enabled;
   const std::string& ssid = ctx.sta_ssid;
@@ -231,6 +233,25 @@ constexpr const char* kTag = "btclock";
     if (sm.IsDebug() && now_ms - last_debug_render_ms >= 10'000) {
       render_debug(now_ms, /*force_full=*/false);
       publish_status();
+      continue;
+    }
+
+    // OTA "UPDATE!" overlay: the pre-flash hook fires on the ota_auto
+    // worker (auto-update) or the httpd worker (push-OTA) and raises
+    // this flag instead of rendering directly. Doing the render here
+    // keeps the font.cpp single-thread invariant intact (glyph_buf
+    // ownership stays with the main task) and avoids the silent
+    // scratch-buffer corruption the cross-task path produced before
+    // the abort guard caught it. We post the semaphore at the end so
+    // the hook returns only AFTER the overlay is on the EPDs; OTA can
+    // then safely begin its destructive partition erase.
+    bool pending_ota_overlay = true;
+    if (ota_overlay_render_pending.compare_exchange_strong(pending_ota_overlay,
+                                                           false)) {
+      RenderOtaUpdateScreen(panels, fb_storage, fonts);
+      if (ota_overlay_rendered_sem != nullptr) {
+        xSemaphoreGive(ota_overlay_rendered_sem);
+      }
       continue;
     }
 
