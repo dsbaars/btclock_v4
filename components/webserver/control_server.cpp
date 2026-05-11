@@ -427,13 +427,32 @@ ControlServer::ControlServer(Config cfg) : cfg_(std::move(cfg)) {
 }
 
 ControlServer::~ControlServer() {
+  // Signal the preview worker, then BLOCK on its shutdown semaphore
+  // before tearing down the httpd. The earlier 200 ms spin-loop
+  // could expire while the worker was still inside
+  // tdefl_compress_mem_to_mem + httpd_ws_send_data — V8 panels at
+  // 7.5" land at ~48 KiB/panel and four compression retries can
+  // outrun the timeout, after which httpd_stop() invalidates the
+  // server_ handle the worker is still using (UAF in IDF httpd
+  // internals). The semaphore guarantees the worker has reached
+  // vTaskDelete before we touch httpd_stop. 2 s upper bound is
+  // generous for the worst-case multi-panel compress+send pass and
+  // still keeps shutdown bounded if the worker truly wedges.
+  TaskHandle_t pending_task = nullptr;
   {
     std::lock_guard<std::mutex> lk(preview_mu_);
     preview_worker_stop_ = true;
+    pending_task = preview_task_;
   }
-  if (preview_task_) xTaskNotifyGive(preview_task_);
-  for (int i = 0; i < 20 && preview_task_; ++i) {
-    vTaskDelay(pdMS_TO_TICKS(10));
+  if (pending_task) {
+    xTaskNotifyGive(pending_task);
+    if (preview_shutdown_sem_ != nullptr) {
+      xSemaphoreTake(preview_shutdown_sem_, pdMS_TO_TICKS(2000));
+    }
+  }
+  if (preview_shutdown_sem_ != nullptr) {
+    vSemaphoreDelete(preview_shutdown_sem_);
+    preview_shutdown_sem_ = nullptr;
   }
   if (server_) httpd_stop(server_);
   if (cmd_queue_) vQueueDelete(cmd_queue_);
@@ -582,7 +601,17 @@ void ControlServer::PreviewWorker() {
       for (int fd : dead_fds) RemovePreviewClientLocked(fd);
     }
   }
-  preview_task_ = nullptr;
+  // Mark the slot empty under the same mutex that publishes the handle
+  // so the destructor's read of preview_task_ is race-free, and post the
+  // shutdown semaphore so ~ControlServer can advance to httpd_stop only
+  // after the task is truly out of httpd_ws_send_data.
+  {
+    std::lock_guard<std::mutex> lk(preview_mu_);
+    preview_task_ = nullptr;
+  }
+  if (preview_shutdown_sem_ != nullptr) {
+    xSemaphoreGive(preview_shutdown_sem_);
+  }
   vTaskDelete(nullptr);
 }
 
@@ -760,8 +789,17 @@ esp_err_t ControlServer::Start() {
   reg("/*", HTTP_GET, TrampolineStatic);
 
   if (!preview_task_) {
-    if (xTaskCreate(PreviewWorkerTrampoline, "ws_preview", 8192, this, 4,
-                    &preview_task_) != pdPASS) {
+    // Allocate the shutdown semaphore lazily next to the task itself.
+    // Binary semaphore created in the empty (= "not yet posted") state
+    // so the destructor's xSemaphoreTake will block until the worker
+    // posts on its way to vTaskDelete.
+    if (preview_shutdown_sem_ == nullptr) {
+      preview_shutdown_sem_ = xSemaphoreCreateBinary();
+    }
+    if (preview_shutdown_sem_ == nullptr) {
+      ESP_LOGW(kTag, "preview shutdown semaphore alloc failed");
+    } else if (xTaskCreate(PreviewWorkerTrampoline, "ws_preview", 8192, this, 4,
+                           &preview_task_) != pdPASS) {
       preview_task_ = nullptr;
       ESP_LOGW(kTag, "preview worker task create failed");
     }

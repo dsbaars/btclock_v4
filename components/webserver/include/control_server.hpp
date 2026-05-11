@@ -31,6 +31,7 @@
 #include "esp_http_server.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "settings/api.hpp"
 #include "wifi.hpp"
@@ -727,6 +728,11 @@ class ControlServer {
   bool preview_worker_stop_ = false;
   uint32_t preview_frame_seq_ = 0;
   TaskHandle_t preview_task_ = nullptr;
+  // Posted by PreviewWorker right before vTaskDelete so the destructor
+  // can block until the task is truly out of httpd_ws_send_data before
+  // calling httpd_stop. Created in Start() only when the worker spawns;
+  // nullptr otherwise (single-shot, no-op fast path).
+  SemaphoreHandle_t preview_shutdown_sem_ = nullptr;
 };
 
 }  // namespace btclock
