@@ -681,25 +681,25 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
   return buf;
 }
 
-std::vector<std::string> BuildNostrZap(
-    const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
-    bool use_btc_symbol, std::size_t n_panels) {
-  // Layout mirrors RenderNostrZapScreen in main/screens/nostr_zap.cpp:
-  //   [ZAP][bolt][...blanks...][sats glyph][amount...]
-  // Same on 7- and 8-panel boards — V8's extra cell widens the blank
-  // gap rather than shifting ZAP/bolt rightward.
+std::vector<std::string> BuildLabelBoltAmount(
+    const char* label, const std::optional<int64_t>& amount_sats,
+    bool use_sats_symbol, bool use_btc_symbol, std::size_t n_panels) {
+  // Shared "label + bolt + amount" layout — mirrors
+  // RenderNostrZapScreen / RenderNwcShared. Three screens share this
+  // visual language: kNostrZap (label="ZAP"), kNwcBalance ("BAL"), and
+  // kNwcPaymentNotify ("GOT" / "PAID"). Same on 7- and 8-panel boards
+  // — V8's extra cell widens the blank gap rather than shifting the
+  // label/bolt rightward.
   // The bolt cell carries the mdi-lightning-bolt MDI glyph on the EPD;
   // the panel-text mirror represents it as an empty cell (same convention
   // bitaxe / mining-pool logo cells use — non-textual content). When
-  // `use_sats_symbol=false` the glyph cell stays blank and the amount
-  // uses one extra tail cell. Zapper message is intentionally not
-  // mirrored; the snapshot field is kept so a future screen can surface
-  // it without re-plumbing the relay listener.
+  // `use_sats_symbol=false` and `use_btc_symbol=false` the glyph cell
+  // stays blank and the amount uses one extra tail cell.
   std::vector<std::string> out(n_panels);
   if (n_panels == 0) return out;
-  const std::size_t zap_slot = 0;
-  const std::size_t bolt_slot = zap_slot + 1;
-  out[zap_slot] = "ZAP";
+  const std::size_t label_slot = 0;
+  const std::size_t bolt_slot = label_slot + 1;
+  out[label_slot] = label;
   if (n_panels <= bolt_slot + 1) return out;
 
   // Budget the integer formatter against the full tail (no glyph
@@ -909,20 +909,24 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       // (misconfigured wiring) see blanks rather than stale content.
       return std::vector<std::string>(n_panels);
     case ScreenType::kNostrZap:
-      return BuildNostrZap(in.zap_amount_sats, in.use_sats_symbol,
-                           in.use_btc_symbol, n_panels);
+      return BuildLabelBoltAmount("ZAP", in.zap_amount_sats, in.use_sats_symbol,
+                                  in.use_btc_symbol, n_panels);
     case ScreenType::kNwcBalance:
-      // Reuse the NostrZap mirror — same "label + bolt + amount" shape.
-      return BuildNostrZap(in.nwc_balance_sats, in.use_sats_symbol,
-                           in.use_btc_symbol, n_panels);
+      // Same "label + bolt + amount" layout as kNostrZap. Label is "BAL"
+      // — matches RenderNwcBalanceScreen's "BAL" PaintSlot::kLabel so
+      // /api/status data[0] agrees with what the EPD paints.
+      return BuildLabelBoltAmount("BAL", in.nwc_balance_sats,
+                                  in.use_sats_symbol, in.use_btc_symbol,
+                                  n_panels);
     case ScreenType::kNwcPaymentNotify:
-      // Mirror just the amount cells the overlay paints. The label
-      // (GOT/PAID) lives in the renderer's PaintSlot::kLabel which
-      // doesn't have a panel_texts counterpart; the user-facing
-      // /api/status data[] therefore shows the amount only — same
-      // policy as the NostrZap mirror.
-      return BuildNostrZap(in.nwc_payment_amount_sats, in.use_sats_symbol,
-                           in.use_btc_symbol, n_panels);
+      // Label = "PAID" for outgoing payments (direction==2), "GOT"
+      // otherwise. Mirrors RenderNwcPaymentNotifyScreen's branch on
+      // payment.direction so the mirror agrees with the overlay.
+      return BuildLabelBoltAmount(in.nwc_payment_direction == 2 ? "PAID"
+                                                                : "GOT",
+                                  in.nwc_payment_amount_sats,
+                                  in.use_sats_symbol, in.use_btc_symbol,
+                                  n_panels);
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes
       // per panel; no useful `data[]` mirror. Return a single label in

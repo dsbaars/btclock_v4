@@ -1924,6 +1924,154 @@ TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {
   CHECK(out[6] == "1");
 }
 
+// --- NWC balance + payment-notify mirror -----------------------------
+// Pins the lwf.6 regression: kNwcBalance + kNwcPaymentNotify share the
+// "label + bolt + amount" layout with kNostrZap, but the label must
+// match RenderNwcBalanceScreen / RenderNwcPaymentNotifyScreen — "BAL"
+// for the balance screen, "GOT" / "PAID" for the payment notification.
+// The mirror used to call BuildNostrZap which hard-coded "ZAP", and
+// the upstream screen_manager.cpp only populated nwc_balance_sats on
+// the kNostrZap render path so the balance screen also saw "?" digits.
+
+TEST_CASE("panel_texts — nwc balance: BAL label + digits fill the tail") {
+  // Faucet wallet (10_000 sats) on a 7-panel Rev B board with both
+  // glyph prefs off — the 5-digit integer fills the 5-cell tail with
+  // no glyph reserve. Mirror equals what the EPD paints:
+  //   [BAL][bolt][1][0][0][0][0]
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcBalance;
+  in.nwc_balance_sats = 10000;
+  in.use_sats_symbol = false;
+  in.use_btc_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BAL");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nwc balance: glyph drops when amount fills tail") {
+  // With useBtcSymbol on but a 5-digit balance the layout step prefers
+  // the digits over the glyph — matches RenderNwcBalanceScreen's
+  // ComputeNwcLayout glyph-drop branch. Pins the renderer's behaviour
+  // for the on-device case the user reported (10_000 sats, btcSymbol).
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcBalance;
+  in.nwc_balance_sats = 10000;
+  in.use_btc_symbol = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BAL");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "1");
+  CHECK(out[3] == "0");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nwc balance: glyph stays for short balance") {
+  // 1000 sats (4 digits) leaves one slot of slack so the BTC glyph
+  // survives — [BAL][bolt][₿][1][0][0][0]. Same layout rule as
+  // BuildNostrZap's glyph-stays case but with the NWC label.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcBalance;
+  in.nwc_balance_sats = 1000;
+  in.use_btc_symbol = true;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BAL");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "\xe2\x82\xbf");  // U+20BF — Bitcoin sign
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nwc balance: empty (nullopt) shows '?'") {
+  // Pre-first-poll state: no nwc_balance_msat in the snapshot yet.
+  // The mirror surfaces "?" — same shape the NostrZap empty case
+  // produces — so the WebUI's "no balance yet" indicator agrees with
+  // the on-device "—" placeholder. Pins lwf.6 — before the fix this
+  // case was the entire on-device bug.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcBalance;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BAL");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[6] == "?");
+}
+
+TEST_CASE("panel_texts — nwc balance: 8-panel board layout") {
+  // V8 parity: extra cell widens the blank gap before the amount,
+  // doesn't shift BAL/bolt rightward.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcBalance;
+  in.nwc_balance_sats = 500;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "BAL");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[2] == "");
+  CHECK(out[3] == "");
+  CHECK(out[4] == "");
+  CHECK(out[5] == "5");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "0");
+}
+
+TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT") {
+  // direction = 1 (payment_received) → "GOT" label. Amount cells
+  // mirror the BuildNostrZap right-justification.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcPaymentNotify;
+  in.nwc_payment_amount_sats = 21;
+  in.nwc_payment_direction = 1;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "GOT");
+  CHECK(out[1] == "");  // bolt
+  CHECK(out[5] == "2");
+  CHECK(out[6] == "1");
+}
+
+TEST_CASE("panel_texts — nwc payment-notify: outgoing (direction==2) → PAID") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcPaymentNotify;
+  in.nwc_payment_amount_sats = 1000;
+  in.nwc_payment_direction = 2;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "PAID");
+  CHECK(out[6] == "0");
+}
+
+TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT") {
+  // direction = 0 (unknown) falls through to the friendlier "GOT"
+  // label — matches RenderNwcPaymentNotifyScreen's `(direction == 2)`
+  // branch shape.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcPaymentNotify;
+  in.nwc_payment_amount_sats = 42;
+  in.nwc_payment_direction = 0;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "GOT");
+  CHECK(out[5] == "4");
+  CHECK(out[6] == "2");
+}
+
 // Latest-wins merge semantics for DataSnapshot::LatestZap. The full
 // Merge lives in hub.cpp (IDF-tainted) but the rule is simple enough
 // to replicate inline: higher received_ms wins, equal/lower is a

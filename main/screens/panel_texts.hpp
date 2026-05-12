@@ -130,8 +130,12 @@ struct PanelTextInputs {
   // /api/status data[] reflects what the EPDs paint for the balance
   // and payment-notification screens. Both reuse the BuildNostrZap
   // amount-formatter on purpose: identical layout = identical mirror.
+  // Only the label differs: kNwcBalance → "BAL", kNwcPaymentNotify →
+  // "PAID" when direction==2 (outgoing), "GOT" otherwise — matches
+  // RenderNwcPaymentNotifyScreen in main/screens/nwc_balance.cpp.
   std::optional<int64_t> nwc_balance_sats;
   std::optional<int64_t> nwc_payment_amount_sats;
+  uint8_t nwc_payment_direction = 0;
 };
 
 // Build the `data[]` array, one string per panel, for `n_panels` panels.

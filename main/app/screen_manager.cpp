@@ -1073,6 +1073,22 @@ void ScreenManager::Render(
       pti.month = tm_now.tm_mon + 1;
     }
   }
+  // Zap + NWC mirror inputs — populated unconditionally so the
+  // /api/status data[] is correct regardless of which of the
+  // BuildPanelTexts cases the switch lands on. msat→sats happens here
+  // so the host-test side of panel_texts stays integer-only.
+  // Previously the population sat inside an `else if (kind ==
+  // kNostrZap)` branch, which left pti.nwc_balance_sats nullopt on
+  // kNwcBalance / kNwcPaymentNotify and produced "?" in /api/status
+  // even though the EPD painted the real balance.
+  pti.zap_amount_sats = snap.latest_zap.amount_sats;
+  pti.zap_message = snap.latest_zap.message;
+  if (snap.nwc_balance_msat) {
+    pti.nwc_balance_sats = *snap.nwc_balance_msat / 1000;
+  }
+  pti.nwc_payment_amount_sats = snap.nwc_last_payment.amount_sats;
+  pti.nwc_payment_direction = snap.nwc_last_payment.direction;
+
   if (kind == ScreenType::kCustom) {
     // The custom screen's panels show caller-supplied strings verbatim;
     // /api/status `data[]` echoes exactly that rather than a
@@ -1083,16 +1099,6 @@ void ScreenManager::Render(
     for (std::size_t i = 0; i < N; ++i) {
       last_panel_texts_.push_back(custom_cells_[i]);
     }
-  } else if (kind == ScreenType::kNostrZap) {
-    // Zap mirror: feed the snapshot's LatestZap into BuildNostrZap
-    // so /api/status sees the same data the panels are painting.
-    pti.zap_amount_sats = snap.latest_zap.amount_sats;
-    pti.zap_message = snap.latest_zap.message;
-    // NWC mirror inputs — msat→sats happens here so the host-test side
-    // of panel_texts stays integer-only.
-    if (snap.nwc_balance_msat) pti.nwc_balance_sats = *snap.nwc_balance_msat / 1000;
-    pti.nwc_payment_amount_sats = snap.nwc_last_payment.amount_sats;
-    last_panel_texts_ = BuildPanelTexts(pti, N);
   } else {
     last_panel_texts_ = BuildPanelTexts(pti, N);
   }
