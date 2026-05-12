@@ -144,13 +144,34 @@ void RelayClient::HandleEvent(int32_t id, void* data) {
     case WEBSOCKET_EVENT_DISCONNECTED:
       connected_ = false;
       last_disconnect_ms_.store(esp_timer_get_time() / 1000);
+      // A mid-frame disconnect leaves the accumulator holding a
+      // partial event — discard so the next reconnect doesn't
+      // prepend stale bytes to a fresh frame.
+      fragment_buf_.clear();
       ESP_LOGW(kTag, "disconnected: %s", url_.c_str());
       if (on_connect_) on_connect_(false);
       break;
     case WEBSOCKET_EVENT_DATA:
-      // op_code 0x1 = text frame (NIP-01 is UTF-8 text).
-      if (ev && ev->op_code == 0x1 && on_frame_) {
-        on_frame_(ev->data_ptr, static_cast<size_t>(ev->data_len));
+      // op_code 0x1 = TEXT initial fragment, 0x0 = CONTINUATION.
+      // esp_websocket_client fires multiple WEBSOCKET_EVENT_DATA per
+      // logical WS frame when the payload exceeds the internal TCP
+      // segment buffer — every kind 23197/23196 NWC payment
+      // notification and every long zap receipt (NIP-57 kind 9735
+      // with `description` tag) is large enough to fragment, while
+      // INFO (13194) and get_balance (23195) responses fit in one
+      // chunk. Reassemble using payload_offset / payload_len before
+      // forwarding to on_frame_, otherwise ParseEnvelope sees a
+      // truncated JSON and silently drops the event. Same pattern as
+      // mempool_kraken_source.cpp.
+      if (ev && (ev->op_code == 0x1 || ev->op_code == 0x0) &&
+          ev->data_len > 0) {
+        if (ev->payload_offset == 0) fragment_buf_.clear();
+        fragment_buf_.append(ev->data_ptr, ev->data_len);
+        const int total = ev->payload_offset + ev->data_len;
+        if (total >= ev->payload_len && on_frame_) {
+          on_frame_(fragment_buf_.data(), fragment_buf_.size());
+          fragment_buf_.clear();
+        }
       }
       break;
     case WEBSOCKET_EVENT_ERROR:

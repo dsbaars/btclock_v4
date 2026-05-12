@@ -77,6 +77,15 @@ class RelayClient {
   std::atomic<uint32_t> reconnect_count_{0};
   std::atomic<int64_t> last_connect_ms_{0};
   std::atomic<int64_t> last_disconnect_ms_{0};
+  // Accumulator for fragmented text frames. esp_websocket_client
+  // splits a single logical WS frame into multiple
+  // WEBSOCKET_EVENT_DATA events when the payload exceeds the
+  // internal TCP segment buffer — small frames (kind 13194 INFO,
+  // kind 23195 get_balance responses) fit in one chunk, but large
+  // ones (kind 23197 / 23196 payment notifications, large zap
+  // receipts) fragment. Reassembled here and forwarded to on_frame_
+  // only when complete. Only touched on the WS task, no mutex.
+  std::string fragment_buf_;
 };
 
 }  // namespace nostr
