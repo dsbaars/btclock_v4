@@ -4,6 +4,7 @@
 
 using btclock::ParseCustomCellMdi;
 using btclock::mdi::kIconBitcoin;
+using btclock::mdi::kIconCurrencyBtc;
 using btclock::mdi::kIconWifi;
 
 TEST_CASE("ParseCustomCellMdi: plain text is not mdi") {
@@ -28,6 +29,15 @@ TEST_CASE("ParseCustomCellMdi: surrounding whitespace") {
   std::uint32_t cp = 0;
   REQUIRE(ParseCustomCellMdi("  mdi:bitcoin  ", &cp));
   CHECK(cp == kIconBitcoin);
+}
+
+TEST_CASE("ParseCustomCellMdi: currency-btc resolves") {
+  // Pins the regen_mdi.sh subset extension — the icon is in the
+  // bundle but not yet painted by any screen. Available through
+  // POST /api/show/custom for ad-hoc panels.
+  std::uint32_t cp = 0;
+  REQUIRE(ParseCustomCellMdi("mdi:currency-btc", &cp));
+  CHECK(cp == kIconCurrencyBtc);
 }
 
 TEST_CASE("ParseCustomCellMdi: bare mdi: is blank") {

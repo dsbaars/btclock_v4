@@ -1928,7 +1928,7 @@ TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {
 // Pins the lwf.6 regression: kNwcBalance + kNwcPaymentNotify share the
 // "label + bolt + amount" layout with kNostrZap, but the label must
 // match RenderNwcBalanceScreen / RenderNwcPaymentNotifyScreen — "BAL"
-// for the balance screen, "GOT" / "PAID" for the payment notification.
+// for the balance screen, "RECV" / "PAID" for the payment notification.
 // The mirror used to call BuildNostrZap which hard-coded "ZAP", and
 // the upstream screen_manager.cpp only populated nwc_balance_sats on
 // the kNostrZap render path so the balance screen also saw "?" digits.
@@ -1985,7 +1985,7 @@ TEST_CASE("panel_texts — nwc balance: glyph stays for short balance") {
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "BAL");
-  CHECK(out[1] == "");  // bolt
+  CHECK(out[1] == "");              // bolt
   CHECK(out[2] == "\xe2\x82\xbf");  // U+20BF — Bitcoin sign
   CHECK(out[3] == "1");
   CHECK(out[4] == "0");
@@ -2028,8 +2028,8 @@ TEST_CASE("panel_texts — nwc balance: 8-panel board layout") {
   CHECK(out[7] == "0");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT + DN arrow") {
-  // direction = 1 (payment_received) → "GOT" label + "DN" mirror
+TEST_CASE("panel_texts — nwc payment-notify: incoming → RECV + DN arrow") {
+  // direction = 1 (payment_received) → "RECV" label + "DN" mirror
   // token for the arrow-down glyph the EPD paints
   // (mdi::kIconArrowDownBold). Amount cells mirror the BuildNostrZap
   // right-justification.
@@ -2040,7 +2040,7 @@ TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT + DN arrow") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  CHECK(out[0] == "GOT");
+  CHECK(out[0] == "RECV");
   CHECK(out[1] == "DN");  // mdi-arrow-down-bold mirror token
   CHECK(out[5] == "2");
   CHECK(out[6] == "1");
@@ -2064,8 +2064,8 @@ TEST_CASE("panel_texts — nwc payment-notify: outgoing → PAID + UP arrow") {
   CHECK(out[6] == "0");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT, bolt") {
-  // direction = 0 (unknown) falls through to the friendlier "GOT"
+TEST_CASE("panel_texts — nwc payment-notify: unknown direction → RECV, bolt") {
+  // direction = 0 (unknown) falls through to the friendlier "RECV"
   // label, and the renderer paints the bolt as a safe default — the
   // mirror leaves the glyph cell blank (matching the bolt convention
   // on kNwcBalance / kNostrZap where the bolt has no textual analogue).
@@ -2076,15 +2076,15 @@ TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT, bolt")
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  CHECK(out[0] == "GOT");
+  CHECK(out[0] == "RECV");
   CHECK(out[1] == "");  // bolt fallback (no textual mirror token)
   CHECK(out[5] == "4");
   CHECK(out[6] == "2");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: 8-panel incoming layout") {
+TEST_CASE("panel_texts — nwc payment-notify: 8-panel incoming layout (RECV)") {
   // V8 parity: extra cell widens the blank gap before the amount,
-  // GOT + DN still anchor at slots 0/1.
+  // RECV + DN still anchor at slots 0/1.
   PanelTextInputs in;
   in.kind = ScreenType::kNwcPaymentNotify;
   in.nwc_payment_amount_sats = 500;
@@ -2092,7 +2092,7 @@ TEST_CASE("panel_texts — nwc payment-notify: 8-panel incoming layout") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
-  CHECK(out[0] == "GOT");
+  CHECK(out[0] == "RECV");
   CHECK(out[1] == "DN");
   CHECK(out[2] == "");
   CHECK(out[3] == "");

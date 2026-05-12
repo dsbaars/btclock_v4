@@ -98,14 +98,14 @@ TEST_CASE("DecodeInfoResponse: spec-shaped success payload") {
 TEST_CASE("DecodeInfoEvent: INFO event content + tags") {
   // Spec-shaped INFO event:
   //   content = space-separated methods
-  //   tags    = [["encryption","nip44_v2 nip04"], ["notifications","payment_received payment_sent"]]
+  //   tags    = [["encryption","nip44_v2 nip04"],
+  //   ["notifications","payment_received payment_sent"]]
   std::vector<std::vector<std::string>> tags = {
       {"encryption", "nip44_v2 nip04"},
       {"notifications", "payment_received payment_sent"},
   };
   InfoEvent info;
-  REQUIRE(DecodeInfoEvent("pay_invoice get_balance notifications", tags,
-                          info));
+  REQUIRE(DecodeInfoEvent("pay_invoice get_balance notifications", tags, info));
   REQUIRE(info.methods.size() == 3);
   CHECK(info.methods[0] == "pay_invoice");
   CHECK(info.methods[1] == "get_balance");
@@ -195,4 +195,79 @@ TEST_CASE(
 TEST_CASE("DecodePaymentNotification: garbage rejected") {
   PaymentNotification n;
   CHECK(DecodePaymentNotification("not-json", n) == RpcError::kNotJson);
+}
+
+TEST_CASE("BuildListTransactionsRequest: from + until + limit") {
+  // Spec-conformant JSON with both bounds + unpaid=false filter.
+  CHECK(
+      BuildListTransactionsRequest(1747000000, 1747000600, 20) ==
+      R"({"method":"list_transactions","params":{"from":1747000000,"until":1747000600,"limit":20,"unpaid":false}})");
+}
+
+TEST_CASE("BuildListTransactionsRequest: until=0 omits the field") {
+  // until=0 means "now" per the spec — let the wallet default it.
+  CHECK(
+      BuildListTransactionsRequest(1747000000, 0, 20) ==
+      R"({"method":"list_transactions","params":{"from":1747000000,"limit":20,"unpaid":false}})");
+}
+
+TEST_CASE("DecodeListTransactionsResponse: mixed incoming + outgoing") {
+  const std::string json = R"({
+    "result_type":"list_transactions",
+    "result":{
+      "transactions":[
+        {"type":"outgoing","amount":250000,"fees_paid":100,
+         "description":"coffee","payment_hash":"a","created_at":1,
+         "settled_at":1747000050},
+        {"type":"incoming","amount":1500000,"fees_paid":0,
+         "description":"topup","payment_hash":"b","created_at":2,
+         "settled_at":1747000100}
+      ]
+    }
+  })";
+  std::vector<PaymentNotification> txs;
+  WalletError err;
+  REQUIRE(DecodeListTransactionsResponse(json, txs, err) == RpcError::kOk);
+  REQUIRE(txs.size() == 2);
+  CHECK(txs[0].direction == PaymentDirection::kOutgoing);
+  CHECK(txs[0].amount_msat == 250000u);
+  CHECK(txs[0].fees_paid_msat == 100u);
+  CHECK(txs[0].description == "coffee");
+  CHECK(txs[1].direction == PaymentDirection::kIncoming);
+  CHECK(txs[1].amount_msat == 1500000u);
+  CHECK(txs[1].settled_at == 1747000100u);
+}
+
+TEST_CASE("DecodeListTransactionsResponse: empty array → kOk with no entries") {
+  // Wallet returning an empty array is the "no payments in window"
+  // case — boot-poll path treats it as success + does nothing.
+  const std::string json =
+      R"({"result_type":"list_transactions","result":{"transactions":[]}})";
+  std::vector<PaymentNotification> txs;
+  WalletError err;
+  CHECK(DecodeListTransactionsResponse(json, txs, err) == RpcError::kOk);
+  CHECK(txs.empty());
+}
+
+TEST_CASE("DecodeListTransactionsResponse: wallet error propagated") {
+  const std::string json = R"({
+    "result_type":"list_transactions",
+    "error":{"code":"INTERNAL","message":"db unavailable"}
+  })";
+  std::vector<PaymentNotification> txs;
+  WalletError err;
+  CHECK(DecodeListTransactionsResponse(json, txs, err) ==
+        RpcError::kWalletError);
+  CHECK(err.code == "INTERNAL");
+  CHECK(err.message == "db unavailable");
+  CHECK(txs.empty());
+}
+
+TEST_CASE("DecodeListTransactionsResponse: result_type mismatch") {
+  const std::string json =
+      R"({"result_type":"get_balance","result":{"balance":1000}})";
+  std::vector<PaymentNotification> txs;
+  WalletError err;
+  CHECK(DecodeListTransactionsResponse(json, txs, err) ==
+        RpcError::kMethodMismatch);
 }

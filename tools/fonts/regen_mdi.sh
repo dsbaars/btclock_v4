@@ -27,6 +27,7 @@ ICONS=(
     bell
     bitcoin
     clock-outline
+    currency-btc
     lightning-bolt
     pickaxe
     rocket-launch

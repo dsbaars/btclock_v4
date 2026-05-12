@@ -231,9 +231,14 @@ void InitNwc(AppCtx& ctx) {
     if (ctx_ptr->nwc_refresh_timer == nullptr) {
       ctx_ptr->nwc_refresh_timer = StartRefreshTimer(*ctx_ptr, refresh_secs);
     }
+    // The one-shot list_transactions poll fires AFTER the first
+    // balance response lands (see SetOnBalance below) — NwcClient
+    // tracks only a single inflight request_id at a time, so
+    // back-to-back RequestGetBalance + RequestListTransactions would
+    // overwrite the inflight bookkeeping and drop the balance reply.
   });
 
-  ctx.nwc_client->SetOnBalance([hub_ptr](uint64_t balance_msat) {
+  ctx.nwc_client->SetOnBalance([hub_ptr, ctx_ptr](uint64_t balance_msat) {
     static int64_t last_persist_ms = INT64_MIN;
     static int64_t last_persisted_sats = -1;
     const int64_t sats = static_cast<int64_t>(balance_msat / 1000ULL);
@@ -253,6 +258,33 @@ void InitNwc(AppCtx& ctx) {
     ESP_LOGD(kTag, "nwc balance: %llu msat (%lld sats)",
              static_cast<unsigned long long>(balance_msat),
              static_cast<long long>(sats));
+
+    // One-shot list_transactions poll after the first balance reply.
+    // NIP-47 push notifications only deliver events received AFTER
+    // subscribe — payments that landed while the device was offline
+    // (mid-OTA, power off, post-crash) need a poll to surface. The
+    // wallet returns the [now-600s, now] window; we fan each settled
+    // tx out via the existing on_payment_ path so the overlay
+    // pipeline (LED flash, screen overlay, snapshot patch) reuses.
+    // Chained off on_balance so the inflight-request bookkeeping
+    // serializes naturally — NwcClient holds a single inflight id at
+    // a time. Gated on SNTP being landed; otherwise `from_secs`
+    // would be a boot-relative seconds value the wallet rejects.
+    static std::atomic<bool> boot_poll_done{false};
+    bool expected = false;
+    if (!boot_poll_done.compare_exchange_strong(expected, true)) return;
+    const std::time_t wallclock = std::time(nullptr);
+    if (wallclock <= 1'700'000'000LL) {
+      ESP_LOGW(kTag, "nwc boot poll skipped: SNTP not landed (now=%lld)",
+               static_cast<long long>(wallclock));
+      return;
+    }
+    const int64_t from_secs = static_cast<int64_t>(wallclock) - 600;
+    ESP_LOGI(kTag, "nwc boot poll: list_transactions since %lld (last 10 min)",
+             static_cast<long long>(from_secs));
+    if (ctx_ptr && ctx_ptr->nwc_client) {
+      ctx_ptr->nwc_client->RequestListTransactions(from_secs, /*limit=*/20);
+    }
   });
 
   ctx.nwc_client->SetOnPayment([hub_ptr, main_task, notify_pending](

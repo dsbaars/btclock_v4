@@ -63,7 +63,7 @@ constexpr const char* kAmountRef = "0123456789kMB.";
 // signature, and the body is small enough that duplication beats
 // the include surface change.
 struct NwcLayout {
-  std::size_t label_slot;    // BAL / GOT / PAID
+  std::size_t label_slot;    // BAL / RECV / PAID
   std::size_t bolt_slot;     // MDI lightning-bolt icon
   std::size_t glyph_slot;    // Sats glyph (one before first amount)
   std::size_t first_amount;  // Leftmost amount-digit slot
@@ -199,23 +199,22 @@ void RenderNwcBalanceScreen(
       const std::size_t pad_now = (L_now.amount_cells > amount.size())
                                       ? L_now.amount_cells - amount.size()
                                       : 0;
-      const std::size_t pad_prev = (L_prev.amount_cells > prev_amount.size())
-                                       ? L_prev.amount_cells - prev_amount.size()
-                                       : 0;
+      const std::size_t pad_prev =
+          (L_prev.amount_cells > prev_amount.size())
+              ? L_prev.amount_cells - prev_amount.size()
+              : 0;
       for (std::size_t i = 0; i < L_now.amount_cells; ++i) {
         const std::size_t panel_idx = L_now.first_amount + i;
         const char now_ch = (i < pad_now) ? ' ' : amount[i - pad_now];
-        const char prev_ch =
-            (i < pad_prev) ? ' ' : prev_amount[i - pad_prev];
+        const char prev_ch = (i < pad_prev) ? ' ' : prev_amount[i - pad_prev];
         if (now_ch != prev_ch) update[panel_idx] = true;
       }
     }
   }
 
-  RenderNwcShared<N>(panels, fb_storage, fonts, "BAL",
-                     mdi::kIconLightningBolt, amount, use_sats_symbol,
-                     use_btc_symbol, sats_variant, full_refresh_mode,
-                     vertical_desc, update);
+  RenderNwcShared<N>(panels, fb_storage, fonts, "BAL", mdi::kIconLightningBolt,
+                     amount, use_sats_symbol, use_btc_symbol, sats_variant,
+                     full_refresh_mode, vertical_desc, update);
 }
 
 template <size_t N>
@@ -228,13 +227,14 @@ void RenderNwcPaymentNotifyScreen(
   static_assert(N >= 7, "NWC payment notify layout needs at least 7 panels");
 
   constexpr std::size_t kAmountBudget = N - 2;
-  const std::string amount = FormatSatsCompact(payment.amount_sats, kAmountBudget);
+  const std::string amount =
+      FormatSatsCompact(payment.amount_sats, kAmountBudget);
 
   // direction == 2 → outgoing → "PAID" + arrow-up; ==1 → incoming
-  // "GOT" + arrow-down; anything else → "GOT" with the bolt fallback
+  // "RECV" + arrow-down; anything else → "RECV" with the bolt fallback
   // so an unknown direction still paints a sensible glyph rather than
   // leaving the icon slot blank.
-  const char* label = (payment.direction == 2) ? "PAID" : "GOT";
+  const char* label = (payment.direction == 2) ? "PAID" : "RECV";
   std::uint32_t icon = mdi::kIconLightningBolt;
   if (payment.direction == 1) {
     icon = mdi::kIconArrowDownBold;
@@ -261,11 +261,11 @@ template void RenderNwcBalanceScreen<8>(
 
 template void RenderNwcPaymentNotifyScreen<7>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
-    const AppFonts&, const DataSnapshot::NwcPayment&, bool, bool, uint8_t,
-    bool, bool);
+    const AppFonts&, const DataSnapshot::NwcPayment&, bool, bool, uint8_t, bool,
+    bool);
 template void RenderNwcPaymentNotifyScreen<8>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
-    const AppFonts&, const DataSnapshot::NwcPayment&, bool, bool, uint8_t,
-    bool, bool);
+    const AppFonts&, const DataSnapshot::NwcPayment&, bool, bool, uint8_t, bool,
+    bool);
 
 }  // namespace btclock

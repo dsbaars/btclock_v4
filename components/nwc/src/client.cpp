@@ -23,6 +23,7 @@
 
 #include "nwc/client.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -326,6 +327,14 @@ bool NwcClient::RequestGetInfo() {
   return PublishSignedRequest(BuildGetInfoRequest());
 }
 
+bool NwcClient::RequestListTransactions(int64_t from_secs, uint32_t limit) {
+  inflight_method_ = "list_transactions";
+  // until=0 → omit field, wallet defaults to "now". The boot-poll
+  // caller always wants now as the upper bound.
+  return PublishSignedRequest(
+      BuildListTransactionsRequest(from_secs, /*until_secs=*/0, limit));
+}
+
 void NwcClient::HandleEvent(const nostr::Event& ev) {
   if (state_ == State::kFatal) return;
   // Count every event the relay handed us BEFORE the per-kind switch
@@ -429,37 +438,97 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
       (matches_inflight || inflight_request_id_.empty())) {
     BalanceResponse resp;
     WalletError werr;
-    if (DecodeBalanceResponse(dec.plaintext, resp, werr) == RpcError::kOk) {
+    const bool decoded =
+        DecodeBalanceResponse(dec.plaintext, resp, werr) == RpcError::kOk;
+    if (decoded) {
       decode_resp_ok_.fetch_add(1);
       balance_msat_cache_.store(resp.balance_msat);
-      if (on_balance_) {
-        cb_on_balance_dispatched_.fetch_add(1);
-        on_balance_(resp.balance_msat);
-      }
     } else {
       decode_resp_fail_.fetch_add(1);
     }
-    // We don't auto-retry on kWalletError here — the higher-layer
-    // refresh tick will fire the next request.
+    // Clear the inflight bookkeeping BEFORE firing the callback —
+    // callbacks may issue a follow-up request (e.g. boot-time
+    // list_transactions chained off on_balance) which would set new
+    // inflight state; clearing after the callback would nuke it and
+    // drop the next response on the floor. We don't auto-retry on
+    // kWalletError here — the higher-layer refresh tick will fire
+    // the next request.
     inflight_request_id_.clear();
     inflight_method_.clear();
+    if (decoded && on_balance_) {
+      cb_on_balance_dispatched_.fetch_add(1);
+      on_balance_(resp.balance_msat);
+    }
     return;
   }
   if (inflight_method_ == "get_info" &&
       (matches_inflight || inflight_request_id_.empty())) {
     InfoResponse info;
     WalletError werr;
-    if (DecodeInfoResponse(dec.plaintext, info, werr) == RpcError::kOk) {
+    const bool decoded =
+        DecodeInfoResponse(dec.plaintext, info, werr) == RpcError::kOk;
+    if (decoded) {
       decode_resp_ok_.fetch_add(1);
-      InfoEvent legacy_info;
-      legacy_info.methods = info.methods;
-      legacy_info.notifications = info.notifications;
-      if (on_ready_) on_ready_(legacy_info);
     } else {
       decode_resp_fail_.fetch_add(1);
     }
     inflight_request_id_.clear();
     inflight_method_.clear();
+    if (decoded && on_ready_) {
+      InfoEvent legacy_info;
+      legacy_info.methods = info.methods;
+      legacy_info.notifications = info.notifications;
+      on_ready_(legacy_info);
+    }
+    return;
+  }
+  if (inflight_method_ == "list_transactions" &&
+      (matches_inflight || inflight_request_id_.empty())) {
+    std::vector<PaymentNotification> txs;
+    WalletError werr;
+    const bool decoded = DecodeListTransactionsResponse(dec.plaintext, txs,
+                                                        werr) == RpcError::kOk;
+    if (decoded) {
+      decode_resp_ok_.fetch_add(1);
+    } else {
+      decode_resp_fail_.fetch_add(1);
+    }
+    inflight_request_id_.clear();
+    inflight_method_.clear();
+    if (decoded) {
+      // Fan each settled transaction out as if a live notification
+      // had landed. Same counters, same on_payment_ callback, same
+      // overlay-trigger plumbing — only the most recent one ends up
+      // displayed because the screen-manager hand-off is a single
+      // pending flag, but every tx still updates the snapshot's
+      // `nwc_last_payment` (the *last* iteration wins). Iterate in
+      // ascending settled order so "last" = newest.
+      std::sort(txs.begin(), txs.end(),
+                [](const PaymentNotification& a, const PaymentNotification& b) {
+                  return a.settled_at < b.settled_at;
+                });
+      for (const auto& pn : txs) {
+        // Balance bumps stay coherent with the live-notification
+        // path so the cache reflects the wallet state. Optimistic
+        // arithmetic, same as DispatchHeavy.
+        if (pn.direction == PaymentDirection::kIncoming) {
+          balance_msat_cache_.fetch_add(pn.amount_msat);
+        } else if (pn.direction == PaymentDirection::kOutgoing) {
+          const uint64_t total = pn.amount_msat + pn.fees_paid_msat;
+          uint64_t cur = balance_msat_cache_.load();
+          uint64_t next = (cur > total) ? (cur - total) : 0ULL;
+          balance_msat_cache_.store(next);
+        }
+        last_pay_direction_.store(static_cast<uint8_t>(pn.direction));
+        last_pay_amount_sats_.store(
+            static_cast<int64_t>(pn.amount_msat / 1000ULL));
+        last_pay_received_ms_.store(now_ ? now_() * 1000 : 0);
+        if (on_payment_) {
+          cb_on_payment_dispatched_.fetch_add(1);
+          on_payment_(pn);
+        }
+      }
+    }
     return;
   }
 }

@@ -191,6 +191,17 @@ class NwcClient {
   // up after the subscription's stored-event flush, as a fallback).
   bool RequestGetInfo();
 
+  // Build, sign, encrypt and publish a `list_transactions` request
+  // bounded to [from_secs, now]. Limit caps the response size — keep
+  // it small (~20) since the response array translates directly into
+  // synthetic on_payment_ callbacks and screen overlays. Used by the
+  // boot poll path to surface payments that landed while the device
+  // was offline (NIP-47's push-notification stream only covers events
+  // received since subscription open). One-shot — caller decides when
+  // to fire; the response routes through OnResponse → DispatchHeavy
+  // per-tx so existing balance/snapshot/screen plumbing reuses.
+  bool RequestListTransactions(int64_t from_secs, uint32_t limit = 20);
+
   State state() const { return state_; }
   nostr::EncryptionVariant encryption() const { return encryption_; }
   uint64_t balance_msat_cache() const { return balance_msat_cache_.load(); }

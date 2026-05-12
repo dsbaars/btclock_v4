@@ -336,11 +336,11 @@ void RenderNwcBalanceScreen(
 
 // --- NWC payment notification ---
 // Transient overlay (8 s timeout). Layout same as RenderNwcBalanceScreen
-// except the label flips between "GOT" (incoming) and "PAID" (outgoing)
+// except the label flips between "RECV" (incoming) and "PAID" (outgoing)
 // based on direction. Always full-refresh — the overlay is short-lived
 // and the digit diff would carry stale state from the underlying
 // rotation slot. Direction 1 = incoming (kIncoming), 2 = outgoing
-// (kOutgoing); anything else paints the "GOT" label as a defensive
+// (kOutgoing); anything else paints the "RECV" label as a defensive
 // default.
 template <size_t N>
 void RenderNwcPaymentNotifyScreen(

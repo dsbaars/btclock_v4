@@ -68,6 +68,7 @@ constexpr NamedMdi kSubset[] = {
     {"bell", mdi::kIconBell},
     {"bitcoin", mdi::kIconBitcoin},
     {"clock-outline", mdi::kIconClockOutline},
+    {"currency-btc", mdi::kIconCurrencyBtc},
     {"lightning-bolt", mdi::kIconLightningBolt},
     {"pickaxe", mdi::kIconPickaxe},
     {"rocket-launch", mdi::kIconRocketLaunch},

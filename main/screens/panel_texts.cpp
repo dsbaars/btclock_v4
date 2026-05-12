@@ -690,14 +690,14 @@ std::vector<std::string> BuildLabelGlyphAmount(
   // RenderNostrZapScreen / RenderNwcShared. Three screens share this
   // visual language: kNostrZap (label="ZAP", bolt glyph),
   // kNwcBalance ("BAL", bolt glyph), and kNwcPaymentNotify
-  // ("GOT" / "PAID" + direction-aware arrow up/down). Same on 7- and
+  // ("RECV" / "PAID" + direction-aware arrow up/down). Same on 7- and
   // 8-panel boards — V8's extra cell widens the blank gap rather than
   // shifting the label/glyph rightward.
   // `glyph_mirror` is the short ASCII token the /api/status mirror
   // emits for the icon cell. ZAP/BAL pass "" because the bolt glyph
   // has no useful textual analogue (matches bitaxe / mining-pool logo
   // cells); payment-notify passes "UP" / "DN" so consumers can tell
-  // GOT-vs-PAID apart in the data array without inferring from the
+  // RECV-vs-PAID apart in the data array without inferring from the
   // label. When `use_sats_symbol=false` and `use_btc_symbol=false`
   // the sats-glyph cell stays blank and the amount uses one extra
   // tail cell.
@@ -934,24 +934,22 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
                                    n_panels);
     case ScreenType::kNwcPaymentNotify: {
       // Direction-aware label + arrow glyph. direction==2 → outgoing
-      // "PAID" + arrow-up; ==1 → incoming "GOT" + arrow-down; anything
-      // else → "GOT" with bolt fallback (mirrors as "" because the
+      // "PAID" + arrow-up; ==1 → incoming "RECV" + arrow-down; anything
+      // else → "RECV" with bolt fallback (mirrors as "" because the
       // bolt glyph has no textual analogue, matching kNwcBalance).
       // The "UP" / "DN" mirror tokens make the data array
-      // self-describing: a consumer can tell GOT-vs-PAID apart without
+      // self-describing: a consumer can tell RECV-vs-PAID apart without
       // inferring from the label cell.
-      const char* label =
-          (in.nwc_payment_direction == 2) ? "PAID" : "GOT";
+      const char* label = (in.nwc_payment_direction == 2) ? "PAID" : "RECV";
       std::string_view glyph_mirror;
       if (in.nwc_payment_direction == 1) {
         glyph_mirror = "DN";
       } else if (in.nwc_payment_direction == 2) {
         glyph_mirror = "UP";
       }
-      return BuildLabelGlyphAmount(label, glyph_mirror,
-                                   in.nwc_payment_amount_sats,
-                                   in.use_sats_symbol, in.use_btc_symbol,
-                                   n_panels);
+      return BuildLabelGlyphAmount(
+          label, glyph_mirror, in.nwc_payment_amount_sats, in.use_sats_symbol,
+          in.use_btc_symbol, n_panels);
     }
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes

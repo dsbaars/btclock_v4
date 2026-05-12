@@ -16,7 +16,8 @@ inline constexpr std::uint32_t kIconArrowUpBold = 0xF0737;  // mdi-arrow-up-bold
 inline constexpr std::uint32_t kIconBell = 0xF009A;         // mdi-bell
 inline constexpr std::uint32_t kIconBitcoin = 0xF0813;      // mdi-bitcoin
 inline constexpr std::uint32_t kIconClockOutline =
-    0xF0150;  // mdi-clock-outline
+    0xF0150;                                                // mdi-clock-outline
+inline constexpr std::uint32_t kIconCurrencyBtc = 0xF01AC;  // mdi-currency-btc
 inline constexpr std::uint32_t kIconLightningBolt =
     0xF140B;                                            // mdi-lightning-bolt
 inline constexpr std::uint32_t kIconPickaxe = 0xF08B7;  // mdi-pickaxe

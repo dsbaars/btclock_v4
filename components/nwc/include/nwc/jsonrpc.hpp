@@ -35,15 +35,26 @@ std::string BuildGetBalanceRequest();
 // handshake.
 std::string BuildGetInfoRequest();
 
+// Build the plaintext payload for `list_transactions`. Only the
+// fields the boot-poll path uses are wired here — `from`/`until`
+// (unix seconds) bound the window, `unpaid=false` filters out
+// pending invoices so we never surface a transient state as a
+// settled notification, and `limit` caps the response size. The
+// `type` filter is left unset to receive both incoming + outgoing
+// in one round-trip. Pass `until=0` to omit the field (defaults to
+// now on the wallet side).
+std::string BuildListTransactionsRequest(int64_t from_secs, int64_t until_secs,
+                                         uint32_t limit);
+
 // ----- Inbound (kind 23195 plaintext) -----
 
 enum class RpcError : uint8_t {
   kOk = 0,
-  kNotJson,           // cJSON couldn't parse the bytes
-  kMissingResultType, // the `result_type` field is absent or non-string
-  kMethodMismatch,    // result_type != expected method
-  kWalletError,       // a `code`/`message` was set; details in `wallet_error_*`
-  kMissingResult,     // server said success but `result` is missing or wrong shape
+  kNotJson,            // cJSON couldn't parse the bytes
+  kMissingResultType,  // the `result_type` field is absent or non-string
+  kMethodMismatch,     // result_type != expected method
+  kWalletError,    // a `code`/`message` was set; details in `wallet_error_*`
+  kMissingResult,  // server said success but `result` is missing or wrong shape
 };
 
 struct BalanceResponse {
@@ -72,8 +83,8 @@ RpcError DecodeBalanceResponse(const std::string& json, BalanceResponse& out,
 // space-separated form.
 struct InfoResponse {
   std::string alias;
-  std::string pubkey;       // wallet's own pubkey (info, not used in tagging)
-  std::string network;      // mainnet / testnet / signet / regtest
+  std::string pubkey;   // wallet's own pubkey (info, not used in tagging)
+  std::string network;  // mainnet / testnet / signet / regtest
   uint32_t block_height = 0;
   std::vector<std::string> methods;
   std::vector<std::string> notifications;
@@ -137,6 +148,20 @@ struct PaymentNotification {
 // scraping error codes.
 RpcError DecodePaymentNotification(const std::string& json,
                                    PaymentNotification& out);
+
+// ----- list_transactions response -----
+//
+// Wallet returns an array of transaction objects under
+// `result.transactions`. The fields we surface mirror
+// PaymentNotification (direction, amount, fees, description,
+// payment_hash, settled/created timestamps) so the boot-poll path can
+// fan each entry out as a synthetic notification with zero extra
+// translation. `type=incoming` → kIncoming, `type=outgoing` →
+// kOutgoing, anything else → kUnknown (and the entry is still
+// returned so the caller can decide to drop it).
+RpcError DecodeListTransactionsResponse(const std::string& json,
+                                        std::vector<PaymentNotification>& out,
+                                        WalletError& err);
 
 }  // namespace nwc
 }  // namespace btclock
