@@ -372,9 +372,16 @@ void InitControlApi(AppCtx& ctx) {
         info.reconnect_count = ctx_ptr->nwc_relay->reconnect_count();
         info.last_connect_ms = ctx_ptr->nwc_relay->last_connect_ms();
         info.last_disconnect_ms = ctx_ptr->nwc_relay->last_disconnect_ms();
+        info.frames_chunk = ctx_ptr->nwc_relay->frames_chunk();
+        info.frames_complete = ctx_ptr->nwc_relay->frames_complete();
+        info.last_frame_bytes = ctx_ptr->nwc_relay->last_frame_bytes();
       }
       if (ctx_ptr->nwc_subs) {
         info.reissue_count = ctx_ptr->nwc_subs->reissue_count();
+        info.parse_fail_count = ctx_ptr->nwc_subs->parse_fail_count();
+        info.event_dispatch_count = ctx_ptr->nwc_subs->event_dispatch_count();
+        info.last_event_sub_id = ctx_ptr->nwc_subs->last_event_sub_id();
+        info.last_parse_fail_head = ctx_ptr->nwc_subs->last_parse_fail_head();
       }
       return nwc::BuildNwcDebugJson(info);
     };

@@ -36,8 +36,15 @@ struct NwcDebugInfo {
   uint32_t reconnect_count = 0;
   int64_t last_connect_ms = 0;
   int64_t last_disconnect_ms = 0;
+  uint32_t frames_chunk = 0;
+  uint32_t frames_complete = 0;
+  uint32_t last_frame_bytes = 0;
 
   uint32_t reissue_count = 0;
+  uint32_t parse_fail_count = 0;
+  uint32_t event_dispatch_count = 0;
+  std::string last_event_sub_id;
+  std::string last_parse_fail_head;  // first ≤256 bytes of last rejected frame
 };
 
 // Render an NwcDebugInfo as a compact JSON string. Empty on OOM.

@@ -65,12 +65,24 @@ void SubscriptionManager::HandleTextFrame(const char* data, size_t len) {
   Envelope env;
   // Parser takes a std::string; copy once. Relay frames are tiny.
   if (!ParseEnvelope(std::string(data, len), env)) {
-    ESP_LOGW(kTag, "dropped unparseable frame (%u bytes)",
-             static_cast<unsigned>(len));
+    parse_fail_count_.fetch_add(1);
+    {
+      std::lock_guard<std::mutex> lk(mu_);
+      const size_t head_len = len < 2048 ? len : 2048;
+      last_parse_fail_head_.assign(data, head_len);
+    }
+    ESP_LOGW(kTag, "dropped unparseable frame (%u bytes): %.*s",
+             static_cast<unsigned>(len),
+             static_cast<int>(len < 200 ? len : 200), data);
     return;
   }
   switch (env.type) {
     case EnvelopeType::kEvent:
+      event_dispatch_count_.fetch_add(1);
+      {
+        std::lock_guard<std::mutex> lk(mu_);
+        last_event_sub_id_ = env.sub_id;
+      }
       if (on_event_) on_event_(env.sub_id, env.event);
       break;
     case EnvelopeType::kEose:

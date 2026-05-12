@@ -50,6 +50,12 @@ std::string BuildNwcDebugJson(const NwcDebugInfo& info) {
                             static_cast<double>(info.last_connect_ms));
     cJSON_AddNumberToObject(wss, "last_disconnect_ms",
                             static_cast<double>(info.last_disconnect_ms));
+    cJSON_AddNumberToObject(wss, "frames_chunk",
+                            static_cast<double>(info.frames_chunk));
+    cJSON_AddNumberToObject(wss, "frames_complete",
+                            static_cast<double>(info.frames_complete));
+    cJSON_AddNumberToObject(wss, "last_frame_bytes",
+                            static_cast<double>(info.last_frame_bytes));
   }
 
   cJSON* subs = cJSON_AddObjectToObject(root, "subs");
@@ -58,6 +64,14 @@ std::string BuildNwcDebugJson(const NwcDebugInfo& info) {
     cJSON_AddStringToObject(subs, "rpc_sub_id", info.client.sub_id_rpc.c_str());
     cJSON_AddNumberToObject(subs, "reissue_count",
                             static_cast<double>(info.reissue_count));
+    cJSON_AddNumberToObject(subs, "parse_fail",
+                            static_cast<double>(info.parse_fail_count));
+    cJSON_AddNumberToObject(subs, "event_dispatched",
+                            static_cast<double>(info.event_dispatch_count));
+    cJSON_AddStringToObject(subs, "last_event_sub_id",
+                            info.last_event_sub_id.c_str());
+    cJSON_AddStringToObject(subs, "last_parse_fail_head",
+                            info.last_parse_fail_head.c_str());
   }
 
   cJSON* events = cJSON_AddObjectToObject(root, "events");

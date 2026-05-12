@@ -165,11 +165,15 @@ void RelayClient::HandleEvent(int32_t id, void* data) {
       // mempool_kraken_source.cpp.
       if (ev && (ev->op_code == 0x1 || ev->op_code == 0x0) &&
           ev->data_len > 0) {
+        frames_chunk_.fetch_add(1);
         if (ev->payload_offset == 0) fragment_buf_.clear();
         fragment_buf_.append(ev->data_ptr, ev->data_len);
         const int total = ev->payload_offset + ev->data_len;
-        if (total >= ev->payload_len && on_frame_) {
-          on_frame_(fragment_buf_.data(), fragment_buf_.size());
+        if (total >= ev->payload_len) {
+          last_frame_bytes_.store(
+              static_cast<uint32_t>(fragment_buf_.size()));
+          frames_complete_.fetch_add(1);
+          if (on_frame_) on_frame_(fragment_buf_.data(), fragment_buf_.size());
           fragment_buf_.clear();
         }
       }

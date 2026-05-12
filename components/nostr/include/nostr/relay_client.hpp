@@ -58,6 +58,16 @@ class RelayClient {
   uint32_t reconnect_count() const { return reconnect_count_.load(); }
   int64_t last_connect_ms() const { return last_connect_ms_.load(); }
   int64_t last_disconnect_ms() const { return last_disconnect_ms_.load(); }
+  // Per-WS-event counter increments. frames_complete_ counts logical
+  // frames forwarded to on_frame_; frames_chunk_ counts every raw
+  // WEBSOCKET_EVENT_DATA we saw. A frames_chunk_ that climbs without
+  // a matching frames_complete_ implicates the fragmentation
+  // accumulator. last_frame_bytes_ records the size of the last
+  // complete frame delivered upstream — useful for spotting
+  // "single-chunk event landed but parser dropped it" cases.
+  uint32_t frames_chunk() const { return frames_chunk_.load(); }
+  uint32_t frames_complete() const { return frames_complete_.load(); }
+  uint32_t last_frame_bytes() const { return last_frame_bytes_.load(); }
 
  private:
   static void EventTrampoline(void* arg, esp_event_base_t base,
@@ -77,6 +87,9 @@ class RelayClient {
   std::atomic<uint32_t> reconnect_count_{0};
   std::atomic<int64_t> last_connect_ms_{0};
   std::atomic<int64_t> last_disconnect_ms_{0};
+  std::atomic<uint32_t> frames_chunk_{0};
+  std::atomic<uint32_t> frames_complete_{0};
+  std::atomic<uint32_t> last_frame_bytes_{0};
   // Accumulator for fragmented text frames. esp_websocket_client
   // splits a single logical WS frame into multiple
   // WEBSOCKET_EVENT_DATA events when the payload exceeds the
