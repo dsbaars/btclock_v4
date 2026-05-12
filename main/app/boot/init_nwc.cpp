@@ -18,6 +18,7 @@
 #include "nostr/subscription_manager.hpp"
 #include "nwc/client.hpp"
 #include "nwc/jsonrpc.hpp"
+#include "nwc/queue.hpp"
 #include "nwc/uri.hpp"
 #include "prefs.hpp"
 #include "settings/nvs_store.hpp"
@@ -40,6 +41,36 @@ constexpr int64_t kBalanceCacheCapSats = 4'000'000'000LL;
 // can trigger an extra write per payment. 60 s keeps the NVS wear
 // bounded.
 constexpr int64_t kBalanceCacheMinIntervalMs = 60'000;
+
+// Notification worker stack. The heavy path here is NIP-44 v2
+// decrypt (ChaCha20 + HMAC-SHA-256, ~1 KiB scratch) + cJSON parse
+// (~2 KiB arena) + a small dispatch. 8 KiB is comfortable with room
+// for log frames and HMAC scratch. The WS RX task (~3-4 KiB) blew
+// up on this same workload — see bd lwf.9 for the crash dump.
+constexpr uint32_t kNotifWorkerStackBytes = 8 * 1024;
+// One step BELOW the relay-WS task. Lower priority keeps the WS
+// callback path responsive even when the worker is mid-decrypt; the
+// queue handoff is fast either way (microseconds-level mutex).
+constexpr UBaseType_t kNotifWorkerPriority = 4;
+
+void NwcNotifWorker(void* arg) {
+  auto* ctx = static_cast<AppCtx*>(arg);
+  for (;;) {
+    nwc::RawNotification raw;
+    if (!ctx->nwc_notif_queue) break;  // teardown — only happens on shutdown
+    if (ctx->nwc_notif_queue->WaitPop(raw, /*timeout_ms=*/1000)) {
+      if (ctx->nwc_client) {
+        ctx->nwc_client->DispatchRawNotification(raw);
+      }
+    } else if (!ctx->nwc_notif_queue) {
+      break;
+    }
+    // On timeout, just loop. The worker stays alive for the process
+    // lifetime; we never tear down NWC dynamically.
+  }
+  ctx->nwc_notif_worker = nullptr;
+  vTaskDelete(nullptr);
+}
 
 // Rebind the refresh ticker to a new period. Recreates the
 // underlying esp_timer; the cb stays the same. Returns the new
@@ -126,6 +157,28 @@ void InitNwc(AppCtx& ctx) {
   ctx.nwc_client = std::make_unique<nwc::NwcClient>(
       cfg.parsed, std::move(publish), std::move(subscribe),
       std::move(unsubscribe));
+
+  // Stand up the bounded notification queue + worker BEFORE
+  // `Start()` opens the relay — otherwise the first kind 23197 that
+  // races the worker spawn would land on the legacy synchronous path
+  // and re-trip the WS-task stack overflow.
+  ctx.nwc_notif_queue = std::make_unique<nwc::NotificationQueue>();
+  nwc::NotificationQueue* queue_ptr = ctx.nwc_notif_queue.get();
+  ctx.nwc_client->SetNotifEnqueueFn(
+      [queue_ptr](nwc::RawNotification&& raw) -> bool {
+        return queue_ptr->TryPush(std::move(raw));
+      });
+  if (xTaskCreate(NwcNotifWorker, "nwc_notify",
+                  kNotifWorkerStackBytes / sizeof(StackType_t), &ctx,
+                  kNotifWorkerPriority, &ctx.nwc_notif_worker) != pdPASS) {
+    ESP_LOGE(kTag,
+             "nwc_notify worker xTaskCreate failed — leaving NWC disabled");
+    ctx.nwc_client.reset();
+    ctx.nwc_subs.reset();
+    ctx.nwc_relay.reset();
+    ctx.nwc_notif_queue.reset();
+    return;
+  }
   // esp_fill_random uses the SoC HW RNG. time(nullptr) returns 0 when
   // the SNTP sync hasn't landed yet; the relay rejects events with
   // created_at=0, so fall back to the monotonic clock (boot-relative).
@@ -170,10 +223,10 @@ void InitNwc(AppCtx& ctx) {
   const uint32_t refresh_secs = cfg.refresh_secs;
 
   ctx.nwc_client->SetOnReady([ctx_ptr, refresh_secs](const nwc::InfoEvent& ev) {
-    ESP_LOGI(kTag,
-             "nwc ready: enc=%s methods=%zu notifs=%zu — first poll",
-             ev.encryption.empty() ? "(default)" : ev.encryption.front().c_str(),
-             ev.methods.size(), ev.notifications.size());
+    ESP_LOGI(
+        kTag, "nwc ready: enc=%s methods=%zu notifs=%zu — first poll",
+        ev.encryption.empty() ? "(default)" : ev.encryption.front().c_str(),
+        ev.methods.size(), ev.notifications.size());
     if (ctx_ptr->nwc_client) ctx_ptr->nwc_client->RequestGetBalance();
     if (ctx_ptr->nwc_refresh_timer == nullptr) {
       ctx_ptr->nwc_refresh_timer = StartRefreshTimer(*ctx_ptr, refresh_secs);
@@ -190,8 +243,7 @@ void InitNwc(AppCtx& ctx) {
       hub_ptr->Report(patch);
     }
     const int64_t now = MsNow();
-    if (sats <= kBalanceCacheCapSats &&
-        (last_persisted_sats != sats) &&
+    if (sats <= kBalanceCacheCapSats && (last_persisted_sats != sats) &&
         (now - last_persist_ms >= kBalanceCacheMinIntervalMs)) {
       Prefs rt(prefs::kRuntimeStateNs);
       rt.SetU32(prefs::kNwcLastBalSat, static_cast<uint32_t>(sats));
@@ -203,24 +255,22 @@ void InitNwc(AppCtx& ctx) {
              static_cast<long long>(sats));
   });
 
-  ctx.nwc_client->SetOnPayment(
-      [hub_ptr, main_task, notify_pending](
-          const nwc::PaymentNotification& p) {
-        const int64_t sats = static_cast<int64_t>(p.amount_msat / 1000ULL);
-        ESP_LOGI(kTag, "nwc payment: dir=%u amount=%lld sats",
-                 static_cast<unsigned>(p.direction),
-                 static_cast<long long>(sats));
-        if (hub_ptr) {
-          DataSnapshot patch;
-          patch.nwc_last_payment.direction = static_cast<uint8_t>(p.direction);
-          patch.nwc_last_payment.amount_sats = sats;
-          patch.nwc_last_payment.description = p.description;
-          patch.nwc_last_payment.received_ms = MsNow();
-          hub_ptr->Report(patch);
-        }
-        notify_pending->store(true);
-        if (main_task) xTaskNotifyGive(main_task);
-      });
+  ctx.nwc_client->SetOnPayment([hub_ptr, main_task, notify_pending](
+                                   const nwc::PaymentNotification& p) {
+    const int64_t sats = static_cast<int64_t>(p.amount_msat / 1000ULL);
+    ESP_LOGI(kTag, "nwc payment: dir=%u amount=%lld sats",
+             static_cast<unsigned>(p.direction), static_cast<long long>(sats));
+    if (hub_ptr) {
+      DataSnapshot patch;
+      patch.nwc_last_payment.direction = static_cast<uint8_t>(p.direction);
+      patch.nwc_last_payment.amount_sats = sats;
+      patch.nwc_last_payment.description = p.description;
+      patch.nwc_last_payment.received_ms = MsNow();
+      hub_ptr->Report(patch);
+    }
+    notify_pending->store(true);
+    if (main_task) xTaskNotifyGive(main_task);
+  });
 
   if (auto err = ctx.nwc_relay->Start(); err != ESP_OK) {
     ESP_LOGE(kTag, "nwc relay Start() failed: %s — leaving NWC disabled",
@@ -257,8 +307,7 @@ void RefreshNwcSettings(AppCtx& ctx) {
   // "was-it-running" book-keeping that comes with esp_timer_restart.
   StopRefreshTimer(ctx);
   ctx.nwc_refresh_timer = StartRefreshTimer(ctx, cfg.refresh_secs);
-  ESP_LOGI(kTag,
-           "RefreshNwcSettings: refresh=%us flash=%d (timer %s)",
+  ESP_LOGI(kTag, "RefreshNwcSettings: refresh=%us flash=%d (timer %s)",
            static_cast<unsigned>(cfg.refresh_secs),
            cfg.flash_on_payment ? 1 : 0,
            ctx.nwc_refresh_timer ? "rearmed" : "off");

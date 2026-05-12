@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "nwc/client.hpp"
 
@@ -39,12 +40,43 @@ struct NwcDebugInfo {
   uint32_t frames_chunk = 0;
   uint32_t frames_complete = 0;
   uint32_t last_frame_bytes = 0;
+  uint8_t last_evt_op_code = 0;
+  uint8_t last_evt_fin = 0;
+  int32_t last_evt_payload_offset = 0;
+  int32_t last_evt_payload_len = 0;
+  int32_t last_evt_data_len = 0;
+  std::string last_emitted_head;  // first ≤ 96 bytes of last emitted frame
+
+  // Ring buffer of the last ~16 raw WS event metadata records. Empty
+  // when the relay is null. Lets /api/nwc/debug expose chunk-level
+  // fragmentation evidence — chase mismatches between payload_offset
+  // / payload_len / data_len here when the parser sees tail-only
+  // buffers.
+  struct WssEvt {
+    uint32_t seq = 0;
+    uint8_t op_code = 0;
+    uint8_t fin = 0;
+    uint8_t emit = 0;
+    int32_t payload_offset = 0;
+    int32_t payload_len = 0;
+    int32_t data_len = 0;
+  };
+  std::vector<WssEvt> wss_evt_history;
 
   uint32_t reissue_count = 0;
   uint32_t parse_fail_count = 0;
   uint32_t event_dispatch_count = 0;
   std::string last_event_sub_id;
   std::string last_parse_fail_head;  // first ≤256 bytes of last rejected frame
+
+  // Notification queue depth / counters — sampled from the live
+  // NotificationQueue. Zero when no queue is wired (host tests, or
+  // disabled NWC stack).
+  uint32_t notif_queue_capacity = 0;
+  uint32_t notif_queue_size = 0;
+  uint32_t notif_queue_pushed = 0;
+  uint32_t notif_queue_popped = 0;
+  uint32_t notif_queue_dropped = 0;
 };
 
 // Render an NwcDebugInfo as a compact JSON string. Empty on OOM.

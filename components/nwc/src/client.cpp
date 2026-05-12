@@ -207,13 +207,17 @@ void NwcClient::Start() {
     state_ = State::kFatal;
     return;
   }
+  // Eager NIP-44 conversation-key derivation so the notification
+  // worker doesn't race with first-decrypt setup. The math is
+  // deterministic given the URI keys; failure here means malformed
+  // keys, which we'd hit anyway on first request.
+  (void)EnsureConversationKey();
 
   // Derive our x-only pubkey from the secret. Needed for the `#p`
   // filter and as the canonical pubkey field on every kind 23194 we
   // sign.
   uint8_t our_x[32];
-  if (nostr::DerivePubkeyXOnly(seckey_, our_x) !=
-      nostr::EventSignError::kOk) {
+  if (nostr::DerivePubkeyXOnly(seckey_, our_x) != nostr::EventSignError::kOk) {
     state_ = State::kFatal;
     return;
   }
@@ -278,8 +282,8 @@ bool NwcClient::PublishSignedRequest(const std::string& plaintext_payload) {
     ciphertext_content =
         nostr::Nip44EncryptV2(conversation_key_, nonce_buf, plaintext_payload);
   } else {
-    ciphertext_content = nostr::Nip04Encrypt(seckey_, wallet_pub_, nonce_buf,
-                                             plaintext_payload);
+    ciphertext_content =
+        nostr::Nip04Encrypt(seckey_, wallet_pub_, nonce_buf, plaintext_payload);
   }
   if (ciphertext_content.empty()) return false;
 
@@ -427,7 +431,7 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
     WalletError werr;
     if (DecodeBalanceResponse(dec.plaintext, resp, werr) == RpcError::kOk) {
       decode_resp_ok_.fetch_add(1);
-      balance_msat_cache_ = resp.balance_msat;
+      balance_msat_cache_.store(resp.balance_msat);
       if (on_balance_) {
         cb_on_balance_dispatched_.fetch_add(1);
         on_balance_(resp.balance_msat);
@@ -461,16 +465,44 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
 }
 
 void NwcClient::OnNotification(const nostr::Event& ev) {
+  // Light path: if an enqueue functor is wired (production), copy the
+  // minimal envelope and hand off to the worker. The WS RX-callback
+  // task has only ~3-4 KiB of stack; decrypting NIP-44 v2 + cJSON-
+  // parsing the payload here overflows it and reboots the device. See
+  // bd btclock_v4-lwf.9 for the crash signature.
+  if (notif_enqueue_) {
+    RawNotification raw;
+    raw.kind = ev.kind;
+    raw.content = ev.content;
+    raw.event_id = ev.id;
+    if (notif_enqueue_(std::move(raw))) {
+      notif_enqueued_.fetch_add(1);
+    } else {
+      notif_dropped_.fetch_add(1);
+    }
+    return;
+  }
+  // Fallback — no queue wired (host tests, or pre-init). Run the heavy
+  // path inline. Behaviour identical to pre-queue NwcClient.
+  DispatchHeavy(ev.kind, ev.content);
+}
+
+void NwcClient::DispatchRawNotification(const RawNotification& raw) {
+  notif_dispatched_.fetch_add(1);
+  DispatchHeavy(raw.kind, raw.content);
+}
+
+void NwcClient::DispatchHeavy(uint32_t kind, const std::string& content) {
   // Pick variant by kind — modern (23197) ⇒ NIP-44 v2, legacy
   // (23196) ⇒ NIP-04. The spec mandates the same encryption for both
   // sides of a conversation so this match is reliable.
   const nostr::EncryptionVariant variant =
-      (ev.kind == kKindNotifModern) ? nostr::EncryptionVariant::kNip44V2
-                                     : nostr::EncryptionVariant::kNip04;
+      (kind == kKindNotifModern) ? nostr::EncryptionVariant::kNip44V2
+                                 : nostr::EncryptionVariant::kNip04;
   if (!LoadKeys()) return;
   decrypt_attempts_.fetch_add(1);
   nostr::Nip4xDecryptResult dec =
-      nostr::Decrypt(variant, seckey_, wallet_pub_, ev.content);
+      nostr::Decrypt(variant, seckey_, wallet_pub_, content);
   if (!dec.ok) {
     if (variant == nostr::EncryptionVariant::kNip44V2) {
       decrypt_fail_nip44_.fetch_add(1);
@@ -489,15 +521,16 @@ void NwcClient::OnNotification(const nostr::Event& ev) {
   decode_notif_ok_.fetch_add(1);
   if (pn.direction == PaymentDirection::kIncoming) {
     // Optimistically bump the cached balance — keeps the displayed
-    // sats fresh between get_balance polls.
-    balance_msat_cache_ += pn.amount_msat;
+    // sats fresh between get_balance polls. Atomic CAS-free update
+    // is fine: we're the sole writer for kIncoming/kOutgoing, and a
+    // concurrent OnResponse on the WS task simply overwrites with the
+    // wallet's authoritative value next poll.
+    balance_msat_cache_.fetch_add(pn.amount_msat);
   } else if (pn.direction == PaymentDirection::kOutgoing) {
     const uint64_t total = pn.amount_msat + pn.fees_paid_msat;
-    if (balance_msat_cache_ > total) {
-      balance_msat_cache_ -= total;
-    } else {
-      balance_msat_cache_ = 0;
-    }
+    uint64_t cur = balance_msat_cache_.load();
+    uint64_t next = (cur > total) ? (cur - total) : 0ULL;
+    balance_msat_cache_.store(next);
   }
   last_pay_direction_.store(static_cast<uint8_t>(pn.direction));
   last_pay_amount_sats_.store(static_cast<int64_t>(pn.amount_msat / 1000ULL));
@@ -512,7 +545,7 @@ DebugSnapshot NwcClient::GetDebugSnapshot() const {
   DebugSnapshot s;
   s.state = state_;
   s.encryption = encryption_;
-  s.balance_msat_cache = balance_msat_cache_;
+  s.balance_msat_cache = balance_msat_cache_.load();
   s.sub_id_info = sub_id_info_;
   s.sub_id_rpc = sub_id_rpc_;
   s.events_total = events_total_.load();
@@ -537,6 +570,9 @@ DebugSnapshot NwcClient::GetDebugSnapshot() const {
   s.last_pay_direction = last_pay_direction_.load();
   s.last_pay_amount_sats = last_pay_amount_sats_.load();
   s.last_pay_received_ms = last_pay_received_ms_.load();
+  s.notif_enqueued = notif_enqueued_.load();
+  s.notif_dropped = notif_dropped_.load();
+  s.notif_dispatched = notif_dispatched_.load();
   return s;
 }
 

@@ -59,6 +59,7 @@ class ZapIdLru;
 }  // namespace nostr
 namespace nwc {
 class NwcClient;
+class NotificationQueue;
 }  // namespace nwc
 }  // namespace btclock
 
@@ -191,6 +192,15 @@ struct AppCtx {
   std::unique_ptr<nostr::RelayClient> nwc_relay;
   std::unique_ptr<nostr::SubscriptionManager> nwc_subs;
   std::unique_ptr<nwc::NwcClient> nwc_client;
+  // Bounded queue + dedicated worker for kind 23197/23196 payment
+  // notifications. The decrypt + cJSON parse for these used to run
+  // synchronously on the esp_websocket_client RX-task (~3-4 KiB
+  // stack) and overflowed it on first arrival. The hot path now
+  // copies the encrypted envelope into the queue and returns
+  // immediately; the worker (8 KiB stack) does the heavy work.
+  // bd btclock_v4-lwf.9.
+  std::unique_ptr<nwc::NotificationQueue> nwc_notif_queue;
+  TaskHandle_t nwc_notif_worker = nullptr;
   // ESP timer firing the periodic get_balance poll. Owned here so the
   // settings PATCH path can re-prime the interval without re-entering
   // the boot init. nullptr when NWC is disabled.

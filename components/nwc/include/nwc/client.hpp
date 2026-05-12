@@ -39,6 +39,7 @@
 #include "nostr/nip4x.hpp"
 #include "nostr/subscription_manager.hpp"
 #include "nwc/jsonrpc.hpp"
+#include "nwc/queue.hpp"
 #include "nwc/uri.hpp"
 
 namespace btclock {
@@ -91,6 +92,15 @@ struct DebugSnapshot {
   uint8_t last_pay_direction = 0;  // PaymentDirection cast: 0/1/2
   int64_t last_pay_amount_sats = 0;
   int64_t last_pay_received_ms = 0;
+
+  // Notification-queue counters. Populated from the wired
+  // `NotificationQueue` when present; zero otherwise. `enqueued` is
+  // the count of kind 23197/23196 events the WS task successfully
+  // handed off; `dropped` covers either queue-full or shutdown
+  // rejections (almost always queue-full in practice).
+  uint32_t notif_enqueued = 0;
+  uint32_t notif_dropped = 0;
+  uint32_t notif_dispatched = 0;
 };
 
 // Caller-supplied randomness source. On target this is wired to
@@ -110,17 +120,26 @@ using ReadyCallback = std::function<void(const InfoEvent& info)>;
 // Frame-publish hook so the state machine can be tested without an
 // actual RelayClient. The default implementation sends through the
 // owned RelayClient; host tests inject a capturing functor.
-using PublishFn =
-    std::function<bool(const char* data, size_t len)>;
+using PublishFn = std::function<bool(const char* data, size_t len)>;
 
 // Subscribe/Unsubscribe hooks — caller wires these to a
 // `nostr::SubscriptionManager` in production, or a no-op functor in
 // host tests. Splitting them off the SubscriptionManager type keeps
 // NwcClient host-testable (the manager pulls in `RelayClient` which
 // depends on ESP-IDF symbols).
-using SubscribeFn = std::function<void(const std::string& sub_id,
-                                       const nostr::Filter& filter)>;
+using SubscribeFn =
+    std::function<void(const std::string& sub_id, const nostr::Filter& filter)>;
 using UnsubscribeFn = std::function<void(const std::string& sub_id)>;
+
+// Caller-supplied enqueue hook for kind 23197/23196 notifications.
+// Returning true is "accepted", false is "dropped" (queue full or
+// shut down). When set, `HandleEvent` for the notification kinds runs
+// ONLY the light copy+enqueue path — no decrypt, no decode, no
+// callback. The worker side runs the heavy path via
+// `DispatchRawNotification`. When unset (host tests, or pre-init),
+// HandleEvent falls back to synchronous in-task dispatch — preserves
+// the legacy contract.
+using NotifEnqueueFn = std::function<bool(RawNotification&&)>;
 
 class NwcClient {
  public:
@@ -142,15 +161,18 @@ class NwcClient {
   void SetOnBalance(BalanceCallback fn) { on_balance_ = std::move(fn); }
   void SetOnPayment(PaymentCallback fn) { on_payment_ = std::move(fn); }
   void SetOnReady(ReadyCallback fn) { on_ready_ = std::move(fn); }
+  // Wire the notification handoff. With this set, `HandleEvent` for
+  // kind 23197/23196 only enqueues — the heavy decrypt/decode/dispatch
+  // runs on whoever calls `DispatchRawNotification` (typically a
+  // dedicated worker task). Must be called before `Start()`.
+  void SetNotifEnqueueFn(NotifEnqueueFn fn) { notif_enqueue_ = std::move(fn); }
 
   // Default encryption to use when the wallet hasn't yet sent its
   // INFO event. NIP-47 says "absence of encryption tag → assume
   // nip04" — so the safe default is nip04, but every modern wallet
   // ships nip44_v2 within seconds of subscribe. We start in nip44_v2
   // and downgrade to nip04 if INFO advertises only that.
-  void SetInitialEncryption(nostr::EncryptionVariant v) {
-    encryption_ = v;
-  }
+  void SetInitialEncryption(nostr::EncryptionVariant v) { encryption_ = v; }
 
   // Open the subscription. Picks a sub-id derived from the wallet
   // pubkey so multi-NwcClient hosts (unlikely on this device, but
@@ -171,7 +193,7 @@ class NwcClient {
 
   State state() const { return state_; }
   nostr::EncryptionVariant encryption() const { return encryption_; }
-  uint64_t balance_msat_cache() const { return balance_msat_cache_; }
+  uint64_t balance_msat_cache() const { return balance_msat_cache_.load(); }
   const std::string& wallet_pubkey() const {
     return pairing_.wallet_pubkey_hex;
   }
@@ -192,11 +214,25 @@ class NwcClient {
   // VerifyEvent at the data-source seam).
   void HandleEvent(const nostr::Event& ev);
 
+  // Worker-side entry. Runs the heavy decrypt + decode + callback for
+  // a previously-enqueued notification. MUST NOT be called from the
+  // WS RX task (the whole point of the queue is to keep that task's
+  // stack clean). Safe to call from any other task; internally
+  // touches only atomic counters and the (now atomic) balance cache.
+  void DispatchRawNotification(const RawNotification& raw);
+
  private:
   bool PublishSignedRequest(const std::string& plaintext_payload);
   void OnInfoEvent(const nostr::Event& ev);
   void OnResponse(const nostr::Event& ev);
+  // Light path on the WS task: copy → enqueue. When notif_enqueue_
+  // is unset, falls through to the legacy synchronous dispatch.
   void OnNotification(const nostr::Event& ev);
+  // The heavy path, shared between the worker-driven flow and the
+  // legacy synchronous path. Takes the already-decoupled kind+
+  // ciphertext rather than an Event reference so the worker side can
+  // own the raw envelope without re-parsing.
+  void DispatchHeavy(uint32_t kind, const std::string& content);
 
   // Derive seckey32 / pubkey32 from the URI. Cached on the instance
   // since they're needed on every send.
@@ -209,6 +245,7 @@ class NwcClient {
   PublishFn publish_;
   SubscribeFn subscribe_;
   UnsubscribeFn unsubscribe_;
+  NotifEnqueueFn notif_enqueue_;
 
   // Raw 32-byte keys decoded from the URI. Valid iff `keys_loaded_`.
   uint8_t seckey_[32]{};
@@ -235,7 +272,9 @@ class NwcClient {
   std::string inflight_request_id_;
   std::string inflight_method_;  // "get_balance" / "get_info" etc.
 
-  uint64_t balance_msat_cache_ = 0;
+  // Updated by OnResponse (WS task) and DispatchHeavy (worker task)
+  // post-queue. Atomic so the get-balance snapshot path is race-free.
+  std::atomic<uint64_t> balance_msat_cache_{0};
   State state_ = State::kIdle;
 
   RandomBytesFn random_;
@@ -269,6 +308,16 @@ class NwcClient {
   std::atomic<uint8_t> last_pay_direction_{0};
   std::atomic<int64_t> last_pay_amount_sats_{0};
   std::atomic<int64_t> last_pay_received_ms_{0};
+  // Counters for the queue handoff. `notif_enqueued_` increments
+  // whenever the WS hot path successfully hands a raw notification
+  // off to the queue; `notif_dropped_` covers the false-return from
+  // the enqueue functor (queue-full or shutdown). `notif_dispatched_`
+  // ticks once per worker-side `DispatchRawNotification` call. Useful
+  // for the /api/nwc/debug story: enqueued − dispatched − dropped > 0
+  // ⇒ items still in the queue right now.
+  std::atomic<uint32_t> notif_enqueued_{0};
+  std::atomic<uint32_t> notif_dropped_{0};
+  std::atomic<uint32_t> notif_dispatched_{0};
 };
 
 // Convert the URI's hex pubkey/secret to 32-byte arrays. Returns

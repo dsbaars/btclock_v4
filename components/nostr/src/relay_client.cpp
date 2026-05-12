@@ -151,7 +151,7 @@ void RelayClient::HandleEvent(int32_t id, void* data) {
       ESP_LOGW(kTag, "disconnected: %s", url_.c_str());
       if (on_connect_) on_connect_(false);
       break;
-    case WEBSOCKET_EVENT_DATA:
+    case WEBSOCKET_EVENT_DATA: {
       // op_code 0x1 = TEXT initial fragment, 0x0 = CONTINUATION.
       // esp_websocket_client fires multiple WEBSOCKET_EVENT_DATA per
       // logical WS frame when the payload exceeds the internal TCP
@@ -163,27 +163,104 @@ void RelayClient::HandleEvent(int32_t id, void* data) {
       // forwarding to on_frame_, otherwise ParseEnvelope sees a
       // truncated JSON and silently drops the event. Same pattern as
       // mempool_kraken_source.cpp.
+      if (ev) {
+        // Always record the most-recent event metadata — even for
+        // op_codes we ignore — so /api/nwc/debug can show "we got a
+        // control frame here" instead of leaving the operator
+        // wondering. Cheap atomic stores.
+        last_evt_op_code_.store(ev->op_code);
+        last_evt_fin_.store(static_cast<uint8_t>(ev->fin ? 1 : 0));
+        last_evt_payload_offset_.store(ev->payload_offset);
+        last_evt_payload_len_.store(ev->payload_len);
+        last_evt_data_len_.store(ev->data_len);
+      }
+      bool did_emit = false;
+      // Two orthogonal layers of fragmentation can reach us here:
+      //
+      //   1. WS-protocol fragmentation: a logical TEXT message split
+      //      into multiple WS frames. The first frame carries
+      //      op_code=0x1 (TEXT) with fin=0; subsequent frames carry
+      //      op_code=0x0 (CONTINUATION). Only the LAST frame has
+      //      fin=1. Each frame has its OWN payload_len, and within
+      //      a frame payload_offset starts at 0. This is what
+      //      Alby's relay does for kind 23197/23196 notifications.
+      //
+      //   2. Within-frame chunking: when a single WS frame's payload
+      //      exceeds esp_websocket_client's rx_buffer (8 KiB here),
+      //      the library re-enters its read loop with the SAME
+      //      op_code, payload_len = frame size, and payload_offset
+      //      advancing per chunk. We currently never hit this case
+      //      since Alby's per-fragment frames are < 1.5 KiB.
+      //
+      // The earlier accumulator clear-on-payload_offset==0 collapsed
+      // the WS-protocol fragmentation case onto itself: every frame
+      // had offset=0, so the buffer was wiped on each fragment and
+      // only the LAST fragment reached the parser as a tail-only
+      // truncated JSON. Drive reassembly off op_code instead — clear
+      // ONLY on the start of a fresh TEXT message (op_code=0x1 with
+      // payload_offset==0) and emit when fin=1 AND the current
+      // chunk completes its frame.
       if (ev && (ev->op_code == 0x1 || ev->op_code == 0x0) &&
           ev->data_len > 0) {
         frames_chunk_.fetch_add(1);
-        if (ev->payload_offset == 0) fragment_buf_.clear();
+        if (ev->op_code == 0x1 && ev->payload_offset == 0) {
+          fragment_buf_.clear();
+        }
         fragment_buf_.append(ev->data_ptr, ev->data_len);
-        const int total = ev->payload_offset + ev->data_len;
-        if (total >= ev->payload_len) {
-          last_frame_bytes_.store(
-              static_cast<uint32_t>(fragment_buf_.size()));
+        const int frame_total = ev->payload_offset + ev->data_len;
+        const bool frame_complete = frame_total >= ev->payload_len;
+        if (ev->fin && frame_complete) {
+          last_frame_bytes_.store(static_cast<uint32_t>(fragment_buf_.size()));
           frames_complete_.fetch_add(1);
+          did_emit = true;
+          {
+            std::lock_guard<std::mutex> lk(mu_);
+            const size_t head =
+                fragment_buf_.size() < 96 ? fragment_buf_.size() : 96;
+            last_emitted_head_.assign(fragment_buf_.data(), head);
+          }
           if (on_frame_) on_frame_(fragment_buf_.data(), fragment_buf_.size());
           fragment_buf_.clear();
         }
       }
+      if (ev) {
+        std::lock_guard<std::mutex> lk(mu_);
+        EvtRecord r;
+        r.seq = ++evt_seq_;
+        r.op_code = ev->op_code;
+        r.fin = static_cast<uint8_t>(ev->fin ? 1 : 0);
+        r.emit = static_cast<uint8_t>(did_emit ? 1 : 0);
+        r.payload_offset = ev->payload_offset;
+        r.payload_len = ev->payload_len;
+        r.data_len = ev->data_len;
+        evt_history_[evt_history_pos_] = r;
+        evt_history_pos_ = (evt_history_pos_ + 1) % kEvtHistory;
+        if (evt_history_filled_ < kEvtHistory) ++evt_history_filled_;
+      }
       break;
+    }
     case WEBSOCKET_EVENT_ERROR:
       ESP_LOGW(kTag, "error: %s", url_.c_str());
       break;
     default:
       break;
   }
+}
+
+std::vector<RelayClient::EvtRecord> RelayClient::evt_history() const {
+  std::lock_guard<std::mutex> lk(mu_);
+  std::vector<EvtRecord> out;
+  out.reserve(evt_history_filled_);
+  if (evt_history_filled_ < kEvtHistory) {
+    for (size_t i = 0; i < evt_history_filled_; ++i) {
+      out.push_back(evt_history_[i]);
+    }
+  } else {
+    for (size_t i = 0; i < kEvtHistory; ++i) {
+      out.push_back(evt_history_[(evt_history_pos_ + i) % kEvtHistory]);
+    }
+  }
+  return out;
 }
 
 }  // namespace nostr
