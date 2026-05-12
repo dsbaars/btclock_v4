@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 85> kFields = {{
+inline constexpr std::array<FieldSpec, 89> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -310,6 +310,22 @@ inline constexpr std::array<FieldSpec, 85> kFields = {{
     // read-side fallback can detect "user has not configured the new
     // plural slot yet" and consult the legacy singular instead.
     {prefs::kNostrZapPubkeys, FieldKind::kString, false, 0, 0, false, 0, ""},
+    // NWC pairing — `nwcUri` is the full `nostr+walletconnect://…`
+    // string including the client secret. Boot-only because the
+    // NwcClient + dedicated RelayClient are constructed in init_nwc
+    // exactly once; a live URI swap would need to tear the WSS down
+    // and rebuild from a foreign task. GET emit redacts the secret
+    // and surfaces `nwcUriSet` like httpAuthPass. nwcEnabled +
+    // nwcRefreshSecs are boot-only on the same rationale (the
+    // refresh-tick timer is wired once at boot).
+    {prefs::kNwcUri, FieldKind::kString, true, 0, 0, false, 0, ""},
+    {prefs::kNwcEnabled, FieldKind::kBool, true, 0, 0, false, 0, {}},
+    {prefs::kNwcRefreshSecs, FieldKind::kUint, true, 15, 3600, false, 60, {}},
+    // nwcFlashOnPay mirrors ledFlashOnZap: pulse the LED ring + (when
+    // present) the frontlight on every NWC payment notification.
+    // Runtime — the dispatcher in event_loop.cpp reads the atomic on
+    // each notification so a live PATCH lands without reboot.
+    {prefs::kNwcFlashOnPay, FieldKind::kBool, false, 0, 0, true, 0, {}},
     // v3 DEFAULT_OTA_ENABLED=true; otaPass default is empty string in the
     // GET emitter (v3's settings.cpp echoes only `otaPassSet`).
     {prefs::kOtaEnabled, FieldKind::kBool, true, 0, 0, true, 0, {}},

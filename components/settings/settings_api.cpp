@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "cJSON.h"
+#include "nwc/uri.hpp"
 #include "settings/api.hpp"
 #include "settings/nostr_config.hpp"  // kMaxZapPubkeys
 #include "settings/pref_keys.hpp"
@@ -340,6 +341,25 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   AddBool(root, "proxyPassSet",
           !prefs.GetString(prefs::kProxyPass, "").empty());
 
+  // NWC pairing URI carries the client secret — never echo the raw
+  // string back. The schema's EmitField loop above wrote `nwcUri` as
+  // the full value (same path as every other kString); replace it
+  // with a masked form plus a sibling `nwcUriSet` bool, mirroring the
+  // httpAuthPass / otaPass / proxyPass protocol. The masked form
+  // surfaces enough context for the WebUI to show "wallet pubkey
+  // 51f1f43c…" without leaking the secret.
+  {
+    cJSON_DeleteItemFromObjectCaseSensitive(root, "nwcUri");
+    const std::string raw = prefs.GetString(prefs::kNwcUri, "");
+    AddBool(root, "nwcUriSet", !raw.empty());
+    if (!raw.empty()) {
+      nwc::PairingUri parsed;
+      if (nwc::ParsePairingUri(raw, parsed) == nwc::ParseError::kOk) {
+        AddString(root, "nwcUriMasked", nwc::MaskedUri(parsed));
+      }
+    }
+  }
+
   // miningPoolUser is normally a public identifier (payout address,
   // username, worker name) and rides plaintext in the EmitField loop
   // above. For pools whose user slot holds a secret API key (ViaBTC,
@@ -577,6 +597,81 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         if (!ok) {
           result.status = PatchStatus::kBadField;
           result.error = key + ":bad_scheme";
+          cJSON_Delete(root);
+          return result;
+        }
+      }
+    }
+    // nwcEnabled: gate the relay-share invariant before the toggle
+    // commits. The data-relay slot is consumed by the dedicated NWC
+    // WSS, so enabling NWC while data_relays already fills every
+    // kMaxNostrRelays slot would push the runtime past the internal-
+    // SRAM ceiling. The companion check on the nostrRelays array
+    // already covers the reverse direction (adding a 4th relay while
+    // NWC is on); this one covers a PATCH whose body toggles
+    // nwcEnabled alone.
+    if (key == "nwcEnabled" && cJSON_IsBool(item) && cJSON_IsTrue(item)) {
+      cJSON* relays = cJSON_GetObjectItemCaseSensitive(root, "nostrRelays");
+      std::size_t relay_count;
+      if (cJSON_IsArray(relays)) {
+        relay_count = 0;
+        for (cJSON* it = relays->child; it; it = it->next) {
+          if (cJSON_IsString(it) && it->valuestring && it->valuestring[0]) {
+            ++relay_count;
+          }
+        }
+      } else {
+        std::string csv = ReadString(prefs, prefs::kNostrRelays);
+        if (csv.empty()) csv = ReadString(prefs, prefs::kNostrRelay);
+        relay_count = SplitCsv(csv).size();
+      }
+      if (relay_count + 1 > kMaxNostrRelays) {
+        result.status = PatchStatus::kBadField;
+        result.error = "nwcEnabled:exceeds_relay_budget";
+        cJSON_Delete(root);
+        return result;
+      }
+    }
+    // nwcUri: full NIP-47 pairing URI. The relay-share invariant
+    // (data_relays + (nwc_enabled ? 1 : 0) <= kMaxNostrRelays) is
+    // enforced below, after every field has been provisionally
+    // applied. Here we only validate the URI shape so a malformed
+    // string never reaches NVS — the boot path would then wedge in
+    // kFatal with no way for the user to recover from the WebUI.
+    // Empty string clears the URI (matches nostrRelay semantics).
+    if (key == "nwcUri") {
+      if (!cJSON_IsString(item) || !item->valuestring) {
+        result.status = PatchStatus::kBadField;
+        result.error = key + ":bad_type";
+        cJSON_Delete(root);
+        return result;
+      }
+      const std::string s = item->valuestring;
+      if (!s.empty()) {
+        nwc::PairingUri parsed;
+        const auto pe = nwc::ParsePairingUri(s, parsed);
+        if (pe != nwc::ParseError::kOk) {
+          result.status = PatchStatus::kBadField;
+          switch (pe) {
+            case nwc::ParseError::kBadScheme:
+              result.error = "nwcUri:bad_scheme";
+              break;
+            case nwc::ParseError::kBadPubkey:
+              result.error = "nwcUri:bad_pubkey";
+              break;
+            case nwc::ParseError::kBadSecret:
+              result.error = "nwcUri:bad_secret";
+              break;
+            case nwc::ParseError::kBadRelay:
+              result.error = "nwcUri:bad_relay";
+              break;
+            case nwc::ParseError::kBadPercentEscape:
+              result.error = "nwcUri:bad_escape";
+              break;
+            default:
+              result.error = "nwcUri:bad";
+              break;
+          }
           cJSON_Delete(root);
           return result;
         }
@@ -901,6 +996,25 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         }
         if (!joined.empty()) joined.push_back(',');
         joined.append(s);
+      }
+      // Relay-budget invariant: data_relays + (nwc.enabled ? 1 : 0)
+      // must stay <= kMaxNostrRelays. The NWC client opens its own
+      // dedicated WSS, so it consumes one slot from the same internal-
+      // SRAM ceiling that pins multi-relay data sources. Evaluate
+      // against the PATCH's effective state (nwcEnabled may be in the
+      // same body) so a coherent submit succeeds even when adjacent
+      // fields toggle in lock-step.
+      {
+        cJSON* nwc_en = cJSON_GetObjectItemCaseSensitive(root, "nwcEnabled");
+        const bool nwc_after = cJSON_IsBool(nwc_en)
+                                   ? cJSON_IsTrue(nwc_en)
+                                   : prefs.GetBool(prefs::kNwcEnabled, false);
+        if (nwc_after && count + 1 > kMaxNostrRelays) {
+          result.status = PatchStatus::kBadField;
+          result.error = "nostrRelays:exceeds_nwc_budget";
+          cJSON_Delete(root);
+          return result;
+        }
       }
       if (prefs.GetString(prefs::kNostrRelays, "") != joined) {
         writer.SetString(prefs::kNostrRelays, joined.c_str());

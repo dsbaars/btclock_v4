@@ -130,6 +130,18 @@ inline constexpr const char* kNostrZapPubkey = "nostrZapPubkey";
 // lowercase hex pubkeys (mirrors the actCurrencies CSV pattern); GET /
 // PATCH expose it as a JSON array of strings.
 inline constexpr const char* kNostrZapPubkeys = "nostrZapPubkeys";
+// Nostr Wallet Connect (NIP-47) pairing — feature flagged behind
+// `nwcEnabled`. `nwcUri` carries the full `nostr+walletconnect://…`
+// URI including the client secret; the GET emit redacts it like
+// `httpAuthPass`. `nwcRefreshSecs` drives the periodic get_balance
+// poll cadence (15..3600 — short enough for a near-live balance,
+// long enough to not hammer the relay). `nwcFlashOnPay` mirrors
+// `ledFlashOnZap`: a transient LED + frontlight pulse when a
+// payment_received / payment_sent notification arrives.
+inline constexpr const char* kNwcUri = "nwcUri";
+inline constexpr const char* kNwcEnabled = "nwcEnabled";
+inline constexpr const char* kNwcRefreshSecs = "nwcRefreshSecs";
+inline constexpr const char* kNwcFlashOnPay = "nwcFlashOnPay";
 inline constexpr const char* kOtaEnabled = "otaEnabled";
 inline constexpr const char* kOtaPass = "otaPass";
 inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
@@ -227,6 +239,15 @@ inline constexpr const char* kLastSlot = "lastSlot";
 // that suppresses the very first WS-frame's new-block reaction.
 // Mirrors v3 commit 989e645 ("fix: Fix block number caching").
 inline constexpr const char* kLastBlockHeight = "lastBlockHt";
+// Cached NWC wallet balance (whole sats) from the last successful
+// get_balance response. Written from the boot-wired NwcClient's
+// on-balance callback, debounced to avoid NVS wear; read at boot so
+// the balance screen shows the previous value while waiting for the
+// first live response. Stored as u32 (caps at ~42 BTC) — the boot
+// path treats overflow as "no cache". Lives in the runtime-state
+// namespace so factory-reset of the user-settings namespace doesn't
+// orphan it, and so it never round-trips through /api/settings.
+inline constexpr const char* kNwcLastBalSat = "nwcLastBalSat";
 
 // Compile-time guard: NVS keys must be <= 15 chars. Enforced once here
 // so a future rename can't silently truncate on-flash.
@@ -304,6 +325,10 @@ BTCLOCK_PREF_KEY_ASSERT(kNostrRelays);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapNotify);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkey);
 BTCLOCK_PREF_KEY_ASSERT(kNostrZapPubkeys);
+BTCLOCK_PREF_KEY_ASSERT(kNwcUri);
+BTCLOCK_PREF_KEY_ASSERT(kNwcEnabled);
+BTCLOCK_PREF_KEY_ASSERT(kNwcRefreshSecs);
+BTCLOCK_PREF_KEY_ASSERT(kNwcFlashOnPay);
 BTCLOCK_PREF_KEY_ASSERT(kOtaEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kOtaPass);
 BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);
@@ -335,6 +360,7 @@ BTCLOCK_PREF_KEY_ASSERT(kSettingsNs);
 BTCLOCK_PREF_KEY_ASSERT(kRuntimeStateNs);
 BTCLOCK_PREF_KEY_ASSERT(kLastSlot);
 BTCLOCK_PREF_KEY_ASSERT(kLastBlockHeight);
+BTCLOCK_PREF_KEY_ASSERT(kNwcLastBalSat);
 
 #undef BTCLOCK_PREF_KEY_ASSERT
 

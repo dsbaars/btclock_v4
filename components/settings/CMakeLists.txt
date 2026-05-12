@@ -5,9 +5,9 @@
 # wraps btclock::Prefs for the on-device build.
 idf_component_register(
     SRCS "settings_api.cpp" "factory_reset.cpp" "build_time.cpp"
-         "nostr_config.cpp"
+         "nostr_config.cpp" "nwc_config.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES cjson
+    REQUIRES cjson nwc
     PRIV_REQUIRES prefs nvs_flash
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
