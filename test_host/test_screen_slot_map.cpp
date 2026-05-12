@@ -185,3 +185,35 @@ TEST_CASE(
   // Moscow Time USD (slot 9, ccy 0) asked to stay on USD.
   CHECK(sm::TransposeSlotToCurrency(9, 0, C) == 9);
 }
+
+TEST_CASE(
+    "Regression bd btclock_v4-oni: slot_map and ScreenManager agree on "
+    "kAgnosticSlots — fee-rate slot lands on its own kind, not OOB") {
+  // Pin the consumer contract that the kAgnosticSlots fix re-established:
+  //
+  //   slot_map::ApiIdForSlot(slot_count-1, C) == kApiIdBlockFeeRate
+  //   slot_map::ApiIdForSlot(kAgnosticSlots, C) == kApiIdMoscowTime
+  //   slot_map::ApiIdForSlot(kAgnosticSlots+1, C) == kApiIdBtcPrice
+  //   slot_map::ApiIdForSlot(kAgnosticSlots+2, C) == kApiIdMarketCap
+  //
+  // The ScreenManager.cpp KindForSlot switch carries a static_assert
+  // pinned to slot_map::kAgnosticSlots, so a divergence (slot_map grows
+  // by one without the agnostic switch being extended) is a compile
+  // error there. From this side we just verify the slot_map invariants
+  // every consumer relies on, across the currency-count axis where the
+  // bug initially surfaced (C=1 fee slot landed in a per-currency OOB).
+  for (std::size_t C = 1; C <= 7; ++C) {
+    const std::size_t total = sm::SlotCount(C);
+    CAPTURE(C);
+    CHECK(sm::ApiIdForSlot(total - 1, C) == sm::kApiIdBlockFeeRate);
+    CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots, C) == sm::kApiIdMoscowTime);
+    CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots + 1, C) == sm::kApiIdBtcPrice);
+    CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots + 2, C) == sm::kApiIdMarketCap);
+    // NWC balance is the last agnostic slot — must NOT slip into the
+    // per-currency stride. Pre-fix, ScreenManager.kAgnosticSlots=8 made
+    // current_currency() return currencies_[0] for slot 8 (NWC), and
+    // KindForSlot(slot_count-1) hit the per-currency arithmetic with an
+    // OOB ccy_idx on the fee slot.
+    CHECK(sm::ApiIdForSlot(8, C) == sm::kApiIdNwcBalance);
+  }
+}

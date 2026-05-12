@@ -26,7 +26,9 @@ const auto kAllEnabled = [](int) { return true; };
 }  // namespace
 
 TEST_CASE("empty screenOrder falls back to full slot_map index order") {
-  // 2 currencies → 8 agnostic + 6 per-currency + 1 fee = 15 slots.
+  // 2 currencies → 9 agnostic + 6 per-currency + 1 fee = 16 slots
+  // (NWC balance lifted kAgnosticSlots from 8 to 9 in bd
+  // btclock_v4-lwf.6).
   const auto seq = rp::BuildRotationSequence("", kAllEnabled, 2);
   REQUIRE(seq.size() == sm::SlotCount(2));
   for (std::size_t i = 0; i < seq.size(); ++i) CHECK(seq[i] == i);

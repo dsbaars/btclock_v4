@@ -159,6 +159,17 @@ ScreenManager::ScreenManager(int64_t now_ms,
 }
 
 ScreenType ScreenManager::KindForSlot(size_t slot) const {
+  // The agnostic-slot cases below must cover [0, kAgnosticSlots). When a
+  // new agnostic screen is added (and kAgnosticSlots bumped via
+  // slot_map::kAgnosticSlots), this static_assert fires so the switch is
+  // not silently missed — letting the per-currency stride below
+  // re-interpret what should be a fixed agnostic slot. Bug
+  // btclock_v4-oni (NWC balance shifted the per-currency block but
+  // ScreenManager's local kAgnosticSlots constant stayed at 8) is the
+  // motivating regression.
+  static_assert(kAgnosticSlots == 9,
+                "KindForSlot agnostic switch covers slots 0..8; bump it "
+                "alongside slot_map::kAgnosticSlots.");
   if (slot == slot_count() - 1) return ScreenType::kBlockFeeRate;
   switch (slot) {
     case 0:

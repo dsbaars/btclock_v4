@@ -12,16 +12,27 @@
 // rate slot. With C currencies there are
 // kAgnosticSlots + kPerCurrencySlots·C + 1 slots total:
 //
-//   slot 0         : Block height          (currency-agnostic)
-//   slot 1         : Wall clock (HH:MM)    (currency-agnostic)
-//   slot 2         : Halving countdown     (currency-agnostic)
-//   slot 3         : Bitcoin supply        (currency-agnostic)
-//   slot 4         : Bitaxe hashrate       (currency-agnostic)
-//   slot 5         : Bitaxe best diff      (currency-agnostic)
-//   slot 6+3k      : Moscow time,  currencies[k]
-//   slot 7+3k      : BTC price,    currencies[k]
-//   slot 8+3k      : Market cap,   currencies[k]
-//   slot last      : Block fee rate (sats/vB integer, currency-agnostic)
+//   slot 0          : Block height           (currency-agnostic)
+//   slot 1          : Wall clock (HH:MM)     (currency-agnostic)
+//   slot 2          : Halving countdown      (currency-agnostic)
+//   slot 3          : Bitcoin supply         (currency-agnostic)
+//   slot 4          : Mining pool hashrate   (currency-agnostic)
+//   slot 5          : Mining pool earnings   (currency-agnostic)
+//   slot 6          : Bitaxe hashrate        (currency-agnostic)
+//   slot 7          : Bitaxe best diff       (currency-agnostic)
+//   slot 8          : NWC wallet balance     (currency-agnostic)
+//   slot 9+3k       : Moscow time,  currencies[k]
+//   slot 10+3k      : BTC price,    currencies[k]
+//   slot 11+3k      : Market cap,   currencies[k]
+//   slot last       : Block fee rate (sats/vB integer, currency-agnostic)
+//
+// kAgnosticSlots MUST match slot_map::kAgnosticSlots — the rotation
+// builder (rotation_plan::BuildRotationSequence) emits slot indices
+// using the slot_map constant, and ScreenManager consumes them via
+// KindForSlot below. A drift between the two (e.g. forgetting to
+// bump ScreenManager when slot_map grows) shifts every per-currency
+// slot by the delta, so the user sees BTC ticker where the Moscow
+// time screen should be (bd btclock_v4-oni).
 //
 // Auto-rotate steps one slot per period; buttons cycle forward/back.
 // The fee-rate slot sits at the end of the cycle so it naturally
@@ -42,6 +53,7 @@
 
 #include "app/refresh_policy.hpp"
 #include "app/rotation_timer.hpp"
+#include "app/screen_slot_map.hpp"
 #include "data_core/snapshot.hpp"
 #include "epd/panel.hpp"
 #include "fonts_app.hpp"
@@ -301,12 +313,16 @@ class ScreenManager {
   // Currency-agnostic slots that stack ahead of the per-currency
   // slots. Block=0, Clock=1, Halving=2, BitcoinSupply=3,
   // MiningPoolHashrate=4, MiningPoolEarnings=5,
-  // BitaxeHashrate=6, BitaxeBestDiff=7. Keep in lock-step with
-  // slot_map::kAgnosticSlots — the ScreenManager's switch in
-  // current_kind() is the direct consumer of the layout.
-  static constexpr size_t kAgnosticSlots = 8;
+  // BitaxeHashrate=6, BitaxeBestDiff=7, NwcBalance=8. Sourced
+  // from slot_map::kAgnosticSlots so the rotation builder (which
+  // emits indices using the slot_map constant) and the ScreenManager
+  // switch in KindForSlot() can never drift apart — a stale-by-one
+  // copy here would shift every per-currency slot's interpretation
+  // by the delta. bd btclock_v4-oni (slot 9..N rendered as the
+  // wrong kind after NWC balance was added).
+  static constexpr size_t kAgnosticSlots = slot_map::kAgnosticSlots;
   // Per-currency cycle: Moscow, Price, MarketCap.
-  static constexpr size_t kPerCurrencySlots = 3;
+  static constexpr size_t kPerCurrencySlots = slot_map::kPerCurrencySlots;
   // Fee-rate is a singleton trailing slot at index slot_count() - 1.
   size_t slot_count() const {
     return kAgnosticSlots + kPerCurrencySlots * currencies_.size() + 1;
