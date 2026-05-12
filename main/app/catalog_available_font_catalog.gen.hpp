@@ -14,7 +14,7 @@ struct AvailableFontCatalogEntry {
   bool has_btc_symbol;
 };
 
-inline constexpr std::size_t kAvailableFontCatalogCount = 22;
+inline constexpr std::size_t kAvailableFontCatalogCount = 24;
 
 inline constexpr std::array<AvailableFontCatalogEntry,
                             kAvailableFontCatalogCount>
@@ -41,6 +41,8 @@ inline constexpr std::array<AvailableFontCatalogEntry,
         {"notoSansBold", true},
         {"ubuntu", false},
         {"ubuntuBold", false},
+        {"azeret", true},
+        {"azeretSemiBold", true},
     }};
 
 }  // namespace btclock::catalogs

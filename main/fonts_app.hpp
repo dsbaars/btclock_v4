@@ -3,7 +3,7 @@
 // Loads every TTF the firmware ships and exposes them both by name
 // (antonio / antonioSemiBold / antonioBold / oswald / inter / openRunde /
 // sourceSerif / merriweather / bitter / atkinson / roboto / notoSans /
-// ubuntu) and via a selectable
+// ubuntu / azeret) and via a selectable
 // FontFamily enum that the production firmware's `fontName` preference
 // maps to.
 
@@ -60,7 +60,10 @@ inline SatsGlyphUtf8Buf SatsGlyphUtf8(uint8_t variant) {
 // 5 bitter, 6 atkinson, 7 antonioSemiBold, 8 antonioBold, 9 oswaldBold,
 // 10 interBold, 11 sourceSerifBold, 12 merriweatherBold, 13 bitterBold,
 // 14 atkinsonBold, 15 openRunde, 16 roboto, 17 robotoBold, 18 notoSans,
-// 19 notoSansBold, 20 ubuntu, 21 ubuntuBold. New ids are appended so the
+// 19 notoSansBold, 20 ubuntu, 21 ubuntuBold, 22 azeret, 23 azeretSemiBold.
+// Azeret Mono ships Regular (azeret) + SemiBold (azeretSemiBold) — no
+// dedicated Bold cut; SemiBold doubles as the bold-slot partner of the
+// Regular base via the bundle map below. New ids are appended so the
 // numeric mapping stays stable across firmware upgrades.
 enum class FontFamily : uint8_t {
   kAntonio = 0,
@@ -85,6 +88,8 @@ enum class FontFamily : uint8_t {
   kNotoSansBold = 19,
   kUbuntu = 20,
   kUbuntuBold = 21,
+  kAzeret = 22,
+  kAzeretSemiBold = 23,
 };
 
 struct FontBundle {
@@ -122,6 +127,8 @@ enum class FontSlot : uint8_t {
   kNotoSansBold = 20,
   kUbuntuRegular = 21,
   kUbuntuBold = 22,
+  kAzeretRegular = 23,
+  kAzeretSemiBold = 24,
 };
 
 class AppFonts {
@@ -197,6 +204,8 @@ class AppFonts {
   Font noto_sans_bold_;
   Font ubuntu_;
   Font ubuntu_bold_;
+  Font azeret_;
+  Font azeret_semibold_;
   Font source_serif_;
   Font source_serif_bold_;
   Font merriweather_;
@@ -223,12 +232,13 @@ class AppFonts {
 // "sourceSerif" / "sourceSerifBold" / "merriweather" /
 // "merriweatherBold" / "bitter" / "bitterBold" / "atkinson" /
 // "atkinsonBold" / "openRunde" / "roboto" / "robotoBold" / "notoSans" /
-// "notoSansBold" / "ubuntu" / "ubuntuBold") to a FontFamily. Unknown values
-// fall back to kAntonio — the day-1 default every built-in screen was tuned
-// against. Devices upgrading from a build that stored "dejavu" land here
-// too: kAntonio is the safe fallback. Defined inline so host tests can
-// call it without linking AppFonts (whose ctor references TTF-blob
-// symbols that only exist in an IDF build).
+// "notoSansBold" / "ubuntu" / "ubuntuBold" / "azeret" / "azeretSemiBold")
+// to a FontFamily. Unknown values fall back to kAntonio — the day-1
+// default every built-in screen was tuned against. Devices upgrading
+// from a build that stored "dejavu" land here too: kAntonio is the
+// safe fallback. Defined inline so host tests can call it without
+// linking AppFonts (whose ctor references TTF-blob symbols that only
+// exist in an IDF build).
 inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "oswald") return FontFamily::kOswald;
   if (id == "oswaldBold") return FontFamily::kOswaldBold;
@@ -249,6 +259,8 @@ inline FontFamily ParseFontFamily(const std::string& id) {
   if (id == "notoSansBold") return FontFamily::kNotoSansBold;
   if (id == "ubuntu") return FontFamily::kUbuntu;
   if (id == "ubuntuBold") return FontFamily::kUbuntuBold;
+  if (id == "azeret") return FontFamily::kAzeret;
+  if (id == "azeretSemiBold") return FontFamily::kAzeretSemiBold;
   if (id == "antonioSemiBold") return FontFamily::kAntonioSemiBold;
   if (id == "antonioBold") return FontFamily::kAntonioBold;
   return FontFamily::kAntonio;

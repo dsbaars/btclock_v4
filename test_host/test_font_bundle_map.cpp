@@ -103,6 +103,15 @@ TEST_CASE("ResolveBundleSlots maps UbuntuBold to its bold slot") {
   CHECK(s.bold == FontSlot::kUbuntuBold);
 }
 
+TEST_CASE("ResolveBundleSlots maps AzeretSemiBold doubled into both slots") {
+  // Azeret ships no separate Bold cut; the SemiBold-as-base family
+  // doubles its single weight, matching how base Antonio doubles its
+  // wght=400 cut.
+  const auto s = ResolveBundleSlots(FontFamily::kAzeretSemiBold);
+  CHECK(s.regular == FontSlot::kAzeretSemiBold);
+  CHECK(s.bold == FontSlot::kAzeretSemiBold);
+}
+
 TEST_CASE("ResolveBundleSlots maps OpenRunde to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kOpenRunde);
   CHECK(s.regular == FontSlot::kOpenRundeRegular);
@@ -125,6 +134,15 @@ TEST_CASE("ResolveBundleSlots maps Ubuntu to its (regular, bold) pair") {
   const auto s = ResolveBundleSlots(FontFamily::kUbuntu);
   CHECK(s.regular == FontSlot::kUbuntuRegular);
   CHECK(s.bold == FontSlot::kUbuntuBold);
+}
+
+TEST_CASE("ResolveBundleSlots maps Azeret to (Regular, SemiBold)") {
+  // No real Bold cut exists; SemiBold subs in as the bold-slot partner
+  // so a future family-aware markdown path still gets a visible weight
+  // bump on '*bold*' lines without a third TTF in flash.
+  const auto s = ResolveBundleSlots(FontFamily::kAzeret);
+  CHECK(s.regular == FontSlot::kAzeretRegular);
+  CHECK(s.bold == FontSlot::kAzeretSemiBold);
 }
 
 TEST_CASE("ResolveBundleSlots maps Oswald to its (regular, bold) pair") {
@@ -170,13 +188,13 @@ TEST_CASE("ResolveBundleSlots covers every FontFamily enumerator") {
   // adds to FontFamily but forgets to handle in ResolveBundleSlots —
   // the default-Atkinson tail covers that case but the test pins it.
   for (uint8_t i = static_cast<uint8_t>(FontFamily::kAntonio);
-       i <= static_cast<uint8_t>(FontFamily::kUbuntuBold); ++i) {
+       i <= static_cast<uint8_t>(FontFamily::kAzeretSemiBold); ++i) {
     const auto f = static_cast<FontFamily>(i);
     const auto s = ResolveBundleSlots(f);
     CHECK(static_cast<uint8_t>(s.regular) <=
-          static_cast<uint8_t>(FontSlot::kUbuntuBold));
+          static_cast<uint8_t>(FontSlot::kAzeretSemiBold));
     CHECK(static_cast<uint8_t>(s.bold) <=
-          static_cast<uint8_t>(FontSlot::kUbuntuBold));
+          static_cast<uint8_t>(FontSlot::kAzeretSemiBold));
   }
 }
 
@@ -204,7 +222,8 @@ TEST_CASE("FontSlot enumerators are unique") {
       FontSlot::kOpenRundeBold,    FontSlot::kRobotoRegular,
       FontSlot::kRobotoBold,       FontSlot::kNotoSansRegular,
       FontSlot::kNotoSansBold,     FontSlot::kUbuntuRegular,
-      FontSlot::kUbuntuBold,
+      FontSlot::kUbuntuBold,       FontSlot::kAzeretRegular,
+      FontSlot::kAzeretSemiBold,
   };
   const std::size_t n = sizeof(all) / sizeof(all[0]);
   for (std::size_t i = 0; i < n; ++i) {

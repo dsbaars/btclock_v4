@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Regenerate every bundled font from its upstream source. Pulls Antonio,
 # Oswald, Inter, Source Serif 4, Merriweather, Bitter, Atkinson
-# Hyperlegible, Roboto, Noto Sans, and Ubuntu from their upstream
-# GitHub repos, and re-converts SatoshiSymbol.ttf from the preserved
-# `SatoshiSymbol_source.woff2`.
+# Hyperlegible, Roboto, Noto Sans, Ubuntu, and Azeret Mono from their
+# upstream GitHub repos, and re-converts SatoshiSymbol.ttf from the
+# preserved `SatoshiSymbol_source.woff2`.
 # Leaves all TTFs byte-identical if nothing upstream changed; otherwise
 # the diff is the upstream glyph change.
 #
@@ -162,6 +162,25 @@ curl -sSL -o "${TMP}/Ubuntu-Bold.ttf" \
 subset_full "${TMP}/Ubuntu-Medium.ttf" "${ASSETS}/Ubuntu.ttf"
 subset_full "${TMP}/Ubuntu-Bold.ttf"   "${ASSETS}/UbuntuBold.ttf"
 
+# Azeret Mono — a contemporary monospace face from Displaay, picked as
+# the only mono option in the catalogue (sharp counters and uniform
+# advance widths sit cleanly next to the price-screen separator digits
+# at panel sizes). The catalogue ships Regular (wght=400) as the base
+# cut and SemiBold (wght=600) as the heavier picker option — visual
+# bring-up on a Rev B device showed Regular reads cleanly enough at
+# 1-bpp that the Semibold-as-base heuristic the other families use
+# wasn't needed here; SemiBold is the dialed-up alternative. No
+# separate Bold (wght=700) is shipped — SemiBold doubles as the
+# bold-slot partner of Regular in the bundle map for future
+# family-aware markdown emphasis.
+echo "→ Azeret Mono (displaay/Azeret static TTFs; base cut = Regular)"
+curl -sSL -o "${TMP}/AzeretMono-Regular.ttf" \
+    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-Regular.ttf"
+curl -sSL -o "${TMP}/AzeretMono-SemiBold.ttf" \
+    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-SemiBold.ttf"
+subset_full "${TMP}/AzeretMono-Regular.ttf"  "${ASSETS}/Azeret.ttf"
+subset_full "${TMP}/AzeretMono-SemiBold.ttf" "${ASSETS}/AzeretSemiBold.ttf"
+
 echo "→ SatoshiSymbol (from preserved woff2)"
 pyftsubset "${ASSETS}/SatoshiSymbol_source.woff2" \
     "--unicodes=U+E000-E00F" \
@@ -196,6 +215,7 @@ expected = [
     "Roboto.ttf", "RobotoBold.ttf",
     "NotoSans.ttf", "NotoSansBold.ttf",
     "Ubuntu.ttf", "UbuntuBold.ttf",
+    "Azeret.ttf", "AzeretSemiBold.ttf",
 ]
 missing = []
 for name in expected:

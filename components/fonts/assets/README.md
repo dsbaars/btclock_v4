@@ -234,6 +234,50 @@ pyftsubset /tmp/Ubuntu-Bold.ttf \
 
 Licensed under Ubuntu Font Licence 1.0.
 
+## Azeret / AzeretSemiBold
+
+Azeret Mono (Displaay Type Foundry, designed by Hugo Dumont). A
+contemporary monospace typeface — the only mono option in the
+catalogue. Sharp, geometric counters and uniform advance widths read
+cleanly alongside the price-screen separator digits at panel sizes.
+
+The catalogue ships two cuts: **Regular (wght=400)** as the base
+(`Azeret.ttf`, picker id `azeret`) and **SemiBold (wght=600)** as the
+heavier picker option (`AzeretSemiBold.ttf`, picker id
+`azeretSemiBold`). Other modern families in this directory bake
+SemiBold as the base cut because their Regulars fragment after the
+1-bpp threshold on e-paper — Azeret Mono's Regular survives the
+threshold cleanly (verified via WASM A/B render + live Rev B
+inspection), so Regular ships as the base. SemiBold is heavy enough
+to also double as the `Bundle(kAzeret).bold` partner for a future
+family-aware markdown emphasis path, which is why no separate Bold
+(wght=700) cut is shipped (saves ~6 KB gzipped on the 4 MB Rev A
+partition's tight OTA slot).
+
+```sh
+curl -L -o /tmp/AzeretMono-Regular.ttf \
+    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-Regular.ttf"
+curl -L -o /tmp/AzeretMono-SemiBold.ttf \
+    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-SemiBold.ttf"
+
+pyftsubset /tmp/AzeretMono-Regular.ttf \
+    --output-file=Azeret.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+pyftsubset /tmp/AzeretMono-SemiBold.ttf \
+    --output-file=AzeretSemiBold.ttf \
+    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
+    --ignore-missing-unicodes \
+    --drop-tables+=GPOS,GSUB,DSIG \
+    --layout-features='*' \
+    --no-hinting
+```
+
+Licensed under SIL Open Font License 1.1.
+
 ## SourceSerif / SourceSerifBold
 
 Source Serif 4 (Adobe). A modern transitional serif designed for
@@ -471,12 +515,14 @@ In-tree byte counts (`wc -c`), rounded:
 | NotoSansBold          |  16.8 KB |
 | Ubuntu                |   9.4 KB |
 | UbuntuBold            |   9.3 KB |
+| Azeret                |   8.7 KB |
+| AzeretSemiBold        |   8.6 KB |
 | SatoshiSymbol         |   3.5 KB |
 | MaterialDesignIcons   |   1.0 KB |
 
 Subset extents — every selectable family (Antonio, Oswald, Inter,
 SourceSerif, Merriweather, Bitter, Atkinson, OpenRunde, Roboto,
-NotoSans, Ubuntu) carries printable ASCII (U+0020..U+007E) plus
+NotoSans, Ubuntu, Azeret) carries printable ASCII (U+0020..U+007E) plus
 £/¥/€/₿ (U+00A3, U+00A5, U+20AC, U+20BF) so the price screen's currency
 symbol set works regardless of the chosen `fontName`. ₿ is requested
 unconditionally; upstreams without the

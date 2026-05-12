@@ -18,6 +18,8 @@ that consume the WASM module off-device.
 | `render_doc_screens.mjs` | **Doc-image renderer.** Composites WASM-rendered panels inside the BTClock acrylic-frame outline and writes the PNGs the user-facing docs reference. |
 | `render_font_sample.mjs` | Renders one block-height sample (`family` id) in the same PCB/chrome style as docs. Fast path for typography checks. |
 | `render_font_ab.sh` | End-to-end A/B helper for one font asset: builds regular + candidate renders and restores the original asset. |
+| `render_font_candidates.sh` | Generic N-weight variant of `render_font_ab.sh`. Accepts repeatable `--weight name=path` pairs, hot-swaps each TTF into the chosen slot, rebuilds WASM, renders one PCB-framed PNG per weight, then restores the slot. Candidate TTFs must already be subsetted (see `tools/fonts/regen.sh` or a font-specific wrapper). |
+| `render_azeret.sh` | Wrapper around `render_font_candidates.sh` that fetches AzeretMono Regular / SemiBold / Bold from `displaay/Azeret`, subsets them to BTClock's glyph range, and renders one block-height sample per weight. Re-runnable; set `AZERET_SKIP_DOWNLOAD=1` to reuse cached TTFs in `/tmp/azeret/`. |
 
 ## Doc-image renderer
 
@@ -121,3 +123,20 @@ This writes:
 
 - `docs/img/fonts/<font-id>_regular_candidate.png`
 - `docs/img/fonts/<font-id>_semibold_candidate.png`
+
+3) Render an arbitrary number of weights of the same candidate face
+   in one swoop with the generic runner:
+
+```bash
+tools/wasm/render_font_candidates.sh \
+  --font-id azeret \
+  --asset components/fonts/assets/Inter.ttf \
+  --family 2 \
+  --weight regular=/tmp/AzeretMono-Regular-subset.ttf \
+  --weight semibold=/tmp/AzeretMono-SemiBold-subset.ttf \
+  --weight bold=/tmp/AzeretMono-Bold-subset.ttf
+```
+
+Outputs `docs/img/fonts/<font-id>_<weight>.png` per `--weight` pair and
+restores the original asset + rebuilds WASM once at the end. Candidate
+TTFs are expected to be pre-subsetted to BTClock's glyph range.

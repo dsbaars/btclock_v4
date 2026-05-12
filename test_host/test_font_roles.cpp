@@ -58,6 +58,8 @@ struct RoleFixture {
   int noto_sans_bold = 0;
   int ubuntu = 0;
   int ubuntu_bold = 0;
+  int azeret = 0;
+  int azeret_semibold = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -110,6 +112,9 @@ struct RoleFixture {
       case FontFamily::kUbuntuBold:
         regular = &ubuntu_bold;
         break;
+      case FontFamily::kAzeretSemiBold:
+        regular = &azeret_semibold;
+        break;
       case FontFamily::kOswald:
         regular = &oswald;
         break;
@@ -136,6 +141,9 @@ struct RoleFixture {
         break;
       case FontFamily::kUbuntu:
         regular = &ubuntu;
+        break;
+      case FontFamily::kAzeret:
+        regular = &azeret;
         break;
     }
     digit = regular;
@@ -259,6 +267,8 @@ TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("notoSansBold") == FontFamily::kNotoSansBold);
   CHECK(ParseFontFamily("ubuntu") == FontFamily::kUbuntu);
   CHECK(ParseFontFamily("ubuntuBold") == FontFamily::kUbuntuBold);
+  CHECK(ParseFontFamily("azeret") == FontFamily::kAzeret);
+  CHECK(ParseFontFamily("azeretSemiBold") == FontFamily::kAzeretSemiBold);
 }
 
 TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
@@ -330,6 +340,24 @@ TEST_CASE("SetFamily(kUbuntu) rebinds swappable roles") {
   CHECK(f.label == &f.ubuntu);
   CHECK(f.small_chars == &f.ubuntu);
   CHECK(f.unit == &f.ubuntu);
+}
+
+TEST_CASE("SetFamily(kAzeret) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kAzeret);
+  CHECK(f.digit == &f.azeret);
+  CHECK(f.label == &f.azeret);
+  CHECK(f.small_chars == &f.azeret);
+  CHECK(f.unit == &f.azeret);
+}
+
+TEST_CASE("SetFamily(kAzeretSemiBold) rebinds swappable roles") {
+  RoleFixture f;
+  f.SetFamily(FontFamily::kAzeretSemiBold);
+  CHECK(f.digit == &f.azeret_semibold);
+  CHECK(f.label == &f.azeret_semibold);
+  CHECK(f.small_chars == &f.azeret_semibold);
+  CHECK(f.unit == &f.azeret_semibold);
 }
 
 TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {

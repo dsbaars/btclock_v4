@@ -91,7 +91,8 @@ struct RenderContext {
   // 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
   // 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
   // 14=atkinsonBold, 15=openRunde, 16=roboto, 17=robotoBold,
-  // 18=notoSans, 19=notoSansBold, 20=ubuntu, 21=ubuntuBold.
+  // 18=notoSans, 19=notoSansBold, 20=ubuntu, 21=ubuntuBold,
+  // 22=azeret, 23=azeretSemiBold.
   // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
   // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
   // axis. Default false matches the device boot default.
@@ -233,6 +234,12 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
       break;
     case 21:
       f = btclock::FontFamily::kUbuntuBold;
+      break;
+    case 22:
+      f = btclock::FontFamily::kAzeret;
+      break;
+    case 23:
+      f = btclock::FontFamily::kAzeretSemiBold;
       break;
     default:
       f = btclock::FontFamily::kAntonio;
@@ -894,16 +901,16 @@ val renderNostrZap(double amount_sats) {
   const bool vd = ctx.vertical_desc;
   DispatchByPanels(
       [&](RenderContext& c, auto& pans, FbStorage7& fbs) {
-        btclock::RenderNostrZapScreen<7>(
-            pans, fbs, c.fonts, zap, false,
-            /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
-            /*full_refresh_mode=*/true, vd);
+        btclock::RenderNostrZapScreen<7>(pans, fbs, c.fonts, zap, false,
+                                         /*use_btc_symbol=*/false,
+                                         btclock::kSatsVariantDefault,
+                                         /*full_refresh_mode=*/true, vd);
       },
       [&](RenderContext& c, auto& pans, FbStorage8& fbs) {
-        btclock::RenderNostrZapScreen<8>(
-            pans, fbs, c.fonts, zap, false,
-            /*use_btc_symbol=*/false, btclock::kSatsVariantDefault,
-            /*full_refresh_mode=*/true, vd);
+        btclock::RenderNostrZapScreen<8>(pans, fbs, c.fonts, zap, false,
+                                         /*use_btc_symbol=*/false,
+                                         btclock::kSatsVariantDefault,
+                                         /*full_refresh_mode=*/true, vd);
       });
   return FrameBuffersToVal(ctx.panels_active);
 }
@@ -1389,18 +1396,16 @@ val renderDebugAlpha(std::string ip, std::string ssid, int free_heap_bytes,
 }
 
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
-// is clamped to 7); `font_family` is 0=antonio (stock), 1=oswald,
-// 2=inter, 3=sourceSerif, 4=merriweather, 5=bitter, 6=atkinson,
-// 7=antonioSemiBold, 8=antonioBold, 9=oswaldBold, 10=interBold,
-// 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
-// 14=atkinsonBold, 15=openRunde, 16=roboto, 17=robotoBold, 18=notoSans,
-// 19=notoSansBold, 20=ubuntu, 21=ubuntuBold. Unknown font families fall back to
-// stock. Call whenever the user changes the UI selector; safe to call
-// before every render.
+// is clamped to 7); `font_family` mirrors FontFamily's numeric values
+// (0=antonio (stock), 1=oswald, ..., 22=azeret, 23=azeretSemiBold — full
+// table in ApplyFontOverride above). Anything outside [0, 23] falls
+// back to antonio so a stale UI selector can't crash the binding.
+// Call whenever the user changes the UI selector; safe to call before
+// every render.
 void setRenderOptions(int panels, int font_family) {
   auto& ctx = Ctx();
   ctx.panels_active = (panels == 8) ? 8 : 7;
-  if (font_family < 0 || font_family > 21) font_family = 0;
+  if (font_family < 0 || font_family > 23) font_family = 0;
   ctx.font_family = font_family;
 }
 

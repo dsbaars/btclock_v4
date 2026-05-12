@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-05-09T20:35:31.972Z",
+  "rendered_at": "2026-05-12T12:10:48.214Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -287,6 +287,18 @@
       "id": "ubuntuBold",
       "title": "Ubuntu Bold",
       "path": "docs/img/fonts/ubuntuBold.png"
+    },
+    {
+      "kind": "font",
+      "id": "azeret",
+      "title": "Azeret Mono",
+      "path": "docs/img/fonts/azeret.png"
+    },
+    {
+      "kind": "font",
+      "id": "azeretSemiBold",
+      "title": "Azeret Mono SemiBold",
+      "path": "docs/img/fonts/azeretSemiBold.png"
     }
   ]
 }

@@ -25,6 +25,8 @@ AppFonts::AppFonts()
       noto_sans_bold_(kNotoSansBoldTtf, kNotoSansBoldTtfSize),
       ubuntu_(kUbuntuTtf, kUbuntuTtfSize),
       ubuntu_bold_(kUbuntuBoldTtf, kUbuntuBoldTtfSize),
+      azeret_(kAzeretTtf, kAzeretTtfSize),
+      azeret_semibold_(kAzeretSemiBoldTtf, kAzeretSemiBoldTtfSize),
       source_serif_(kSourceSerifTtf, kSourceSerifTtfSize),
       source_serif_bold_(kSourceSerifBoldTtf, kSourceSerifBoldTtfSize),
       merriweather_(kMerriweatherTtf, kMerriweatherTtfSize),
@@ -66,6 +68,9 @@ AppFonts::AppFonts()
       ubuntu_(kUbuntuTtf, SizeBetween(kUbuntuTtf, kUbuntuTtfEnd)),
       ubuntu_bold_(kUbuntuBoldTtf,
                    SizeBetween(kUbuntuBoldTtf, kUbuntuBoldTtfEnd)),
+      azeret_(kAzeretTtf, SizeBetween(kAzeretTtf, kAzeretTtfEnd)),
+      azeret_semibold_(kAzeretSemiBoldTtf,
+                       SizeBetween(kAzeretSemiBoldTtf, kAzeretSemiBoldTtfEnd)),
       source_serif_(kSourceSerifTtf,
                     SizeBetween(kSourceSerifTtf, kSourceSerifTtfEnd)),
       source_serif_bold_(
@@ -141,6 +146,10 @@ const Font* AppFonts::SlotToFont(FontSlot s) const {
       return &ubuntu_;
     case FontSlot::kUbuntuBold:
       return &ubuntu_bold_;
+    case FontSlot::kAzeretRegular:
+      return &azeret_;
+    case FontSlot::kAzeretSemiBold:
+      return &azeret_semibold_;
   }
   return &atkinson_;
 }
@@ -187,6 +196,9 @@ void AppFonts::SetFamily(FontFamily f) {
     case FontFamily::kUbuntuBold:
       regular = &ubuntu_bold_;
       break;
+    case FontFamily::kAzeretSemiBold:
+      regular = &azeret_semibold_;
+      break;
     case FontFamily::kOswald:
       regular = &oswald_;
       break;
@@ -213,6 +225,9 @@ void AppFonts::SetFamily(FontFamily f) {
       break;
     case FontFamily::kUbuntu:
       regular = &ubuntu_;
+      break;
+    case FontFamily::kAzeret:
+      regular = &azeret_;
       break;
   }
   role_digit_ = regular;

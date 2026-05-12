@@ -15,6 +15,7 @@ set(_FONT_SOURCES
     Roboto.ttf RobotoBold.ttf
     NotoSans.ttf NotoSansBold.ttf
     Ubuntu.ttf UbuntuBold.ttf
+    Azeret.ttf AzeretSemiBold.ttf
     SourceSerif.ttf SourceSerifBold.ttf
     Merriweather.ttf MerriweatherBold.ttf
     Bitter.ttf BitterBold.ttf
