@@ -161,9 +161,11 @@ add_executable(btclock_host_tests
     ../main/screens/assets/pool_logos.cpp
     ../main/screens/assets/pool_logo_cache_host.cpp
     ../components/bitaxe/src/bitaxe_parser.cpp
+    test_nip4x.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
     ../components/nostr/src/event_verify.cpp
+    ../components/nostr/src/nip4x.cpp
     ../components/secp256k1/src/secp256k1.c
     ../components/secp256k1/src/precomputed_ecmult.c
     ../components/secp256k1/src/precomputed_ecmult_gen.c
