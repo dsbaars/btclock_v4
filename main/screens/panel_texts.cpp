@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string_view>
 
 #include "screens/assets/pool_logos.hpp"
 #include "screens/btc_price_suffix_layout.hpp"
@@ -681,25 +682,35 @@ std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
   return buf;
 }
 
-std::vector<std::string> BuildLabelBoltAmount(
-    const char* label, const std::optional<int64_t>& amount_sats,
-    bool use_sats_symbol, bool use_btc_symbol, std::size_t n_panels) {
-  // Shared "label + bolt + amount" layout — mirrors
+std::vector<std::string> BuildLabelGlyphAmount(
+    const char* label, std::string_view glyph_mirror,
+    const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
+    bool use_btc_symbol, std::size_t n_panels) {
+  // Shared "label + glyph + amount" layout — mirrors
   // RenderNostrZapScreen / RenderNwcShared. Three screens share this
-  // visual language: kNostrZap (label="ZAP"), kNwcBalance ("BAL"), and
-  // kNwcPaymentNotify ("GOT" / "PAID"). Same on 7- and 8-panel boards
-  // — V8's extra cell widens the blank gap rather than shifting the
-  // label/bolt rightward.
-  // The bolt cell carries the mdi-lightning-bolt MDI glyph on the EPD;
-  // the panel-text mirror represents it as an empty cell (same convention
-  // bitaxe / mining-pool logo cells use — non-textual content). When
-  // `use_sats_symbol=false` and `use_btc_symbol=false` the glyph cell
-  // stays blank and the amount uses one extra tail cell.
+  // visual language: kNostrZap (label="ZAP", bolt glyph),
+  // kNwcBalance ("BAL", bolt glyph), and kNwcPaymentNotify
+  // ("GOT" / "PAID" + direction-aware arrow up/down). Same on 7- and
+  // 8-panel boards — V8's extra cell widens the blank gap rather than
+  // shifting the label/glyph rightward.
+  // `glyph_mirror` is the short ASCII token the /api/status mirror
+  // emits for the icon cell. ZAP/BAL pass "" because the bolt glyph
+  // has no useful textual analogue (matches bitaxe / mining-pool logo
+  // cells); payment-notify passes "UP" / "DN" so consumers can tell
+  // GOT-vs-PAID apart in the data array without inferring from the
+  // label. When `use_sats_symbol=false` and `use_btc_symbol=false`
+  // the sats-glyph cell stays blank and the amount uses one extra
+  // tail cell.
   std::vector<std::string> out(n_panels);
   if (n_panels == 0) return out;
   const std::size_t label_slot = 0;
   const std::size_t bolt_slot = label_slot + 1;
   out[label_slot] = label;
+  if (n_panels <= bolt_slot) return out;
+  // Glyph cell carries the caller-supplied mirror token (e.g. "UP" /
+  // "DN" for payment-notify) so /api/status reflects which icon the
+  // EPD just painted. "" for bolt glyphs (no useful textual analogue).
+  out[bolt_slot] = std::string(glyph_mirror);
   if (n_panels <= bolt_slot + 1) return out;
 
   // Budget the integer formatter against the full tail (no glyph
@@ -909,24 +920,39 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       // (misconfigured wiring) see blanks rather than stale content.
       return std::vector<std::string>(n_panels);
     case ScreenType::kNostrZap:
-      return BuildLabelBoltAmount("ZAP", in.zap_amount_sats, in.use_sats_symbol,
-                                  in.use_btc_symbol, n_panels);
+      // ZAP + bolt glyph (no textual analogue → "" in the mirror).
+      return BuildLabelGlyphAmount("ZAP", "", in.zap_amount_sats,
+                                   in.use_sats_symbol, in.use_btc_symbol,
+                                   n_panels);
     case ScreenType::kNwcBalance:
-      // Same "label + bolt + amount" layout as kNostrZap. Label is "BAL"
-      // — matches RenderNwcBalanceScreen's "BAL" PaintSlot::kLabel so
-      // /api/status data[0] agrees with what the EPD paints.
-      return BuildLabelBoltAmount("BAL", in.nwc_balance_sats,
-                                  in.use_sats_symbol, in.use_btc_symbol,
-                                  n_panels);
-    case ScreenType::kNwcPaymentNotify:
-      // Label = "PAID" for outgoing payments (direction==2), "GOT"
-      // otherwise. Mirrors RenderNwcPaymentNotifyScreen's branch on
-      // payment.direction so the mirror agrees with the overlay.
-      return BuildLabelBoltAmount(in.nwc_payment_direction == 2 ? "PAID"
-                                                                : "GOT",
-                                  in.nwc_payment_amount_sats,
-                                  in.use_sats_symbol, in.use_btc_symbol,
-                                  n_panels);
+      // Same "label + bolt + amount" layout as kNostrZap. Label is
+      // "BAL" — matches RenderNwcBalanceScreen's "BAL" PaintSlot::kLabel
+      // so /api/status data[0] agrees with what the EPD paints. Bolt
+      // glyph cell mirrors as "" (non-textual content).
+      return BuildLabelGlyphAmount("BAL", "", in.nwc_balance_sats,
+                                   in.use_sats_symbol, in.use_btc_symbol,
+                                   n_panels);
+    case ScreenType::kNwcPaymentNotify: {
+      // Direction-aware label + arrow glyph. direction==2 → outgoing
+      // "PAID" + arrow-up; ==1 → incoming "GOT" + arrow-down; anything
+      // else → "GOT" with bolt fallback (mirrors as "" because the
+      // bolt glyph has no textual analogue, matching kNwcBalance).
+      // The "UP" / "DN" mirror tokens make the data array
+      // self-describing: a consumer can tell GOT-vs-PAID apart without
+      // inferring from the label cell.
+      const char* label =
+          (in.nwc_payment_direction == 2) ? "PAID" : "GOT";
+      std::string_view glyph_mirror;
+      if (in.nwc_payment_direction == 1) {
+        glyph_mirror = "DN";
+      } else if (in.nwc_payment_direction == 2) {
+        glyph_mirror = "UP";
+      }
+      return BuildLabelGlyphAmount(label, glyph_mirror,
+                                   in.nwc_payment_amount_sats,
+                                   in.use_sats_symbol, in.use_btc_symbol,
+                                   n_panels);
+    }
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes
       // per panel; no useful `data[]` mirror. Return a single label in

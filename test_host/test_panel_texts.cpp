@@ -2028,9 +2028,11 @@ TEST_CASE("panel_texts — nwc balance: 8-panel board layout") {
   CHECK(out[7] == "0");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT") {
-  // direction = 1 (payment_received) → "GOT" label. Amount cells
-  // mirror the BuildNostrZap right-justification.
+TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT + DN arrow") {
+  // direction = 1 (payment_received) → "GOT" label + "DN" mirror
+  // token for the arrow-down glyph the EPD paints
+  // (mdi::kIconArrowDownBold). Amount cells mirror the BuildNostrZap
+  // right-justification.
   PanelTextInputs in;
   in.kind = ScreenType::kNwcPaymentNotify;
   in.nwc_payment_amount_sats = 21;
@@ -2039,12 +2041,14 @@ TEST_CASE("panel_texts — nwc payment-notify: incoming → GOT") {
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "GOT");
-  CHECK(out[1] == "");  // bolt
+  CHECK(out[1] == "DN");  // mdi-arrow-down-bold mirror token
   CHECK(out[5] == "2");
   CHECK(out[6] == "1");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: outgoing (direction==2) → PAID") {
+TEST_CASE("panel_texts — nwc payment-notify: outgoing → PAID + UP arrow") {
+  // direction = 2 (payment_sent) → "PAID" label + "UP" mirror token
+  // for the arrow-up glyph (mdi::kIconArrowUpBold).
   PanelTextInputs in;
   in.kind = ScreenType::kNwcPaymentNotify;
   in.nwc_payment_amount_sats = 1000;
@@ -2053,13 +2057,18 @@ TEST_CASE("panel_texts — nwc payment-notify: outgoing (direction==2) → PAID"
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "PAID");
+  CHECK(out[1] == "UP");  // mdi-arrow-up-bold mirror token
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
   CHECK(out[6] == "0");
 }
 
-TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT") {
+TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT, bolt") {
   // direction = 0 (unknown) falls through to the friendlier "GOT"
-  // label — matches RenderNwcPaymentNotifyScreen's `(direction == 2)`
-  // branch shape.
+  // label, and the renderer paints the bolt as a safe default — the
+  // mirror leaves the glyph cell blank (matching the bolt convention
+  // on kNwcBalance / kNostrZap where the bolt has no textual analogue).
   PanelTextInputs in;
   in.kind = ScreenType::kNwcPaymentNotify;
   in.nwc_payment_amount_sats = 42;
@@ -2068,8 +2077,46 @@ TEST_CASE("panel_texts — nwc payment-notify: unknown direction → GOT") {
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
   CHECK(out[0] == "GOT");
+  CHECK(out[1] == "");  // bolt fallback (no textual mirror token)
   CHECK(out[5] == "4");
   CHECK(out[6] == "2");
+}
+
+TEST_CASE("panel_texts — nwc payment-notify: 8-panel incoming layout") {
+  // V8 parity: extra cell widens the blank gap before the amount,
+  // GOT + DN still anchor at slots 0/1.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcPaymentNotify;
+  in.nwc_payment_amount_sats = 500;
+  in.nwc_payment_direction = 1;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "GOT");
+  CHECK(out[1] == "DN");
+  CHECK(out[2] == "");
+  CHECK(out[3] == "");
+  CHECK(out[4] == "");
+  CHECK(out[5] == "5");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "0");
+}
+
+TEST_CASE("panel_texts — nwc payment-notify: 8-panel outgoing layout") {
+  // V8 outgoing — PAID + UP at slots 0/1 with the amount right-aligned.
+  PanelTextInputs in;
+  in.kind = ScreenType::kNwcPaymentNotify;
+  in.nwc_payment_amount_sats = 1500;
+  in.nwc_payment_direction = 2;
+  in.use_sats_symbol = false;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "PAID");
+  CHECK(out[1] == "UP");
+  CHECK(out[4] == "1");
+  CHECK(out[5] == "5");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "0");
 }
 
 // Latest-wins merge semantics for DataSnapshot::LatestZap. The full

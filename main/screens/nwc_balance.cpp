@@ -90,10 +90,11 @@ NwcLayout ComputeNwcLayout(std::size_t amount_chars, bool reserve_glyph_cell) {
 template <std::size_t N>
 void RenderNwcShared(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                      uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
-                     const char* label, const std::string& amount,
-                     bool use_sats_symbol, bool use_btc_symbol,
-                     uint8_t sats_variant, bool full_refresh_mode,
-                     bool vertical_desc, const std::array<bool, N>& update) {
+                     const char* label, std::uint32_t icon_codepoint,
+                     const std::string& amount, bool use_sats_symbol,
+                     bool use_btc_symbol, uint8_t sats_variant,
+                     bool full_refresh_mode, bool vertical_desc,
+                     const std::array<bool, N>& update) {
   const bool reserve_glyph = use_sats_symbol || use_btc_symbol;
   const NwcLayout L = ComputeNwcLayout<N>(amount.size(), reserve_glyph);
 
@@ -106,10 +107,15 @@ void RenderNwcShared(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
   lbl.ref_override = kLabelRef;
   slots[L.label_slot] = lbl;
 
-  PaintSlot bolt{};
-  bolt.kind = PaintSlot::kMdiIcon;
-  bolt.mdi_codepoint = mdi::kIconLightningBolt;
-  slots[L.bolt_slot] = bolt;
+  // Caller-supplied icon — bolt for balance/zap, direction-aware arrow
+  // (up/down) for payment-notify. Zero codepoint leaves the cell blank
+  // (defensive — current call sites always provide a valid glyph).
+  if (icon_codepoint != 0) {
+    PaintSlot icon{};
+    icon.kind = PaintSlot::kMdiIcon;
+    icon.mdi_codepoint = icon_codepoint;
+    slots[L.bolt_slot] = icon;
+  }
 
   if (L.glyph_slot < N) {
     PaintSlot g{};
@@ -206,7 +212,8 @@ void RenderNwcBalanceScreen(
     }
   }
 
-  RenderNwcShared<N>(panels, fb_storage, fonts, "BAL", amount, use_sats_symbol,
+  RenderNwcShared<N>(panels, fb_storage, fonts, "BAL",
+                     mdi::kIconLightningBolt, amount, use_sats_symbol,
                      use_btc_symbol, sats_variant, full_refresh_mode,
                      vertical_desc, update);
 }
@@ -223,17 +230,24 @@ void RenderNwcPaymentNotifyScreen(
   constexpr std::size_t kAmountBudget = N - 2;
   const std::string amount = FormatSatsCompact(payment.amount_sats, kAmountBudget);
 
-  // direction == 2 → outgoing → "PAID"; everything else → "GOT" so an
-  // unknown direction defaults to the more user-friendly label rather
-  // than a confusing "?".
+  // direction == 2 → outgoing → "PAID" + arrow-up; ==1 → incoming
+  // "GOT" + arrow-down; anything else → "GOT" with the bolt fallback
+  // so an unknown direction still paints a sensible glyph rather than
+  // leaving the icon slot blank.
   const char* label = (payment.direction == 2) ? "PAID" : "GOT";
+  std::uint32_t icon = mdi::kIconLightningBolt;
+  if (payment.direction == 1) {
+    icon = mdi::kIconArrowDownBold;
+  } else if (payment.direction == 2) {
+    icon = mdi::kIconArrowUpBold;
+  }
 
   std::array<bool, N> update{};
   for (std::size_t i = 0; i < N; ++i) update[i] = true;
 
-  RenderNwcShared<N>(panels, fb_storage, fonts, label, amount, use_sats_symbol,
-                     use_btc_symbol, sats_variant, full_refresh_mode,
-                     vertical_desc, update);
+  RenderNwcShared<N>(panels, fb_storage, fonts, label, icon, amount,
+                     use_sats_symbol, use_btc_symbol, sats_variant,
+                     full_refresh_mode, vertical_desc, update);
 }
 
 template void RenderNwcBalanceScreen<7>(
