@@ -3,6 +3,7 @@ idf_component_register(
         "src/uri.cpp"
         "src/jsonrpc.cpp"
         "src/client.cpp"
+        "src/debug.cpp"
     INCLUDE_DIRS "include"
     REQUIRES nostr cjson secp256k1
 )

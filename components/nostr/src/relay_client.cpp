@@ -5,6 +5,7 @@
 #include "esp_check.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_transport_ws.h"
 #include "proxy_transport/proxy_prefs.hpp"
 #include "proxy_transport/proxy_transport.hpp"
@@ -130,13 +131,19 @@ void RelayClient::EventTrampoline(void* arg, esp_event_base_t, int32_t id,
 void RelayClient::HandleEvent(int32_t id, void* data) {
   auto* ev = static_cast<esp_websocket_event_data_t*>(data);
   switch (id) {
-    case WEBSOCKET_EVENT_CONNECTED:
+    case WEBSOCKET_EVENT_CONNECTED: {
+      const int64_t now_ms = esp_timer_get_time() / 1000;
+      const bool was_connected_before = last_connect_ms_.load() != 0;
       connected_ = true;
+      last_connect_ms_.store(now_ms);
+      if (was_connected_before) reconnect_count_.fetch_add(1);
       ESP_LOGI(kTag, "connected: %s", url_.c_str());
       if (on_connect_) on_connect_(true);
       break;
+    }
     case WEBSOCKET_EVENT_DISCONNECTED:
       connected_ = false;
+      last_disconnect_ms_.store(esp_timer_get_time() / 1000);
       ESP_LOGW(kTag, "disconnected: %s", url_.c_str());
       if (on_connect_) on_connect_(false);
       break;

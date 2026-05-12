@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -63,6 +65,13 @@ class SubscriptionManager {
   // can inject synthetic frames; production wiring is automatic.
   void HandleTextFrame(const char* data, size_t len);
 
+  // Debug counter: number of times ReissueAll() has fired since
+  // construction. A non-zero value indicates the relay socket has
+  // bounced at least once and the manager re-shipped every active REQ
+  // — useful for the /api/nwc/debug snapshot when investigating
+  // "events never reach the device" complaints.
+  uint32_t reissue_count() const { return reissue_count_.load(); }
+
  private:
   // Called by RelayClient on connect/disconnect via our installed hook.
   void OnConnect(bool connected);
@@ -75,6 +84,7 @@ class SubscriptionManager {
   std::map<std::string, Filter> subs_;  // sub_id -> filter
   EventCallback on_event_;
   EoseCallback on_eose_;
+  std::atomic<uint32_t> reissue_count_{0};
 };
 
 // Build a NIP-01 REQ JSON string for the given sub_id + filter. Exposed

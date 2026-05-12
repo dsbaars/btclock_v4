@@ -324,20 +324,34 @@ bool NwcClient::RequestGetInfo() {
 
 void NwcClient::HandleEvent(const nostr::Event& ev) {
   if (state_ == State::kFatal) return;
+  // Count every event the relay handed us BEFORE the per-kind switch
+  // so /api/nwc/debug can distinguish "relay never delivered" from
+  // "delivered but the per-kind handler dropped it". `now_` may be
+  // null pre-Start so guard the timestamp.
+  events_total_.fetch_add(1);
+  last_kind_.store(ev.kind);
+  last_event_ms_.store(now_ ? now_() * 1000 : 0);
   switch (ev.kind) {
     case kKindInfo:
+      events_info_.fetch_add(1);
       OnInfoEvent(ev);
       return;
     case kKindResponse:
+      events_response_.fetch_add(1);
       OnResponse(ev);
       return;
     case kKindNotifModern:
+      events_notif_modern_.fetch_add(1);
+      OnNotification(ev);
+      return;
     case kKindNotifLegacy:
+      events_notif_legacy_.fetch_add(1);
       OnNotification(ev);
       return;
     default:
       // Quietly ignore unrelated kinds — the subscription filter is
       // already kind-restricted but a permissive relay might leak.
+      events_other_.fetch_add(1);
       return;
   }
 }
@@ -382,9 +396,19 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
   // For NIP-44 v2 we can leverage the cached conversation key.
   // Construct a `WithKeys` decrypt either way — keeps the call site
   // simple.
+  decrypt_attempts_.fetch_add(1);
   nostr::Nip4xDecryptResult dec =
       nostr::Decrypt(variant, seckey_, wallet_pub_, ev.content);
-  if (!dec.ok) return;
+  if (!dec.ok) {
+    if (variant == nostr::EncryptionVariant::kNip44V2) {
+      decrypt_fail_nip44_.fetch_add(1);
+    } else {
+      decrypt_fail_nip04_.fetch_add(1);
+    }
+    return;
+  }
+  decrypt_ok_.fetch_add(1);
+  last_response_ms_.store(now_ ? now_() * 1000 : 0);
 
   // Match by e-tag if present; otherwise just trust the kind 23195
   // came in for us (the relay filter already enforces `#p =
@@ -402,8 +426,14 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
     BalanceResponse resp;
     WalletError werr;
     if (DecodeBalanceResponse(dec.plaintext, resp, werr) == RpcError::kOk) {
+      decode_resp_ok_.fetch_add(1);
       balance_msat_cache_ = resp.balance_msat;
-      if (on_balance_) on_balance_(resp.balance_msat);
+      if (on_balance_) {
+        cb_on_balance_dispatched_.fetch_add(1);
+        on_balance_(resp.balance_msat);
+      }
+    } else {
+      decode_resp_fail_.fetch_add(1);
     }
     // We don't auto-retry on kWalletError here — the higher-layer
     // refresh tick will fire the next request.
@@ -416,10 +446,13 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
     InfoResponse info;
     WalletError werr;
     if (DecodeInfoResponse(dec.plaintext, info, werr) == RpcError::kOk) {
+      decode_resp_ok_.fetch_add(1);
       InfoEvent legacy_info;
       legacy_info.methods = info.methods;
       legacy_info.notifications = info.notifications;
       if (on_ready_) on_ready_(legacy_info);
+    } else {
+      decode_resp_fail_.fetch_add(1);
     }
     inflight_request_id_.clear();
     inflight_method_.clear();
@@ -435,12 +468,25 @@ void NwcClient::OnNotification(const nostr::Event& ev) {
       (ev.kind == kKindNotifModern) ? nostr::EncryptionVariant::kNip44V2
                                      : nostr::EncryptionVariant::kNip04;
   if (!LoadKeys()) return;
+  decrypt_attempts_.fetch_add(1);
   nostr::Nip4xDecryptResult dec =
       nostr::Decrypt(variant, seckey_, wallet_pub_, ev.content);
-  if (!dec.ok) return;
+  if (!dec.ok) {
+    if (variant == nostr::EncryptionVariant::kNip44V2) {
+      decrypt_fail_nip44_.fetch_add(1);
+    } else {
+      decrypt_fail_nip04_.fetch_add(1);
+    }
+    return;
+  }
+  decrypt_ok_.fetch_add(1);
 
   PaymentNotification pn;
-  if (DecodePaymentNotification(dec.plaintext, pn) != RpcError::kOk) return;
+  if (DecodePaymentNotification(dec.plaintext, pn) != RpcError::kOk) {
+    decode_notif_fail_.fetch_add(1);
+    return;
+  }
+  decode_notif_ok_.fetch_add(1);
   if (pn.direction == PaymentDirection::kIncoming) {
     // Optimistically bump the cached balance — keeps the displayed
     // sats fresh between get_balance polls.
@@ -453,7 +499,45 @@ void NwcClient::OnNotification(const nostr::Event& ev) {
       balance_msat_cache_ = 0;
     }
   }
-  if (on_payment_) on_payment_(pn);
+  last_pay_direction_.store(static_cast<uint8_t>(pn.direction));
+  last_pay_amount_sats_.store(static_cast<int64_t>(pn.amount_msat / 1000ULL));
+  last_pay_received_ms_.store(now_ ? now_() * 1000 : 0);
+  if (on_payment_) {
+    cb_on_payment_dispatched_.fetch_add(1);
+    on_payment_(pn);
+  }
+}
+
+DebugSnapshot NwcClient::GetDebugSnapshot() const {
+  DebugSnapshot s;
+  s.state = state_;
+  s.encryption = encryption_;
+  s.balance_msat_cache = balance_msat_cache_;
+  s.sub_id_info = sub_id_info_;
+  s.sub_id_rpc = sub_id_rpc_;
+  s.events_total = events_total_.load();
+  s.events_info = events_info_.load();
+  s.events_response = events_response_.load();
+  s.events_notif_modern = events_notif_modern_.load();
+  s.events_notif_legacy = events_notif_legacy_.load();
+  s.events_other = events_other_.load();
+  s.last_kind = last_kind_.load();
+  s.last_event_ms = last_event_ms_.load();
+  s.last_response_ms = last_response_ms_.load();
+  s.decrypt_attempts = decrypt_attempts_.load();
+  s.decrypt_ok = decrypt_ok_.load();
+  s.decrypt_fail_nip44 = decrypt_fail_nip44_.load();
+  s.decrypt_fail_nip04 = decrypt_fail_nip04_.load();
+  s.decode_notif_ok = decode_notif_ok_.load();
+  s.decode_notif_fail = decode_notif_fail_.load();
+  s.decode_resp_ok = decode_resp_ok_.load();
+  s.decode_resp_fail = decode_resp_fail_.load();
+  s.cb_on_payment_dispatched = cb_on_payment_dispatched_.load();
+  s.cb_on_balance_dispatched = cb_on_balance_dispatched_.load();
+  s.last_pay_direction = last_pay_direction_.load();
+  s.last_pay_amount_sats = last_pay_amount_sats_.load();
+  s.last_pay_received_ms = last_pay_received_ms_.load();
+  return s;
 }
 
 }  // namespace nwc

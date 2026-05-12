@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -48,6 +50,15 @@ class RelayClient {
   bool connected() const { return connected_; }
   const std::string& url() const { return url_; }
 
+  // Debug counters — fed by /api/nwc/debug (NwcClient surface) to
+  // attribute "events never reach the device" to either WSS churn or
+  // higher-layer drops. All atomics so the HTTP task can read without
+  // racing the websocket task. Timestamps are monotonic ms since boot
+  // (esp_timer_get_time()/1000); 0 means "never observed".
+  uint32_t reconnect_count() const { return reconnect_count_.load(); }
+  int64_t last_connect_ms() const { return last_connect_ms_.load(); }
+  int64_t last_disconnect_ms() const { return last_disconnect_ms_.load(); }
+
  private:
   static void EventTrampoline(void* arg, esp_event_base_t base,
                               int32_t event_id, void* event_data);
@@ -63,6 +74,9 @@ class RelayClient {
   TextCallback on_frame_;
   ConnectCallback on_connect_;
   volatile bool connected_ = false;
+  std::atomic<uint32_t> reconnect_count_{0};
+  std::atomic<int64_t> last_connect_ms_{0};
+  std::atomic<int64_t> last_disconnect_ms_{0};
 };
 
 }  // namespace nostr

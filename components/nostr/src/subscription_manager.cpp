@@ -58,6 +58,7 @@ void SubscriptionManager::ReissueAll() {
   for (const auto& [sub_id, f] : copy) {
     relay_.SendText(BuildReqJson(sub_id, f));
   }
+  reissue_count_.fetch_add(1);
 }
 
 void SubscriptionManager::HandleTextFrame(const char* data, size_t len) {

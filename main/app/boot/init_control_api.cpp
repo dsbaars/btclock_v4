@@ -38,7 +38,10 @@
 #include "io/network_led_watchdog.hpp"
 #include "nostr/nostr_data_source.hpp"
 #include "nostr/relay_client.hpp"
+#include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
+#include "nwc/client.hpp"
+#include "nwc/debug.hpp"
 #include "ota_manager.hpp"
 #include "ota_progress.hpp"
 #include "prefs.hpp"
@@ -352,6 +355,28 @@ void InitControlApi(AppCtx& ctx) {
         out.push_back({zr->url(), zr->connected()});
       }
       return out;
+    };
+    // /api/nwc/debug builder. AppCtx outlives the ControlServer
+    // (AppCtx declaration order keeps nwc_* ahead of ctrl), and every
+    // counter the snapshot reads is an atomic load, so this lambda is
+    // safe to fire from the httpd worker without a mutex.
+    ccfg.nwc_debug_json = [ctx_ptr]() -> std::string {
+      nwc::NwcDebugInfo info;
+      info.enabled = ctx_ptr->nwc_enabled.load();
+      if (ctx_ptr->nwc_client) {
+        info.client = ctx_ptr->nwc_client->GetDebugSnapshot();
+      }
+      if (ctx_ptr->nwc_relay) {
+        info.wss_url = ctx_ptr->nwc_relay->url();
+        info.wss_connected = ctx_ptr->nwc_relay->connected();
+        info.reconnect_count = ctx_ptr->nwc_relay->reconnect_count();
+        info.last_connect_ms = ctx_ptr->nwc_relay->last_connect_ms();
+        info.last_disconnect_ms = ctx_ptr->nwc_relay->last_disconnect_ms();
+      }
+      if (ctx_ptr->nwc_subs) {
+        info.reissue_count = ctx_ptr->nwc_subs->reissue_count();
+      }
+      return nwc::BuildNwcDebugJson(info);
     };
     // dataSource=1 plumbs price/blocks straight from the source's
     // per-WS connection probes. dataSource=0 leaves all three callbacks

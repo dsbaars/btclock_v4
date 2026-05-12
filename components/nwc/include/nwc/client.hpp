@@ -52,6 +52,47 @@ enum class State : uint8_t {
   kFatal,
 };
 
+// Read-only snapshot of internal counters + recent event metadata.
+// Populated by NwcClient::GetDebugSnapshot() for the /api/nwc/debug
+// endpoint. Every counter is a "since construction" total — never
+// reset. Timestamps are unix-ms-since-epoch when SNTP has landed,
+// otherwise boot-relative ms (mirrors how NwcClient::SetNowFn picks
+// its clock source).
+struct DebugSnapshot {
+  State state = State::kIdle;
+  nostr::EncryptionVariant encryption = nostr::EncryptionVariant::kNip44V2;
+  uint64_t balance_msat_cache = 0;
+  std::string sub_id_info;
+  std::string sub_id_rpc;
+
+  uint32_t events_total = 0;
+  uint32_t events_info = 0;          // kind 13194
+  uint32_t events_response = 0;      // kind 23195
+  uint32_t events_notif_modern = 0;  // kind 23197
+  uint32_t events_notif_legacy = 0;  // kind 23196
+  uint32_t events_other = 0;
+  uint32_t last_kind = 0;
+  int64_t last_event_ms = 0;
+  int64_t last_response_ms = 0;
+
+  uint32_t decrypt_attempts = 0;
+  uint32_t decrypt_ok = 0;
+  uint32_t decrypt_fail_nip44 = 0;
+  uint32_t decrypt_fail_nip04 = 0;
+
+  uint32_t decode_notif_ok = 0;
+  uint32_t decode_notif_fail = 0;
+  uint32_t decode_resp_ok = 0;
+  uint32_t decode_resp_fail = 0;
+
+  uint32_t cb_on_payment_dispatched = 0;
+  uint32_t cb_on_balance_dispatched = 0;
+
+  uint8_t last_pay_direction = 0;  // PaymentDirection cast: 0/1/2
+  int64_t last_pay_amount_sats = 0;
+  int64_t last_pay_received_ms = 0;
+};
+
 // Caller-supplied randomness source. On target this is wired to
 // `esp_fill_random`; in host tests we plug a counter / fixed buffer
 // for determinism.
@@ -135,6 +176,12 @@ class NwcClient {
     return pairing_.wallet_pubkey_hex;
   }
   const std::string& last_request_id() const { return inflight_request_id_; }
+  const std::string& sub_id_info() const { return sub_id_info_; }
+  const std::string& sub_id_rpc() const { return sub_id_rpc_; }
+
+  // Capture every counter + last-event field for the /api/nwc/debug
+  // endpoint. Cheap — atomic loads + a couple of string copies.
+  DebugSnapshot GetDebugSnapshot() const;
 
   // Test hook — feed a kind-23195 response / kind-23197 (or 23196
   // legacy) notification / kind-13194 INFO event without going
@@ -196,6 +243,32 @@ class NwcClient {
   BalanceCallback on_balance_;
   PaymentCallback on_payment_;
   ReadyCallback on_ready_;
+
+  // Diagnostic counters — atomics so the /api/nwc/debug handler on the
+  // httpd worker task can read them without racing the relay-worker
+  // task that increments them. All "since construction" totals.
+  std::atomic<uint32_t> events_total_{0};
+  std::atomic<uint32_t> events_info_{0};
+  std::atomic<uint32_t> events_response_{0};
+  std::atomic<uint32_t> events_notif_modern_{0};
+  std::atomic<uint32_t> events_notif_legacy_{0};
+  std::atomic<uint32_t> events_other_{0};
+  std::atomic<uint32_t> last_kind_{0};
+  std::atomic<int64_t> last_event_ms_{0};
+  std::atomic<int64_t> last_response_ms_{0};
+  std::atomic<uint32_t> decrypt_attempts_{0};
+  std::atomic<uint32_t> decrypt_ok_{0};
+  std::atomic<uint32_t> decrypt_fail_nip44_{0};
+  std::atomic<uint32_t> decrypt_fail_nip04_{0};
+  std::atomic<uint32_t> decode_notif_ok_{0};
+  std::atomic<uint32_t> decode_notif_fail_{0};
+  std::atomic<uint32_t> decode_resp_ok_{0};
+  std::atomic<uint32_t> decode_resp_fail_{0};
+  std::atomic<uint32_t> cb_on_payment_dispatched_{0};
+  std::atomic<uint32_t> cb_on_balance_dispatched_{0};
+  std::atomic<uint8_t> last_pay_direction_{0};
+  std::atomic<int64_t> last_pay_amount_sats_{0};
+  std::atomic<int64_t> last_pay_received_ms_{0};
 };
 
 // Convert the URI's hex pubkey/secret to 32-byte arrays. Returns

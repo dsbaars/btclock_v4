@@ -488,6 +488,15 @@ class ControlServer {
     // reboot delay is widened to accommodate. Nullable — a null hook
     // skips the blink (matches pre-hook behaviour).
     std::function<void()> on_ota_completion_blink;
+
+    // /api/nwc/debug — returns the cJSON-rendered diagnostic snapshot
+    // built from NwcClient::GetDebugSnapshot() + the underlying
+    // RelayClient + SubscriptionManager state. Wired from main only
+    // when InitNwc successfully constructed the stack; null otherwise
+    // (the handler then responds 503). Auth-gated like every other
+    // /api endpoint so a public-network device doesn't leak the
+    // wallet pubkey / relay URL / cached balance.
+    std::function<std::string()> nwc_debug_json;
   };
 
   explicit ControlServer(Config cfg);
@@ -618,6 +627,7 @@ class ControlServer {
   static esp_err_t TrampolineHeapTraceStart(httpd_req_t* req);
   static esp_err_t TrampolineHeapTraceStop(httpd_req_t* req);
   static esp_err_t TrampolineDiagHeap(httpd_req_t* req);
+  static esp_err_t TrampolineNwcDebug(httpd_req_t* req);
   static esp_err_t TrampolineWsPreview(httpd_req_t* req);
   static esp_err_t TrampolineNotImplemented(httpd_req_t* req);
   static esp_err_t TrampolineOptions(httpd_req_t* req);
@@ -666,6 +676,7 @@ class ControlServer {
   esp_err_t HandleHeapTraceStart(httpd_req_t* req);
   esp_err_t HandleHeapTraceStop(httpd_req_t* req);
   esp_err_t HandleDiagHeap(httpd_req_t* req);
+  esp_err_t HandleNwcDebug(httpd_req_t* req);
   esp_err_t HandleWsPreview(httpd_req_t* req);
   esp_err_t HandleStatic(httpd_req_t* req);
 
