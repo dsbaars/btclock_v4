@@ -44,13 +44,15 @@ idf_component_register(
          "screens/assets/bitaxe_logo.cpp"
          "screens/show_custom.cpp"
          "screens/nostr_zap.cpp"
+         "screens/nwc_balance.cpp"
          "screens/ota_update.cpp"
          "screens/debug.cpp"
+         "app/boot/init_nwc.cpp"
     INCLUDE_DIRS "."
     REQUIRES esp_driver_gpio esp_driver_ledc esp_timer esp_psram esp_wifi
              i2c_bus mcp23017 pca9685
              bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
-             data_core btclock_data buttons nostr timezone dnd settings ota
+             data_core btclock_data buttons nostr nwc timezone dnd settings ota
              mining_pool_common mining_pool_braiins mining_pool_ckpool
              mining_pool_foundry mining_pool_gobrrr mining_pool_nerdminer
              mining_pool_noderunners mining_pool_ocean

@@ -53,6 +53,9 @@ constexpr const char* kTag = "btclock";
   QueueHandle_t button_q = ctx.button_q;
   auto& zap_notify_pending = ctx.zap_notify_pending;
   auto& zap_screen_auto_restore = ctx.zap_screen_auto_restore;
+  auto& nwc_notify_pending = ctx.nwc_notify_pending;
+  auto& nwc_notify_auto_restore = ctx.nwc_notify_auto_restore;
+  auto& nwc_flash_on_payment_enabled = ctx.nwc_flash_on_payment_enabled;
   auto& ota_overlay_render_pending = ctx.ota_overlay_render_pending;
   SemaphoreHandle_t ota_overlay_rendered_sem = ctx.ota_overlay_rendered_sem;
   auto& flash_frontlight_on_zap_enabled = ctx.flash_frontlight_on_zap_enabled;
@@ -288,6 +291,29 @@ constexpr const char* kTag = "btclock";
       }
       if (frontlight && flash_frontlight_on_zap_enabled.load()) {
         frontlight->ZapFlash();
+      }
+      continue;
+    }
+
+    // NWC payment notification — same pattern as the zap branch above.
+    // Main loop owns the ScreenManager mutation; the relay callback
+    // already wrote the snapshot patch via DataHub, so by the time
+    // SetNwcPaymentNotify() lands the renderer's nwc_last_payment is
+    // current. Per-effect flash gate is the nwcFlashOnPay pref;
+    // re-read on dispatch so a live PATCH lands without reboot.
+    bool pending_nwc = true;
+    if (nwc_notify_pending.compare_exchange_strong(pending_nwc, false) && hub) {
+      Prefs nwc_prefs(prefs::kSettingsNs);
+      const int64_t timer_s =
+          static_cast<int64_t>(nwc_prefs.GetU32(prefs::kTimerSeconds, 0));
+      const int64_t timeout_ms = ZapOverlayPolicy::ComputeTimeoutMs(timer_s);
+      sm.SetNwcPaymentNotify(now_ms, nwc_notify_auto_restore.load(),
+                             timeout_ms);
+      sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
+      publish_status();
+      if (nwc_flash_on_payment_enabled.load()) {
+        PostLedEffect(LedEffect::kZap);
+        if (frontlight) frontlight->ZapFlash();
       }
       continue;
     }

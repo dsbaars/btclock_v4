@@ -10,6 +10,7 @@
 
 #include "app/boot/adapters.hpp"
 #include "control_server.hpp"
+#include "esp_timer.h"
 #include "io/frontlight_controller.hpp"
 #include "io/light_sensor.hpp"
 #include "io/network_led_watchdog.hpp"
@@ -18,6 +19,7 @@
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_id_lru.hpp"
 #include "nostr/zap_listener.hpp"
+#include "nwc/client.hpp"
 #include "provisioning_server.hpp"
 #include "sse_server.hpp"
 #include "wifi.hpp"
@@ -36,6 +38,15 @@ AppCtx::~AppCtx() {
   if (ota_overlay_rendered_sem != nullptr) {
     vSemaphoreDelete(ota_overlay_rendered_sem);
     ota_overlay_rendered_sem = nullptr;
+  }
+  // NWC refresh timer outlives the NwcClient via void*; the boot path
+  // creates it via esp_timer_create and stores the handle on AppCtx.
+  // Destroying here keeps the lifetime symmetric with the unique_ptrs.
+  if (nwc_refresh_timer != nullptr) {
+    auto* h = static_cast<esp_timer_handle_t>(nwc_refresh_timer);
+    esp_timer_stop(h);
+    esp_timer_delete(h);
+    nwc_refresh_timer = nullptr;
   }
 }
 

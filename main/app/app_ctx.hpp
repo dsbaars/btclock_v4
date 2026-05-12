@@ -57,6 +57,9 @@ class SubscriptionManager;
 class ZapListener;
 class ZapIdLru;
 }  // namespace nostr
+namespace nwc {
+class NwcClient;
+}  // namespace nwc
 }  // namespace btclock
 
 namespace btclock {
@@ -178,6 +181,38 @@ struct AppCtx {
   std::atomic<bool> zap_notify_screen_enabled{true};
   std::atomic<bool> zap_screen_auto_restore{true};
   std::atomic<bool> zap_notify_pending{false};
+
+  // NWC (NIP-47) wallet — at most one client active at a time. The
+  // dedicated WSS does NOT share with data-source relays: NWC relays
+  // are almost always wallet-operator hosts (e.g. relay.getalby.com)
+  // distinct from the pricing/zap relays, and the message stream is
+  // pubkey-filtered against the wallet service rather than the
+  // user pubkey, so the multiplexing the zap path uses doesn't apply.
+  std::unique_ptr<nostr::RelayClient> nwc_relay;
+  std::unique_ptr<nostr::SubscriptionManager> nwc_subs;
+  std::unique_ptr<nwc::NwcClient> nwc_client;
+  // ESP timer firing the periodic get_balance poll. Owned here so the
+  // settings PATCH path can re-prime the interval without re-entering
+  // the boot init. nullptr when NWC is disabled.
+  void* nwc_refresh_timer = nullptr;
+  // True iff InitNwc successfully constructed an NwcClient. Used by the
+  // event-loop to decide whether to drain the payment-notification
+  // pending flag; cheaper than nulling-out the unique_ptrs on disable.
+  std::atomic<bool> nwc_enabled{false};
+  // Set to true by the on-payment callback when a kind 23196/23197
+  // notification arrives and `nwcFlashOnPay` is on. The event-loop
+  // picks it up on the next wake, calls sm.SetNwcPaymentNotify(), and
+  // (when the gate is on) fires the LED+frontlight pulse — same shape
+  // as zap_notify_pending.
+  std::atomic<bool> nwc_notify_pending{false};
+  // Master gate. PATCH-flipping this on requires reboot (boot path
+  // owns the construction); flipping off pauses dispatch but keeps the
+  // WSS up — letting the user re-enable without a full re-init.
+  std::atomic<bool> nwc_flash_on_payment_enabled{true};
+  // Soft auto-restore latch matching the zap overlay's scrnRestoreZap
+  // behaviour. PATCHed via /api/settings; defaults to true so the
+  // overlay clears itself after the 8 s window.
+  std::atomic<bool> nwc_notify_auto_restore{true};
 
   // OTA "UPDATE!" overlay render-on-main-task handoff. The pre-flash
   // hook fires on the ota_auto worker task (auto-update) or the httpd

@@ -1,6 +1,7 @@
 #include "app/boot/init_boot_path.hpp"
 
 #include "app/app_ctx.hpp"
+#include "app/boot/init_nwc.hpp"
 #include "app/boot/init_zap_listener.hpp"
 #include "io/led_controller.hpp"
 #include "provisioning_ui.hpp"
@@ -23,6 +24,7 @@ void DispatchBootPath(AppCtx& ctx) {
   }
   WireDataSources(ctx);
   InitZapListener(ctx);
+  InitNwc(ctx);
 }
 
 }  // namespace btclock
