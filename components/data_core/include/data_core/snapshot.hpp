@@ -91,6 +91,30 @@ struct DataSnapshot {
   };
   LatestZap latest_zap{};
 
+  // NWC (NIP-47) wallet balance — populated by the boot-wired
+  // NwcClient on every successful get_balance roundtrip and on every
+  // payment notification (which mutates the cache optimistically).
+  // nullopt means "no successful poll yet"; the renderer paints "—"
+  // for the empty state. Merge rules: any non-null value in the
+  // partial overwrites — the source publishes monotonic-by-time
+  // values from a single producer, so there's no fan-in concern.
+  std::optional<int64_t> nwc_balance_msat;
+
+  // Most-recent NWC payment notification. The kind 23197 / 23196
+  // event from the wallet service drives the transient overlay
+  // (kNwcPaymentNotify, ~8 s timeout) — same single-shot pattern as
+  // latest_zap. Merge: larger `received_ms` wins.
+  struct NwcPayment {
+    // 0 = unknown, 1 = incoming (payment_received), 2 = outgoing
+    // (payment_sent). Mirrors nwc::PaymentDirection so the renderer
+    // can branch without pulling in the NWC header.
+    uint8_t direction = 0;
+    std::optional<int64_t> amount_sats;  // msat / 1000, rounded
+    std::string description;             // trimmed memo for the panel
+    int64_t received_ms = 0;             // monotonic ms for timeout
+  };
+  NwcPayment nwc_last_payment{};
+
   // Merge non-empty fields of `other` into `this`. Returns true iff any
   // field actually changed — callers use that to suppress spurious
   // update notifications.

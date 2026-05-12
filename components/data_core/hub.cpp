@@ -83,6 +83,21 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
     latest_zap = other.latest_zap;
     changed = true;
   }
+  // NWC balance — null in `other` means "not produced by this partial";
+  // a populated value overwrites unconditionally because the NWC client
+  // is the sole producer (no fan-in races between sources).
+  if (other.nwc_balance_msat &&
+      (!nwc_balance_msat || *nwc_balance_msat != *other.nwc_balance_msat)) {
+    nwc_balance_msat = other.nwc_balance_msat;
+    changed = true;
+  }
+  // NWC payment notification — same monotonic-stamp rule as latest_zap.
+  // `received_ms == 0` means the producer didn't populate the substruct,
+  // so don't clobber a real notification.
+  if (other.nwc_last_payment.received_ms > nwc_last_payment.received_ms) {
+    nwc_last_payment = other.nwc_last_payment;
+    changed = true;
+  }
   return changed;
 }
 

@@ -12,9 +12,10 @@
 //   slot 5          : kMiningPoolEarnings   api_id 71
 //   slot 6          : kBitaxeHashrate       api_id 80
 //   slot 7          : kBitaxeBestDiff       api_id 81
-//   slot 8 + 3k     : kMoscowTime           api_id 10   for currencies[k]
-//   slot 9 + 3k     : kBtcPrice             api_id 20   for currencies[k]
-//   slot 10 + 3k    : kMarketCap            api_id 30   for currencies[k]
+//   slot 8          : kNwcBalance           api_id 90
+//   slot 9 + 3k     : kMoscowTime           api_id 10   for currencies[k]
+//   slot 10 + 3k    : kBtcPrice             api_id 20   for currencies[k]
+//   slot 11 + 3k    : kMarketCap            api_id 30   for currencies[k]
 //   slot last       : kBlockFeeRate         api_id 6
 //
 // The api_id ↔ slot relationship is many-to-one for per-currency screens
@@ -48,16 +49,19 @@ inline constexpr int kApiIdMiningPoolHashrate = 70;
 inline constexpr int kApiIdMiningPoolEarnings = 71;
 inline constexpr int kApiIdBitaxeHashrate = 80;
 inline constexpr int kApiIdBitaxeBestDiff = 81;
+inline constexpr int kApiIdNwcBalance = 90;
 
 // Currency-agnostic slots before per-currency fan-out:
 //   0=block, 1=clock, 2=halving, 3=supply,
 //   4=mining-pool-hashrate, 5=mining-pool-earnings,
-//   6=bitaxe-hashrate, 7=bitaxe-best-diff.
-// Mining-pool + bitaxe slots stay in the rotation whether or not the
-// user has the feature enabled; the renderers paint an OFFLINE /
-// placeholder frame when no data has arrived so slot_count stays
-// stable across pref flips — persisted screenOrder keeps working.
-inline constexpr std::size_t kAgnosticSlots = 8;
+//   6=bitaxe-hashrate, 7=bitaxe-best-diff,
+//   8=nwc-balance.
+// Mining-pool + bitaxe + NWC slots stay in the rotation whether or
+// not the user has the feature enabled; the renderers paint an
+// OFFLINE / placeholder frame when no data has arrived so slot_count
+// stays stable across pref flips — persisted screenOrder keeps
+// working.
+inline constexpr std::size_t kAgnosticSlots = 9;
 inline constexpr std::size_t kPerCurrencySlots = 3;
 
 inline std::size_t SlotCount(std::size_t currency_count) {
@@ -88,6 +92,8 @@ inline int ApiIdForSlot(std::size_t slot, std::size_t currency_count) {
       return kApiIdBitaxeHashrate;
     case 7:
       return kApiIdBitaxeBestDiff;
+    case 8:
+      return kApiIdNwcBalance;
     default:
       break;
   }
@@ -159,6 +165,8 @@ inline int SlotForApiId(int api_id, std::size_t currency_count,
       return 6;
     case kApiIdBitaxeBestDiff:
       return 7;
+    case kApiIdNwcBalance:
+      return 8;
     case kApiIdBlockFeeRate:
       return static_cast<int>(total - 1);
     case kApiIdMoscowTime:

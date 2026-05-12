@@ -911,6 +911,18 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
     case ScreenType::kNostrZap:
       return BuildNostrZap(in.zap_amount_sats, in.use_sats_symbol,
                            in.use_btc_symbol, n_panels);
+    case ScreenType::kNwcBalance:
+      // Reuse the NostrZap mirror — same "label + bolt + amount" shape.
+      return BuildNostrZap(in.nwc_balance_sats, in.use_sats_symbol,
+                           in.use_btc_symbol, n_panels);
+    case ScreenType::kNwcPaymentNotify:
+      // Mirror just the amount cells the overlay paints. The label
+      // (GOT/PAID) lives in the renderer's PaintSlot::kLabel which
+      // doesn't have a panel_texts counterpart; the user-facing
+      // /api/status data[] therefore shows the amount only — same
+      // policy as the NostrZap mirror.
+      return BuildNostrZap(in.nwc_payment_amount_sats, in.use_sats_symbol,
+                           in.use_btc_symbol, n_panels);
     case ScreenType::kDebug: {
       // Debug screen's layout is entirely markdown-driven and changes
       // per panel; no useful `data[]` mirror. Return a single label in

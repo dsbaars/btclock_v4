@@ -118,6 +118,13 @@ class ScreenManager {
   // LatestZap has been patched.
   void SetZapNotify(int64_t now_ms, bool auto_restore, int64_t timeout_ms);
 
+  // Push the transient NWC payment-notification overlay. Same latch
+  // semantics as SetZapNotify; `timeout_ms <= 0` uses kZapTimeoutMs
+  // (the two overlay kinds share the budget). current_kind() returns
+  // kNwcPaymentNotify while the overlay is active.
+  void SetNwcPaymentNotify(int64_t now_ms, bool auto_restore,
+                           int64_t timeout_ms);
+
   // Navigation — always returns true today (the slot list always has
   // ≥ 2 entries). Sets the dirty flag so the next Render does a full
   // refresh.
@@ -381,6 +388,20 @@ class ScreenManager {
   bool zap_active_ = false;
   bool zap_auto_restore_ = true;
   int64_t zap_active_until_ = 0;
+  // NWC payment-notification overlay latch. Mirrors the zap overlay
+  // shape: a kNwcPaymentNotify dispatch flips Render() into the payment
+  // screen; auto-restore lifts the latch after the timeout. Two
+  // separate latches (rather than a generic "overlay" state) so the
+  // two notification kinds keep distinct timeouts and so a zap during
+  // an NWC notification (or vice versa) replaces cleanly without
+  // interleaving the two payloads in current_kind().
+  bool nwc_notify_active_ = false;
+  bool nwc_notify_auto_restore_ = true;
+  int64_t nwc_notify_active_until_ = 0;
+  // NWC balance screen diff — feeds the per-cell partial-refresh path
+  // on RenderNwcBalanceScreen so a refreshed get_balance response only
+  // repaints the cells whose digit content actually changed.
+  std::optional<int64_t> last_rendered_nwc_balance_;
   // Text mirror refreshed on every Render(). Populated via
   // screens/panel_texts.hpp, consumed by ControlServer::HandleStatus
   // through the `get_panel_texts` callback wired in main.cpp.

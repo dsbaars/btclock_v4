@@ -126,6 +126,12 @@ struct PanelTextInputs {
   // re-plumbing the relay listener) but is not currently rendered.
   std::optional<int64_t> zap_amount_sats;
   std::string zap_message;
+  // NWC mirror inputs — populated by ScreenManager::Render so the
+  // /api/status data[] reflects what the EPDs paint for the balance
+  // and payment-notification screens. Both reuse the BuildNostrZap
+  // amount-formatter on purpose: identical layout = identical mirror.
+  std::optional<int64_t> nwc_balance_sats;
+  std::optional<int64_t> nwc_payment_amount_sats;
 };
 
 // Build the `data[]` array, one string per panel, for `n_panels` panels.

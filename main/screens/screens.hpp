@@ -314,6 +314,52 @@ void RenderNostrZapScreen(
 std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
                             std::size_t max_int_cells);
 
+// --- NWC wallet balance ---
+// Rotatable screen. Layout (7- and 8-panel):
+//   [BAL] [bolt] [ ] ... [ ] [sats glyph] [amount digits...]
+// Mirrors the NostrZap shape — label cell, bolt icon, blanks, sats
+// glyph one slot before the amount, amount right-justified. The bolt
+// glyph anchors the brand cue across NWC screens (balance + payment-
+// notify). When `balance_sats == nullopt` (no successful poll yet),
+// the amount cells paint a single em-dash for the offline indicator.
+// Always partial-refresh-capable: the previous balance feeds the
+// digit diff so a refreshed poll only repaints changed digits.
+template <size_t N>
+void RenderNwcBalanceScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const std::optional<int64_t>& balance_sats,
+    const std::optional<int64_t>& prev_balance_sats = std::nullopt,
+    bool use_sats_symbol = false, bool use_btc_symbol = false,
+    uint8_t sats_variant = kSatsVariantDefault, bool full_refresh_mode = true,
+    bool vertical_desc = false);
+
+// --- NWC payment notification ---
+// Transient overlay (8 s timeout). Layout same as RenderNwcBalanceScreen
+// except the label flips between "GOT" (incoming) and "PAID" (outgoing)
+// based on direction. Always full-refresh — the overlay is short-lived
+// and the digit diff would carry stale state from the underlying
+// rotation slot. Direction 1 = incoming (kIncoming), 2 = outgoing
+// (kOutgoing); anything else paints the "GOT" label as a defensive
+// default.
+template <size_t N>
+void RenderNwcPaymentNotifyScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::NwcPayment& payment, bool use_sats_symbol = false,
+    bool use_btc_symbol = false, uint8_t sats_variant = kSatsVariantDefault,
+    bool full_refresh_mode = true, bool vertical_desc = false);
+
+// Format a sats amount into the string painted on the trailing panels.
+// Layered on top of FormatZapAmount:
+//   - sats < 100_000_000 → delegate to FormatZapAmount (suffix path)
+//   - sats >= 100_000_000 → format as "N.NNNN" BTC with 4 decimals
+// The BTC fallback keeps a wallet >= 1 BTC readable on the balance
+// screen without a "1B sat" rendering that loses precision. Pure-logic
+// so host tests pin the rules without an EPD driver.
+std::string FormatSatsCompact(const std::optional<int64_t>& amount_sats,
+                              std::size_t max_int_cells);
+
 // --- Firmware OTA overlay ---
 // Painted once by the /upload/firmware handler before esp_ota_begin
 // erases the target partition. Panel 0 shows an "UP/DATE" split-text

@@ -70,6 +70,8 @@ inline int AgnosticSlotForApiId(int api_id, std::size_t currency_count) {
       return 6;
     case slot_map::kApiIdBitaxeBestDiff:
       return 7;
+    case slot_map::kApiIdNwcBalance:
+      return 8;
     case slot_map::kApiIdBlockFeeRate:
       return currency_count == 0
                  ? -1

@@ -134,12 +134,16 @@ const char* KindName(ScreenType k) {
       return "bxhash";
     case ScreenType::kBitaxeBestDiff:
       return "bxdiff";
+    case ScreenType::kNwcBalance:
+      return "nwcbal";
     case ScreenType::kCustom:
       return "custom";
     case ScreenType::kDebug:
       return "debug";
     case ScreenType::kNostrZap:
       return "zap";
+    case ScreenType::kNwcPaymentNotify:
+      return "nwcpay";
     case ScreenType::kOtaUpdate:
       return "ota";
   }
@@ -173,6 +177,8 @@ ScreenType ScreenManager::KindForSlot(size_t slot) const {
       return ScreenType::kBitaxeHashrate;
     case 7:
       return ScreenType::kBitaxeBestDiff;
+    case 8:
+      return ScreenType::kNwcBalance;
     default:
       break;
   }
@@ -323,6 +329,7 @@ ScreenType ScreenManager::current_kind() const {
   // a static custom overlay too. The deadline check lives on the
   // MaybeAutoRotate / Render path rather than here so current_kind()
   // stays monotonic from one call to the next.
+  if (nwc_notify_active_) return ScreenType::kNwcPaymentNotify;
   if (zap_active_) return ScreenType::kNostrZap;
   // Custom screen latches over the rotation cycle — the client explicitly
   // pinned it via /api/show/text or /api/show/custom. Any navigation
@@ -353,6 +360,7 @@ bool ScreenManager::SetSlot(size_t slot, int64_t now_ms) {
   }
   custom_active_ = false;
   zap_active_ = false;
+  nwc_notify_active_ = false;
   screen_change_pending_ = true;
   rot_.Restart(now_ms);
   ESP_LOGI(kTag, "set → slot %zu", slot_);
@@ -400,6 +408,7 @@ void ScreenManager::SetCustomCells(std::vector<std::string> cells,
   }
   custom_active_ = true;
   zap_active_ = false;
+  nwc_notify_active_ = false;
   screen_change_pending_ = true;
   // Reset the auto-rotate deadline so the user gets a full rotation
   // period to read the custom content before it rolls off.
@@ -407,10 +416,28 @@ void ScreenManager::SetCustomCells(std::vector<std::string> cells,
   ESP_LOGI(kTag, "custom → %zu cells latched", custom_cells_.size());
 }
 
+void ScreenManager::SetNwcPaymentNotify(int64_t now_ms, bool auto_restore,
+                                        int64_t timeout_ms) {
+  nwc_notify_active_ = true;
+  nwc_notify_auto_restore_ = auto_restore;
+  const int64_t t = (timeout_ms > 0) ? timeout_ms : kZapTimeoutMs;
+  nwc_notify_active_until_ = now_ms + t;
+  // The two overlay kinds are mutually exclusive — a new NWC
+  // notification displaces a still-active zap and vice versa.
+  zap_active_ = false;
+  screen_change_pending_ = true;
+  rot_.Restart(now_ms);
+  ESP_LOGI(kTag, "nwc payment notify → auto_restore=%d timeout=%lld until=%lld",
+           auto_restore ? 1 : 0, static_cast<long long>(t),
+           static_cast<long long>(nwc_notify_active_until_));
+}
+
 void ScreenManager::SetZapNotify(int64_t now_ms, bool auto_restore,
                                  int64_t timeout_ms) {
   zap_active_ = true;
   zap_auto_restore_ = auto_restore;
+  // Displace any active NWC notification — mutually exclusive.
+  nwc_notify_active_ = false;
   // Caller-driven deadline when positive — mirrors the user's
   // `timerSeconds` rotation pref so the overlay dismisses on the same
   // cadence as a rotation step. Guard against 0/negative (e.g. an
@@ -436,9 +463,11 @@ bool ScreenManager::NextScreen(int64_t now_ms) {
   // The zap overlay gets the same "first Next dismisses, stays on slot"
   // treatment so a long-latched (scrnRestoreZap=false) notification
   // exits cleanly on a button press.
-  const bool exiting_overlay = custom_active_ || zap_active_;
+  const bool exiting_overlay =
+      custom_active_ || zap_active_ || nwc_notify_active_;
   custom_active_ = false;
   zap_active_ = false;
+  nwc_notify_active_ = false;
   if (rotation_sequence_.empty()) {
     if (!exiting_overlay) slot_ = (slot_ + 1) % slot_count();
     AdvancePastSkipped(+1);
@@ -456,9 +485,11 @@ bool ScreenManager::NextScreen(int64_t now_ms) {
 }
 
 bool ScreenManager::PrevScreen(int64_t now_ms) {
-  const bool exiting_overlay = custom_active_ || zap_active_;
+  const bool exiting_overlay =
+      custom_active_ || zap_active_ || nwc_notify_active_;
   custom_active_ = false;
   zap_active_ = false;
+  nwc_notify_active_ = false;
   if (rotation_sequence_.empty()) {
     if (!exiting_overlay) slot_ = (slot_ + slot_count() - 1) % slot_count();
     AdvancePastSkipped(-1);
@@ -486,6 +517,16 @@ bool ScreenManager::MaybeAutoRotate(int64_t now_ms, int64_t period_ms) {
   // slot immediately rather than waiting for a data push. When
   // zap_auto_restore_ is false the overlay stays up until a user
   // nav clears it (same semantics as kCustom at a long enough window).
+  if (nwc_notify_active_) {
+    if (nwc_notify_auto_restore_ && now_ms > nwc_notify_active_until_) {
+      nwc_notify_active_ = false;
+      screen_change_pending_ = true;
+      rot_.Restart(now_ms);
+      ESP_LOGI(kTag, "nwc payment notify restore → slot %zu", slot_);
+      return true;
+    }
+    return false;
+  }
   if (zap_active_) {
     if (zap_auto_restore_ && now_ms > zap_active_until_) {
       zap_active_ = false;
@@ -642,6 +683,17 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
       // arrival; further paints are only driven by nav/timeout, not
       // snapshot changes.
       return false;
+    case ScreenType::kNwcPaymentNotify:
+      // Same pattern as kNostrZap — overlay paint is push-driven via
+      // SetNwcPaymentNotify; later snapshot changes don't repaint.
+      return false;
+    case ScreenType::kNwcBalance:
+      // Repaint whenever the balance moves; the renderer's own diff
+      // skips unchanged digits, so this is safe to over-trigger.
+      return last_rendered_nwc_balance_ != [&snap]() -> std::optional<int64_t> {
+        if (!snap.nwc_balance_msat) return std::nullopt;
+        return *snap.nwc_balance_msat / 1000;
+      }();
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit above fires first.
       return false;
@@ -929,6 +981,26 @@ void ScreenManager::Render(
                            rp.use_sats_symbol, rp.use_btc_symbol, sats_variant_,
                            force_full, rp.vertical_desc);
       break;
+    case ScreenType::kNwcBalance: {
+      // Convert msat to sats for the renderer. The screen renders in
+      // whole-sats; the millisat precision NWC reports is dropped
+      // here so the panel-side state machine doesn't have to know
+      // about the msat carry.
+      std::optional<int64_t> bal_sats;
+      if (snap.nwc_balance_msat) bal_sats = *snap.nwc_balance_msat / 1000;
+      RenderNwcBalanceScreen(panels, fb, fonts, bal_sats,
+                             force_repaint ? std::nullopt
+                                           : last_rendered_nwc_balance_,
+                             rp.use_sats_symbol, rp.use_btc_symbol,
+                             sats_variant_, force_full, rp.vertical_desc);
+      last_rendered_nwc_balance_ = bal_sats;
+      break;
+    }
+    case ScreenType::kNwcPaymentNotify:
+      RenderNwcPaymentNotifyScreen(
+          panels, fb, fonts, snap.nwc_last_payment, rp.use_sats_symbol,
+          rp.use_btc_symbol, sats_variant_, force_full, rp.vertical_desc);
+      break;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit at function entry
       // returns before this switch executes.
@@ -1016,6 +1088,10 @@ void ScreenManager::Render(
     // so /api/status sees the same data the panels are painting.
     pti.zap_amount_sats = snap.latest_zap.amount_sats;
     pti.zap_message = snap.latest_zap.message;
+    // NWC mirror inputs — msat→sats happens here so the host-test side
+    // of panel_texts stays integer-only.
+    if (snap.nwc_balance_msat) pti.nwc_balance_sats = *snap.nwc_balance_msat / 1000;
+    pti.nwc_payment_amount_sats = snap.nwc_last_payment.amount_sats;
     last_panel_texts_ = BuildPanelTexts(pti, N);
   } else {
     last_panel_texts_ = BuildPanelTexts(pti, N);
