@@ -6,6 +6,7 @@ idf_component_register(
         "src/subscription_manager.cpp"
         "src/zap_listener.cpp"
         "src/event_verify.cpp"
+        "src/event_sign.cpp"
         "src/nip4x.cpp"
         "src/nostr_data_source.cpp"
     INCLUDE_DIRS "include"

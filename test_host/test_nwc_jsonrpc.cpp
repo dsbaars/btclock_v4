@@ -1,0 +1,198 @@
+// Host tests for the NWC JSON-RPC encode/decode helpers.
+
+#include <string>
+#include <vector>
+
+#include "doctest.h"
+#include "nwc/jsonrpc.hpp"
+
+using namespace btclock::nwc;
+
+TEST_CASE("BuildGetBalanceRequest emits the bit-fixed NIP-47 payload") {
+  CHECK(BuildGetBalanceRequest() == R"({"method":"get_balance","params":{}})");
+}
+
+TEST_CASE("BuildGetInfoRequest emits the bit-fixed NIP-47 payload") {
+  CHECK(BuildGetInfoRequest() == R"({"method":"get_info","params":{}})");
+}
+
+TEST_CASE("DecodeBalanceResponse: spec-shaped success payload") {
+  const std::string json =
+      R"({"result_type":"get_balance","result":{"balance":10000}})";
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse(json, out, err) == RpcError::kOk);
+  CHECK(out.balance_msat == 10000u);
+}
+
+TEST_CASE("DecodeBalanceResponse: large balance survives 53-bit clean-up") {
+  // ~21 BTC in msat. Well under 2^53; precision survives.
+  const std::string json =
+      R"({"result_type":"get_balance","result":{"balance":2100000000000000}})";
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse(json, out, err) == RpcError::kOk);
+  CHECK(out.balance_msat == 2100000000000000ULL);
+}
+
+TEST_CASE("DecodeBalanceResponse: stringified balance accepted") {
+  const std::string json =
+      R"({"result_type":"get_balance","result":{"balance":"123456789012345"}})";
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse(json, out, err) == RpcError::kOk);
+  CHECK(out.balance_msat == 123456789012345ULL);
+}
+
+TEST_CASE("DecodeBalanceResponse: wallet error surfaced") {
+  const std::string json =
+      R"({"result_type":"get_balance","error":{"code":"UNAUTHORIZED","message":"no perms"},"result":null})";
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse(json, out, err) == RpcError::kWalletError);
+  CHECK(err.code == "UNAUTHORIZED");
+  CHECK(err.message == "no perms");
+}
+
+TEST_CASE("DecodeBalanceResponse: wrong result_type rejected") {
+  const std::string json =
+      R"({"result_type":"pay_invoice","result":{"preimage":"deadbeef"}})";
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse(json, out, err) == RpcError::kMethodMismatch);
+}
+
+TEST_CASE("DecodeBalanceResponse: garbage rejected") {
+  BalanceResponse out;
+  WalletError err;
+  CHECK(DecodeBalanceResponse("not json", out, err) == RpcError::kNotJson);
+  CHECK(DecodeBalanceResponse("{}", out, err) == RpcError::kMissingResultType);
+  CHECK(DecodeBalanceResponse(R"({"result_type":"get_balance"})", out, err) ==
+        RpcError::kMissingResult);
+}
+
+TEST_CASE("DecodeInfoResponse: spec-shaped success payload") {
+  const std::string json =
+      R"({"result_type":"get_info","result":{
+            "alias":"Alby",
+            "color":"#ff8800",
+            "pubkey":"03abcdef0123456789",
+            "network":"mainnet",
+            "block_height":820000,
+            "methods":["pay_invoice","get_balance","make_invoice"],
+            "notifications":["payment_received","payment_sent"]
+         }})";
+  InfoResponse out;
+  WalletError err;
+  CHECK(DecodeInfoResponse(json, out, err) == RpcError::kOk);
+  CHECK(out.alias == "Alby");
+  CHECK(out.pubkey == "03abcdef0123456789");
+  CHECK(out.network == "mainnet");
+  CHECK(out.block_height == 820000u);
+  CHECK(out.methods.size() == 3);
+  CHECK(out.methods[0] == "pay_invoice");
+  CHECK(out.notifications.size() == 2);
+  CHECK(out.notifications[1] == "payment_sent");
+}
+
+TEST_CASE("DecodeInfoEvent: INFO event content + tags") {
+  // Spec-shaped INFO event:
+  //   content = space-separated methods
+  //   tags    = [["encryption","nip44_v2 nip04"], ["notifications","payment_received payment_sent"]]
+  std::vector<std::vector<std::string>> tags = {
+      {"encryption", "nip44_v2 nip04"},
+      {"notifications", "payment_received payment_sent"},
+  };
+  InfoEvent info;
+  REQUIRE(DecodeInfoEvent("pay_invoice get_balance notifications", tags,
+                          info));
+  REQUIRE(info.methods.size() == 3);
+  CHECK(info.methods[0] == "pay_invoice");
+  CHECK(info.methods[1] == "get_balance");
+  CHECK(info.methods[2] == "notifications");
+  REQUIRE(info.encryption.size() == 2);
+  CHECK(info.encryption[0] == "nip44_v2");
+  CHECK(info.encryption[1] == "nip04");
+  REQUIRE(info.notifications.size() == 2);
+  CHECK(info.notifications[0] == "payment_received");
+  CHECK(info.notifications[1] == "payment_sent");
+}
+
+TEST_CASE("DecodeInfoEvent: encryption split across multiple tag values") {
+  // Some wallets emit `["encryption","nip44_v2","nip04"]` (each on
+  // its own value index) instead of one space-separated value.
+  std::vector<std::vector<std::string>> tags = {
+      {"encryption", "nip44_v2", "nip04"},
+  };
+  InfoEvent info;
+  REQUIRE(DecodeInfoEvent("get_balance", tags, info));
+  REQUIRE(info.encryption.size() == 2);
+  CHECK(info.encryption[0] == "nip44_v2");
+  CHECK(info.encryption[1] == "nip04");
+}
+
+TEST_CASE("DecodeInfoEvent: empty content rejected") {
+  std::vector<std::vector<std::string>> tags = {};
+  InfoEvent info;
+  CHECK(!DecodeInfoEvent("", tags, info));
+}
+
+TEST_CASE("DecodePaymentNotification: payment_received decodes amount + desc") {
+  const std::string json = R"({
+    "notification_type": "payment_received",
+    "notification": {
+      "type": "incoming",
+      "state": "settled",
+      "invoice": "lnbc...",
+      "description": "test zap",
+      "payment_hash": "deadbeef",
+      "amount": 21000,
+      "fees_paid": 0,
+      "created_at": 1747000000,
+      "settled_at": 1747000005
+    }
+  })";
+  PaymentNotification n;
+  CHECK(DecodePaymentNotification(json, n) == RpcError::kOk);
+  CHECK(n.direction == PaymentDirection::kIncoming);
+  CHECK(n.amount_msat == 21000u);
+  CHECK(n.fees_paid_msat == 0u);
+  CHECK(n.description == "test zap");
+  CHECK(n.payment_hash == "deadbeef");
+  CHECK(n.created_at == 1747000000u);
+  CHECK(n.settled_at == 1747000005u);
+}
+
+TEST_CASE("DecodePaymentNotification: payment_sent flips direction") {
+  const std::string json = R"({
+    "notification_type": "payment_sent",
+    "notification": {
+      "type": "outgoing",
+      "amount": 5000,
+      "fees_paid": 1,
+      "payment_hash": "abc"
+    }
+  })";
+  PaymentNotification n;
+  CHECK(DecodePaymentNotification(json, n) == RpcError::kOk);
+  CHECK(n.direction == PaymentDirection::kOutgoing);
+  CHECK(n.amount_msat == 5000u);
+  CHECK(n.fees_paid_msat == 1u);
+}
+
+TEST_CASE(
+    "DecodePaymentNotification: unknown notification_type stays kUnknown") {
+  const std::string json = R"({
+    "notification_type": "hold_invoice_accepted",
+    "notification": { "payment_hash": "abc" }
+  })";
+  PaymentNotification n;
+  CHECK(DecodePaymentNotification(json, n) == RpcError::kOk);
+  CHECK(n.direction == PaymentDirection::kUnknown);
+  CHECK(n.payment_hash == "abc");
+}
+
+TEST_CASE("DecodePaymentNotification: garbage rejected") {
+  PaymentNotification n;
+  CHECK(DecodePaymentNotification("not-json", n) == RpcError::kNotJson);
+}
