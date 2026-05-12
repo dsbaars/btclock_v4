@@ -193,6 +193,15 @@ TEST_CASE("GET /api/settings surfaces every schema field") {
   for (const auto& f : btclock::settings::kFields) {
     std::string key(f.key);
     CAPTURE(key);
+    // nwcUri is redacted from the response (secret leak guard); the
+    // sibling `nwcUriSet` + `nwcUriMasked` carry the user-visible
+    // state. Skip the schema-walk presence check for the raw URI key
+    // — mirrors how httpAuthPass / otaPass / proxyPass are echoed as
+    // boolean *Set pairs rather than direct values.
+    if (key == "nwcUri") {
+      CHECK(cJSON_GetObjectItemCaseSensitive(root, "nwcUriSet") != nullptr);
+      continue;
+    }
     cJSON* item = cJSON_GetObjectItemCaseSensitive(root, key.c_str());
     REQUIRE(item != nullptr);
     // actCurrencies stores a CSV in NVS but BuildGetResponse emits the
@@ -988,15 +997,22 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // each relay opens a WSS at boot.
   // 84 -> 85: labelFitPct added (uint, range 25..100, default 100) to
   // scale split-label auto-fit width as a user-facing percentage.
-  CHECK(btclock::settings::kFields.size() == 85);
+  // 85 -> 89: NWC (NIP-47) wallet settings landed in a single batch —
+  // nwcUri (string), nwcEnabled (bool), nwcRefreshSecs (uint), and
+  // nwcFlashOnPay (bool). First three are boot_only (the dedicated WSS
+  // + signer state are wired one-shot from InitNwc); nwcFlashOnPay is
+  // runtime so the event_loop dispatcher can re-read it per
+  // notification.
+  CHECK(btclock::settings::kFields.size() == 89);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,
-  // nostrRelays, enableDebugLog, wpTimeout = 16. hostnamePrefix and
-  // mdnsEnabled used to be in this set; bd btclock_v4-9ut flipped them to
+  // nostrRelays, enableDebugLog, wpTimeout = 16; +3 for nwcUri,
+  // nwcEnabled, nwcRefreshSecs = 19. hostnamePrefix and mdnsEnabled
+  // used to be in this set; bd btclock_v4-9ut flipped them to
   // runtime via on_mdns_changed. fontName likewise: bd btclock_v4-j76.5
   // dropped it because kSetFont applies live via the ControlCommand queue.
-  CHECK(btclock::settings::BootOnlyCount() == 16);
+  CHECK(btclock::settings::BootOnlyCount() == 19);
 }
 
 TEST_CASE("NVS key length guard: every field key fits NVS's 15-char limit") {

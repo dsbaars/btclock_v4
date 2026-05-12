@@ -166,6 +166,9 @@ add_executable(btclock_host_tests
     test_nwc_uri.cpp
     test_nwc_jsonrpc.cpp
     test_nwc_client.cpp
+    test_nwc_balance_screen.cpp
+    test_settings_nwc.cpp
+    ../components/settings/nwc_config.cpp
     ../components/nostr/src/parser.cpp
     ../components/nostr/src/request_frame.cpp
     ../components/nostr/src/event_verify.cpp
