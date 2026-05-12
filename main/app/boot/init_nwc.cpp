@@ -47,13 +47,15 @@ constexpr int64_t kBalanceCacheMinIntervalMs = 60'000;
 esp_timer_handle_t StartRefreshTimer(AppCtx& ctx, uint32_t period_secs) {
   if (period_secs == 0) return nullptr;
   esp_timer_create_args_t args = {};
+  // Cheap callback only — raise the pending flag and wake the main
+  // task. The heavy NIP-44 encrypt + schnorr sign + JSON build that
+  // `RequestGetBalance()` performs would not fit on the esp_timer
+  // task's ~3.5 KiB stack and used to abort with a stack overflow
+  // every nwcRefreshSecs.
   args.callback = [](void* arg) {
     auto* c = static_cast<AppCtx*>(arg);
-    if (!c->nwc_client) return;
-    // Only fire when the client is past bootstrap. Pre-INFO requests
-    // would just queue against an unset encryption variant.
-    if (c->nwc_client->state() != nwc::State::kReady) return;
-    c->nwc_client->RequestGetBalance();
+    c->nwc_refresh_pending.store(true);
+    if (c->main_task) xTaskNotifyGive(c->main_task);
   };
   args.arg = &ctx;
   args.name = "nwc_poll";

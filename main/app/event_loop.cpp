@@ -26,6 +26,7 @@
 #include "io/wifi_guard.hpp"
 #include "lwip/sockets.h"
 #include "mcp23017.hpp"
+#include "nwc/client.hpp"
 #include "prefs.hpp"
 #include "screens/screens.hpp"
 #include "settings/pref_keys.hpp"
@@ -54,6 +55,7 @@ constexpr const char* kTag = "btclock";
   auto& zap_notify_pending = ctx.zap_notify_pending;
   auto& zap_screen_auto_restore = ctx.zap_screen_auto_restore;
   auto& nwc_notify_pending = ctx.nwc_notify_pending;
+  auto& nwc_refresh_pending = ctx.nwc_refresh_pending;
   auto& nwc_notify_auto_restore = ctx.nwc_notify_auto_restore;
   auto& nwc_flash_on_payment_enabled = ctx.nwc_flash_on_payment_enabled;
   auto& ota_overlay_render_pending = ctx.ota_overlay_render_pending;
@@ -293,6 +295,20 @@ constexpr const char* kTag = "btclock";
         frontlight->ZapFlash();
       }
       continue;
+    }
+
+    // NWC periodic balance refresh. The esp_timer task only flips the
+    // flag + xTaskNotifyGive — the heavy NIP-44 encrypt + schnorr sign
+    // + JSON build that `RequestGetBalance()` performs runs HERE on
+    // the main task instead, where the stack is sized for the full
+    // render path. Direct dispatch from esp_timer (default ~3.5 KiB
+    // stack) used to abort the device every nwcRefreshSecs.
+    bool pending_refresh = true;
+    if (nwc_refresh_pending.compare_exchange_strong(pending_refresh, false)) {
+      if (ctx.nwc_client &&
+          ctx.nwc_client->state() == nwc::State::kReady) {
+        ctx.nwc_client->RequestGetBalance();
+      }
     }
 
     // NWC payment notification — same pattern as the zap branch above.

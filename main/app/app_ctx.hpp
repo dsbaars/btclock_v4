@@ -205,6 +205,13 @@ struct AppCtx {
   // (when the gate is on) fires the LED+frontlight pulse — same shape
   // as zap_notify_pending.
   std::atomic<bool> nwc_notify_pending{false};
+  // Set to true by the esp_timer poll callback (~`nwcRefreshSecs`).
+  // The event-loop drains the flag on the main task and runs the
+  // heavy NIP-44 encrypt + schnorr sign there — the esp_timer task
+  // ships with a ~3.5 KiB stack which `RequestGetBalance` blew past,
+  // tripping `***ERROR*** A stack overflow in task esp_timer`.
+  // bd btclock_v4-lwf.6.
+  std::atomic<bool> nwc_refresh_pending{false};
   // Master gate. PATCH-flipping this on requires reboot (boot path
   // owns the construction); flipping off pauses dispatch but keeps the
   // WSS up — letting the user re-enable without a full re-init.
