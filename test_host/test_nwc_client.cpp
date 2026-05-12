@@ -218,25 +218,49 @@ struct ClientFixture {
 
 }  // namespace
 
-TEST_CASE("NwcClient::Start subscribes with the right filter") {
+TEST_CASE("NwcClient::Start opens two subs: INFO by authors, RPC by #p") {
+  // Pins the lwf.6 fix: kind 13194 INFO carries no `p` tag, so it
+  // MUST be fetched by `authors=[wallet]`, not by `#p=[us]`. Folding
+  // both shapes into one filter (the old behaviour) made every relay
+  // drop INFO and stranded the client in kBootstrapping.
   ClientFixture f;
   f.client->Start();
-  REQUIRE(f.subscribes.size() == 1);
-  const auto& [sub_id, filter] = f.subscribes[0];
-  CHECK(sub_id.rfind("nwc-", 0) == 0);
-  // Filter kinds cover INFO + responses + both notification variants.
-  REQUIRE(filter.kinds.size() == 4);
-  CHECK(filter.kinds[0] == 13194u);
-  CHECK(filter.kinds[1] == 23195u);
-  CHECK(filter.kinds[2] == 23197u);
-  CHECK(filter.kinds[3] == 23196u);
-  // `#p` is our client pubkey so the wallet's responses to us
-  // come back; `authors` pins INFO to come from the wallet pubkey.
-  REQUIRE(filter.p_tags.size() == 1);
-  CHECK(filter.p_tags[0] == ClientPubkeyHex());
-  REQUIRE(filter.authors.size() == 1);
-  CHECK(filter.authors[0] == WalletPubkeyHex());
+  REQUIRE(f.subscribes.size() == 2);
+
+  const auto& [info_id, info_filter] = f.subscribes[0];
+  CHECK(info_id.rfind("nwci-", 0) == 0);
+  REQUIRE(info_filter.kinds.size() == 1);
+  CHECK(info_filter.kinds[0] == 13194u);
+  REQUIRE(info_filter.authors.size() == 1);
+  CHECK(info_filter.authors[0] == WalletPubkeyHex());
+  // CRITICAL: no `#p` predicate — INFO replaceable events have no p tag.
+  CHECK(info_filter.p_tags.empty());
+  CHECK(info_filter.limit == 1);
+
+  const auto& [rpc_id, rpc_filter] = f.subscribes[1];
+  CHECK(rpc_id.rfind("nwcr-", 0) == 0);
+  REQUIRE(rpc_filter.kinds.size() == 3);
+  CHECK(rpc_filter.kinds[0] == 23195u);
+  CHECK(rpc_filter.kinds[1] == 23197u);
+  CHECK(rpc_filter.kinds[2] == 23196u);
+  REQUIRE(rpc_filter.p_tags.size() == 1);
+  CHECK(rpc_filter.p_tags[0] == ClientPubkeyHex());
+  REQUIRE(rpc_filter.authors.size() == 1);
+  CHECK(rpc_filter.authors[0] == WalletPubkeyHex());
+
   CHECK(f.client->state() == nwc::State::kBootstrapping);
+}
+
+TEST_CASE("NwcClient: synthetic INFO transitions kBootstrapping -> kReady") {
+  // The whole point of splitting the REQ: INFO actually arrives, and
+  // when it does the state machine must unblock so the next
+  // RequestGetBalance is honoured.
+  ClientFixture f;
+  f.client->Start();
+  REQUIRE(f.client->state() == nwc::State::kBootstrapping);
+  f.client->HandleEvent(MakeInfoEvent("get_balance", {"nip44_v2"}, {}));
+  CHECK(f.client->state() == nwc::State::kReady);
+  CHECK(f.ready_calls == 1);
 }
 
 TEST_CASE("NwcClient: INFO event locks in nip44_v2 encryption + fires ready") {
@@ -381,8 +405,10 @@ TEST_CASE("NwcClient: Stop fires unsubscribe + clears in-flight") {
   f.client->RequestGetBalance();
   REQUIRE(!f.client->last_request_id().empty());
   f.client->Stop();
-  REQUIRE(f.unsubscribes.size() == 1);
+  // Both subs (INFO + RPC) closed in the same order they were opened.
+  REQUIRE(f.unsubscribes.size() == 2);
   CHECK(f.unsubscribes[0] == f.subscribes[0].first);
+  CHECK(f.unsubscribes[1] == f.subscribes[1].first);
   CHECK(f.client->state() == nwc::State::kIdle);
   CHECK(f.client->last_request_id().empty());
 }

@@ -172,10 +172,14 @@ NwcClient::NwcClient(PairingUri pairing, PublishFn publish,
       publish_(std::move(publish)),
       subscribe_(std::move(subscribe)),
       unsubscribe_(std::move(unsubscribe)) {
-  // Stable sub-id keyed on the wallet pubkey prefix — short enough to
+  // Stable sub-ids keyed on the wallet pubkey prefix — short enough to
   // fit in a single relay line, distinctive enough to survive multi-
-  // wallet hosts.
-  sub_id_ = "nwc-" + pairing_.wallet_pubkey_hex.substr(0, 8);
+  // wallet hosts. Separate ids on the same WSS so the two filter
+  // shapes (authors-only INFO vs `#p`-filtered RPC) stay queryable
+  // independently.
+  const std::string prefix = pairing_.wallet_pubkey_hex.substr(0, 8);
+  sub_id_info_ = "nwci-" + prefix;
+  sub_id_rpc_ = "nwcr-" + prefix;
 }
 
 NwcClient::~NwcClient() = default;
@@ -222,26 +226,35 @@ void NwcClient::Start() {
     }
   }
 
-  // Single filter covers the four kinds we care about. NIP-01 lets
-  // us include several kinds in one filter — saves a sub slot vs
-  // opening one REQ per kind.
-  nostr::Filter f;
-  f.kinds = {kKindInfo, kKindResponse, kKindNotifModern, kKindNotifLegacy};
-  f.authors = {pairing_.wallet_pubkey_hex};  // INFO + responses
-                                              // come from the wallet
-                                              // service authoring key
-  f.p_tags = {our_pubkey_hex};
-  // INFO is replaceable; spec recommends limit:1 for replaceable
-  // events so the relay sends the most recent. We don't set `since`
-  // because we want the cached INFO replayed on every reconnect.
-  f.limit = 0;
+  // Two filters on the same socket. INFO (kind 13194) is a NIP-33
+  // replaceable event authored by the wallet service and carries NO
+  // `p` tag — folding it into the same filter as the RPC kinds with
+  // `#p=[us]` makes the relay drop it. `limit:1` tells the relay to
+  // replay just the most recent stored INFO on subscribe.
+  nostr::Filter f_info;
+  f_info.kinds = {kKindInfo};
+  f_info.authors = {pairing_.wallet_pubkey_hex};
+  f_info.limit = 1;
+  // Responses + notifications. Wallet-signed (so `authors=[wallet]`
+  // pins us to the right author), tagged with our pubkey via `p`.
+  nostr::Filter f_rpc;
+  f_rpc.kinds = {kKindResponse, kKindNotifModern, kKindNotifLegacy};
+  f_rpc.authors = {pairing_.wallet_pubkey_hex};
+  f_rpc.p_tags = {our_pubkey_hex};
+  f_rpc.limit = 0;
 
-  if (subscribe_) subscribe_(sub_id_, f);
+  if (subscribe_) {
+    subscribe_(sub_id_info_, f_info);
+    subscribe_(sub_id_rpc_, f_rpc);
+  }
   state_ = State::kBootstrapping;
 }
 
 void NwcClient::Stop() {
-  if (unsubscribe_) unsubscribe_(sub_id_);
+  if (unsubscribe_) {
+    unsubscribe_(sub_id_info_);
+    unsubscribe_(sub_id_rpc_);
+  }
   state_ = State::kIdle;
   inflight_request_id_.clear();
   inflight_method_.clear();

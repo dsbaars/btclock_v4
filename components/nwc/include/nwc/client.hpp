@@ -172,9 +172,16 @@ class NwcClient {
 
   nostr::EncryptionVariant encryption_ = nostr::EncryptionVariant::kNip44V2;
 
-  // SubscriptionManager sub id we registered under. Stable so we can
-  // CLOSE on Stop().
-  std::string sub_id_;
+  // Two stable sub ids on the same relay socket: one fetches the
+  // wallet's INFO (kind 13194 by `authors=[wallet_pubkey]` — INFO has
+  // no `p` tag so a `#p` filter would never match it), the other
+  // carries responses + payment notifications (kinds 23195/23197/
+  // 23196 by `#p=[us]`). Folding both into a single Filter dropped
+  // INFO on every relay and stranded the client in kBootstrapping —
+  // RequestGetBalance is gated on kReady so the poll tick never
+  // fired. bd btclock_v4-lwf.6.
+  std::string sub_id_info_;
+  std::string sub_id_rpc_;
   // Tracks the event id of the most recent request we sent — every
   // kind 23195 response carries an `e` tag pointing at this. Empty
   // means no request in flight.
