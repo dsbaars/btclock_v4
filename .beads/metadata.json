@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "btclock_v4",
+  "project_id": "ea549b60-d26e-4ab2-af96-33790f7ab6a0"
+}
