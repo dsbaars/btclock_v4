@@ -338,13 +338,16 @@ TEST_CASE("NotificationQueue: producer/consumer threading is race-free") {
     }
   });
   for (int i = 0; i < 100; ++i) {
-    nwc::RawNotification r;
-    r.content = std::to_string(i);
     // Spin-retry on drop: the consumer drains in real time, but
     // bursts can saturate. This isn't a "drop semantics" test.
-    while (!q.TryPush(std::move(r))) {
-      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    // Rebuild `r` at the top of every attempt so each TryPush owns a
+    // freshly-constructed value (avoids use-after-move on the retry
+    // path — clang-tidy bugprone-use-after-move).
+    while (true) {
+      nwc::RawNotification r;
       r.content = std::to_string(i);
+      if (q.TryPush(std::move(r))) break;
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
   }
   stop.store(true);

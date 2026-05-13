@@ -98,13 +98,13 @@ nostr::Event MakeInfoEvent(const std::string& methods,
   ev.pubkey = WalletPubkeyHex();
   {
     nostr::Tag t;
-    t.values.push_back("encryption");
+    t.values.emplace_back("encryption");
     for (const auto& e : encryption) t.values.push_back(e);
     ev.tags.push_back(t);
   }
   if (!notifications.empty()) {
     nostr::Tag t;
-    t.values.push_back("notifications");
+    t.values.emplace_back("notifications");
     for (const auto& n : notifications) t.values.push_back(n);
     ev.tags.push_back(t);
   }

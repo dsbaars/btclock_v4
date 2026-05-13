@@ -160,13 +160,13 @@ TEST_CASE("SignEvent + VerifyEvent roundtrip on a kind-23194 NWC request") {
   ev.created_at = 1747000000;
   ev.kind = 23194;
   Tag p_tag;
-  p_tag.values.push_back("p");
-  p_tag.values.push_back(
+  p_tag.values.emplace_back("p");
+  p_tag.values.emplace_back(
       "b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4");
   ev.tags.push_back(p_tag);
   Tag enc_tag;
-  enc_tag.values.push_back("encryption");
-  enc_tag.values.push_back("nip44_v2");
+  enc_tag.values.emplace_back("encryption");
+  enc_tag.values.emplace_back("nip44_v2");
   ev.tags.push_back(enc_tag);
   ev.content =
       "AgEhqzCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
