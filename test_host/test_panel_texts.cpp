@@ -1024,13 +1024,11 @@ TEST_CASE("panel_texts — EUR suffix non-overflow keeps BTC/EUR label") {
   CHECK(out[6] == "K");
 }
 
-TEST_CASE("panel_texts — mowMode label path is reachable for price=0") {
+TEST_CASE("panel_texts — mowMode label path keeps BTC/<CCY> for price=0") {
   // Edge: price=0 falls out of FormatNumberWithSuffix as "0M" (2 chars)
   // regardless of num_characters, so `$0M`(3) fits with room for a
-  // "MOW/UNITS" label. This pins the only reachable MOW/UNITS path
-  // under the current num_chars=Panels-1 mow expansion — for any other
-  // price the M-suffix expansion pads to exactly num_chars and
-  // priceString always hits the overflow branch.
+  // label. v4 keeps "BTC/<CCY>" on the mow label path (v3 emitted
+  // "MOW/UNITS" here; we drop that so currency context stays visible).
   PanelTextInputs in;
   in.kind = ScreenType::kBtcPrice;
   in.currency = "USD";
@@ -1039,7 +1037,7 @@ TEST_CASE("panel_texts — mowMode label path is reachable for price=0") {
   in.mow_mode = true;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  CHECK(out[0] == "MOW/UNITS");
+  CHECK(out[0] == "BTC/USD");
 }
 
 TEST_CASE("panel_texts — V8 mowMode overflow: glyph in slot 0") {
@@ -1174,10 +1172,11 @@ TEST_CASE("panel_texts — shareDot 1000000 USD → BTC/USD label, '1.' folded")
   CHECK(out[6] == "M");
 }
 
-TEST_CASE("panel_texts — shareDot+mow 93600 USD → MOW/UNITS, '0.' folded") {
+TEST_CASE("panel_texts — shareDot+mow 93600 USD → BTC/USD, '0.' folded") {
   // Mirrors PriceSuffixModeMowCompact: 93600 + mow + shareDot →
   // "$0.093M" (7 raw bytes), dot folds → ["$","0.","0","9","3","M"]
-  // and the label path stays alive so slot 0 is "MOW/UNITS".
+  // and the label path stays alive so slot 0 is "BTC/USD". v3 swapped
+  // to "MOW/UNITS" here; v4 keeps BTC/<CCY>.
   PanelTextInputs in;
   in.kind = ScreenType::kBtcPrice;
   in.currency = "USD";
@@ -1187,7 +1186,7 @@ TEST_CASE("panel_texts — shareDot+mow 93600 USD → MOW/UNITS, '0.' folded") {
   in.share_dot = true;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  CHECK(out[0] == "MOW/UNITS");
+  CHECK(out[0] == "BTC/USD");
   CHECK(out[1] == "$");
   CHECK(out[2] == "0.");
   CHECK(out[3] == "0");

@@ -451,8 +451,9 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
                                        const std::string& price,
                                        std::size_t n_panels, bool suffix_price,
                                        bool mow_mode, bool share_dot) {
-  // Panel 0 = "BTC/<CCY>" (or "MOW/UNITS" on the suffix+mow path when
-  // the price still fits with a label). Digits 1..N-1 come from the
+  // Panel 0 = "BTC/<CCY>" on the label path; blank on the suffix
+  // overflow path where the priceString fills every cell. Digits
+  // 1..N-1 come from the
   // layout helpers in price_layout.hpp / btc_price_suffix_layout.hpp —
   // same helpers the on-panel renderer uses, so the WebUI mirror and
   // the EPD agree on where the '.' lands, which cell carries the glyph,

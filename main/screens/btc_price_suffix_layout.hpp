@@ -12,7 +12,9 @@
 //   share_dot folds the '.' byte into its preceding cell ("X."), so
 //   the visual width is `priceString.size() - (has_dot ? 1 : 0)`.
 //   if visual width <= Panels-1   → label path:
-//     out_label = mow_mode ? "MOW/UNITS" : "BTC/<CCY>"
+//     out_label = "BTC/<CCY>"  (v3 emitted "MOW/UNITS" when mow_mode
+//       was set; v4 keeps the BTC/<CCY> label so currency context is
+//       not lost on the MOW form.)
 //     cells[0] is left empty (caller paints out_label on panel 0)
 //     cells[1..Panels-1] hold the priceString left-padded in Panels-1
 //       cells (leading spaces → empty strings; '.' folded when set).
@@ -74,8 +76,9 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
 
   if (cells_len < Panels) {
     // Label path. Panel 0 stays empty in `out`; caller paints label.
-    out_label =
-        mow_mode ? std::string("MOW/UNITS") : (std::string("BTC/") + currency);
+    // v3 swapped to "MOW/UNITS" on mow_mode; v4 keeps "BTC/<CCY>"
+    // regardless so the currency stays visible on the M-suffix form.
+    out_label = std::string("BTC/") + currency;
     const std::size_t digit_cells = Panels - 1;
     const std::size_t pad =
         cells_len < digit_cells ? digit_cells - cells_len : 0u;

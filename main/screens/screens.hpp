@@ -79,9 +79,8 @@ void RenderMoscowTimeScreen(
     bool vertical_desc = false);
 
 // --- BTC price ---
-// Panel 0 = "BTC/<CCY>" label (or "MOW/UNITS" when `mow_mode` is on and
-// the MOW form fits with a label slot; blank on the suffix-overflow
-// path where priceString fills all panels). Panels 1..N-1 = price
+// Panel 0 = "BTC/<CCY>" label (blank on the suffix-overflow path where
+// priceString fills all panels). Panels 1..N-1 = price
 // digits with an optional currency-symbol glyph placed one slot before
 // the first digit. Symbol is a UTF-8 string; pass "" to skip the
 // symbol panel.

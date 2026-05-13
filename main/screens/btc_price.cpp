@@ -48,10 +48,9 @@ bool ShouldUseSuffixPath(int64_t price_int, bool suffix_price) {
 
 }  // namespace
 
-// Panel 0 = "BTC/<CCY>" label (or "MOW/UNITS" on the suffix+mow fits-
-// with-label path; blank on the suffix overflow path where priceString
-// fills all panels). Panels 1..N-1 = one character per slot, right-
-// justified. Layout is computed by `LayoutBtcPrice` (plain path) or
+// Panel 0 = "BTC/<CCY>" label (blank on the suffix overflow path where
+// priceString fills all panels). Panels 1..N-1 = one character per slot,
+// right-justified. Layout is computed by `LayoutBtcPrice` (plain path) or
 // `LayoutBtcPriceSuffixStrings` (suffix / MOW path); both are pure-
 // logic helpers shared with panel_texts.cpp for WebUI parity.
 //
