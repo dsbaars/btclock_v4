@@ -1053,6 +1053,13 @@ std::string ControlServer::BuildStatusJson() const {
       cJSON_AddItemToArray(nostr_arr, obj);
     }
   }
+  // NWC — emit only when the boot path wired a probe (i.e. NWC is
+  // enabled in settings AND InitNwc successfully constructed an
+  // NwcClient). Suppressing the field on null keeps the JSON shape
+  // unchanged for non-NWC builds so the WebUI's badge stays hidden.
+  if (cfg_.nwc_connected) {
+    cJSON_AddBoolToObject(conn, "nwc", cfg_.nwc_connected());
+  }
 
   cJSON_AddNumberToObject(root, "rssi", CurrentRssi());
   cJSON_AddStringToObject(root, "currency",

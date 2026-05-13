@@ -446,6 +446,26 @@ void NwcClient::DispatchHeavy(uint32_t kind, const std::string& content) {
   PaymentNotification pn;
   if (DecodePaymentNotification(dec.plaintext, pn) != RpcError::kOk) return;
   ApplyPaymentToBalance(pn);
+  // Re-fetch the authoritative balance from the wallet service. The
+  // local fetch_add/sub in ApplyPaymentToBalance is a heuristic that
+  // gets fees wrong on outgoing payments, can drift on multi-payment
+  // races, and assumes the incoming msat is exactly what landed
+  // (some wallets net-of-fee differently). Firing one get_balance per
+  // live notification keeps the cache aligned within ~1 RTT without
+  // waiting for the next periodic poll. Boot-time list_transactions
+  // fan-out intentionally skips this — it would burst N requests for
+  // N synthetic payments; the periodic poll closes the gap there.
+  //
+  // Skip when a non-balance request is still inflight: NwcClient
+  // tracks only one outstanding id, so firing here would orphan the
+  // pending response (e.g. a still-arriving list_transactions reply
+  // would mismatch the freshly-overwritten id and get dropped). A
+  // get_balance already in flight is safe to supersede — the
+  // response is idempotent.
+  if (state_ == State::kReady &&
+      (inflight_method_.empty() || inflight_method_ == "get_balance")) {
+    (void)RequestGetBalance();
+  }
 }
 
 }  // namespace nwc

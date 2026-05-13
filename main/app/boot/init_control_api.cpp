@@ -362,6 +362,21 @@ void InitControlApi(AppCtx& ctx) {
     // unset → control_server falls back to the hub-presence heuristic
     // (which is correct for v2 since the single socket carries both).
     // bd btclock_v4-1xc.
+    // NWC reachability — surfaces in /api/status `connectionStatus.nwc`
+    // and feeds the WebUI badge. Reports true only after the wallet
+    // service responded to the kind-13194 INFO event (state==kReady);
+    // kBootstrapping / kIdle / kFatal all render as disconnected so
+    // the user sees the same pill colour as a stalled relay. The
+    // callback is wired unconditionally on every boot — the
+    // /api/status emitter only attaches the field when the lambda is
+    // present, so it's null on builds that don't expose NWC yet, and
+    // we keep the indirection live so a runtime PATCH that flips
+    // `nwcEnabled` reflects in the badge without a reboot.
+    ccfg.nwc_connected = [ctx_ptr]() -> bool {
+      if (!ctx_ptr || !ctx_ptr->nwc_enabled.load()) return false;
+      if (!ctx_ptr->nwc_client) return false;
+      return ctx_ptr->nwc_client->state() == nwc::State::kReady;
+    };
     if (MempoolKrakenSource* mk = ctx.mempool_kraken) {
       ccfg.price_connected = [mk]() { return mk->IsKrakenConnected(); };
       ccfg.blocks_connected = [mk]() { return mk->IsMempoolConnected(); };

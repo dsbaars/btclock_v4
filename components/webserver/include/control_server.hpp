@@ -417,6 +417,16 @@ class ControlServer {
     std::function<bool()> blocks_connected;
     std::function<bool()> v2_connected;
 
+    // Nostr Wallet Connect (NIP-47) wallet reachability. Returns true
+    // iff NWC is enabled AND the wallet-service handshake is complete
+    // (`NwcClient::state() == kReady`). When null the
+    // `connectionStatus.nwc` field is suppressed from /api/status —
+    // matches the convention used by `connectionStatus.nostr` (empty
+    // array) for the "feature not wired" case. The WebUI badge keys
+    // off `settings.nwcEnabled` to decide visibility, so this signal
+    // is purely "ready vs. degraded" within an enabled-NWC build.
+    std::function<bool()> nwc_connected;
+
     // Fires when PATCH /api/settings touches `mdnsEnabled` or
     // `hostnamePrefix`. The callback is expected to tear down the
     // existing mDNS advert and re-publish under the freshly-persisted
