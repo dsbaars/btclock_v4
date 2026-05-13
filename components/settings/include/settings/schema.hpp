@@ -91,7 +91,7 @@ struct FieldSpec {
 // zero-init fallback), the spec entry leaves the default_* fields at
 // their struct-init zero values. See docs/SETTINGS.md for the audit
 // table.
-inline constexpr std::array<FieldSpec, 89> kFields = {{
+inline constexpr std::array<FieldSpec, 90> kFields = {{
     // actCurrencies: comma-joined active ISO codes for the rotation.
     // Stored as a CSV string in NVS; GET emits it as an array (handled
     // out-of-band in BuildGetResponse). Default mirrors v3 + matches
@@ -326,6 +326,12 @@ inline constexpr std::array<FieldSpec, 89> kFields = {{
     // Runtime — the dispatcher in event_loop.cpp reads the atomic on
     // each notification so a live PATCH lands without reboot.
     {prefs::kNwcFlashOnPay, FieldKind::kBool, false, 0, 0, true, 0, {}},
+    // Master toggle for the on-screen payment-notify overlay. Default
+    // true (current UX); when false the event_loop's nwc-notify branch
+    // short-circuits BEFORE SetNwcPaymentNotify + the flash hook, so
+    // bystander-visible "RECV …" / "PAID …" pop-ups are suppressed.
+    // Balance cache + snapshot mirror still update.
+    {prefs::kNwcShowNotify, FieldKind::kBool, false, 0, 0, true, 0, {}},
     // v3 DEFAULT_OTA_ENABLED=true; otaPass default is empty string in the
     // GET emitter (v3's settings.cpp echoes only `otaPassSet`).
     {prefs::kOtaEnabled, FieldKind::kBool, true, 0, 0, true, 0, {}},

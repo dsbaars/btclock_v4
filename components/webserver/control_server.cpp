@@ -2876,7 +2876,7 @@ btclock::settings::DeviceContext BuildDeviceContext(
     ctx.bitaxe_enabled = btclock::settings::ReadBool(p, prefs::kBitaxeEnabled);
   }
   for (const auto& s : cfg.screens_catalog) {
-    ctx.screens.push_back({s.id, s.name});
+    ctx.screens.push_back({s.id, s.name, s.default_visible});
     // Let the suppression probe filter capability-gated slots — today
     // this is just mining-pool earnings on a solo pool. Evaluated at
     // request time so a PATCH changing `miningPoolName` takes effect on

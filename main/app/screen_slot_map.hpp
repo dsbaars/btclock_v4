@@ -51,6 +51,18 @@ inline constexpr int kApiIdBitaxeHashrate = 80;
 inline constexpr int kApiIdBitaxeBestDiff = 81;
 inline constexpr int kApiIdNwcBalance = 90;
 
+// Default value for `screen<id>Visible` when the NVS key is absent.
+// Most screens default ON so a fresh device shows the full rotation;
+// kApiIdNwcBalance defaults OFF (privacy — some operators don't want
+// their NWC balance glanceable to bystanders). The user opts in via
+// the WebUI screen picker; `screen90Visible=true` then sticks per
+// device. Mining-pool / bitaxe ids still default ON here because the
+// parent-feature gate (miningPoolStats / bitaxeEnabled) already
+// suppresses them when the feature isn't configured.
+inline constexpr bool DefaultScreenVisible(int api_id) {
+  return api_id != kApiIdNwcBalance;
+}
+
 // Currency-agnostic slots before per-currency fan-out:
 //   0=block, 1=clock, 2=halving, 3=supply,
 //   4=mining-pool-hashrate, 5=mining-pool-earnings,

@@ -330,7 +330,8 @@ void InitControlApi(AppCtx& ctx) {
     // supported set instead of a compile-time array that can drift.
     ccfg.available_currencies = ctx.available_currencies;
     for (const auto& s : catalogs::kScreenKinds) {
-      ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label)});
+      ccfg.screens_catalog.push_back({s.api_id, std::string(s.display_label),
+                                      slot_map::DefaultScreenVisible(s.api_id)});
     }
     // Per-relay Nostr liveness — read on every /api/status so the
     // WebUI's connection badge tracks reality. Walks both nostr_sources

@@ -142,6 +142,16 @@ inline constexpr const char* kNwcUri = "nwcUri";
 inline constexpr const char* kNwcEnabled = "nwcEnabled";
 inline constexpr const char* kNwcRefreshSecs = "nwcRefreshSecs";
 inline constexpr const char* kNwcFlashOnPay = "nwcFlashOnPay";
+// Master toggle for the on-screen payment-notify overlay (the
+// "RECV ↓ STS 1000" / "PAID ↑ STS 100" screen that pops on every
+// kind-23197/23196 event). Privacy-sensitive — a glanceable display
+// is sometimes mounted where bystanders shouldn't see incoming
+// amounts. Default true (matches the v3 wallet-notify UX); a live
+// PATCH lands without reboot. When this is off, the LED flash gate
+// nwcFlashOnPay is also bypassed, but the silent balance update +
+// snapshot mirror still flows so the (opt-in) balance screen stays
+// current.
+inline constexpr const char* kNwcShowNotify = "nwcShowNotify";
 inline constexpr const char* kOtaEnabled = "otaEnabled";
 inline constexpr const char* kOtaPass = "otaPass";
 inline constexpr const char* kPoolGlobalStats = "poolGlobalStats";
@@ -329,6 +339,7 @@ BTCLOCK_PREF_KEY_ASSERT(kNwcUri);
 BTCLOCK_PREF_KEY_ASSERT(kNwcEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kNwcRefreshSecs);
 BTCLOCK_PREF_KEY_ASSERT(kNwcFlashOnPay);
+BTCLOCK_PREF_KEY_ASSERT(kNwcShowNotify);
 BTCLOCK_PREF_KEY_ASSERT(kOtaEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kOtaPass);
 BTCLOCK_PREF_KEY_ASSERT(kPoolGlobalStats);

@@ -90,10 +90,15 @@ struct DeviceContext {
   // is read from prefs (kActCurrencies, comma-separated).
   std::vector<std::string> available_currencies;
   // Registered rotatable screens, in fallback order. PATCH handler
-  // validates reorder payloads against this list.
+  // validates reorder payloads against this list. `default_visible`
+  // is the fallback returned when the per-screen `screen<id>Visible`
+  // NVS key is absent — true for the data screens, false for the
+  // NWC balance slot (privacy: an opt-in to surface wallet balance
+  // to bystanders).
   struct Screen {
     int id;
     std::string name;
+    bool default_visible = true;
   };
   std::vector<Screen> screens;
   // Screen api_ids the GET response must omit from `screens[]` even

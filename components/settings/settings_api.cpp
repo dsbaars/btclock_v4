@@ -307,7 +307,7 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     cJSON_AddStringToObject(obj, "name", s.name.c_str());
     char vkey[24];
     std::snprintf(vkey, sizeof(vkey), "screen%dVisible", s.id);
-    cJSON_AddBoolToObject(obj, "enabled", prefs.GetBool(vkey, true));
+    cJSON_AddBoolToObject(obj, "enabled", prefs.GetBool(vkey, s.default_visible));
     cJSON_AddNumberToObject(obj, "order", static_cast<double>(emit_order));
     cJSON_AddItemToArray(screens_arr, obj);
     ++emit_order;
@@ -1143,15 +1143,27 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
       }
 
       // Pass 2: visibility toggles (independent of reorder path).
+      // Default-visible lookup matches BuildGetResponse's emit: NWC
+      // balance opts out by default for privacy; everything else opts
+      // in. Without this the PATCH would write `screen90Visible=false`
+      // for every payload that mirrors the GET shape, even when the
+      // user hasn't touched the toggle.
       for (cJSON* s = screens->child; s; s = s->next) {
         cJSON* id = cJSON_GetObjectItemCaseSensitive(s, "id");
         cJSON* enabled = cJSON_GetObjectItemCaseSensitive(s, "enabled");
         if (!cJSON_IsNumber(id) || !cJSON_IsBool(enabled)) continue;
         const int iid = static_cast<int>(id->valuedouble);
+        bool default_visible = true;
+        for (const auto& cs : ctx.screens) {
+          if (cs.id == iid) {
+            default_visible = cs.default_visible;
+            break;
+          }
+        }
         char vkey[24];
         std::snprintf(vkey, sizeof(vkey), "screen%dVisible", iid);
         const bool next = cJSON_IsTrue(enabled);
-        if (prefs.GetBool(vkey, true) != next) {
+        if (prefs.GetBool(vkey, default_visible) != next) {
           writer.SetBool(vkey, next);
           result.touched_keys.emplace_back(vkey);
         }

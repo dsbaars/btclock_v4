@@ -259,6 +259,7 @@ class ControlServer {
     struct ScreenEntry {
       int id;
       std::string name;
+      bool default_visible = true;
     };
     std::vector<ScreenEntry> screens_catalog;
     // Fonts + pools + currencies the renderer and data-source layer

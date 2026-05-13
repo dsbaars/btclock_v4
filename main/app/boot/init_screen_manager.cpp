@@ -11,6 +11,7 @@
 #include "app/catalogs.hpp"
 #include "app/rotation_plan.hpp"
 #include "app/screen_manager.hpp"
+#include "app/screen_slot_map.hpp"
 #include "buttons.hpp"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -111,7 +112,7 @@ void InitScreenManager(AppCtx& ctx) {
       }
       char vkey[24];
       std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
-      return p.GetBool(vkey, true);
+      return p.GetBool(vkey, slot_map::DefaultScreenVisible(api_id));
     };
     ctx.sm->SetRotationSequence(rotation_plan::BuildRotationSequence(
         order_csv, is_enabled, ctx.currencies.size()));

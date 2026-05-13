@@ -1003,7 +1003,11 @@ TEST_CASE("Schema invariants: field count + boot-only distribution") {
   // + signer state are wired one-shot from InitNwc); nwcFlashOnPay is
   // runtime so the event_loop dispatcher can re-read it per
   // notification.
-  CHECK(btclock::settings::kFields.size() == 89);
+  // 89 -> 90: nwcShowNotify (privacy master toggle for the on-screen
+  // payment-notify overlay). Runtime; the dispatcher in event_loop
+  // re-reads it on every kind 23197/23196 event so a live PATCH
+  // applies without reboot.
+  CHECK(btclock::settings::kFields.size() == 90);
   // Boot-only count: otaEnabled, httpAuthEnabled, httpAuthUser,
   // httpAuthPass, otaPass, mempoolInstance, mempoolSecure, dataSource,
   // ceEndpoint, ceDisableSSL, localPoolHost, nostrPubKey, nostrRelay,

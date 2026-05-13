@@ -315,11 +315,23 @@ constexpr const char* kTag = "btclock";
     // Main loop owns the ScreenManager mutation; the relay callback
     // already wrote the snapshot patch via DataHub, so by the time
     // SetNwcPaymentNotify() lands the renderer's nwc_last_payment is
-    // current. Per-effect flash gate is the nwcFlashOnPay pref;
-    // re-read on dispatch so a live PATCH lands without reboot.
+    // current. The master `nwcShowPaymentNotify` toggle short-circuits
+    // BOTH the overlay AND the flash so a privacy-sensitive deployment
+    // can hide payment events from bystanders entirely. The per-effect
+    // flash gate `nwcFlashOnPay` only applies when notifications are
+    // shown at all. Both prefs are re-read on dispatch so a live PATCH
+    // lands without reboot.
     bool pending_nwc = true;
     if (nwc_notify_pending.compare_exchange_strong(pending_nwc, false) && hub) {
       Prefs nwc_prefs(prefs::kSettingsNs);
+      const bool show_notify = btclock::settings::ReadBool(
+          nwc_prefs, prefs::kNwcShowNotify);
+      if (!show_notify) {
+        // Balance / snapshot mirror already updated in the relay
+        // callback — nothing more to do here. Skip overlay + flash so
+        // the device stays on whatever screen the rotation was on.
+        continue;
+      }
       const int64_t timer_s =
           static_cast<int64_t>(nwc_prefs.GetU32(prefs::kTimerSeconds, 0));
       const int64_t timeout_ms = ZapOverlayPolicy::ComputeTimeoutMs(timer_s);

@@ -10,6 +10,7 @@
 #include "app/boot/helpers.hpp"
 #include "app/boot/init_control_api.hpp"
 #include "app/rotation_plan.hpp"
+#include "app/screen_slot_map.hpp"
 #include "app/screen_manager.hpp"
 #include "btclock_data.hpp"
 #include "control_server.hpp"
@@ -181,7 +182,7 @@ bool DrainControlCommands(AppCtx& ctx) {
           }
           char vkey[24];
           std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
-          return p.GetBool(vkey, true);
+          return p.GetBool(vkey, slot_map::DefaultScreenVisible(api_id));
         };
         sm.SetRotationSequence(rotation_plan::BuildRotationSequence(
             order_csv, is_enabled, sm.currencies().size()));
