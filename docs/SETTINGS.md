@@ -265,6 +265,38 @@ Both `gmtOffset` and the `tzOffset` (minutes) PATCH alias were removed in v4. Th
 
 ---
 
+## Nostr Wallet Connect (NWC)
+
+Pair a NIP-47 wallet (e.g. Alby Hub, Mutiny, Coinos, Primal Wallet)
+so the device can render the wallet balance on the `nwcBalance`
+screen (id `90`, off by default) and pop a `RECV` / `PAID` overlay
+on incoming and outgoing payment notifications. The full
+walkthrough is in the [Handbook](HANDBOOK.md#9-nostr-zap-and-wallet-connect-setup).
+
+| Key | Type | Default | Description | Notes |
+|---|---|---|---|---|
+| `nwcEnabled` | bool | `false` | Master toggle. When `false`, the dedicated NWC `RelayClient` is never constructed and the balance / notify pipeline is dormant. | Reboot required. The NWC `RelayClient` + JSON-RPC plumbing is wired once at boot in `init_nwc.cpp`. |
+| `nwcUri` | string | `""` | Full `nostr+walletconnect://<wallet-pubkey>?relay=<wss>&secret=<hex>[&lud16=<addr>]` pairing URI emitted by the wallet. PATCH-only — GET suppresses the raw string (it carries the client secret) and emits `nwcUriSet` (bool) + `nwcUriMasked` (string with the wallet-pubkey prefix and an ellipsis-redacted secret / lud16) instead. PATCH `""` to clear the stored URI. | Reboot required. Parsed and validated at boot by `nwc::ParsePairingUri`; an unparseable value fails soft (NWC stays off). |
+| `nwcRefreshSecs` | uint (15..3600) | `60` | Cadence (seconds) of the periodic `get_balance` poll. Short enough for a near-live balance, long enough to not hammer the relay. | Reboot required. The periodic `esp_timer` is armed once at boot; only flips the refresh flag — the actual NIP-44 encrypt + schnorr sign + JSON build runs on the main task. |
+| `nwcShowNotify` | bool | `true` | When `true`, an incoming `payment_received` / `payment_sent` notification pops the on-screen overlay (RECV ↓ / PAID ↑ + amount). When `false`, balance + snapshot mirrors still update silently — useful when the display is mounted somewhere bystanders can see it. | Live — `event_loop.cpp` re-reads NVS per notification so a PATCH lands without reboot. Also gates `nwcFlashOnPay`. |
+| `nwcFlashOnPay` | bool | `true` | When the payment-notify overlay paints, also fire the same LED ring + frontlight flash as the Nostr-zap pulse. Subordinate to `nwcShowNotify` — has no effect when notifications are suppressed. | Live — re-read per notification. Mirrors `ledFlashOnZap` / `flFlashOnZap`. |
+
+Companion GET-only fields:
+
+| Key | Type | Source | Description |
+|---|---|---|---|
+| `nwcUriSet` | bool | NVS presence | `true` iff `nwcUri` has a non-empty stored value. |
+| `nwcUriMasked` | string | computed | Short fingerprint of the stored URI — wallet-pubkey prefix + ellipsis-redacted `secret` and `lud16` (e.g. `nostr+walletconnect://51f1f43c…?relay=wss://relay.example.com&secret=…&lud16=sat…com`). Emitted only when the stored URI parses cleanly. |
+| `connectionStatus.nwc` | bool | runtime | Live wallet-connection state — `true` while `nwcEnabled` is set, the boot-wired `NwcClient` exists, and the relay socket is past `kReady`. Suppressed entirely on builds without NWC wired (the badge in the WebUI stays hidden). |
+
+The NWC balance screen is gated behind `screen90Visible` (off by
+default — opt in via the Screens reorder picker). Its NVS-cached last
+balance lives under the runtime-state namespace (`rt/nwcLastBalSat`),
+not the user-settings namespace, so a factory reset of `settings`
+doesn't orphan it and it never round-trips through `/api/settings`.
+
+---
+
 ## HTTP auth / OTA
 
 | Key | Type | Default | Description | Notes |

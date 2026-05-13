@@ -32,7 +32,7 @@ behaviour.
 - [6. Fonts](#6-fonts)
 - [7. Mining-pool guide](#7-mining-pool-guide)
 - [8. Bitaxe integration](#8-bitaxe-integration)
-- [9. Nostr zap setup](#9-nostr-zap-setup)
+- [9. Nostr zap and Wallet Connect setup](#9-nostr-zap-and-wallet-connect-setup)
 - [10. LEDs & frontlight](#10-leds-frontlight)
 - [11. Do Not Disturb](#11-do-not-disturb)
 - [12. HTTP API quick reference](#12-http-api-quick-reference)
@@ -213,6 +213,11 @@ Deutsch:
   always reads 0 on Rev A, which has no frontlight hardware).
 - **BTClock data-source connection** — green when the configured data
   source has produced a fresh tick recently.
+- **Wallet badge** — appears only when NWC is enabled
+  (`nwcEnabled=true`) and pairs surface `connectionStatus.nwc` from
+  the firmware. Green = the NIP-47 relay socket is up and the
+  wallet's INFO event was received. See
+  [Nostr Wallet Connect (NWC)](#nostr-wallet-connect-nwc).
 - **LED indicators** — read-only colour swatches that mirror the live
   LED state. They are deliberately rendered as plain styled `<div>`s
   with `role="img"` (not `<input type="color" disabled>`); native
@@ -388,7 +393,15 @@ See [Bitaxe integration](#8-bitaxe-integration).
 
 #### Nostr / zap
 
-See [Nostr zap setup](#9-nostr-zap-setup).
+See [Nostr zap and Wallet Connect setup](#9-nostr-zap-and-wallet-connect-setup).
+
+#### Nostr Wallet Connect (NWC)
+
+Pair the device with a NIP-47 wallet so it can render the live
+wallet balance on the (opt-in) NWC balance screen and pop a payment
+overlay on every incoming/outgoing payment. See
+[Nostr zap and Wallet Connect setup](#9-nostr-zap-and-wallet-connect-setup)
+for the pairing flow and screenshots.
 
 #### HTTP auth / OTA
 
@@ -445,7 +458,7 @@ on new block** the device flips to this screen automatically.
 #### Label orientation (`verticalDesc`)
 
 The first panel of nearly every screen carries a two-line label
-("BLOCK / HEIGHT", "MOW / UNITS", "BTC / USD", etc.). `verticalDesc`
+("BLOCK / HEIGHT", "BTC / USD", "MSCW / TIME", etc.). `verticalDesc`
 controls whether that label reads along the panel's long axis
 (vertical, default) or along the short axis (horizontal):
 
@@ -709,16 +722,21 @@ into the "5." cell and a third digit (`3`) lands on the freed panel.
 Named after **Samson Mow**, the Jan3 CEO who routinely quotes the
 Bitcoin price in millions of fiat ("$1M Bitcoin"). With `mowMode=true`
 the BTC/fiat price renders in **millions of fiat per BTC** instead of
-the raw integer — the label slot turns into "MOW / UNITS" and the
-trailing cell carries an `M` suffix:
+the raw integer; the label slot keeps the regular "BTC / <CCY>" tag so
+the currency context isn't lost, and the trailing cell carries an `M`
+suffix:
 
 ![BTC ticker — Mow mode](img/screens/btc_price_mow.png)
 
 Above: `$95,432` BTC price → `$0.095M` (≈ 0.1 millions of dollars
 per BTC). The `M` cell on the right is the megaunit suffix; the price
-body is a normal suffix-form layout. The view re-orients the brain
-around the long-term "Bitcoin is going to a million dollars" frame
-without any of the underlying maths changing.
+body is a normal suffix-form layout. When the priceString plus M
+suffix fits within `Panels-1` cells, panel 0 paints the "BTC / <CCY>"
+label and the price body is right-justified into the remaining cells.
+When it doesn't fit (the case rendered above), the label is dropped
+and the currency glyph paints in slot 0 instead. The view re-orients
+the brain around the long-term "Bitcoin is going to a million dollars"
+frame without any of the underlying maths changing.
 
 Affected by: `actCurrencies`, `suffixPrice`, `decimalShareDot`,
 `mowMode`, `priceSymMode`, `fontName`.
@@ -805,6 +823,49 @@ device returns to whatever screen was up before — set
 
 Affected by: `nostrZapNotify`, `nostrZapPubkey`, `ledFlashOnZap`,
 `flFlashOnZap`, `scrnRestoreZap`.
+
+### NWC wallet balance
+
+Available on devices paired with a [NIP-47 Nostr Wallet Connect](#9-nostr-zap-and-wallet-connect-setup)
+wallet. Layout (left to right): a `BAL` label cell, an MDI
+lightning-bolt brand-cue cell, then the wallet balance right-justified
+into the remaining cells with the sats glyph one slot ahead of the
+most-significant digit. Wallets ≥ 1 BTC switch from sats to a four-
+decimal BTC form (`1.0000`) so the value stays legible; long balances
+spill leftward through the blanks and drop the glyph when the digit
+run would otherwise overflow.
+
+Polled on `nwcRefreshSecs` (default 60 s) plus once on every payment
+notification. Cached in `rt/nwcLastBalSat` so a reboot paints the
+previous value while waiting for the first live response. The screen
+is opt-in (`screen90Visible=false` by default — turn it on via the
+Screens reorder picker if you want it in the rotation; nav buttons
+can still reach it either way).
+
+Affected by: `nwcEnabled`, `nwcUri`, `nwcRefreshSecs`, `priceSymMode`,
+`satsVariant`, `fontName`.
+
+### NWC payment notification (push overlay)
+
+Pop-up triggered by a `payment_received` / `payment_sent` NIP-47
+notification from the paired wallet. Layout matches the balance
+screen so the two share a visual identity, but the label and glyph
+flip with the direction:
+
+- `RECV` + arrow-down for incoming payments
+- `PAID` + arrow-up for outgoing payments
+
+The amount is the just-settled sats. The overlay fires the same LED
+ring + frontlight pulse as the zap notification when `nwcFlashOnPay`
+is on, and returns to the previous screen after the standard
+zap-overlay timeout (or any nav event). When `nwcShowNotify=false`,
+the overlay is suppressed entirely — the wallet balance and snapshot
+mirror still update silently so a privacy-sensitive deployment can
+hide payment events from bystanders without losing the balance read.
+
+Affected by: `nwcEnabled`, `nwcShowNotify`, `nwcFlashOnPay`,
+`ledFlashOnZap`, `flFlashOnZap`, `scrnRestoreZap`, `priceSymMode`,
+`satsVariant`, `fontName`.
 
 ### Custom text (push)
 
@@ -945,14 +1006,20 @@ chip. The firmware connects via HTTP and pulls the AxeOS API:
 The two Bitaxe screens — hashrate and best difficulty — appear in the
 rotation only when `bitaxeEnabled=true`.
 
-## 9. Nostr zap setup
+## 9. Nostr zap and Wallet Connect setup
 
 ![Settings → Nostr subsection](img/webui/settings-nostr-zap.png)
 
-Nostr support has two facets: a *data source* (BTClock can pull block /
-price data over Nostr from a `kind 30078` long-form event) and a *zap
-listener* (NIP-57 zap-receipts trigger the on-screen zap overlay,
-LEDs, and frontlight flash).
+Nostr support has three facets:
+
+- a *data source* — BTClock can pull block / price data over Nostr
+  from a `kind 30078` long-form event.
+- a *zap listener* — NIP-57 zap-receipts trigger the on-screen zap
+  overlay, LEDs, and frontlight flash.
+- a *NIP-47 Nostr Wallet Connect (NWC) client* — pairs the device
+  with an external Lightning wallet so it can render the live wallet
+  balance + pop a `RECV` / `PAID` overlay on every payment
+  notification.
 
 **Listening for zaps** doesn't require flipping `dataSource` to Nostr;
 the zap listener lives independently:
@@ -980,6 +1047,70 @@ curl -X POST http://btclock-xxxxxx.local/api/action/simulate_zap
 
 Fires the same code path as a real `kind 9735` arrival (LEDs flash,
 frontlight pulses, zap screen overlays).
+
+### Nostr Wallet Connect (NWC)
+
+NIP-47 lets the device talk directly to a Lightning wallet over Nostr
+relays — no Lightning node, no LNbits intermediary. Pair once with
+the wallet's NWC URI and the firmware can read the balance and
+subscribe to payment notifications without ever holding a key on
+device beyond the connection secret itself.
+
+Wallets known to emit a compatible pairing URI include Alby Hub,
+Mutiny, Coinos, Primal Wallet, and any LDK-Node / LNbits-NWC variant.
+
+**Setup**
+
+1. In your wallet, create a new NWC connection. Grant it at least the
+   `get_balance` and `notifications` permissions. Some wallets call
+   the latter "subscribe to events" or `list_notifications` — pick
+   the one that streams `payment_received` / `payment_sent` events.
+2. Copy the resulting `nostr+walletconnect://...?relay=wss://…&secret=…`
+   URI.
+3. Open the BTClock WebUI → Settings → **Extra features** →
+   **Nostr Wallet Connect**.
+4. Toggle **Enable Nostr Wallet Connect (NIP-47)** on, paste the URI
+   into **NWC pairing URI**, and save. The URI is reboot-only —
+   the firmware will tell you a reboot is required.
+5. Optional: adjust **Balance refresh interval** (15–3600 s, default
+   60). The device polls `get_balance` on this cadence and also
+   refetches once on every payment notification.
+6. Optional: toggle **Show payment notifications on screen** off if
+   the display is mounted somewhere bystanders shouldn't see incoming
+   amounts. Balance + status still update silently.
+7. Optional: toggle **Flash LED + frontlight on payment notification**
+   to suppress the pulse on every payment (default on).
+
+After reboot, the **Status card** shows a **Wallet** badge next to
+the existing connection indicators. Green = the NWC relay is up
+and the wallet handshake completed.
+
+To see the live balance on the device, enable the **NWC Balance**
+screen via Settings → **Screens** (the row is off by default for
+privacy — visible only if you opt in). The balance also rides along
+in `/api/status`'s `data[]` array on the NWC-balance and
+payment-notify slots so headless integrations can consume it without
+scraping the screen.
+
+**Privacy**
+
+- The pairing URI carries a client secret. The device stores it in
+  NVS, but `GET /api/settings` never returns it — only a `nwcUriSet`
+  bool and a short `nwcUriMasked` string with the wallet pubkey
+  prefix (so you can tell which wallet is paired) and ellipsis-
+  redacted `secret` and `lud16` fields.
+- The NWC balance screen defaults off (`screen90Visible=false`).
+- `nwcShowNotify=false` silences both the overlay and the LED /
+  frontlight pulse but keeps the snapshot mirror current.
+- The device drops every relay frame whose signature doesn't verify
+  against the wallet pubkey — relay-forged "you got paid" events
+  can't fool the overlay.
+
+**Clear the pairing**
+
+In the WebUI use the **Clear** button next to the URI field, or
+`PATCH /api/settings` with `{"nwcUri":"","nwcEnabled":false}`. A
+reboot tears the relay socket down.
 
 ## 10. LEDs & frontlight
 
@@ -1210,6 +1341,16 @@ curl -X POST http://btclock-xxxxxx.local/api/full_refresh
 # Patch a setting (live)
 curl -X PATCH -H 'Content-Type: application/json' \
   -d '{"timePerScreen": 1}' \
+  http://btclock-xxxxxx.local/api/settings
+
+# Pair a Nostr Wallet Connect (NIP-47) wallet (reboot required)
+curl -X PATCH -H 'Content-Type: application/json' \
+  -d '{"nwcEnabled":true,"nwcUri":"nostr+walletconnect://<pubkey>?relay=wss://relay.example.com&secret=<hex>"}' \
+  http://btclock-xxxxxx.local/api/settings
+
+# Clear a paired NWC wallet
+curl -X PATCH -H 'Content-Type: application/json' \
+  -d '{"nwcUri":"","nwcEnabled":false}' \
   http://btclock-xxxxxx.local/api/settings
 
 # Live SSE event stream (status, screen rotations, lights, DND, …)
