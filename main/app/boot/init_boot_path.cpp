@@ -12,6 +12,9 @@ namespace btclock {
 
 void DispatchBootPath(AppCtx& ctx) {
   if (ctx.wifi->is_ap_mode()) {
+    // No boot spinner in AP mode: splash stayed up through InitNetwork
+    // (which detected no STA creds), and the provisioning render below
+    // repaints every panel directly over the splash.
     RenderProvisioningScreen(ctx.panels, AppCtx::fb_storage(), ctx.fonts,
                              ctx.ap_ssid, ctx.ap_pw);
     // Hand the LEDs off to the provisioning breathe so the strip stops

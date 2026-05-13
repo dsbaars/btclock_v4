@@ -9,6 +9,7 @@
 #include "app/boot/helpers.hpp"
 #include "app/screen_manager.hpp"
 #include "bitaxe/bitaxe_source.hpp"
+#include "boot_spinner.hpp"
 #include "btclock_currencies_fetch.hpp"
 #include "btclock_data.hpp"
 #include "buttons.hpp"
@@ -247,6 +248,8 @@ void FinishWiringDataSources(AppCtx& ctx) {
     if (remain <= 0) break;
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(remain));
   }
+  // Hand the middle panel back before sm->Render repaints every panel.
+  StopBootSpinner();
   ctx.sm->Render(ctx.panels, AppCtx::fb_storage(), ctx.fonts,
                  ctx.hub->GetSnapshot());
 

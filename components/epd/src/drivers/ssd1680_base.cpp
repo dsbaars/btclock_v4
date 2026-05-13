@@ -98,7 +98,13 @@ esp_err_t Ssd1680Base::WaitForRefresh(uint32_t timeout_ms) {
   // 0x83 + activate to an already-off chip wastes the 500 ms BUSY-
   // stuck timeout per panel because the chip can't drive BUSY high
   // without analog. So power off only after a partial refresh.
-  if (last_kind_ == RefreshKind::kPartial) {
+  //
+  // SetGlobalFastPartial(true) also skips the power-off cycle: the
+  // very next partial's DUC2=0xFC re-enables the analog anyway, so
+  // toggling it off+on between back-to-back partials is pure waste
+  // (~10-30 ms/frame). kFull-after-fast-partial recovers because
+  // DrawFramebufferStart's kFull path always HardReset+ReInits.
+  if (last_kind_ == RefreshKind::kPartial && !GetGlobalFastPartial()) {
     const uint8_t duc2_off = 0x83;
     esp_err_t off =
         cfg_.bus->SendCommand(cfg_.cs, kCmdDispUpdateCtl2, &duc2_off, 1);
@@ -250,11 +256,16 @@ esp_err_t Ssd1680Base::DrawFramebufferStart(const uint8_t* fb,
   // before every refresh — leaves controller in a known state and
   // makes the shadow→0x26 priming below take cleanly on subsequent
   // partials. SSD1680 RAM survives HW reset (only registers clear).
-  HardReset();
-  WaitIdle(5000);
-  ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSwReset), kTag, "swreset");
-  WaitIdle(5000);
-  ESP_RETURN_ON_ERROR(WriteInitCommands(), kTag, "init cmds");
+  // SetGlobalFastPartial(true) lets a continuous-partial workload
+  // (the boot spinner) skip this ~80 ms block; kFull still re-inits
+  // so the next data render recovers a known state regardless.
+  if (kind != RefreshKind::kPartial || !GetGlobalFastPartial()) {
+    HardReset();
+    WaitIdle(5000);
+    ESP_RETURN_ON_ERROR(bus->SendCommand(cs, kCmdSwReset), kTag, "swreset");
+    WaitIdle(5000);
+    ESP_RETURN_ON_ERROR(WriteInitCommands(), kTag, "init cmds");
+  }
 
   if (kind == RefreshKind::kPartial) {
     if (PrimePartialPreviousRam()) {

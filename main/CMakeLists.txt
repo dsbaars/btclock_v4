@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "main.cpp"
-         "fonts_app.cpp" "boot_ui.cpp" "provisioning_ui.cpp"
+         "fonts_app.cpp" "boot_ui.cpp" "boot_spinner.cpp" "provisioning_ui.cpp"
          "app/app_ctx.cpp"
          "app/boot/adapters.cpp"
          "app/boot/factory_reset.cpp"

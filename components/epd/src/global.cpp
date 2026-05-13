@@ -16,6 +16,11 @@ namespace epd {
 // without any per-renderer change.
 namespace {
 std::atomic<bool> g_inverted{false};
+// Default false: ScreenManager renders are sparse (seconds-to-minutes
+// between refreshes) and rely on the per-frame re-init for stability.
+// Flipped on only by the boot spinner, which paints continuously at
+// ~5 Hz and benefits from skipping the ~80 ms re-init each frame.
+std::atomic<bool> g_fast_partial{false};
 }  // namespace
 
 void SetGlobalInverted(bool inverted) {
@@ -27,6 +32,13 @@ bool GetGlobalInverted() {
 
 bool InvertedNow() {
   return g_inverted.load();
+}
+
+void SetGlobalFastPartial(bool enable) {
+  g_fast_partial.store(enable);
+}
+bool GetGlobalFastPartial() {
+  return g_fast_partial.load();
 }
 
 }  // namespace epd

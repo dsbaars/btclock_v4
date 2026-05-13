@@ -33,11 +33,13 @@
 #include "app/boot/init_screen_manager.hpp"
 #include "app/boot/init_storage.hpp"
 #include "app/event_loop.hpp"
+#include "boot_spinner.hpp"
 #include "esp_core_dump.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "sources/sources.hpp"
+#include "wifi.hpp"
 
 extern "C" void app_main() {
   // Bump main-task priority above the network/LWIP stack (LWIP is at
@@ -88,6 +90,14 @@ extern "C" void app_main() {
   btclock::InitPanelsAndSplash(ctx);
   btclock::InitStorage(ctx);
   btclock::InitNetwork(ctx);
+  // Splash stayed painted through hardware bring-up + WiFi association.
+  // Now that the network is up (STA only — AP mode keeps the splash
+  // until DispatchBootPath repaints the provisioning UI), start the
+  // boot spinner. It performs a parallel kFull clear so the splash row
+  // disappears in the same pass that paints the spinner's first frame.
+  if (!ctx.wifi->is_ap_mode()) {
+    btclock::StartBootSpinner(ctx);
+  }
   btclock::InitScreenManager(ctx);
   // DispatchBootPath kicks off the data sources but no longer blocks
   // for the first snapshot — that wait used to gate InitControlApi

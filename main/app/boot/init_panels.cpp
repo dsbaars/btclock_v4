@@ -37,8 +37,18 @@ void InitPanelsAndSplash(AppCtx& ctx) {
     return {};
   };
 
+  // 10 MHz is the SSD1680 datasheet ceiling. The 80 MHz APB clock has
+  // an integer divider, so the actual achieved rate is the closest
+  // valid divisor (10 MHz = divider 8 — exact). Stepped up from 4 MHz
+  // to halve the per-frame VRAM DMA time (~16 ms → ~6 ms across the
+  // two 0x26 + 0x24 writes); this benefits every screen render, not
+  // just the boot spinner. Validated by running ~50 continuous
+  // partial refreshes during the boot-spinner window without a
+  // `busy stuck` log. If signal integrity regresses on a longer V8
+  // bus (8 panels' worth of trace capacitance), drop this back per-
+  // board via a board.hpp constant.
   ctx.epd_bus.emplace(SPI2_HOST, kEpdSpiSclk, kEpdSpiMosi, kEpdDc,
-                      4 * 1000 * 1000, 16 * 296 + 64);
+                      10 * 1000 * 1000, 16 * 296 + 64);
   // Driver dispatch is compile-time inside epd::CreatePanel — the
   // factory keys off BTCLOCK_PANEL_<X> from the top-level CMakeLists.
   // Default is GDEY0213B74 (2.13", 122x250); -DBTCLOCK_PANEL=2_9 swaps
@@ -82,6 +92,11 @@ void InitPanelsAndSplash(AppCtx& ctx) {
   }
 
   // --- Boot splash — letter-per-panel BTCLOCK[!]. ---
+  // Splash stays painted until the network comes up — main.cpp starts
+  // the loading spinner after InitNetwork returns in STA mode, which
+  // also performs the parallel kFull clear of the outer panels. In AP
+  // mode the splash stays until DispatchBootPath repaints the
+  // provisioning UI directly.
   const int64_t t0 = MsNow();
   RenderSplashScreen(ctx.panels, AppCtx::fb_storage(), ctx.fonts);
   ESP_LOGI(kTag, "splash pass %lld ms", MsNow() - t0);

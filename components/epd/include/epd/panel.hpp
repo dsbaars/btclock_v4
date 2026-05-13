@@ -102,5 +102,15 @@ struct PanelConfig {
 void SetGlobalInverted(bool inverted);
 bool GetGlobalInverted();
 
+// When enabled, partial refreshes skip the per-frame
+// HardReset + SwReset + WriteInitCommands sequence inside
+// Ssd1680Base::DrawFramebufferStart. Saves ~80 ms/frame at the cost
+// of relying on the chip's registers staying valid between refreshes
+// — safe under continuous repeated partials on a quiet bus (boot
+// spinner). kFull always re-inits regardless of this flag, so any
+// later full refresh recovers a known state.
+void SetGlobalFastPartial(bool enable);
+bool GetGlobalFastPartial();
+
 }  // namespace epd
 }  // namespace btclock
