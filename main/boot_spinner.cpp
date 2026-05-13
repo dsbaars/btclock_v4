@@ -1,7 +1,6 @@
 #include "boot_spinner.hpp"
 
 #include <atomic>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 
@@ -31,9 +30,21 @@ constexpr int kSteps = 4;
 constexpr int kRouter = 50;
 constexpr int kRinner = 38;
 
-// Gap arc — the missing slice of the ring. 90° (π/2 rad) matches the
-// usual mdi-loading silhouette so the visual stays a "loading" cue.
-constexpr float kGapRad = static_cast<float>(M_PI_2);
+// Per-step gap quadrant signs (screen-y points down, so positive dy
+// = visually downward). With kSteps=4 and a 90° gap, the gap fills
+// exactly one quadrant per frame:
+//   step 0 → +dx +dy (bottom-right)
+//   step 1 → -dx +dy (bottom-left)
+//   step 2 → -dx -dy (top-left)
+//   step 3 → +dx -dy (top-right)
+// dx*gx>0 && dy*gy>0 thus reproduces the original cross-product
+// wedge test for sin/cos∈{-1,0,1} without any float arithmetic —
+// saves ~400 B of soft-float helper pull-in vs. the sinf/cosf path
+// (the spinner only ever evaluates four discrete angles).
+constexpr int kGapX[] = {+1, -1, -1, +1};
+constexpr int kGapY[] = {+1, +1, -1, -1};
+static_assert(sizeof(kGapX) / sizeof(kGapX[0]) == 4,
+              "kGapX/kGapY assume kSteps == 4");
 
 // Inter-frame yield. 0 ticks returns immediately if no stop-notify is
 // pending — the surrounding driver path already calls vTaskDelay
@@ -61,34 +72,23 @@ TaskHandle_t g_task = nullptr;
 // gap rotates clockwise as `step` increases. Inks bits to 0 (black);
 // caller is responsible for clearing `fb` to 0xFF first.
 //
-// Pixel-in-wedge test: a point P is in the 90° gap starting at angle
-// `a1` iff P is CCW from the ray at a1 AND CW from the ray at a1+π/2.
-// Cross-product form avoids atan2 in the hot loop. Screen-y points
-// down so the angles run CW in viewer space, which is the natural
-// "loading" rotation direction.
+// Strict inequalities (dx*gx > 0, not >=) match the original cross-
+// product wedge test: axis pixels (dx==0 or dy==0) lie on the gap
+// boundary rays themselves and paint regardless of `step`.
 void PaintSpinnerFrame(uint8_t* fb, int stride, int native_w, int native_h,
                        int step) {
   const int cx = native_w / 2;
   const int cy = native_h / 2;
   const int r_outer_sq = kRouter * kRouter;
   const int r_inner_sq = kRinner * kRinner;
-  const float a1 = static_cast<float>(step) * (2.0f * M_PI / kSteps);
-  const float a2 = a1 + kGapRad;
-  const float sin_a1 = std::sin(a1);
-  const float cos_a1 = std::cos(a1);
-  const float sin_a2 = std::sin(a2);
-  const float cos_a2 = std::cos(a2);
+  const int gx = kGapX[step & 3];
+  const int gy = kGapY[step & 3];
 
   for (int dy = -kRouter; dy <= kRouter; ++dy) {
     for (int dx = -kRouter; dx <= kRouter; ++dx) {
       const int rsq = dx * dx + dy * dy;
       if (rsq > r_outer_sq || rsq < r_inner_sq) continue;
-      const float fdx = static_cast<float>(dx);
-      const float fdy = static_cast<float>(dy);
-      // Inside the gap wedge? CCW from a1 AND CW from a2.
-      const bool in_gap = (cos_a1 * fdy - sin_a1 * fdx > 0.0f) &&
-                          (fdx * sin_a2 - fdy * cos_a2 > 0.0f);
-      if (in_gap) continue;
+      if (dx * gx > 0 && dy * gy > 0) continue;  // in gap
       const int nx = cx + dx;
       const int ny = cy + dy;
       if (nx < 0 || nx >= native_w) continue;
