@@ -184,14 +184,29 @@ std::string MaskedUri(const PairingUri& parsed) {
     first = false;
   }
   if (!parsed.secret_hex.empty()) {
+    // Full mask — earlier builds leaked the trailing 4 hex chars to
+    // help users disambiguate revoked vs current secrets, but the
+    // tail is enough entropy to fingerprint a leaked NVS dump in the
+    // wild. The presence of the param itself is the only thing the
+    // GET caller needs.
     out.append("&secret=…");
-    // Last 4 hex chars give the user enough to disambiguate revoked
-    // vs current secrets without exposing the full key.
-    out.append(parsed.secret_hex.substr(parsed.secret_hex.size() - 4));
   }
   if (!parsed.lud16.empty()) {
     out.append("&lud16=");
-    out.append(parsed.lud16);
+    // Show only the first 3 and last 3 chars — enough to recognise
+    // which lightning address is configured (e.g. "sat…com" for
+    // satoshi@example.com) without exposing the full handle. Very
+    // short addresses (< 7 chars) fall back to a full ellipsis since
+    // first3/last3 would overlap.
+    constexpr std::size_t kHead = 3;
+    constexpr std::size_t kTail = 3;
+    if (parsed.lud16.size() >= kHead + kTail + 1) {
+      out.append(parsed.lud16.substr(0, kHead));
+      out.append("…");
+      out.append(parsed.lud16.substr(parsed.lud16.size() - kTail));
+    } else {
+      out.append("…");
+    }
   }
   return out;
 }

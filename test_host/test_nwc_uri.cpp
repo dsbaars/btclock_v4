@@ -150,14 +150,57 @@ TEST_CASE("MaskedUri: never echoes the full secret") {
   PairingUri uri;
   REQUIRE(ParsePairingUri(kSpecExample, uri) == ParseError::kOk);
   const std::string masked = MaskedUri(uri);
-  // The full secret MUST NOT appear in the masked string. Just the
-  // last 4 characters per the convention.
+  // The full secret MUST NOT appear in the masked string. The mask
+  // also drops the trailing 4 hex chars that earlier builds exposed —
+  // a leaked NVS dump would otherwise carry a stable fingerprint.
   CHECK(masked.find(uri.secret_hex) == std::string::npos);
-  CHECK(masked.find(uri.secret_hex.substr(uri.secret_hex.size() - 4)) !=
+  CHECK(masked.find(uri.secret_hex.substr(uri.secret_hex.size() - 4)) ==
         std::string::npos);
+  CHECK(masked.find("secret=…") != std::string::npos);
   // First relay shows in cleartext so the user can identify the
   // connection.
   CHECK(masked.find(uri.relays[0]) != std::string::npos);
   // Full pubkey is partially redacted but the 8-char prefix is kept.
   CHECK(masked.find(uri.wallet_pubkey_hex.substr(0, 8)) != std::string::npos);
+}
+
+TEST_CASE("MaskedUri: lud16 trimmed to first/last 3 chars") {
+  // satoshi@example.com → "sat…com". Enough for the operator to
+  // recognise which address is configured without echoing the full
+  // handle to anyone with a /api/settings token.
+  PairingUri uri;
+  const std::string in =
+      "nostr+walletconnect://"
+      "b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4"
+      "?relay=wss%3A%2F%2Frelay.example.com"
+      "&secret="
+      "71a8c794d4e7b14a4b7a7a4870c69b9b53b0b76ad6e3b04bdab78d54e6c92b6b"
+      "&lud16=satoshi%40example.com";
+  REQUIRE(ParsePairingUri(in, uri) == ParseError::kOk);
+  const std::string masked = MaskedUri(uri);
+  CHECK(masked.find("lud16=sat…com") != std::string::npos);
+  CHECK(masked.find("satoshi@example.com") == std::string::npos);
+  CHECK(masked.find("satoshi") == std::string::npos);
+  // "example.com" lives in the relay portion of the URI (cleartext by
+  // design), so we can only check that "lud16=satoshi…" never appears.
+  CHECK(masked.find("lud16=satoshi") == std::string::npos);
+}
+
+TEST_CASE("MaskedUri: short lud16 collapses to a full ellipsis") {
+  // Edge case: a degenerate lud16 short enough that first3+last3 would
+  // overlap. Real addresses are always longer (a@b.c is the minimum
+  // shape), but the masker shouldn't echo more than asked even on
+  // malformed input. 6-char "a@b.co" hits the boundary → fully masked.
+  PairingUri uri;
+  const std::string in =
+      "nostr+walletconnect://"
+      "b889ff5b1513b641e2a139f661a661364979c5beee91842f8f0ef42ab558e9d4"
+      "?relay=wss%3A%2F%2Frelay.example.com"
+      "&secret="
+      "71a8c794d4e7b14a4b7a7a4870c69b9b53b0b76ad6e3b04bdab78d54e6c92b6b"
+      "&lud16=a%40b.co";
+  REQUIRE(ParsePairingUri(in, uri) == ParseError::kOk);
+  const std::string masked = MaskedUri(uri);
+  CHECK(masked.find("lud16=…") != std::string::npos);
+  CHECK(masked.find("a@b.co") == std::string::npos);
 }
