@@ -105,9 +105,9 @@ void SpinnerTask(void* /*arg*/) {
   // StartBootSpinner — pick up at step 1 and partial-refresh from there.
   int step = 1;
   while (!g_stop_requested.load(std::memory_order_acquire)) {
-    std::memset(g_state.fb, kWhiteByte,
-                static_cast<size_t>(g_state.native_stride) *
-                    g_state.native_height);
+    std::memset(
+        g_state.fb, kWhiteByte,
+        static_cast<size_t>(g_state.native_stride) * g_state.native_height);
     PaintSpinnerFrame(g_state.fb, g_state.native_stride, g_state.native_width,
                       g_state.native_height, step);
     g_state.panel->DrawFramebufferStart(g_state.fb, RefreshKind::kPartial);
