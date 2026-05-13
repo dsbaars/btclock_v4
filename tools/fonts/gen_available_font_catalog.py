@@ -41,7 +41,6 @@ FONT_ROWS: list[tuple[str, str]] = [
     ("ubuntu", "Ubuntu.ttf"),
     ("ubuntuBold", "UbuntuBold.ttf"),
     ("azeret", "Azeret.ttf"),
-    ("azeretSemiBold", "AzeretSemiBold.ttf"),
 ]
 
 

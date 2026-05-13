@@ -874,7 +874,6 @@ table); only the digit / suffix / unit glyphs swap.
 | **Ubuntu** | `ubuntu` | ![ubuntu](img/fonts/ubuntu.png) |
 | **Ubuntu Bold** | `ubuntuBold` | ![ubuntuBold](img/fonts/ubuntuBold.png) |
 | **Azeret Mono** | `azeret` | ![azeret](img/fonts/azeret.png) |
-| **Azeret Mono SemiBold** | `azeretSemiBold` | ![azeretSemiBold](img/fonts/azeretSemiBold.png) |
 
 Antonio is a condensed display sans, designed for tight digit columns
 on the BTClock's narrow 2.13" panels. The three Antonio cuts share the

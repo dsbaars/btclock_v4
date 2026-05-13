@@ -92,7 +92,7 @@ struct RenderContext {
   // 11=sourceSerifBold, 12=merriweatherBold, 13=bitterBold,
   // 14=atkinsonBold, 15=openRunde, 16=roboto, 17=robotoBold,
   // 18=notoSans, 19=notoSansBold, 20=ubuntu, 21=ubuntuBold,
-  // 22=azeret, 23=azeretSemiBold.
+  // 22=azeret (id 23 = azeretSemiBold retired; do not reuse).
   // `vertical_desc` mirrors the on-device pref — label panels rotate 90°
   // CCW when true so "BLOCK/HEIGHT" etc. read along the panel's long
   // axis. Default false matches the device boot default.
@@ -238,9 +238,7 @@ void ApplyFontOverride(btclock::AppFonts& fonts, int family) {
     case 22:
       f = btclock::FontFamily::kAzeret;
       break;
-    case 23:
-      f = btclock::FontFamily::kAzeretSemiBold;
-      break;
+    // id 23 (azeretSemiBold) retired — falls through to the default.
     default:
       f = btclock::FontFamily::kAntonio;
       break;
@@ -1397,9 +1395,11 @@ val renderDebugAlpha(std::string ip, std::string ssid, int free_heap_bytes,
 
 // Runtime-switchable preview knobs. `panels` is 7 or 8 (anything else
 // is clamped to 7); `font_family` mirrors FontFamily's numeric values
-// (0=antonio (stock), 1=oswald, ..., 22=azeret, 23=azeretSemiBold — full
-// table in ApplyFontOverride above). Anything outside [0, 23] falls
-// back to antonio so a stale UI selector can't crash the binding.
+// (0=antonio (stock), 1=oswald, ..., 22=azeret — full table in
+// ApplyFontOverride above; id 23 = azeretSemiBold was retired and now
+// falls through to the antonio default). Anything outside the live
+// range falls back to antonio so a stale UI selector can't crash the
+// binding.
 // Call whenever the user changes the UI selector; safe to call before
 // every render.
 void setRenderOptions(int panels, int font_family) {

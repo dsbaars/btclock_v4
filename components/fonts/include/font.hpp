@@ -259,8 +259,6 @@ extern const uint8_t kUbuntuBoldTtf[];
 extern const size_t kUbuntuBoldTtfSize;
 extern const uint8_t kAzeretTtf[];
 extern const size_t kAzeretTtfSize;
-extern const uint8_t kAzeretSemiBoldTtf[];
-extern const size_t kAzeretSemiBoldTtfSize;
 extern const uint8_t kSourceSerifTtf[];
 extern const size_t kSourceSerifTtfSize;
 extern const uint8_t kSourceSerifBoldTtf[];
@@ -320,10 +318,6 @@ extern const uint8_t kUbuntuBoldTtf[] asm("_binary_UbuntuBold_ttf_gz_start");
 extern const uint8_t kUbuntuBoldTtfEnd[] asm("_binary_UbuntuBold_ttf_gz_end");
 extern const uint8_t kAzeretTtf[] asm("_binary_Azeret_ttf_gz_start");
 extern const uint8_t kAzeretTtfEnd[] asm("_binary_Azeret_ttf_gz_end");
-extern const uint8_t kAzeretSemiBoldTtf[] asm(
-    "_binary_AzeretSemiBold_ttf_gz_start");
-extern const uint8_t kAzeretSemiBoldTtfEnd[] asm(
-    "_binary_AzeretSemiBold_ttf_gz_end");
 extern const uint8_t kSourceSerifTtf[] asm("_binary_SourceSerif_ttf_gz_start");
 extern const uint8_t kSourceSerifTtfEnd[] asm("_binary_SourceSerif_ttf_gz_end");
 extern const uint8_t kSourceSerifBoldTtf[] asm(

@@ -59,7 +59,6 @@ struct RoleFixture {
   int ubuntu = 0;
   int ubuntu_bold = 0;
   int azeret = 0;
-  int azeret_semibold = 0;
   int mdi = 0;
   int sats = 0;
 
@@ -111,9 +110,6 @@ struct RoleFixture {
         break;
       case FontFamily::kUbuntuBold:
         regular = &ubuntu_bold;
-        break;
-      case FontFamily::kAzeretSemiBold:
-        regular = &azeret_semibold;
         break;
       case FontFamily::kOswald:
         regular = &oswald;
@@ -268,7 +264,9 @@ TEST_CASE("ParseFontFamily maps NVS strings") {
   CHECK(ParseFontFamily("ubuntu") == FontFamily::kUbuntu);
   CHECK(ParseFontFamily("ubuntuBold") == FontFamily::kUbuntuBold);
   CHECK(ParseFontFamily("azeret") == FontFamily::kAzeret);
-  CHECK(ParseFontFamily("azeretSemiBold") == FontFamily::kAzeretSemiBold);
+  // Retired family — falls through to kAntonio so upgrading devices
+  // with "azeretSemiBold" stored in NVS keep booting.
+  CHECK(ParseFontFamily("azeretSemiBold") == FontFamily::kAntonio);
 }
 
 TEST_CASE("SetFamily(kAntonioSemiBold) rebinds swappable roles") {
@@ -349,15 +347,6 @@ TEST_CASE("SetFamily(kAzeret) rebinds swappable roles") {
   CHECK(f.label == &f.azeret);
   CHECK(f.small_chars == &f.azeret);
   CHECK(f.unit == &f.azeret);
-}
-
-TEST_CASE("SetFamily(kAzeretSemiBold) rebinds swappable roles") {
-  RoleFixture f;
-  f.SetFamily(FontFamily::kAzeretSemiBold);
-  CHECK(f.digit == &f.azeret_semibold);
-  CHECK(f.label == &f.azeret_semibold);
-  CHECK(f.small_chars == &f.azeret_semibold);
-  CHECK(f.unit == &f.azeret_semibold);
 }
 
 TEST_CASE("ParseFontFamily falls back to Antonio on unknown input") {

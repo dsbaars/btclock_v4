@@ -698,7 +698,6 @@ const FONTS = [
   { id: "ubuntu", title: "Ubuntu", family: 20 },
   { id: "ubuntuBold", title: "Ubuntu Bold", family: 21 },
   { id: "azeret", title: "Azeret Mono", family: 22 },
-  { id: "azeretSemiBold", title: "Azeret Mono SemiBold", family: 23 },
 ];
 
 const generated = [];

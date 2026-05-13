@@ -173,13 +173,11 @@ subset_full "${TMP}/Ubuntu-Bold.ttf"   "${ASSETS}/UbuntuBold.ttf"
 # separate Bold (wght=700) is shipped — SemiBold doubles as the
 # bold-slot partner of Regular in the bundle map for future
 # family-aware markdown emphasis.
-echo "→ Azeret Mono (displaay/Azeret static TTFs; base cut = Regular)"
+echo "→ Azeret Mono (displaay/Azeret static TTFs; Regular only —"
+echo "   SemiBold was retired to recover Rev A flash headroom)"
 curl -sSL -o "${TMP}/AzeretMono-Regular.ttf" \
     "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-Regular.ttf"
-curl -sSL -o "${TMP}/AzeretMono-SemiBold.ttf" \
-    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-SemiBold.ttf"
 subset_full "${TMP}/AzeretMono-Regular.ttf"  "${ASSETS}/Azeret.ttf"
-subset_full "${TMP}/AzeretMono-SemiBold.ttf" "${ASSETS}/AzeretSemiBold.ttf"
 
 echo "→ SatoshiSymbol (from preserved woff2)"
 pyftsubset "${ASSETS}/SatoshiSymbol_source.woff2" \
@@ -215,7 +213,7 @@ expected = [
     "Roboto.ttf", "RobotoBold.ttf",
     "NotoSans.ttf", "NotoSansBold.ttf",
     "Ubuntu.ttf", "UbuntuBold.ttf",
-    "Azeret.ttf", "AzeretSemiBold.ttf",
+    "Azeret.ttf",
 ]
 missing = []
 for name in expected:

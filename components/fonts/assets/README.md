@@ -234,41 +234,28 @@ pyftsubset /tmp/Ubuntu-Bold.ttf \
 
 Licensed under Ubuntu Font Licence 1.0.
 
-## Azeret / AzeretSemiBold
+## Azeret
 
 Azeret Mono (Displaay Type Foundry, designed by Hugo Dumont). A
 contemporary monospace typeface — the only mono option in the
 catalogue. Sharp, geometric counters and uniform advance widths read
 cleanly alongside the price-screen separator digits at panel sizes.
 
-The catalogue ships two cuts: **Regular (wght=400)** as the base
-(`Azeret.ttf`, picker id `azeret`) and **SemiBold (wght=600)** as the
-heavier picker option (`AzeretSemiBold.ttf`, picker id
-`azeretSemiBold`). Other modern families in this directory bake
-SemiBold as the base cut because their Regulars fragment after the
-1-bpp threshold on e-paper — Azeret Mono's Regular survives the
-threshold cleanly (verified via WASM A/B render + live Rev B
-inspection), so Regular ships as the base. SemiBold is heavy enough
-to also double as the `Bundle(kAzeret).bold` partner for a future
-family-aware markdown emphasis path, which is why no separate Bold
-(wght=700) cut is shipped (saves ~6 KB gzipped on the 4 MB Rev A
-partition's tight OTA slot).
+The catalogue ships **Regular (wght=400)** only (`Azeret.ttf`, picker
+id `azeret`). The previously shipped SemiBold (wght=600) cut was
+retired to recover Rev A flash headroom — at ~6 KB gzipped it pushed
+the 4 MB Rev A app partition uncomfortably close to full. Azeret
+Mono's Regular survives the 1-bpp e-paper threshold cleanly (verified
+via WASM A/B render + live Rev B inspection), so the family ships as
+single-weight and `Bundle(kAzeret).bold` doubles the Regular like
+base Antonio does for its lone cut.
 
 ```sh
 curl -L -o /tmp/AzeretMono-Regular.ttf \
     "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-Regular.ttf"
-curl -L -o /tmp/AzeretMono-SemiBold.ttf \
-    "https://github.com/displaay/Azeret/raw/main/fonts/ttf/AzeretMono-SemiBold.ttf"
 
 pyftsubset /tmp/AzeretMono-Regular.ttf \
     --output-file=Azeret.ttf \
-    --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
-    --ignore-missing-unicodes \
-    --drop-tables+=GPOS,GSUB,DSIG \
-    --layout-features='*' \
-    --no-hinting
-pyftsubset /tmp/AzeretMono-SemiBold.ttf \
-    --output-file=AzeretSemiBold.ttf \
     --unicodes=U+0020-007E,U+00A3,U+00A5,U+20AC,U+20BF \
     --ignore-missing-unicodes \
     --drop-tables+=GPOS,GSUB,DSIG \
@@ -516,7 +503,6 @@ In-tree byte counts (`wc -c`), rounded:
 | Ubuntu                |   9.4 KB |
 | UbuntuBold            |   9.3 KB |
 | Azeret                |   8.7 KB |
-| AzeretSemiBold        |   8.6 KB |
 | SatoshiSymbol         |   3.5 KB |
 | MaterialDesignIcons   |   1.0 KB |
 

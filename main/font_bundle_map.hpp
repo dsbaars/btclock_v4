@@ -57,12 +57,6 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f) {
       return {FontSlot::kNotoSansBold, FontSlot::kNotoSansBold};
     case FontFamily::kUbuntuBold:
       return {FontSlot::kUbuntuBold, FontSlot::kUbuntuBold};
-    case FontFamily::kAzeretSemiBold:
-      // SemiBold doubled into both slots — there is no separate Bold
-      // (wght=700) cut for Azeret. Visually heavy enough on 1-bpp
-      // e-paper that the "I want a beefier face" use case is covered
-      // without a third weight.
-      return {FontSlot::kAzeretSemiBold, FontSlot::kAzeretSemiBold};
     case FontFamily::kOswald:
       return {FontSlot::kOswaldRegular, FontSlot::kOswaldBold};
     case FontFamily::kInter:
@@ -84,11 +78,11 @@ inline constexpr BundleSlots ResolveBundleSlots(FontFamily f) {
     case FontFamily::kUbuntu:
       return {FontSlot::kUbuntuRegular, FontSlot::kUbuntuBold};
     case FontFamily::kAzeret:
-      // Regular (wght=400) for body, SemiBold (wght=600) substituting
-      // for the absent Bold cut so '*bold*' markdown still gets a
-      // visible weight bump if a family-aware markdown path ever
-      // reaches for Bundle().bold.
-      return {FontSlot::kAzeretRegular, FontSlot::kAzeretSemiBold};
+      // Azeret ships only the Regular cut on v4 — the SemiBold variant
+      // was retired to recover Rev A flash headroom. Double the regular
+      // into the bold slot like the base Antonio family does so the
+      // markdown '*bold*' marker keeps parsing without a missing slot.
+      return {FontSlot::kAzeretRegular, FontSlot::kAzeretRegular};
   }
   // Atkinson is the body-text fallback (legibility-first replacement
   // for the retired DejaVu pair).

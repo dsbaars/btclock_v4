@@ -293,12 +293,6 @@
       "id": "azeret",
       "title": "Azeret Mono",
       "path": "docs/img/fonts/azeret.png"
-    },
-    {
-      "kind": "font",
-      "id": "azeretSemiBold",
-      "title": "Azeret Mono SemiBold",
-      "path": "docs/img/fonts/azeretSemiBold.png"
     }
   ]
 }

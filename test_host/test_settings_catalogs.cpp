@@ -125,10 +125,11 @@ TEST_CASE("availableFonts is an object array with id + hasBtcSymbol") {
   CHECK(fonts.count("ubuntu") == 1);
   CHECK(fonts.count("ubuntuBold") == 1);
   CHECK(fonts.count("azeret") == 1);
-  CHECK(fonts.count("azeretSemiBold") == 1);
-  // Retired family — must NOT reappear in the catalogue. A regression
+  // Retired families — must NOT reappear in the catalogue. A regression
   // here would let the WebUI offer a font the firmware no longer ships
-  // and the validation walk silently snap to antonio.
+  // and the validation walk silently snap to antonio. azeretSemiBold
+  // was dropped to recover Rev A flash headroom.
+  CHECK(fonts.count("azeretSemiBold") == 0);
   CHECK(fonts.count("dejavu") == 0);
 
   cJSON_Delete(root);

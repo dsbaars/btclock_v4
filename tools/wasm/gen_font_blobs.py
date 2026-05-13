@@ -24,7 +24,6 @@ FONTS = [
     ("Ubuntu.ttf", "kUbuntuTtf", "kUbuntuTtfSize"),
     ("UbuntuBold.ttf", "kUbuntuBoldTtf", "kUbuntuBoldTtfSize"),
     ("Azeret.ttf", "kAzeretTtf", "kAzeretTtfSize"),
-    ("AzeretSemiBold.ttf", "kAzeretSemiBoldTtf", "kAzeretSemiBoldTtfSize"),
     ("SourceSerif.ttf", "kSourceSerifTtf", "kSourceSerifTtfSize"),
     ("SourceSerifBold.ttf", "kSourceSerifBoldTtf",
      "kSourceSerifBoldTtfSize"),
