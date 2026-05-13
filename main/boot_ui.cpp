@@ -22,9 +22,18 @@ void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
   // Same pixel height on every panel — match digit-screen behaviour (one
   // scale for the whole row). The limiting glyph is whichever needs the
   // smallest FitTextPx to stay inside panel width minus margin.
+  //
+  // The 20-px margin (10 px each side on the 122-px short axis) is sized
+  // so the condensed display faces — Antonio (widest 'K' ink ≈63 px @
+  // em=220), Oswald (widest 'O' ≈67 px) — still hit the kSplashMaxPx
+  // ceiling exactly as before, while the wide / monospace faces (Azeret
+  // ~112 px, Atkinson ~112 px, Inter ~123 px) shrink one fit-step further
+  // so their ink never crowds the panel edge. Anything tighter (≤ 14 px)
+  // leaves Azeret with single-digit pixel gaps; the boot splash is the
+  // first impression and that looked cramped on device.
   constexpr float kSplashMaxPx = 220.0f;
   constexpr float kSplashMinPx = 100.0f;
-  constexpr int kSplashMarginPx = 12;
+  constexpr int kSplashMarginPx = 20;
   const float uniform_px = MinGlyphFitPxAcross(N, [&](std::size_t i) {
     const char one[2] = {kSplashLetters[i], '\0'};
     const int target_w = panels[i]->Width() - kSplashMarginPx;
