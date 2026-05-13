@@ -305,8 +305,7 @@ constexpr const char* kTag = "btclock";
     // stack) used to abort the device every nwcRefreshSecs.
     bool pending_refresh = true;
     if (nwc_refresh_pending.compare_exchange_strong(pending_refresh, false)) {
-      if (ctx.nwc_client &&
-          ctx.nwc_client->state() == nwc::State::kReady) {
+      if (ctx.nwc_client && ctx.nwc_client->state() == nwc::State::kReady) {
         ctx.nwc_client->RequestGetBalance();
       }
     }
@@ -324,8 +323,8 @@ constexpr const char* kTag = "btclock";
     bool pending_nwc = true;
     if (nwc_notify_pending.compare_exchange_strong(pending_nwc, false) && hub) {
       Prefs nwc_prefs(prefs::kSettingsNs);
-      const bool show_notify = btclock::settings::ReadBool(
-          nwc_prefs, prefs::kNwcShowNotify);
+      const bool show_notify =
+          btclock::settings::ReadBool(nwc_prefs, prefs::kNwcShowNotify);
       if (!show_notify) {
         // Balance / snapshot mirror already updated in the relay
         // callback — nothing more to do here. Skip overlay + flash so

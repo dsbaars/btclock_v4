@@ -174,10 +174,10 @@ TEST_CASE("SignEvent + VerifyEvent roundtrip on a kind-23194 NWC request") {
   // BIP-340 vector 1's seckey, aux=0. Deterministic + lets the roundtrip
   // assert behave like a regression vector if the canonical serializer
   // ever drifts.
-  const auto sk = Hex32(
-      "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef");
-  const auto aux = Hex32(
-      "0000000000000000000000000000000000000000000000000000000000000000");
+  const auto sk =
+      Hex32("b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef");
+  const auto aux =
+      Hex32("0000000000000000000000000000000000000000000000000000000000000000");
   REQUIRE(SignEvent(sk.data(), aux.data(), ev) == EventSignError::kOk);
 
   // Fields are filled in.
@@ -196,10 +196,10 @@ TEST_CASE("SignEvent: tampering with content after signing breaks verify") {
   ev.kind = 1;
   ev.content = "hello world";
 
-  const auto sk = Hex32(
-      "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef");
-  const auto aux = Hex32(
-      "0000000000000000000000000000000000000000000000000000000000000000");
+  const auto sk =
+      Hex32("b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef");
+  const auto aux =
+      Hex32("0000000000000000000000000000000000000000000000000000000000000000");
   REQUIRE(SignEvent(sk.data(), aux.data(), ev) == EventSignError::kOk);
   REQUIRE(VerifyEvent(ev) == EventVerifyResult::kOk);
 

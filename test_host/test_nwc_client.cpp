@@ -155,7 +155,7 @@ nostr::Event MakeNotification(const std::string& json_plaintext,
   ev.kind = kind;
   ev.pubkey = WalletPubkeyHex();
   const auto variant = (kind == 23197) ? nostr::EncryptionVariant::kNip44V2
-                                        : nostr::EncryptionVariant::kNip04;
+                                       : nostr::EncryptionVariant::kNip04;
   ev.content = WalletEncrypt(variant, json_plaintext);
   {
     nostr::Tag p;
@@ -184,8 +184,7 @@ struct ClientFixture {
       publishes.emplace_back(data, n);
       return true;
     };
-    auto subscribe = [this](const std::string& id,
-                            const nostr::Filter& f) {
+    auto subscribe = [this](const std::string& id, const nostr::Filter& f) {
       subscribes.emplace_back(id, f);
     };
     auto unsubscribe = [this](const std::string& id) {
@@ -193,8 +192,10 @@ struct ClientFixture {
     };
     client = std::make_unique<nwc::NwcClient>(std::move(pairing), publish,
                                               subscribe, unsubscribe);
-    client->SetOnBalance(
-        [this](uint64_t m) { last_balance = m; ++balance_calls; });
+    client->SetOnBalance([this](uint64_t m) {
+      last_balance = m;
+      ++balance_calls;
+    });
     client->SetOnPayment([this](const nwc::PaymentNotification& p) {
       last_payment = p;
       ++payment_calls;
@@ -205,13 +206,12 @@ struct ClientFixture {
     });
     // Deterministic-but-non-zero RNG so encrypts don't repeat.
     int counter = 0;
-    client->SetRandomFn(
-        [counter](uint8_t* out, size_t n) mutable {
-          for (size_t i = 0; i < n; ++i) {
-            out[i] = static_cast<uint8_t>((counter * 13u + i) & 0xffu);
-          }
-          ++counter;
-        });
+    client->SetRandomFn([counter](uint8_t* out, size_t n) mutable {
+      for (size_t i = 0; i < n; ++i) {
+        out[i] = static_cast<uint8_t>((counter * 13u + i) & 0xffu);
+      }
+      ++counter;
+    });
     client->SetNowFn([]() -> int64_t { return 1747000000; });
   }
 };
@@ -266,9 +266,9 @@ TEST_CASE("NwcClient: synthetic INFO transitions kBootstrapping -> kReady") {
 TEST_CASE("NwcClient: INFO event locks in nip44_v2 encryption + fires ready") {
   ClientFixture f;
   f.client->Start();
-  auto info = MakeInfoEvent(
-      "pay_invoice get_balance notifications", {"nip44_v2", "nip04"},
-      {"payment_received", "payment_sent"});
+  auto info = MakeInfoEvent("pay_invoice get_balance notifications",
+                            {"nip44_v2", "nip04"},
+                            {"payment_received", "payment_sent"});
   f.client->HandleEvent(info);
   CHECK(f.client->state() == nwc::State::kReady);
   CHECK(f.client->encryption() == nostr::EncryptionVariant::kNip44V2);
@@ -295,8 +295,8 @@ static bool ExtractPublishEvent(const std::string& frame, nostr::Event& out) {
   if (frame.size() < prefix.size() + 2) return false;
   if (frame.compare(0, prefix.size(), prefix) != 0) return false;
   if (frame.back() != ']') return false;
-  const std::string body = frame.substr(prefix.size(),
-                                        frame.size() - prefix.size() - 1);
+  const std::string body =
+      frame.substr(prefix.size(), frame.size() - prefix.size() - 1);
   return nostr::ParseEventObject(body, out);
 }
 
@@ -343,8 +343,8 @@ TEST_CASE("NwcClient: kind 23195 response decodes and updates balance cache") {
   // Wallet "answers" with the standard get_balance response payload.
   const std::string resp_json =
       R"({"result_type":"get_balance","result":{"balance":4242000}})";
-  auto resp = MakeResponse(resp_json, req_id,
-                           nostr::EncryptionVariant::kNip44V2);
+  auto resp =
+      MakeResponse(resp_json, req_id, nostr::EncryptionVariant::kNip44V2);
   f.client->HandleEvent(resp);
   CHECK(f.balance_calls == 1);
   CHECK(f.last_balance == 4242000u);
@@ -356,8 +356,7 @@ TEST_CASE("NwcClient: kind 23195 response decodes and updates balance cache") {
 TEST_CASE("NwcClient: payment_received notification fires payment callback") {
   ClientFixture f;
   f.client->Start();
-  f.client->HandleEvent(MakeInfoEvent("get_balance notifications",
-                                      {"nip44_v2"},
+  f.client->HandleEvent(MakeInfoEvent("get_balance notifications", {"nip44_v2"},
                                       {"payment_received", "payment_sent"}));
   f.client->RequestGetBalance();  // populate cache via response
   auto resp = MakeResponse(

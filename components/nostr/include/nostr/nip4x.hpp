@@ -64,14 +64,14 @@ enum class EncryptionVariant : uint8_t {
 // keys (off-curve / on twist).
 enum class Nip4xError : uint8_t {
   kOk = 0,
-  kBadKey,           // ECDH refused (invalid privkey or pubkey)
-  kBadPayload,       // base64 decode failed or wrong length
-  kUnknownVersion,   // version byte not 0x02 (NIP-44 v2 only)
-  kMacMismatch,      // HMAC-SHA256 over (nonce || ct) didn't match
-  kBadPadding,       // NIP-44 padding scheme rejected the plaintext
-                     //   or NIP-04 PKCS#7 padding was malformed
-  kPlaintextRange,   // plaintext length outside [1, 65535] (NIP-44)
-                     //   or ciphertext not a multiple of 16 (NIP-04)
+  kBadKey,          // ECDH refused (invalid privkey or pubkey)
+  kBadPayload,      // base64 decode failed or wrong length
+  kUnknownVersion,  // version byte not 0x02 (NIP-44 v2 only)
+  kMacMismatch,     // HMAC-SHA256 over (nonce || ct) didn't match
+  kBadPadding,      // NIP-44 padding scheme rejected the plaintext
+                    //   or NIP-04 PKCS#7 padding was malformed
+  kPlaintextRange,  // plaintext length outside [1, 65535] (NIP-44)
+                    //   or ciphertext not a multiple of 16 (NIP-04)
 };
 
 struct Nip4xDecryptResult {
@@ -96,8 +96,7 @@ struct Nip4xDecryptResult {
 // The conversation key is constant for a given (us, them) pair across
 // every message exchanged with that wallet — caching it across
 // requests is the dominant optimization once a wallet is paired.
-bool Nip44ConversationKey(const uint8_t seckey32[32],
-                          const uint8_t pub32[32],
+bool Nip44ConversationKey(const uint8_t seckey32[32], const uint8_t pub32[32],
                           uint8_t conversation_key32[32]);
 
 // NIP-44 v2 encrypt with caller-supplied 32-byte nonce. The nonce
@@ -142,10 +141,8 @@ Nip4xDecryptResult Nip44DecryptV2WithKeys(const uint8_t seckey32[32],
 // repeat under the same shared key. Plaintext is encoded UTF-8 and
 // padded with PKCS#7 before AES-256-CBC. Returns empty string on key
 // failure.
-std::string Nip04Encrypt(const uint8_t seckey32[32],
-                         const uint8_t pub32[32],
-                         const uint8_t iv16[16],
-                         const std::string& plaintext);
+std::string Nip04Encrypt(const uint8_t seckey32[32], const uint8_t pub32[32],
+                         const uint8_t iv16[16], const std::string& plaintext);
 
 // NIP-04 decrypt. `content` is the `<b64ct>?iv=<b64iv>` string.
 Nip4xDecryptResult Nip04Decrypt(const uint8_t seckey32[32],
@@ -164,10 +161,8 @@ EncryptionVariant ParseEncryptionTag(const std::string& token);
 // `variant`. `nonce_or_iv` is 32 bytes for NIP-44 v2 (full nonce) or
 // 16 bytes for NIP-04 (AES IV) — the caller is responsible for
 // sizing the buffer correctly. Returns empty string on failure.
-std::string Encrypt(EncryptionVariant variant,
-                    const uint8_t seckey32[32],
-                    const uint8_t pub32[32],
-                    const uint8_t* nonce_or_iv,
+std::string Encrypt(EncryptionVariant variant, const uint8_t seckey32[32],
+                    const uint8_t pub32[32], const uint8_t* nonce_or_iv,
                     const std::string& plaintext);
 
 // Decrypt dispatcher. Routes to NIP-44 v2 or NIP-04 based on
@@ -176,8 +171,7 @@ std::string Encrypt(EncryptionVariant variant,
 // `?iv=` substring), but the dispatcher trusts the caller — wallets
 // only emit one or the other per conversation.
 Nip4xDecryptResult Decrypt(EncryptionVariant variant,
-                           const uint8_t seckey32[32],
-                           const uint8_t pub32[32],
+                           const uint8_t seckey32[32], const uint8_t pub32[32],
                            const std::string& content);
 
 }  // namespace nostr

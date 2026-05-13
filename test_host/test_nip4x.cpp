@@ -146,7 +146,9 @@ TEST_CASE("Nip44ConversationKey: invalid scalars and points are rejected") {
   CHECK(!Nip44ConversationKey(valid_sec.data(), pub_invalid.data(), ck));
 }
 
-TEST_CASE("Nip44: encrypt_decrypt vector 1 — deterministic nonce=1, plaintext=\"a\"") {
+TEST_CASE(
+    "Nip44: encrypt_decrypt vector 1 — deterministic nonce=1, "
+    "plaintext=\"a\"") {
   // From `valid.encrypt_decrypt[0]`. sec=1, pub2=2*G's x-coord,
   // nonce=1, plaintext="a" → known payload. The whole point of
   // exposing a deterministic-nonce overload is to verify the exact
@@ -182,7 +184,8 @@ TEST_CASE("Nip44: encrypt_decrypt vector 1 — deterministic nonce=1, plaintext=
   CHECK(r.plaintext == "a");
 }
 
-TEST_CASE("Nip44: encrypt_decrypt vector 2 — 4-byte UTF-8 (pizza + pregnant man)") {
+TEST_CASE(
+    "Nip44: encrypt_decrypt vector 2 — 4-byte UTF-8 (pizza + pregnant man)") {
   // From `valid.encrypt_decrypt[1]`. Roles swapped vs vector 1; same
   // conversation key. Exercises a multi-block padded blob.
   const auto sec1 = HexToBytes32(
@@ -207,7 +210,8 @@ TEST_CASE("Nip44: encrypt_decrypt vector 2 — 4-byte UTF-8 (pizza + pregnant ma
   CHECK(r.plaintext == plaintext);
 }
 
-TEST_CASE("Nip44: encrypt_decrypt vector 3 — mixed BMP + supplementary-plane CJK") {
+TEST_CASE(
+    "Nip44: encrypt_decrypt vector 3 — mixed BMP + supplementary-plane CJK") {
   // From `valid.encrypt_decrypt[2]`.
   const auto sec1 = HexToBytes32(
       "5c0c523f52a5b6fad39ed2403092df8cebc36318b39383bca6c00808626fab3a");
@@ -254,7 +258,8 @@ TEST_CASE("Nip44: encrypt_decrypt vector 3 — mixed BMP + supplementary-plane C
   (void)sec1;
 }
 
-TEST_CASE("Nip44: encrypt_decrypt vector 4 — ASCII + cap-A breve + cap-T breve") {
+TEST_CASE(
+    "Nip44: encrypt_decrypt vector 4 — ASCII + cap-A breve + cap-T breve") {
   // From `valid.encrypt_decrypt[3]`. Uses ck directly.
   const auto expected_ck = HexToBytes32(
       "d5a2f879123145a4b291d767428870f5a8d9e5007193321795b40183d4ab8c2b");
@@ -390,8 +395,8 @@ TEST_CASE("Nip44: invalid plaintext lengths are rejected on encrypt") {
   // Empty plaintext → spec §3 says minimum 1 byte; we reject.
   CHECK(Nip44EncryptV2(ck.data(), nonce.data(), "").empty());
   // 65536-byte plaintext → spec §3 says max 65535 bytes; we reject.
-  CHECK(Nip44EncryptV2(ck.data(), nonce.data(), std::string(65536, 'x'))
-            .empty());
+  CHECK(
+      Nip44EncryptV2(ck.data(), nonce.data(), std::string(65536, 'x')).empty());
 }
 
 // =============================================== calc_padded_len fixture table
@@ -405,12 +410,11 @@ TEST_CASE("Nip44: calc_padded_len matches the spec's full table") {
     size_t expected_padded;
   };
   constexpr Pair kPairs[] = {
-      {16, 32},     {32, 32},     {33, 64},     {37, 64},
-      {45, 64},     {49, 64},     {64, 64},     {65, 96},
-      {100, 128},   {111, 128},   {200, 224},   {250, 256},
-      {320, 320},   {383, 384},   {384, 384},   {400, 448},
-      {500, 512},   {512, 512},   {515, 640},   {700, 768},
-      {800, 896},   {900, 1024},  {1020, 1024}, {65536, 65536},
+      {16, 32},   {32, 32},    {33, 64},     {37, 64},       {45, 64},
+      {49, 64},   {64, 64},    {65, 96},     {100, 128},     {111, 128},
+      {200, 224}, {250, 256},  {320, 320},   {383, 384},     {384, 384},
+      {400, 448}, {500, 512},  {512, 512},   {515, 640},     {700, 768},
+      {800, 896}, {900, 1024}, {1020, 1024}, {65536, 65536},
   };
 
   // calc_padded_len isn't exported (it's an internal helper). Instead
@@ -560,9 +564,8 @@ TEST_CASE("Encrypt/Decrypt dispatcher routes by variant") {
 
   // NIP-44 v2 path.
   {
-    const std::string c =
-        Encrypt(EncryptionVariant::kNip44V2, sec.data(), pub.data(),
-                nonce_or_iv.data(), pt);
+    const std::string c = Encrypt(EncryptionVariant::kNip44V2, sec.data(),
+                                  pub.data(), nonce_or_iv.data(), pt);
     REQUIRE(!c.empty());
     Nip4xDecryptResult r =
         Decrypt(EncryptionVariant::kNip44V2, sec.data(), pub.data(), c);

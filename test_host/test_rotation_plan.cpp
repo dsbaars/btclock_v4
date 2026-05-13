@@ -107,7 +107,7 @@ TEST_CASE(
   CHECK(seq[2] == 13);
   CHECK(seq[3] == 16);
   CHECK(seq[4] == 19);
-  CHECK(seq[5] == 9);   // moscow USD
+  CHECK(seq[5] == 9);  // moscow USD
   CHECK(seq[6] == 12);
   CHECK(seq[7] == 15);
   CHECK(seq[8] == 18);

@@ -298,16 +298,15 @@ void ChaChaBlock(const uint32_t state[16], uint8_t out[64]) {
 }
 
 inline uint32_t ChaChaLoad32Le(const uint8_t* p) {
-  return static_cast<uint32_t>(p[0]) |
-         (static_cast<uint32_t>(p[1]) << 8) |
+  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
          (static_cast<uint32_t>(p[2]) << 16) |
          (static_cast<uint32_t>(p[3]) << 24);
 }
 
 // ChaCha20 with starting counter = 0 (NIP-44 v2 spec — RFC 8439 §2.4
 // uses starting counter 1 for AEAD; NIP-44 explicitly opts for 0).
-void ChaCha20(const uint8_t key[32], const uint8_t nonce[12],
-              const uint8_t* in, uint8_t* out, size_t len) {
+void ChaCha20(const uint8_t key[32], const uint8_t nonce[12], const uint8_t* in,
+              uint8_t* out, size_t len) {
   uint32_t state[16];
   state[0] = kChaChaConst[0];
   state[1] = kChaChaConst[1];
@@ -431,7 +430,8 @@ void AesKeyExpansion(const uint8_t key[32], uint8_t round_keys[240]) {
 }
 
 void AesAddRoundKey(uint8_t state[16], const uint8_t* rk) {
-  for (int i = 0; i < 16; ++i) state[i] = static_cast<uint8_t>(state[i] ^ rk[i]);
+  for (int i = 0; i < 16; ++i)
+    state[i] = static_cast<uint8_t>(state[i] ^ rk[i]);
 }
 
 void AesSubBytes(uint8_t state[16]) {
@@ -577,8 +577,7 @@ size_t Aes256CbcPkcs7Encrypt(const uint8_t key[32], const uint8_t iv[16],
     // PKCS#7 — fill the rest of this block (possibly all of it) with
     // the pad byte. Always at least one byte; if input length is a
     // multiple of 16, this is an entire trailing block of 0x10s.
-    for (size_t i = take; i < 16; ++i)
-      block[i] = static_cast<uint8_t>(pad);
+    for (size_t i = take; i < 16; ++i) block[i] = static_cast<uint8_t>(pad);
     for (int i = 0; i < 16; ++i)
       block[i] = static_cast<uint8_t>(block[i] ^ prev[i]);
     Aes256EncryptBlock(round_keys, block, out + off);
@@ -667,8 +666,8 @@ bool Base64Decode(const std::string& s, std::string& out) {
     const uint8_t v0 = lut[static_cast<uint8_t>(c0)];
     const uint8_t v1 = lut[static_cast<uint8_t>(c1)];
     if (v0 == 0xffu || v1 == 0xffu) return false;
-    uint32_t v = (static_cast<uint32_t>(v0) << 18) |
-                 (static_cast<uint32_t>(v1) << 12);
+    uint32_t v =
+        (static_cast<uint32_t>(v0) << 18) | (static_cast<uint32_t>(v1) << 12);
     if (c2 == '=') {
       // Last quartet, two pad chars — output exactly 1 byte.
       if (c3 != '=' || i + 4 != s.size()) return false;
@@ -704,7 +703,8 @@ bool ConstantTimeEqualBytes(const uint8_t* a, const uint8_t* b, size_t n) {
   return acc == 0;
 }
 
-// ============================================= 7. ECDH (raw X via libsecp256k1)
+// ============================================= 7. ECDH (raw X via
+// libsecp256k1)
 
 // Given our 32-byte private key and the peer's 32-byte x-only public
 // key (BIP-340 form), compute the 32-byte X coordinate of (sec * pub).
@@ -869,10 +869,9 @@ Nip4xDecryptResult Nip44DecryptV2(const uint8_t conversation_key32[32],
 
   const size_t ct_len = raw.size() - 1 - 32 - 32;
   const uint8_t* nonce = reinterpret_cast<const uint8_t*>(raw.data() + 1);
-  const uint8_t* ciphertext =
-      reinterpret_cast<const uint8_t*>(raw.data() + 33);
-  const uint8_t* mac = reinterpret_cast<const uint8_t*>(
-      raw.data() + 33 + ct_len);
+  const uint8_t* ciphertext = reinterpret_cast<const uint8_t*>(raw.data() + 33);
+  const uint8_t* mac =
+      reinterpret_cast<const uint8_t*>(raw.data() + 33 + ct_len);
 
   uint8_t chacha_key[32];
   uint8_t chacha_nonce[12];
@@ -962,10 +961,9 @@ std::string Nip04Encrypt(const uint8_t seckey32[32], const uint8_t pub32[32],
   const size_t ct_len = plaintext.size() + pad;
   std::string ciphertext;
   ciphertext.resize(ct_len);
-  Aes256CbcPkcs7Encrypt(shared_x, iv16,
-                        reinterpret_cast<const uint8_t*>(plaintext.data()),
-                        plaintext.size(),
-                        reinterpret_cast<uint8_t*>(&ciphertext[0]));
+  Aes256CbcPkcs7Encrypt(
+      shared_x, iv16, reinterpret_cast<const uint8_t*>(plaintext.data()),
+      plaintext.size(), reinterpret_cast<uint8_t*>(&ciphertext[0]));
 
   std::string content =
       Base64Encode(reinterpret_cast<const uint8_t*>(ciphertext.data()), ct_len);
@@ -1049,8 +1047,8 @@ std::string Encrypt(EncryptionVariant variant, const uint8_t seckey32[32],
   return std::string();
 }
 
-Nip4xDecryptResult Decrypt(EncryptionVariant variant, const uint8_t seckey32[32],
-                           const uint8_t pub32[32],
+Nip4xDecryptResult Decrypt(EncryptionVariant variant,
+                           const uint8_t seckey32[32], const uint8_t pub32[32],
                            const std::string& content) {
   switch (variant) {
     case EncryptionVariant::kNip44V2:

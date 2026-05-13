@@ -42,8 +42,8 @@ namespace nostr {
 
 enum class EventSignError : uint8_t {
   kOk = 0,
-  kBadSeckey,    // 0 or >= n
-  kSignFailed,   // negligible — k+e*d == 0 or e == 0 mod n
+  kBadSeckey,   // 0 or >= n
+  kSignFailed,  // negligible — k+e*d == 0 or e == 0 mod n
 };
 
 // Derive the x-only (BIP-340) 32-byte public key from a 32-byte
@@ -63,10 +63,8 @@ EventSignError DerivePubkeyXOnly(const uint8_t seckey32[32],
 // which is fine for our use case (we'll seed from `esp_fill_random`
 // on target / RNG in tests). Returns kBadSeckey on invalid seckey
 // and kSignFailed on the (vacuous) edge cases.
-EventSignError SchnorrSign(const uint8_t seckey32[32],
-                           const uint8_t msg32[32],
-                           const uint8_t aux_rand32[32],
-                           uint8_t out_sig64[64]);
+EventSignError SchnorrSign(const uint8_t seckey32[32], const uint8_t msg32[32],
+                           const uint8_t aux_rand32[32], uint8_t out_sig64[64]);
 
 // Sign a NIP-01 event in place: computes the canonical id (sha256 of
 // the canonical serialization), schnorr-signs the id with `seckey32`,
@@ -79,8 +77,7 @@ EventSignError SchnorrSign(const uint8_t seckey32[32],
 // chunk per call; reuse is harmless for BIP-340 but defeats the
 // privacy bump aux-rand was designed to provide.
 EventSignError SignEvent(const uint8_t seckey32[32],
-                         const uint8_t aux_rand32[32],
-                         Event& ev);
+                         const uint8_t aux_rand32[32], Event& ev);
 
 }  // namespace nostr
 }  // namespace btclock

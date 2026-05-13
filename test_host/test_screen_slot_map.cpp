@@ -105,10 +105,10 @@ TEST_CASE("SlotForApiId returns -1 when there are no active currencies") {
 TEST_CASE("Round-trip: slot -> api_id -> slot holds for agnostic + fee") {
   const std::size_t C = 4;
   const std::size_t total = sm::SlotCount(C);
-  for (std::size_t slot : {std::size_t{0}, std::size_t{1}, std::size_t{2},
-                           std::size_t{3}, std::size_t{4}, std::size_t{5},
-                           std::size_t{6}, std::size_t{7}, std::size_t{8},
-                           total - 1}) {
+  for (std::size_t slot :
+       {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{3},
+        std::size_t{4}, std::size_t{5}, std::size_t{6}, std::size_t{7},
+        std::size_t{8}, total - 1}) {
     const int api_id = sm::ApiIdForSlot(slot, C);
     CAPTURE(slot);
     CAPTURE(api_id);

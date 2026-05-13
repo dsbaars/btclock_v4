@@ -999,18 +999,18 @@ void ScreenManager::Render(
       // about the msat carry.
       std::optional<int64_t> bal_sats;
       if (snap.nwc_balance_msat) bal_sats = *snap.nwc_balance_msat / 1000;
-      RenderNwcBalanceScreen(panels, fb, fonts, bal_sats,
-                             force_repaint ? std::nullopt
-                                           : last_rendered_nwc_balance_,
-                             rp.use_sats_symbol, rp.use_btc_symbol,
-                             sats_variant_, force_full, rp.vertical_desc);
+      RenderNwcBalanceScreen(
+          panels, fb, fonts, bal_sats,
+          force_repaint ? std::nullopt : last_rendered_nwc_balance_,
+          rp.use_sats_symbol, rp.use_btc_symbol, sats_variant_, force_full,
+          rp.vertical_desc);
       last_rendered_nwc_balance_ = bal_sats;
       break;
     }
     case ScreenType::kNwcPaymentNotify:
-      RenderNwcPaymentNotifyScreen(
-          panels, fb, fonts, snap.nwc_last_payment, rp.use_sats_symbol,
-          rp.use_btc_symbol, sats_variant_, force_full, rp.vertical_desc);
+      RenderNwcPaymentNotifyScreen(panels, fb, fonts, snap.nwc_last_payment,
+                                   rp.use_sats_symbol, rp.use_btc_symbol,
+                                   sats_variant_, force_full, rp.vertical_desc);
       break;
     case ScreenType::kDebug:
       // Unreachable — the debug_mode_ short-circuit at function entry

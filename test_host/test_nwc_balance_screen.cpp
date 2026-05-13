@@ -55,8 +55,8 @@ TEST_CASE("FormatSatsCompact: 1.5 BTC → \"1.5000\"") {
 }
 
 TEST_CASE("FormatSatsCompact: 21M BTC ceiling rounds via %.4f") {
-  CHECK(btclock::FormatSatsCompactBtcOnly(
-            std::optional<int64_t>{2'100'000'000'000'000LL}) == "21000000.0000");
+  CHECK(btclock::FormatSatsCompactBtcOnly(std::optional<int64_t>{
+            2'100'000'000'000'000LL}) == "21000000.0000");
 }
 
 TEST_CASE("FormatSatsCompact: 99,999,999 falls below BTC threshold") {

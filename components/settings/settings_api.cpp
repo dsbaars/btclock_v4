@@ -307,7 +307,8 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     cJSON_AddStringToObject(obj, "name", s.name.c_str());
     char vkey[24];
     std::snprintf(vkey, sizeof(vkey), "screen%dVisible", s.id);
-    cJSON_AddBoolToObject(obj, "enabled", prefs.GetBool(vkey, s.default_visible));
+    cJSON_AddBoolToObject(obj, "enabled",
+                          prefs.GetBool(vkey, s.default_visible));
     cJSON_AddNumberToObject(obj, "order", static_cast<double>(emit_order));
     cJSON_AddItemToArray(screens_arr, obj);
     ++emit_order;

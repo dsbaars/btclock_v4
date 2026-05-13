@@ -124,8 +124,7 @@ ParseError ParsePairingUri(const std::string& uri, PairingUri& out) {
 
   // After the scheme, the layout is `<pubkey>[?<query>]` with the
   // query parameters comma-style separated by `&`.
-  std::string_view rest =
-      std::string_view(uri).substr(kScheme.size());
+  std::string_view rest = std::string_view(uri).substr(kScheme.size());
   std::string_view pub_part;
   std::string_view query_part;
   const size_t qmark = rest.find('?');

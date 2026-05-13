@@ -83,19 +83,19 @@ TEST_CASE("ParsePairingUri: rejects bad scheme") {
 
 TEST_CASE("ParsePairingUri: rejects short pubkey") {
   PairingUri uri;
-  CHECK(ParsePairingUri(
-            "nostr+walletconnect://abc?relay=wss%3A%2F%2Fx&secret=" +
-                std::string(64, '0'),
-            uri) == ParseError::kBadPubkey);
+  CHECK(
+      ParsePairingUri("nostr+walletconnect://abc?relay=wss%3A%2F%2Fx&secret=" +
+                          std::string(64, '0'),
+                      uri) == ParseError::kBadPubkey);
 }
 
 TEST_CASE("ParsePairingUri: rejects non-hex pubkey") {
   std::string bad_pub(64, 'z');
   PairingUri uri;
-  CHECK(ParsePairingUri("nostr+walletconnect://" + bad_pub +
-                            "?relay=wss%3A%2F%2Fx&secret=" +
-                            std::string(64, '0'),
-                        uri) == ParseError::kBadPubkey);
+  CHECK(
+      ParsePairingUri("nostr+walletconnect://" + bad_pub +
+                          "?relay=wss%3A%2F%2Fx&secret=" + std::string(64, '0'),
+                      uri) == ParseError::kBadPubkey);
 }
 
 TEST_CASE("ParsePairingUri: rejects missing relay") {

@@ -247,8 +247,7 @@ bool ReduceModN(uint8_t a[32]) {
 // Output: 32-byte x coordinate of d*G + parity bit of y. We need the
 // y-parity to decide whether to negate d (BIP-340 step 3) and k (step
 // 8).
-bool ScalarMulG(const uint8_t scalar32[32], uint8_t out_x[32],
-                bool& y_is_odd) {
+bool ScalarMulG(const uint8_t scalar32[32], uint8_t out_x[32], bool& y_is_odd) {
   secp256k1_pubkey p;
   if (!secp256k1_ec_pubkey_parse(secp256k1_context_static, &p, kG_Compressed,
                                  sizeof(kG_Compressed))) {
@@ -302,7 +301,8 @@ EventSignError DerivePubkeyXOnly(const uint8_t seckey32[32],
 }
 
 EventSignError SchnorrSign(const uint8_t seckey32[32], const uint8_t msg32[32],
-                           const uint8_t aux_rand32[32], uint8_t out_sig64[64]) {
+                           const uint8_t aux_rand32[32],
+                           uint8_t out_sig64[64]) {
   // Step 1: validate seckey.
   if (!secp256k1_ec_seckey_verify(secp256k1_context_static, seckey32)) {
     return EventSignError::kBadSeckey;

@@ -39,8 +39,7 @@ class FakePrefs final : public btclock::settings::PrefsReader,
   std::string GetString(const char* key,
                         const char* default_value) const override {
     auto it = str_.find(key);
-    return it != str_.end() ? it->second
-                            : (default_value ? default_value : "");
+    return it != str_.end() ? it->second : (default_value ? default_value : "");
   }
   uint32_t GetU32(const char* key, uint32_t default_value) const override {
     auto it = u32_.find(key);
@@ -148,12 +147,15 @@ TEST_CASE("GET /api/settings redacts nwcUri") {
   // The mask keeps the literal `secret=` label as a UX cue but truncates
   // the value to an ellipsis + last 4 chars. Pin that the full 64-char
   // secret string is NOT echoed.
-  CHECK(m.find("cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd") ==
-        std::string::npos);
+  CHECK(
+      m.find(
+          "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd") ==
+      std::string::npos);
   // The full pubkey (64 chars) is also not echoed; only the leading 8.
-  CHECK(m.find(
-            "abababababababababababababababababababababababababababababababab") ==
-        std::string::npos);
+  CHECK(
+      m.find(
+          "abababababababababababababababababababababababababababababababab") ==
+      std::string::npos);
   cJSON_Delete(root);
 }
 
@@ -180,8 +182,7 @@ TEST_CASE("PATCH nwcUri: accepts well-formed URI") {
 
 TEST_CASE("PATCH nwcUri: rejects malformed URI") {
   FakePrefs prefs;
-  const std::string body =
-      "{\"nwcUri\":\"http://wrong-scheme.example.com\"}";
+  const std::string body = "{\"nwcUri\":\"http://wrong-scheme.example.com\"}";
   const auto r =
       btclock::settings::ApplyPatch(body.c_str(), DefaultCtx(), prefs, prefs);
   CHECK(r.status == btclock::settings::PatchStatus::kBadField);
