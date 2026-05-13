@@ -47,7 +47,6 @@
 #include "preview_packet.hpp"
 #include "queue_metrics.hpp"
 #include "settings/api.hpp"
-#include "settings/build_time.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
@@ -2863,12 +2862,16 @@ btclock::settings::DeviceContext BuildDeviceContext(
   const esp_app_desc_t* desc = esp_app_get_description();
   if (desc) {
     ctx.git_rev = desc->version;
-    // desc->date is `MMM DD YYYY` (same as __DATE__) and desc->time is
-    // `HH:MM:SS` — both treated as UTC. Parse once per GET; the result
-    // is a small integer so recomputing it is cheaper than caching.
-    ctx.last_build_time_unix =
-        btclock::settings::ParseCompilerBuildTimeUnix(desc->date, desc->time);
   }
+  // `lastBuildTime` is stamped by CMake (see
+  // components/webserver/CMakeLists.txt) as the UTC Unix-seconds value of the
+  // configure run. Replaces the previous parse of esp_app_desc_t::date/::time,
+  // which read those fields (populated from __DATE__ / __TIME__ — local
+  // wallclock on the build host) and treated them as if UTC, drifting the
+  // displayed build time by the host TZ offset.
+#ifdef BTCLOCK_BUILD_UTC_SECONDS
+  ctx.last_build_time_unix = BTCLOCK_BUILD_UTC_SECONDS;
+#endif
   ctx.available_fonts = cfg.available_fonts;
   ctx.available_pools = cfg.available_pools;
   ctx.available_currencies = cfg.available_currencies;

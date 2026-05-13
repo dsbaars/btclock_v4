@@ -334,7 +334,7 @@ context.
 | `fsRev` | string | compile-time | LittleFS bundle version string. Stamped from the firmware's `PROJECT_VER` so a build that produces firmware + WebUI from one tree reports `fsRev == gitRev`. |
 | `gitRev` | string | compile-time | Git SHA of the firmware. Omitted when unknown. |
 | `gitTag` | string | compile-time | Git tag, when the build was tagged. Omitted when empty. |
-| `lastBuildTime` | int | compile-time | Firmware build time as Unix seconds (UTC). Omitted when the compiler emitted an unparseable `__DATE__`. |
+| `lastBuildTime` | int | configure-time | Firmware build time as Unix seconds (UTC). Stamped by CMake (`string(TIMESTAMP "%s" UTC)`) when the `webserver` component reconfigures and baked into the binary as `BTCLOCK_BUILD_UTC_SECONDS`. v4-rc.12 onward — earlier builds parsed `esp_app_desc.date / .time` (compiler `__DATE__` / `__TIME__`, local wallclock) and treated them as UTC, drifting by the build host's TZ offset. Refreshes on CMake reconfigure; for an exact stamp on a release build, run `idf.py reconfigure` or build from a clean tree. |
 | `numScreens` | int | board config | Number of EPD panels on this board (3 on Rev A / Rev B, 7 on V8). Emitted identically by `GET /api/status` so the WebUI's custom-text `maxlength` agrees with both endpoints. Not related to the screen-rotation slot count. |
 | `screens[]` | array of objects | `kScreenKinds` + NVS | Per-screen rotation catalogue, see the Display section. |
 | `availableFonts[]` | array of `{ id, hasBtcSymbol }` | `catalog_available_font_catalog.gen.hpp` | Bundled digit fonts the WebUI picker lists. `hasBtcSymbol` is baked when fonts are regenerated (per-TTF cmap), so the ₿ marker toggle can track `fontName` immediately without a settings refetch. |

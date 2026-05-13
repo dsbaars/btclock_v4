@@ -50,6 +50,23 @@ endif()
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     BTCLOCK_GIT_TAG="${_BTCLOCK_GIT_EXACT_TAG}")
 
+# `lastBuildTime` (the SystemInfo "Build time" row). Stamped here in UTC
+# Unix seconds at CMake configure time and baked into control_server.cpp
+# as a compile definition. v4-rc.12 onward replaces the older
+# `__DATE__` + `__TIME__` parse path, which silently treated the
+# compiler's local-wallclock stamp as UTC and so drifted by the build
+# host's offset (a CEST build appeared two hours in the future to a
+# CEST viewer once the WebUI re-localised it).
+#
+# Trade-off: `string(TIMESTAMP)` only re-evaluates on CMake re-configure,
+# not on every `idf.py build`. CI release builds reconfigure from a
+# clean tree so the stamp lands on the actual build moment; for local
+# incremental rebuilds the stamp lags behind until the next reconfigure
+# (touch CMakeLists.txt or run `idf.py reconfigure` to refresh).
+string(TIMESTAMP _BTCLOCK_BUILD_UTC_SECONDS "%s" UTC)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    BTCLOCK_BUILD_UTC_SECONDS=${_BTCLOCK_BUILD_UTC_SECONDS}LL)
+
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     # Serve portal with Content-Encoding: gzip — ~65 % flash saving vs raw.
     add_custom_command(

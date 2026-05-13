@@ -134,7 +134,6 @@ add_executable(btclock_host_tests
     test_fit_text_px.cpp
     test_landscape_rotation.cpp
     test_refresh_policy.cpp
-    test_build_time.cpp
     test_block_event_policy.cpp
     test_block_height_validator.cpp
     test_vertical_desc.cpp
@@ -190,7 +189,6 @@ add_executable(btclock_host_tests
     ../components/webserver/sse_frame.cpp
     ../components/webserver/auth_gate_logic.cpp
     ../components/settings/settings_api.cpp
-    ../components/settings/build_time.cpp
     ../components/settings/nostr_config.cpp
     ../components/dnd/dnd_window.cpp
     vendor/cJSON.c
