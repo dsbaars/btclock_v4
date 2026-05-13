@@ -105,7 +105,7 @@ uses to dim the LEDs and frontlight at night.
 
 **Nostr relay** exposes the configured relay URL as the entity state
 and a `connected` boolean as an attribute, so a single template can
-pick either. See [Nostr zap setup](HANDBOOK.md#9-nostr-zap-setup) for
+pick either. See [Nostr zap setup](HANDBOOK.md#9-nostr-zap-and-wallet-connect-setup) for
 what the relay is doing.
 
 ![Sensors](img/homeassistant/section_sensors.png){ style="max-width:480px;max-height:700px" }
@@ -139,7 +139,7 @@ full reboot when a single upstream feed gets stuck.
 
 **Simulate Nostr Zap** triggers the full zap effect (LED flash plus
 on-screen overlay) without needing a real zap. Handy for verifying
-[Nostr zap setup](HANDBOOK.md#9-nostr-zap-setup) end-to-end, or for
+[Nostr zap setup](HANDBOOK.md#9-nostr-zap-and-wallet-connect-setup) end-to-end, or for
 testing automations that react to the zap event.
 
 **OTA state** is on while a firmware update is downloading or

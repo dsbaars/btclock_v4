@@ -25,7 +25,7 @@ reaches a device.
 ### WebUI `minFirmware`
 
 The WebUI bundle declares a semver **`minFirmware`** in
-[`data/src/lib/manifest.json`](../data/src/lib/manifest.json).
+[`data/src/lib/manifest.json`](https://git.btclock.dev/btclock/webui/src/branch/v4/src/lib/manifest.json).
 Raise it when this checkout's settings UI or cold-start parsers **require**
 fields or JSON shapes that older firmware cannot emit (see also the comment
 block in `data/gzip_build.py`). The value is copied into `build_gz/www/manifest.json`
