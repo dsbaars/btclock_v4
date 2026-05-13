@@ -722,11 +722,6 @@ esp_err_t ControlServer::Start() {
   // and returns. Use this to triage "/api/status shows huge heap but
   // largestFreeBlock is tiny" fragmentation reports without serial.
   reg("/api/diag/heap", HTTP_GET, TrampolineDiagHeap);
-  // NWC runtime-state snapshot. Off-path counters for diagnosing
-  // "topup landed but no overlay" — the regular log path of
-  // ESP_LOGD/ESP_LOGI hides per-event drops that this endpoint surfaces
-  // as monotonic totals. Auth-gated like every other /api endpoint.
-  reg("/api/nwc/debug", HTTP_GET, TrampolineNwcDebug);
 #if CONFIG_HTTPD_WS_SUPPORT
   reg_ws(kWsPreviewPath, TrampolineWsPreview);
 #endif
@@ -921,9 +916,6 @@ esp_err_t ControlServer::TrampolineHeapTraceStop(httpd_req_t* req) {
 }
 esp_err_t ControlServer::TrampolineDiagHeap(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleDiagHeap(req);
-}
-esp_err_t ControlServer::TrampolineNwcDebug(httpd_req_t* req) {
-  return static_cast<ControlServer*>(req->user_ctx)->HandleNwcDebug(req);
 }
 esp_err_t ControlServer::TrampolineWsPreview(httpd_req_t* req) {
   return static_cast<ControlServer*>(req->user_ctx)->HandleWsPreview(req);
@@ -1578,25 +1570,6 @@ esp_err_t ControlServer::HandleDiagHeap(httpd_req_t* req) {
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);
   return SendJsonChar(req, txt);
-}
-
-esp_err_t ControlServer::HandleNwcDebug(httpd_req_t* req) {
-  if (!RequireHttpAuth(req)) return ESP_OK;
-  // The hook returns "" when NWC was never wired (AP mode, disabled
-  // in settings, parse error). 503 surfaces that distinctly from a
-  // legitimately empty counter array — useful when the WebUI / curl
-  // loop is debugging the boot path itself.
-  if (!cfg_.nwc_debug_json) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
-                        "nwc_debug not wired");
-    return ESP_FAIL;
-  }
-  const std::string body = cfg_.nwc_debug_json();
-  if (body.empty()) {
-    httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "oom");
-    return ESP_FAIL;
-  }
-  return SendJson(req, body);
 }
 
 esp_err_t ControlServer::HandleWsPreview(httpd_req_t* req) {

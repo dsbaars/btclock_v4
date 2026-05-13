@@ -12,10 +12,6 @@ TEST_CASE("BuildGetBalanceRequest emits the bit-fixed NIP-47 payload") {
   CHECK(BuildGetBalanceRequest() == R"({"method":"get_balance","params":{}})");
 }
 
-TEST_CASE("BuildGetInfoRequest emits the bit-fixed NIP-47 payload") {
-  CHECK(BuildGetInfoRequest() == R"({"method":"get_info","params":{}})");
-}
-
 TEST_CASE("DecodeBalanceResponse: spec-shaped success payload") {
   const std::string json =
       R"({"result_type":"get_balance","result":{"balance":10000}})";
@@ -69,30 +65,6 @@ TEST_CASE("DecodeBalanceResponse: garbage rejected") {
   CHECK(DecodeBalanceResponse("{}", out, err) == RpcError::kMissingResultType);
   CHECK(DecodeBalanceResponse(R"({"result_type":"get_balance"})", out, err) ==
         RpcError::kMissingResult);
-}
-
-TEST_CASE("DecodeInfoResponse: spec-shaped success payload") {
-  const std::string json =
-      R"({"result_type":"get_info","result":{
-            "alias":"Alby",
-            "color":"#ff8800",
-            "pubkey":"03abcdef0123456789",
-            "network":"mainnet",
-            "block_height":820000,
-            "methods":["pay_invoice","get_balance","make_invoice"],
-            "notifications":["payment_received","payment_sent"]
-         }})";
-  InfoResponse out;
-  WalletError err;
-  CHECK(DecodeInfoResponse(json, out, err) == RpcError::kOk);
-  CHECK(out.alias == "Alby");
-  CHECK(out.pubkey == "03abcdef0123456789");
-  CHECK(out.network == "mainnet");
-  CHECK(out.block_height == 820000u);
-  CHECK(out.methods.size() == 3);
-  CHECK(out.methods[0] == "pay_invoice");
-  CHECK(out.notifications.size() == 2);
-  CHECK(out.notifications[1] == "payment_sent");
 }
 
 TEST_CASE("DecodeInfoEvent: INFO event content + tags") {

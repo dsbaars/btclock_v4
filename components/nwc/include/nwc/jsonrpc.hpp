@@ -28,13 +28,6 @@ namespace nwc {
 // output is the literal `{"method":"get_balance","params":{}}`.
 std::string BuildGetBalanceRequest();
 
-// Build the plaintext payload for `get_info`. Same shape — no
-// params. The wallet's response carries `methods`, `notifications`
-// and a few wallet-side details (alias, color, pubkey). We don't
-// usually call this on every poll cycle; it's part of the bootstrap
-// handshake.
-std::string BuildGetInfoRequest();
-
 // Build the plaintext payload for `list_transactions`. Only the
 // fields the boot-poll path uses are wired here — `from`/`until`
 // (unix seconds) bound the window, `unpaid=false` filters out
@@ -76,22 +69,6 @@ struct WalletError {
 // populated and `out` left as default-constructed.
 RpcError DecodeBalanceResponse(const std::string& json, BalanceResponse& out,
                                WalletError& err);
-
-// Decoded `get_info` response. v1 surfaces just the bits the device
-// uses; everything else is silently dropped. `methods` and
-// `notifications` are split on whitespace per the wallet-advertised
-// space-separated form.
-struct InfoResponse {
-  std::string alias;
-  std::string pubkey;   // wallet's own pubkey (info, not used in tagging)
-  std::string network;  // mainnet / testnet / signet / regtest
-  uint32_t block_height = 0;
-  std::vector<std::string> methods;
-  std::vector<std::string> notifications;
-};
-
-RpcError DecodeInfoResponse(const std::string& json, InfoResponse& out,
-                            WalletError& err);
 
 // ----- INFO event (kind 13194) content + tags decoder -----
 

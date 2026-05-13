@@ -9,6 +9,7 @@ idf_component_register(
         "src/event_sign.cpp"
         "src/nip4x.cpp"
         "src/nostr_data_source.cpp"
+        "src/json_emit.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_websocket_client esp-tls data_core cjson secp256k1
              tcp_transport proxy_transport prefs settings

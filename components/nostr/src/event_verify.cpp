@@ -18,6 +18,7 @@
 #include <string>
 
 #include "nostr/event.hpp"
+#include "nostr/json_emit.hpp"
 #include "secp256k1.h"
 #include "secp256k1_extrakeys.h"
 #include "secp256k1_schnorrsig.h"
@@ -26,62 +27,13 @@ namespace btclock {
 namespace nostr {
 namespace {
 
-// Append `s` as a JSON string literal (with surrounding quotes) using
-// the NIP-01 escape set. UTF-8 pass-through; the parsed `content`
-// already had its escapes decoded, so we re-encode here — the result
-// must be byte-identical to whatever the original signer hashed.
-void AppendJsonString(std::string& out, const std::string& s) {
-  out.push_back('"');
-  for (char ch : s) {
-    const unsigned char c = static_cast<unsigned char>(ch);
-    switch (c) {
-      case '"':
-        out.append("\\\"");
-        break;
-      case '\\':
-        out.append("\\\\");
-        break;
-      case '\n':
-        out.append("\\n");
-        break;
-      case '\r':
-        out.append("\\r");
-        break;
-      case '\t':
-        out.append("\\t");
-        break;
-      case '\b':
-        out.append("\\b");
-        break;
-      case '\f':
-        out.append("\\f");
-        break;
-      default:
-        out.push_back(static_cast<char>(c));
-        break;
-    }
-  }
-  out.push_back('"');
-}
-
-void AppendUint(std::string& out, uint64_t n) {
-  char buf[24];
-  // Manual formatting — avoids snprintf locale surprises and is fast.
-  size_t i = 0;
-  if (n == 0) {
-    buf[i++] = '0';
-  } else {
-    char tmp[24];
-    size_t j = 0;
-    while (n != 0) {
-      tmp[j++] = static_cast<char>('0' + (n % 10));
-      n /= 10;
-    }
-    while (j != 0) {
-      buf[i++] = tmp[--j];
-    }
-  }
-  out.append(buf, i);
+using ::btclock::nostr::json_emit::AppendString;
+using ::btclock::nostr::json_emit::AppendUint;
+// Aliased for call-site readability: existing serializer code below
+// reads better with the JSON-specific noun than the broader namespace
+// path.
+inline void AppendJsonString(std::string& out, const std::string& s) {
+  AppendString(out, s);
 }
 
 // SHA-256 — public-domain implementation lifted to constexpr-friendly

@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "nostr/event_sign.hpp"
+#include "nostr/json_emit.hpp"
 #include "nostr/subscription_manager.hpp"
 
 namespace btclock {
@@ -47,61 +48,8 @@ const char* EncryptionTagText(nostr::EncryptionVariant v) {
   return v == nostr::EncryptionVariant::kNip44V2 ? "nip44_v2" : "nip04";
 }
 
-// Append a JSON string literal with the minimal NIP-01 escape set.
-// Same shape as `event_verify.cpp::AppendJsonString` — we don't reach
-// into that file because it's in an anonymous namespace, and the
-// payloads here are small enough that a local copy is cheaper than
-// extracting a header.
-void AppendJsonString(std::string& out, const std::string& s) {
-  out.push_back('"');
-  for (char ch : s) {
-    const unsigned char c = static_cast<unsigned char>(ch);
-    switch (c) {
-      case '"':
-        out.append("\\\"");
-        break;
-      case '\\':
-        out.append("\\\\");
-        break;
-      case '\n':
-        out.append("\\n");
-        break;
-      case '\r':
-        out.append("\\r");
-        break;
-      case '\t':
-        out.append("\\t");
-        break;
-      case '\b':
-        out.append("\\b");
-        break;
-      case '\f':
-        out.append("\\f");
-        break;
-      default:
-        out.push_back(static_cast<char>(c));
-        break;
-    }
-  }
-  out.push_back('"');
-}
-
-void AppendUint(std::string& out, uint64_t n) {
-  char buf[24];
-  size_t i = 0;
-  if (n == 0) {
-    buf[i++] = '0';
-  } else {
-    char tmp[24];
-    size_t j = 0;
-    while (n != 0) {
-      tmp[j++] = static_cast<char>('0' + (n % 10));
-      n /= 10;
-    }
-    while (j != 0) buf[i++] = tmp[--j];
-  }
-  out.append(buf, i);
-}
+using ::btclock::nostr::json_emit::AppendString;
+using ::btclock::nostr::json_emit::AppendUint;
 
 // Serialize a NIP-01 event to the relay wire format:
 //   ["EVENT",{"id":"…","pubkey":"…","created_at":…,"kind":…,
@@ -113,9 +61,9 @@ std::string SerializeEventFrame(const nostr::Event& ev) {
   std::string out;
   out.reserve(256 + ev.content.size());
   out.append(R"(["EVENT",{"id":)");
-  AppendJsonString(out, ev.id);
+  AppendString(out, ev.id);
   out.append(R"(,"pubkey":)");
-  AppendJsonString(out, ev.pubkey);
+  AppendString(out, ev.pubkey);
   out.append(R"(,"created_at":)");
   AppendUint(out, ev.created_at);
   out.append(R"(,"kind":)");
@@ -127,14 +75,14 @@ std::string SerializeEventFrame(const nostr::Event& ev) {
     const auto& tag = ev.tags[i];
     for (size_t j = 0; j < tag.values.size(); ++j) {
       if (j != 0) out.push_back(',');
-      AppendJsonString(out, tag.values[j]);
+      AppendString(out, tag.values[j]);
     }
     out.push_back(']');
   }
   out.append(R"(],"content":)");
-  AppendJsonString(out, ev.content);
+  AppendString(out, ev.content);
   out.append(R"(,"sig":)");
-  AppendJsonString(out, ev.sig);
+  AppendString(out, ev.sig);
   out.append("}]");
   return out;
 }
@@ -322,11 +270,6 @@ bool NwcClient::RequestGetBalance() {
   return PublishSignedRequest(BuildGetBalanceRequest());
 }
 
-bool NwcClient::RequestGetInfo() {
-  inflight_method_ = "get_info";
-  return PublishSignedRequest(BuildGetInfoRequest());
-}
-
 bool NwcClient::RequestListTransactions(int64_t from_secs, uint32_t limit) {
   inflight_method_ = "list_transactions";
   // until=0 → omit field, wallet defaults to "now". The boot-poll
@@ -337,34 +280,20 @@ bool NwcClient::RequestListTransactions(int64_t from_secs, uint32_t limit) {
 
 void NwcClient::HandleEvent(const nostr::Event& ev) {
   if (state_ == State::kFatal) return;
-  // Count every event the relay handed us BEFORE the per-kind switch
-  // so /api/nwc/debug can distinguish "relay never delivered" from
-  // "delivered but the per-kind handler dropped it". `now_` may be
-  // null pre-Start so guard the timestamp.
-  events_total_.fetch_add(1);
-  last_kind_.store(ev.kind);
-  last_event_ms_.store(now_ ? now_() * 1000 : 0);
   switch (ev.kind) {
     case kKindInfo:
-      events_info_.fetch_add(1);
       OnInfoEvent(ev);
       return;
     case kKindResponse:
-      events_response_.fetch_add(1);
       OnResponse(ev);
       return;
     case kKindNotifModern:
-      events_notif_modern_.fetch_add(1);
-      OnNotification(ev);
-      return;
     case kKindNotifLegacy:
-      events_notif_legacy_.fetch_add(1);
       OnNotification(ev);
       return;
     default:
       // Quietly ignore unrelated kinds — the subscription filter is
       // already kind-restricted but a permissive relay might leak.
-      events_other_.fetch_add(1);
       return;
   }
 }
@@ -406,22 +335,9 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
   }
 
   if (!LoadKeys()) return;
-  // For NIP-44 v2 we can leverage the cached conversation key.
-  // Construct a `WithKeys` decrypt either way — keeps the call site
-  // simple.
-  decrypt_attempts_.fetch_add(1);
   nostr::Nip4xDecryptResult dec =
       nostr::Decrypt(variant, seckey_, wallet_pub_, ev.content);
-  if (!dec.ok) {
-    if (variant == nostr::EncryptionVariant::kNip44V2) {
-      decrypt_fail_nip44_.fetch_add(1);
-    } else {
-      decrypt_fail_nip04_.fetch_add(1);
-    }
-    return;
-  }
-  decrypt_ok_.fetch_add(1);
-  last_response_ms_.store(now_ ? now_() * 1000 : 0);
+  if (!dec.ok) return;
 
   // Match by e-tag if present; otherwise just trust the kind 23195
   // came in for us (the relay filter already enforces `#p =
@@ -440,46 +356,15 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
     WalletError werr;
     const bool decoded =
         DecodeBalanceResponse(dec.plaintext, resp, werr) == RpcError::kOk;
-    if (decoded) {
-      decode_resp_ok_.fetch_add(1);
-      balance_msat_cache_.store(resp.balance_msat);
-    } else {
-      decode_resp_fail_.fetch_add(1);
-    }
+    if (decoded) balance_msat_cache_.store(resp.balance_msat);
     // Clear the inflight bookkeeping BEFORE firing the callback —
     // callbacks may issue a follow-up request (e.g. boot-time
     // list_transactions chained off on_balance) which would set new
     // inflight state; clearing after the callback would nuke it and
-    // drop the next response on the floor. We don't auto-retry on
-    // kWalletError here — the higher-layer refresh tick will fire
-    // the next request.
+    // drop the next response on the floor.
     inflight_request_id_.clear();
     inflight_method_.clear();
-    if (decoded && on_balance_) {
-      cb_on_balance_dispatched_.fetch_add(1);
-      on_balance_(resp.balance_msat);
-    }
-    return;
-  }
-  if (inflight_method_ == "get_info" &&
-      (matches_inflight || inflight_request_id_.empty())) {
-    InfoResponse info;
-    WalletError werr;
-    const bool decoded =
-        DecodeInfoResponse(dec.plaintext, info, werr) == RpcError::kOk;
-    if (decoded) {
-      decode_resp_ok_.fetch_add(1);
-    } else {
-      decode_resp_fail_.fetch_add(1);
-    }
-    inflight_request_id_.clear();
-    inflight_method_.clear();
-    if (decoded && on_ready_) {
-      InfoEvent legacy_info;
-      legacy_info.methods = info.methods;
-      legacy_info.notifications = info.notifications;
-      on_ready_(legacy_info);
-    }
+    if (decoded && on_balance_) on_balance_(resp.balance_msat);
     return;
   }
   if (inflight_method_ == "list_transactions" &&
@@ -488,49 +373,36 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
     WalletError werr;
     const bool decoded = DecodeListTransactionsResponse(dec.plaintext, txs,
                                                         werr) == RpcError::kOk;
-    if (decoded) {
-      decode_resp_ok_.fetch_add(1);
-    } else {
-      decode_resp_fail_.fetch_add(1);
-    }
     inflight_request_id_.clear();
     inflight_method_.clear();
     if (decoded) {
       // Fan each settled transaction out as if a live notification
-      // had landed. Same counters, same on_payment_ callback, same
-      // overlay-trigger plumbing — only the most recent one ends up
-      // displayed because the screen-manager hand-off is a single
-      // pending flag, but every tx still updates the snapshot's
-      // `nwc_last_payment` (the *last* iteration wins). Iterate in
-      // ascending settled order so "last" = newest.
+      // had landed. Iterate in ascending settled order so the *last*
+      // ApplyPaymentToBalance call (the newest tx) wins for the
+      // single-slot last-payment debug fields.
       std::sort(txs.begin(), txs.end(),
                 [](const PaymentNotification& a, const PaymentNotification& b) {
                   return a.settled_at < b.settled_at;
                 });
-      for (const auto& pn : txs) {
-        // Balance bumps stay coherent with the live-notification
-        // path so the cache reflects the wallet state. Optimistic
-        // arithmetic, same as DispatchHeavy.
-        if (pn.direction == PaymentDirection::kIncoming) {
-          balance_msat_cache_.fetch_add(pn.amount_msat);
-        } else if (pn.direction == PaymentDirection::kOutgoing) {
-          const uint64_t total = pn.amount_msat + pn.fees_paid_msat;
-          uint64_t cur = balance_msat_cache_.load();
-          uint64_t next = (cur > total) ? (cur - total) : 0ULL;
-          balance_msat_cache_.store(next);
-        }
-        last_pay_direction_.store(static_cast<uint8_t>(pn.direction));
-        last_pay_amount_sats_.store(
-            static_cast<int64_t>(pn.amount_msat / 1000ULL));
-        last_pay_received_ms_.store(now_ ? now_() * 1000 : 0);
-        if (on_payment_) {
-          cb_on_payment_dispatched_.fetch_add(1);
-          on_payment_(pn);
-        }
-      }
+      for (const auto& pn : txs) ApplyPaymentToBalance(pn);
     }
     return;
   }
+}
+
+void NwcClient::ApplyPaymentToBalance(const PaymentNotification& pn) {
+  if (pn.direction == PaymentDirection::kIncoming) {
+    // Optimistic CAS-free add — sole writer for kIncoming/kOutgoing.
+    // The next OnResponse(get_balance) overwrites with the wallet's
+    // authoritative value, so a torn read race here is self-healing.
+    balance_msat_cache_.fetch_add(pn.amount_msat);
+  } else if (pn.direction == PaymentDirection::kOutgoing) {
+    const uint64_t total = pn.amount_msat + pn.fees_paid_msat;
+    uint64_t cur = balance_msat_cache_.load();
+    uint64_t next = (cur > total) ? (cur - total) : 0ULL;
+    balance_msat_cache_.store(next);
+  }
+  if (on_payment_) on_payment_(pn);
 }
 
 void NwcClient::OnNotification(const nostr::Event& ev) {
@@ -544,11 +416,10 @@ void NwcClient::OnNotification(const nostr::Event& ev) {
     raw.kind = ev.kind;
     raw.content = ev.content;
     raw.event_id = ev.id;
-    if (notif_enqueue_(std::move(raw))) {
-      notif_enqueued_.fetch_add(1);
-    } else {
-      notif_dropped_.fetch_add(1);
-    }
+    // Drop on full-queue / shutdown is the queue's job; we don't
+    // surface it here. The queue is sized for bursts (8) much larger
+    // than realistic conversational rate.
+    (void)notif_enqueue_(std::move(raw));
     return;
   }
   // Fallback — no queue wired (host tests, or pre-init). Run the heavy
@@ -557,7 +428,6 @@ void NwcClient::OnNotification(const nostr::Event& ev) {
 }
 
 void NwcClient::DispatchRawNotification(const RawNotification& raw) {
-  notif_dispatched_.fetch_add(1);
   DispatchHeavy(raw.kind, raw.content);
 }
 
@@ -569,80 +439,13 @@ void NwcClient::DispatchHeavy(uint32_t kind, const std::string& content) {
       (kind == kKindNotifModern) ? nostr::EncryptionVariant::kNip44V2
                                  : nostr::EncryptionVariant::kNip04;
   if (!LoadKeys()) return;
-  decrypt_attempts_.fetch_add(1);
   nostr::Nip4xDecryptResult dec =
       nostr::Decrypt(variant, seckey_, wallet_pub_, content);
-  if (!dec.ok) {
-    if (variant == nostr::EncryptionVariant::kNip44V2) {
-      decrypt_fail_nip44_.fetch_add(1);
-    } else {
-      decrypt_fail_nip04_.fetch_add(1);
-    }
-    return;
-  }
-  decrypt_ok_.fetch_add(1);
+  if (!dec.ok) return;
 
   PaymentNotification pn;
-  if (DecodePaymentNotification(dec.plaintext, pn) != RpcError::kOk) {
-    decode_notif_fail_.fetch_add(1);
-    return;
-  }
-  decode_notif_ok_.fetch_add(1);
-  if (pn.direction == PaymentDirection::kIncoming) {
-    // Optimistically bump the cached balance — keeps the displayed
-    // sats fresh between get_balance polls. Atomic CAS-free update
-    // is fine: we're the sole writer for kIncoming/kOutgoing, and a
-    // concurrent OnResponse on the WS task simply overwrites with the
-    // wallet's authoritative value next poll.
-    balance_msat_cache_.fetch_add(pn.amount_msat);
-  } else if (pn.direction == PaymentDirection::kOutgoing) {
-    const uint64_t total = pn.amount_msat + pn.fees_paid_msat;
-    uint64_t cur = balance_msat_cache_.load();
-    uint64_t next = (cur > total) ? (cur - total) : 0ULL;
-    balance_msat_cache_.store(next);
-  }
-  last_pay_direction_.store(static_cast<uint8_t>(pn.direction));
-  last_pay_amount_sats_.store(static_cast<int64_t>(pn.amount_msat / 1000ULL));
-  last_pay_received_ms_.store(now_ ? now_() * 1000 : 0);
-  if (on_payment_) {
-    cb_on_payment_dispatched_.fetch_add(1);
-    on_payment_(pn);
-  }
-}
-
-DebugSnapshot NwcClient::GetDebugSnapshot() const {
-  DebugSnapshot s;
-  s.state = state_;
-  s.encryption = encryption_;
-  s.balance_msat_cache = balance_msat_cache_.load();
-  s.sub_id_info = sub_id_info_;
-  s.sub_id_rpc = sub_id_rpc_;
-  s.events_total = events_total_.load();
-  s.events_info = events_info_.load();
-  s.events_response = events_response_.load();
-  s.events_notif_modern = events_notif_modern_.load();
-  s.events_notif_legacy = events_notif_legacy_.load();
-  s.events_other = events_other_.load();
-  s.last_kind = last_kind_.load();
-  s.last_event_ms = last_event_ms_.load();
-  s.last_response_ms = last_response_ms_.load();
-  s.decrypt_attempts = decrypt_attempts_.load();
-  s.decrypt_ok = decrypt_ok_.load();
-  s.decrypt_fail_nip44 = decrypt_fail_nip44_.load();
-  s.decrypt_fail_nip04 = decrypt_fail_nip04_.load();
-  s.decode_notif_ok = decode_notif_ok_.load();
-  s.decode_notif_fail = decode_notif_fail_.load();
-  s.decode_resp_ok = decode_resp_ok_.load();
-  s.decode_resp_fail = decode_resp_fail_.load();
-  s.cb_on_payment_dispatched = cb_on_payment_dispatched_.load();
-  s.cb_on_balance_dispatched = cb_on_balance_dispatched_.load();
-  s.last_pay_direction = last_pay_direction_.load();
-  s.last_pay_amount_sats = last_pay_amount_sats_.load();
-  s.last_pay_received_ms = last_pay_received_ms_.load();
-  s.notif_enqueued = notif_enqueued_.load();
-  s.notif_dropped = notif_dropped_.load();
-  s.notif_dispatched = notif_dispatched_.load();
-  return s;
+  if (DecodePaymentNotification(dec.plaintext, pn) != RpcError::kOk) return;
+  ApplyPaymentToBalance(pn);
 }
 
 }  // namespace nwc

@@ -65,37 +65,6 @@ class SubscriptionManager {
   // can inject synthetic frames; production wiring is automatic.
   void HandleTextFrame(const char* data, size_t len);
 
-  // Debug counter: number of times ReissueAll() has fired since
-  // construction. A non-zero value indicates the relay socket has
-  // bounced at least once and the manager re-shipped every active REQ
-  // — useful for the /api/nwc/debug snapshot when investigating
-  // "events never reach the device" complaints.
-  uint32_t reissue_count() const { return reissue_count_.load(); }
-  // Number of frames the parser swallowed. parse_fail_ counts
-  // frames that failed ParseEnvelope (truncated JSON, malformed
-  // shape); event_total_ counts EnvelopeType::kEvent that reached
-  // the on_event_ dispatch (or would have, if it were wired).
-  uint32_t parse_fail_count() const { return parse_fail_count_.load(); }
-  uint32_t event_dispatch_count() const {
-    return event_dispatch_count_.load();
-  }
-  // Sub id of the last EVENT envelope routed to on_event_. Empty
-  // before the first event lands. Lets the debug snapshot prove the
-  // RPC subscription actually delivered events vs. the response
-  // arrived via some other relay-side routing.
-  std::string last_event_sub_id() const {
-    std::lock_guard<std::mutex> lk(mu_);
-    return last_event_sub_id_;
-  }
-  // First N bytes of the most recent frame ParseEnvelope rejected.
-  // Lets the debug snapshot reveal whether the relay is shipping
-  // something the parser doesn't recognise (NIP-42 AUTH challenges,
-  // NIP-20 OK ack with unexpected shape, …) without a serial console.
-  std::string last_parse_fail_head() const {
-    std::lock_guard<std::mutex> lk(mu_);
-    return last_parse_fail_head_;
-  }
-
  private:
   // Called by RelayClient on connect/disconnect via our installed hook.
   void OnConnect(bool connected);
@@ -106,13 +75,8 @@ class SubscriptionManager {
   RelayClient& relay_;
   mutable std::mutex mu_;
   std::map<std::string, Filter> subs_;  // sub_id -> filter
-  std::string last_event_sub_id_;
-  std::string last_parse_fail_head_;
   EventCallback on_event_;
   EoseCallback on_eose_;
-  std::atomic<uint32_t> reissue_count_{0};
-  std::atomic<uint32_t> parse_fail_count_{0};
-  std::atomic<uint32_t> event_dispatch_count_{0};
 };
 
 // Build a NIP-01 REQ JSON string for the given sub_id + filter. Exposed

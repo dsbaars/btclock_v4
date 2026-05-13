@@ -128,10 +128,6 @@ std::string BuildGetBalanceRequest() {
   return std::string(R"({"method":"get_balance","params":{}})");
 }
 
-std::string BuildGetInfoRequest() {
-  return std::string(R"({"method":"get_info","params":{}})");
-}
-
 std::string BuildListTransactionsRequest(int64_t from_secs, int64_t until_secs,
                                          uint32_t limit) {
   // Hand-rolled JSON. The plaintext is signed inside the encrypted
@@ -175,51 +171,6 @@ RpcError DecodeBalanceResponse(const std::string& json, BalanceResponse& out,
     cJSON_Delete(f.root);
     return RpcError::kMissingResult;
   }
-  cJSON_Delete(f.root);
-  return RpcError::kOk;
-}
-
-RpcError DecodeInfoResponse(const std::string& json, InfoResponse& out,
-                            WalletError& err) {
-  DecodeFrame f = OpenResponse(json, "get_info");
-  if (f.err != RpcError::kOk) {
-    if (f.err == RpcError::kWalletError) err = f.wallet_err;
-    cJSON_Delete(f.root);
-    return f.err;
-  }
-  const cJSON* result = cJSON_GetObjectItemCaseSensitive(f.root, "result");
-  if (result == nullptr || !cJSON_IsObject(result)) {
-    cJSON_Delete(f.root);
-    return RpcError::kMissingResult;
-  }
-  ReadString(result, "alias", out.alias);
-  ReadString(result, "pubkey", out.pubkey);
-  ReadString(result, "network", out.network);
-  uint64_t bh = 0;
-  if (ReadUint64(result, "block_height", bh)) {
-    out.block_height = static_cast<uint32_t>(bh & 0xffffffffu);
-  }
-  // methods + notifications can be either a JSON array of strings
-  // (this is what `get_info` returns) or a single space-separated
-  // string (this is what the kind 13194 INFO event content uses).
-  // Handle both shapes here.
-  auto extract_list = [&](const char* key, std::vector<std::string>& dest) {
-    const cJSON* it = cJSON_GetObjectItemCaseSensitive(result, key);
-    if (it == nullptr) return;
-    if (cJSON_IsString(it) && it->valuestring != nullptr) {
-      SplitWhitespace(it->valuestring, dest);
-    } else if (cJSON_IsArray(it)) {
-      dest.clear();
-      const cJSON* el = nullptr;
-      cJSON_ArrayForEach(el, it) {
-        if (cJSON_IsString(el) && el->valuestring != nullptr) {
-          dest.emplace_back(el->valuestring);
-        }
-      }
-    }
-  };
-  extract_list("methods", out.methods);
-  extract_list("notifications", out.notifications);
   cJSON_Delete(f.root);
   return RpcError::kOk;
 }

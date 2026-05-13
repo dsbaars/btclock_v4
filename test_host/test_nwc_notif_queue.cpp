@@ -222,14 +222,9 @@ TEST_CASE("NwcClient: HandleEvent with queue wired only enqueues") {
       R"("notification":{"amount":21000,"description":"hi","payment_hash":"abc"}})";
   auto ev = MakeNotification(notif_json, 23197);
   wc.client->HandleEvent(ev);
-  // Heavy path didn't run.
+  // Heavy path didn't run — payment callback is the externally
+  // observable side-effect of DispatchHeavy, and it stays at 0.
   CHECK(wc.payment_calls == 0);
-  const auto snap = wc.client->GetDebugSnapshot();
-  CHECK(snap.decrypt_attempts == 0);
-  CHECK(snap.decode_notif_ok == 0);
-  CHECK(snap.notif_enqueued == 1);
-  CHECK(snap.notif_dropped == 0);
-  CHECK(snap.notif_dispatched == 0);
   // Queue holds the envelope, content matches the wire form.
   CHECK(wc.queue->size() == 1);
 }
@@ -253,11 +248,6 @@ TEST_CASE("NwcClient::DispatchRawNotification: heavy path fires payment cb") {
   CHECK(wc.payment_calls == 1);
   CHECK(wc.last_payment.direction == nwc::PaymentDirection::kIncoming);
   CHECK(wc.last_payment.amount_msat == 42000u);
-  const auto snap = wc.client->GetDebugSnapshot();
-  CHECK(snap.notif_enqueued == 1);
-  CHECK(snap.notif_dispatched == 1);
-  CHECK(snap.cb_on_payment_dispatched == 1);
-  CHECK(snap.decode_notif_ok == 1);
 }
 
 TEST_CASE("NwcClient: legacy NIP-04 (kind 23196) survives the queue handoff") {
@@ -308,9 +298,10 @@ TEST_CASE("NwcClient: enqueue under saturation increments drop counter") {
   for (int i = 0; i < 3; ++i) {
     wc.client->HandleEvent(MakeNotification(notif_json, 23197));
   }
-  const auto snap = wc.client->GetDebugSnapshot();
-  CHECK(snap.notif_enqueued == 2);
-  CHECK(snap.notif_dropped == 1);
+  // Queue's own counters are the authoritative drop record now that
+  // NwcClient no longer mirrors them — capacity=2 + 3 pushes ⇒ 1
+  // dropped. The queue is the single source of truth for "did we
+  // shed load".
   CHECK(q->pushed() == 2);
   CHECK(q->dropped() == 1);
 }
@@ -329,10 +320,6 @@ TEST_CASE("NwcClient: without queue wired, OnNotification still works inline") {
   wc.client->HandleEvent(MakeNotification(notif_json, 23197));
   CHECK(wc.payment_calls == 1);
   CHECK(wc.queue->size() == 0);  // queue untouched
-  const auto snap = wc.client->GetDebugSnapshot();
-  CHECK(snap.notif_enqueued == 0);
-  CHECK(snap.notif_dropped == 0);
-  CHECK(snap.notif_dispatched == 0);
 }
 
 TEST_CASE("NotificationQueue: producer/consumer threading is race-free") {

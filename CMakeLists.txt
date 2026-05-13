@@ -87,3 +87,17 @@ endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(btclock_v4)
+
+# Link-time optimisation — gated on BTCLOCK_LTO=ON. Saves ~10–40 KiB
+# of .text on Rev A by letting the linker prune cross-TU unreachable
+# code. Off by default because gcc-LTO occasionally breaks IDF's
+# IRAM_ATTR section pinning under aggressive inlining and the failure
+# mode (random crash on RX-DMA path) is far worse than the size win.
+# Rev A is the only variant tight on flash today; the per-variant
+# defaults file flips this on for REV_A only.
+if(BTCLOCK_LTO)
+    idf_build_set_property(COMPILE_OPTIONS
+        "-flto=auto;-ffat-lto-objects;-fno-asynchronous-unwind-tables;-fno-unwind-tables;-fmerge-all-constants"
+        APPEND)
+    idf_build_set_property(LINK_OPTIONS "-flto=auto" APPEND)
+endif()

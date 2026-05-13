@@ -41,7 +41,6 @@
 #include "nostr/subscription_manager.hpp"
 #include "nostr/zap_listener.hpp"
 #include "nwc/client.hpp"
-#include "nwc/debug.hpp"
 #include "nwc/queue.hpp"
 #include "ota_manager.hpp"
 #include "ota_progress.hpp"
@@ -356,61 +355,6 @@ void InitControlApi(AppCtx& ctx) {
         out.push_back({zr->url(), zr->connected()});
       }
       return out;
-    };
-    // /api/nwc/debug builder. AppCtx outlives the ControlServer
-    // (AppCtx declaration order keeps nwc_* ahead of ctrl), and every
-    // counter the snapshot reads is an atomic load, so this lambda is
-    // safe to fire from the httpd worker without a mutex.
-    ccfg.nwc_debug_json = [ctx_ptr]() -> std::string {
-      nwc::NwcDebugInfo info;
-      info.enabled = ctx_ptr->nwc_enabled.load();
-      if (ctx_ptr->nwc_client) {
-        info.client = ctx_ptr->nwc_client->GetDebugSnapshot();
-      }
-      if (ctx_ptr->nwc_relay) {
-        info.wss_url = ctx_ptr->nwc_relay->url();
-        info.wss_connected = ctx_ptr->nwc_relay->connected();
-        info.reconnect_count = ctx_ptr->nwc_relay->reconnect_count();
-        info.last_connect_ms = ctx_ptr->nwc_relay->last_connect_ms();
-        info.last_disconnect_ms = ctx_ptr->nwc_relay->last_disconnect_ms();
-        info.frames_chunk = ctx_ptr->nwc_relay->frames_chunk();
-        info.frames_complete = ctx_ptr->nwc_relay->frames_complete();
-        info.last_frame_bytes = ctx_ptr->nwc_relay->last_frame_bytes();
-        info.last_evt_op_code = ctx_ptr->nwc_relay->last_evt_op_code();
-        info.last_evt_fin = ctx_ptr->nwc_relay->last_evt_fin();
-        info.last_evt_payload_offset =
-            ctx_ptr->nwc_relay->last_evt_payload_offset();
-        info.last_evt_payload_len = ctx_ptr->nwc_relay->last_evt_payload_len();
-        info.last_evt_data_len = ctx_ptr->nwc_relay->last_evt_data_len();
-        info.last_emitted_head = ctx_ptr->nwc_relay->last_emitted_head();
-        for (const auto& r : ctx_ptr->nwc_relay->evt_history()) {
-          nwc::NwcDebugInfo::WssEvt e;
-          e.seq = r.seq;
-          e.op_code = r.op_code;
-          e.fin = r.fin;
-          e.emit = r.emit;
-          e.payload_offset = r.payload_offset;
-          e.payload_len = r.payload_len;
-          e.data_len = r.data_len;
-          info.wss_evt_history.push_back(e);
-        }
-      }
-      if (ctx_ptr->nwc_subs) {
-        info.reissue_count = ctx_ptr->nwc_subs->reissue_count();
-        info.parse_fail_count = ctx_ptr->nwc_subs->parse_fail_count();
-        info.event_dispatch_count = ctx_ptr->nwc_subs->event_dispatch_count();
-        info.last_event_sub_id = ctx_ptr->nwc_subs->last_event_sub_id();
-        info.last_parse_fail_head = ctx_ptr->nwc_subs->last_parse_fail_head();
-      }
-      if (ctx_ptr->nwc_notif_queue) {
-        const auto& q = *ctx_ptr->nwc_notif_queue;
-        info.notif_queue_capacity = static_cast<uint32_t>(q.capacity());
-        info.notif_queue_size = static_cast<uint32_t>(q.size());
-        info.notif_queue_pushed = q.pushed();
-        info.notif_queue_popped = q.popped();
-        info.notif_queue_dropped = q.dropped();
-      }
-      return nwc::BuildNwcDebugJson(info);
     };
     // dataSource=1 plumbs price/blocks straight from the source's
     // per-WS connection probes. dataSource=0 leaves all three callbacks

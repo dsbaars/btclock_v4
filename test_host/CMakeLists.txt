@@ -167,7 +167,6 @@ add_executable(btclock_host_tests
     test_nwc_jsonrpc.cpp
     test_nwc_client.cpp
     test_nwc_balance_screen.cpp
-    test_nwc_debug_json.cpp
     test_nwc_notif_queue.cpp
     test_settings_nwc.cpp
     ../components/settings/nwc_config.cpp
@@ -175,12 +174,12 @@ add_executable(btclock_host_tests
     ../components/nostr/src/request_frame.cpp
     ../components/nostr/src/event_verify.cpp
     ../components/nostr/src/event_sign.cpp
+    ../components/nostr/src/json_emit.cpp
     ../components/nostr/src/nip4x.cpp
     ../components/nwc/src/uri.cpp
     ../components/nwc/src/jsonrpc.cpp
     ../components/nwc/src/client.cpp
     ../components/nwc/src/queue.cpp
-    ../components/nwc/src/debug.cpp
     ../components/secp256k1/src/secp256k1.c
     ../components/secp256k1/src/precomputed_ecmult.c
     ../components/secp256k1/src/precomputed_ecmult_gen.c
