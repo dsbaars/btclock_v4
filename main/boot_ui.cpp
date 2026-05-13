@@ -23,17 +23,18 @@ void RenderSplashScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
   // scale for the whole row). The limiting glyph is whichever needs the
   // smallest FitTextPx to stay inside panel width minus margin.
   //
-  // The 20-px margin (10 px each side on the 122-px short axis) is sized
-  // so the condensed display faces — Antonio (widest 'K' ink ≈63 px @
-  // em=220), Oswald (widest 'O' ≈67 px) — still hit the kSplashMaxPx
-  // ceiling exactly as before, while the wide / monospace faces (Azeret
-  // ~112 px, Atkinson ~112 px, Inter ~123 px) shrink one fit-step further
-  // so their ink never crowds the panel edge. Anything tighter (≤ 14 px)
-  // leaves Azeret with single-digit pixel gaps; the boot splash is the
-  // first impression and that looked cramped on device.
+  // 32-px margin (16 px each side on the 122-px short axis). The whole
+  // Antonio / Oswald set is well below target_w = 90 at em=220 (widest
+  // ink across Antonio, AntonioSemiBold, AntonioBold, Oswald, OswaldBold
+  // is OswaldBold's 'K' at ~75 px) so they still hit kSplashMaxPx — no
+  // visual change relative to the pre-padding build. The wider faces
+  // (Azeret, Roboto, NotoSans, Atkinson, SourceSerif: 103-115 px ink at
+  // em=220; Inter, OpenRunde, Merriweather, Bitter, Ubuntu: 120-136 px)
+  // shrink one or more fit-steps further so their ink lands ~16 px
+  // inside the panel edge instead of single-digit gaps.
   constexpr float kSplashMaxPx = 220.0f;
   constexpr float kSplashMinPx = 100.0f;
-  constexpr int kSplashMarginPx = 20;
+  constexpr int kSplashMarginPx = 32;
   const float uniform_px = MinGlyphFitPxAcross(N, [&](std::size_t i) {
     const char one[2] = {kSplashLetters[i], '\0'};
     const int target_w = panels[i]->Width() - kSplashMarginPx;
