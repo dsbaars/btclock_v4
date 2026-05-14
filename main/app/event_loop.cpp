@@ -128,29 +128,33 @@ constexpr const char* kTag = "btclock";
       // kLongPress instead, which we route here. The other three IDs'
       // long-press events stay dropped, matching the loop's old behaviour.
       //
-      // The ack flash needs special handling on the going-ON edge:
+      // The ack effect needs the bypass path on the going-ON edge:
       // the LED controller suppresses all non-kSetIdle effects while
       // DND is active, so a naive PostLedEffect after SetEnabled(true)
       // gets swallowed by the very state it's announcing. Use the
       // PostLedEffectForce variant — the bypass flag travels with the
-      // queue item so it's race-free against the SetEnabled call.
-      // Follow with kSetIdle so the strip clears (PaintAllOff under
-      // DND), giving the user the full "flash red, then go dark"
-      // visual that matches the audible/tactile model of muting.
-      // Going-OFF doesn't need the force: SetEnabled(false) is
-      // synchronous, the post happens after DND is already cleared,
-      // and the green flash restores the resting LED state on its own.
+      // queue item so it's race-free against the SetEnabled call. The
+      // kDndOn handler itself paints PaintAllOff after the fade so we
+      // don't have to follow up with kSetIdle. Going-OFF doesn't need
+      // the force: SetEnabled(false) is synchronous, the post happens
+      // after DND is already cleared, and kDndOff's PaintResting
+      // restores the strip to its prior state on its own.
+      //
+      // Colours are deliberately distinct from kFlashSuccess /
+      // kFlashError so the cue doesn't read as "boot succeeded" or
+      // "something errored" — DND ON is a soft purple fade-pulse
+      // ("entering sleep"), DND OFF is a warm amber fade-pulse
+      // ("waking up").
       if (ev.event == ButtonEvent::kLongPress) {
         if (ev.id == ButtonId::k0) {
           auto& d = dnd::Instance();
           const bool now_enabled = !d.GetConfig().enabled;
           if (now_enabled) {
-            PostLedEffectForce(LedEffect::kFlashError);
+            PostLedEffectForce(LedEffect::kDndOn);
             d.SetEnabled(true);
-            PostLedEffect(LedEffect::kSetIdle);
           } else {
             d.SetEnabled(false);
-            PostLedEffect(LedEffect::kFlashSuccess);
+            PostLedEffect(LedEffect::kDndOff);
           }
           ESP_LOGI(kTag, "button 1 long-press: DND %s",
                    now_enabled ? "ON" : "OFF");

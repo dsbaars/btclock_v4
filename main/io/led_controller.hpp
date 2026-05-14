@@ -39,6 +39,10 @@
 //                       hold at the tail — rotation paused
 //   kTimerResume        red handbrake hold at the head, then head→tail
 //                       green accel sweep — rotation resumed
+//   kDndOn              soft purple fade-pulse — manual DND just engaged
+//                       (strip then stays dark for the DND window)
+//   kDndOff             warm amber fade-pulse — manual DND just released
+//                       (strip then restores the resting mirror)
 //
 // Global toggles (NVS namespace `"settings"`, same keys the WebUI
 // PATCHes through /api/settings — see settings/pref_keys.hpp):
@@ -79,6 +83,8 @@ enum class LedEffect : uint8_t {
   kPowerTest,
   kTimerPause,
   kTimerResume,
+  kDndOn,
+  kDndOff,
 };
 
 // Snapshot of current prefs + per-pixel colour mirror, returned to the

@@ -262,6 +262,34 @@ void PlayColorBlink(led_strip_handle_t strip, uint32_t rgb, int d_ms,
   }
 }
 
+// Smooth fade in → hold → fade out at `rgb`. Used for DND toggle
+// acknowledgements: the soft envelope reads as a deliberate state
+// transition (going to sleep / waking up), distinct from the abrupt
+// PlayColorBlink shape that already says "success" or "error". The
+// final frame is brightness-0 so callers can layer their own end
+// state (PaintAllOff for DND-on, PaintResting for DND-off) without
+// fighting a residual lit frame.
+//
+// Step count + total fade duration tuned to feel like a single
+// breath at the human-readable cadence; the hold in the middle is
+// what makes the colour register before the fade-out begins.
+void PlayFadePulse(led_strip_handle_t strip, uint32_t rgb) {
+  constexpr int kSteps = 12;
+  constexpr int kFadeStepMs = 25;  // 12 × 25 ms = 300 ms each side
+  constexpr int kHoldMs = 250;
+  const uint8_t peak = CurrentBrightness();
+
+  for (int i = 1; i <= kSteps; ++i) {
+    PaintUniform(strip, rgb, static_cast<uint8_t>((peak * i) / kSteps));
+    vTaskDelay(pdMS_TO_TICKS(kFadeStepMs));
+  }
+  vTaskDelay(pdMS_TO_TICKS(kHoldMs));
+  for (int i = kSteps - 1; i >= 0; --i) {
+    PaintUniform(strip, rgb, static_cast<uint8_t>((peak * i) / kSteps));
+    vTaskDelay(pdMS_TO_TICKS(kFadeStepMs));
+  }
+}
+
 // Rapid multicolour strobe (identify). Matches LED_FLASH_IDENTIFY:
 // red↔cyan twice, then green↔blue twice.
 void PlayIdentify(led_strip_handle_t strip) {
@@ -609,6 +637,27 @@ void Task(void* arg) {
 
         case LedEffect::kTimerResume:
           PlayTimerResume(strip);
+          mode = Mode::kIdle;
+          PaintResting(strip, bright);
+          break;
+
+        case LedEffect::kDndOn:
+          // Soft purple fade-pulse, then strip stays dark — DND is now
+          // active and any subsequent effect would be suppressed
+          // anyway. Skipping PaintResting is the visual cue: "lights
+          // are off because DND ate them, not because the resting
+          // mirror happened to be black".
+          PlayFadePulse(strip, PackRgb(120, 0, 200));
+          mode = Mode::kIdle;
+          PaintAllOff(strip);
+          break;
+
+        case LedEffect::kDndOff:
+          // Warm amber fade-pulse ("waking up"), then restore the
+          // resting mirror so the strip returns to whatever the user
+          // had painted before DND. Bypass bit isn't needed for this
+          // one (DND is off by the time it's queued).
+          PlayFadePulse(strip, PackRgb(255, 140, 0));
           mode = Mode::kIdle;
           PaintResting(strip, bright);
           break;
