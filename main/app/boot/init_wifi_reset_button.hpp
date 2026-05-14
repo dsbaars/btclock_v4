@@ -1,10 +1,14 @@
 // Boot-time wifi-reset hardware path.
 //
-// Polls MCP1 pin 0 (physical "button 1" — leftmost) for a 3 s continuous
-// hold immediately after MCP bring-up. If the button stays held through
-// the whole window, calls settings::PerformWifiReset() which clears the
-// STA credentials and reboots into SoftAP provisioning. Released early
-// → returns silently and normal boot continues.
+// Polls the MCP pin backing the device's front-of-device "button 1"
+// label for a 3 s continuous hold immediately after MCP bring-up. The
+// pin choice honours the `inverseButtons` user pref so the same
+// physical button that does pause/resume at runtime is the one that
+// triggers the wifi reset at boot (default GPA3, inverted GPA0). If
+// the button stays held through the whole window, calls
+// settings::PerformWifiReset() which clears the STA credentials and
+// reboots into SoftAP provisioning. Released early → returns silently
+// and normal boot continues.
 //
 // LED feedback: while the hold is being tracked, the NeoPixel ring runs
 // the kFlashError red effect so the user can tell the device has noticed

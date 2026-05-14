@@ -6,7 +6,9 @@
 #include "freertos/task.h"
 #include "io/led_controller.hpp"
 #include "mcp23017.hpp"
+#include "prefs.hpp"
 #include "settings/factory_reset.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -19,17 +21,27 @@ constexpr const char* kTag = "wifi-reset-btn";
 constexpr int kHoldMs = 3000;
 constexpr int kPollMs = 50;
 
-// Physical pin to monitor: MCP1 GPA0. Per buttons.hpp this is the
-// leftmost physical button ("button 1 in user-facing numbering"). We
-// read the pin directly (not via ButtonReader) because the reader
-// task isn't started this early and we'd rather not spend RAM on a
-// short-lived poll task. Active-low: 0 = pressed.
-constexpr uint8_t kButton1Pin = 0;
+// MCP pin backing the device's front-of-device "button 1" label.
+// The pin depends on the inverseButtons pref (matches the runtime
+// ButtonReader mapping documented in buttons.hpp):
+//
+//   inverseButtons=false (default): button 1 → ButtonId::k0 → GPA3
+//   inverseButtons=true:            button 1 → ButtonId::k0 → GPA0
+//
+// We read the MCP directly here — ButtonReader isn't running this
+// early in boot — but we still want the user-facing button label to
+// stay consistent with what the same button does at runtime.
+uint8_t Button1Pin() {
+  Prefs settings(prefs::kSettingsNs);
+  const bool inverted = settings.GetBool(prefs::kInverseButtons, false);
+  return inverted ? 0 : 3;
+}
 
-bool IsButton1Pressed(Mcp23017& mcp) {
+bool IsButton1Pressed(Mcp23017& mcp, uint8_t pin) {
   uint16_t port = 0;
   if (mcp.ReadPort(&port) != ESP_OK) return false;
-  return (port & (1u << kButton1Pin)) == 0;
+  // Active-low: 0 = pressed.
+  return (port & (1u << pin)) == 0;
 }
 
 }  // namespace
@@ -37,8 +49,9 @@ bool IsButton1Pressed(Mcp23017& mcp) {
 void MaybeWifiResetAtBoot(AppCtx& ctx) {
   if (!ctx.mcp.has_value()) return;
   Mcp23017& mcp = *ctx.mcp;
+  const uint8_t pin = Button1Pin();
 
-  if (!IsButton1Pressed(mcp)) return;
+  if (!IsButton1Pressed(mcp, pin)) return;
 
   ESP_LOGW(kTag, "button 1 held at boot; arming wifi reset (hold %d ms)",
            kHoldMs);
@@ -51,7 +64,7 @@ void MaybeWifiResetAtBoot(AppCtx& ctx) {
   while (elapsed_ms < kHoldMs) {
     vTaskDelay(pdMS_TO_TICKS(kPollMs));
     elapsed_ms += kPollMs;
-    if (!IsButton1Pressed(mcp)) {
+    if (!IsButton1Pressed(mcp, pin)) {
       ESP_LOGI(kTag, "button 1 released after %d ms; aborting wifi reset",
                elapsed_ms);
       return;

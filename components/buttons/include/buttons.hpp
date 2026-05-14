@@ -48,13 +48,33 @@ class ButtonReader {
   // Spawns the background polling task. Safe to call once.
   esp_err_t Start();
 
-  // Default mapping is physical pin `i` → `ButtonId(kNumButtons - 1 - i)`
-  // so the leftmost physical button (GPA0) is button 1 in the user-facing
-  // numbering. SetInverted(true) flips the mapping back to the raw `i`
-  // ordering for users running with the enclosure upside-down. Honours
-  // the `inverseButtons` user pref. Read once at boot — caller sets this
-  // before Start(); a live PATCH requires a reboot to take effect,
-  // matching the SETTINGS.md row.
+  // Default mapping is physical pin `i` → `ButtonId(kNumButtons - 1 - i)`.
+  // SetInverted(true) flips it to the raw `i` ordering for users running
+  // with the enclosure upside-down. Honours the `inverseButtons` user
+  // pref. Read once at boot — caller sets this before Start(); a live
+  // PATCH requires a reboot to take effect, matching the SETTINGS.md row.
+  //
+  // Physical-to-logical mapping reference (the device labels its
+  // buttons 1..4 — the labels are the user-facing names, NOT the
+  // ButtonId index — `button 1` on the front of the device is logical
+  // `ButtonId::k0`). The MCP pin that backs it depends on inversion:
+  //
+  //   user label   ButtonId   MCP pin (inverseButtons=false)
+  //   ----------   --------   ------------------------------
+  //   button 1     k0         GPA3
+  //   button 2     k1         GPA2
+  //   button 3     k2         GPA1
+  //   button 4     k3         GPA0
+  //
+  //   inverseButtons=true flips the MCP-pin column: button 1 → GPA0,
+  //   button 2 → GPA1, ..., button 4 → GPA3.
+  //
+  // event_loop.cpp's click semantics line up with the user numbering:
+  // k0 (button 1) = pause/resume; k1 (button 2) = next screen;
+  // k2 (button 3) = prev screen;  k3 (button 4) = debug overlay.
+  // Long-press on k0 (button 1) toggles the manual DND override.
+  // The boot-time wifi-reset hold also reads the physical button 1
+  // pin (see app/boot/init_wifi_reset_button.cpp).
   void SetInverted(bool inverted) { inverted_ = inverted; }
 
   // Install a one-shot callback fired when all four MCP1 buttons

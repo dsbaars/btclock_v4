@@ -119,11 +119,14 @@ constexpr const char* kTag = "btclock";
 
     ButtonInput ev{};
     if (xQueueReceive(button_q, &ev, 0) == pdTRUE) {
-      // Long-press on button 1 toggles the manual DND override. The
-      // user-facing numbering (per buttons.hpp) maps "button 1" → the
-      // leftmost physical pin → logical ButtonId::k3 in the default,
-      // non-inverted orientation. Long-press on the other three IDs
-      // stays unmapped — same drop-it semantic the loop had before.
+      // Long-press on the front-of-device "button 1" toggles the manual
+      // DND override. Per buttons.hpp, the device labels are 1..4 and
+      // map to logical ButtonId::k0..k3 in that order — button 1 is
+      // ButtonId::k0, the SAME id that handles click=pause/resume.
+      // Quick taps still pause/resume (kClick fires on release without
+      // kLongPress); holding ≥ 800 ms suppresses the click and emits
+      // kLongPress instead, which we route here. The other three IDs'
+      // long-press events stay dropped, matching the loop's old behaviour.
       //
       // The ack flash needs special handling on the going-ON edge:
       // the LED controller suppresses all non-kSetIdle effects while
@@ -138,7 +141,7 @@ constexpr const char* kTag = "btclock";
       // synchronous, the post happens after DND is already cleared,
       // and the green flash restores the resting LED state on its own.
       if (ev.event == ButtonEvent::kLongPress) {
-        if (ev.id == ButtonId::k3) {
+        if (ev.id == ButtonId::k0) {
           auto& d = dnd::Instance();
           const bool now_enabled = !d.GetConfig().enabled;
           if (now_enabled) {
