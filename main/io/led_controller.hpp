@@ -106,6 +106,15 @@ void InitLeds(gpio_num_t pin, uint32_t count);
 // (effect is simply swallowed; the task checks per-frame).
 void PostLedEffect(LedEffect ev);
 
+// Like PostLedEffect, but plays through an active DND window. Reserved
+// for state-change acknowledgements that MUST be visible — currently
+// just the button-1 long-press DND toggle, where suppressing the ack
+// flash via the very state we're announcing would defeat the feedback.
+// Still honours the `disableLeds` user pref (that's a "no LEDs ever"
+// preference, not a contextual mute). Race-free against a concurrent
+// SetEnabled: the bypass is encoded in the queue byte itself.
+void PostLedEffectForce(LedEffect ev);
+
 // --- State + prefs API for the control server ---
 // All setters persist to NVS and apply to the runtime state on the
 // caller's thread (atomic under the controller's mutex). Getters return

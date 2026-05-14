@@ -124,18 +124,31 @@ constexpr const char* kTag = "btclock";
       // leftmost physical pin → logical ButtonId::k3 in the default,
       // non-inverted orientation. Long-press on the other three IDs
       // stays unmapped — same drop-it semantic the loop had before.
-      // LED feedback fires after the toggle so the post-state colour
-      // matches what DND is now: red blink = "you just MUTED", green
-      // blink = "you just UNMUTED". Reusing the existing kFlashError /
-      // kFlashSuccess effects avoids adding new LED patterns and keeps
-      // the Rev A footprint flat.
+      //
+      // The ack flash needs special handling on the going-ON edge:
+      // the LED controller suppresses all non-kSetIdle effects while
+      // DND is active, so a naive PostLedEffect after SetEnabled(true)
+      // gets swallowed by the very state it's announcing. Use the
+      // PostLedEffectForce variant — the bypass flag travels with the
+      // queue item so it's race-free against the SetEnabled call.
+      // Follow with kSetIdle so the strip clears (PaintAllOff under
+      // DND), giving the user the full "flash red, then go dark"
+      // visual that matches the audible/tactile model of muting.
+      // Going-OFF doesn't need the force: SetEnabled(false) is
+      // synchronous, the post happens after DND is already cleared,
+      // and the green flash restores the resting LED state on its own.
       if (ev.event == ButtonEvent::kLongPress) {
         if (ev.id == ButtonId::k3) {
           auto& d = dnd::Instance();
           const bool now_enabled = !d.GetConfig().enabled;
-          d.SetEnabled(now_enabled);
-          PostLedEffect(now_enabled ? LedEffect::kFlashError
-                                    : LedEffect::kFlashSuccess);
+          if (now_enabled) {
+            PostLedEffectForce(LedEffect::kFlashError);
+            d.SetEnabled(true);
+            PostLedEffect(LedEffect::kSetIdle);
+          } else {
+            d.SetEnabled(false);
+            PostLedEffect(LedEffect::kFlashSuccess);
+          }
           ESP_LOGI(kTag, "button 1 long-press: DND %s",
                    now_enabled ? "ON" : "OFF");
         }

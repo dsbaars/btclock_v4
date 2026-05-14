@@ -48,6 +48,13 @@ constexpr std::array<Rgb, 6> kBootPalette = {{
     {148, 0, 211},
 }};
 
+// High bit of the queue byte = "this effect bypasses the DND gate".
+// Co-exists with the LedEffect enum because every defined value is well
+// under 0x80 (max is kTimerResume at 20). Stored inline in the queue
+// byte so the flag travels with its effect — race-free against a
+// concurrent SetEnabled(true) that flips DND between post and dequeue.
+constexpr uint8_t kBypassDndBit = 0x80;
+
 // --- Shared state ---------------------------------------------------
 
 QueueHandle_t g_queue = nullptr;
@@ -423,13 +430,22 @@ void Task(void* arg) {
         break;
     }
 
-    LedEffect ev;
-    if (xQueueReceive(g_queue, &ev, wait) == pdTRUE) {
+    uint8_t raw;
+    if (xQueueReceive(g_queue, &raw, wait) == pdTRUE) {
+      // Bit 7 = "bypass DND for this one event". Set by
+      // PostLedEffectForce, currently only used for DND-toggle ack
+      // flashes (otherwise the very LED that confirms "DND is now ON"
+      // would be the first effect DND suppresses, which is the bug
+      // this branch was added to fix). Strip the bit before the
+      // switch reads the effect enum.
+      const bool bypass_dnd = (raw & kBypassDndBit) != 0;
+      const LedEffect ev = static_cast<LedEffect>(raw & ~kBypassDndBit);
       // Global disable: drop everything but kSetIdle (which needs to
       // blank the strip and the resting mirror). DND behaves the same
       // — any effect except kSetIdle is silently swallowed so the
       // strip stays dark while the user's DND window is armed.
-      if ((EffectsDisabled() || DndSuppressed()) && ev != LedEffect::kSetIdle) {
+      if ((EffectsDisabled() || (!bypass_dnd && DndSuppressed())) &&
+          ev != LedEffect::kSetIdle) {
         continue;
       }
       // DND forces the idle path to paint black regardless of the
@@ -719,6 +735,22 @@ void PostLedEffect(LedEffect ev) {
   // strip can be forcibly cleared / repainted.
   if (ev != LedEffect::kSetIdle && DndSuppressed()) return;
   if (xQueueSend(g_queue, &ev, 0) != pdTRUE) {
+    queue_metrics::RecordDrop(queue_metrics::Queue::kLed);
+  }
+}
+
+// Variant that plays even when DND is active. Used for state-change
+// acknowledgements that MUST be visible — currently only the DND toggle
+// itself, so the user can tell the button-press actually landed. The
+// flag travels with the queue item so it's race-free against a
+// concurrent SetEnabled(true) that flips the DND gate between post and
+// dequeue. Global EffectsDisabled() is still honoured because that's a
+// genuine "do not light up" user pref, not a contextual mute.
+void PostLedEffectForce(LedEffect ev) {
+  if (g_queue == nullptr) return;
+  if (EffectsDisabled() && ev != LedEffect::kSetIdle) return;
+  const uint8_t raw = static_cast<uint8_t>(ev) | kBypassDndBit;
+  if (xQueueSend(g_queue, &raw, 0) != pdTRUE) {
     queue_metrics::RecordDrop(queue_metrics::Queue::kLed);
   }
 }
