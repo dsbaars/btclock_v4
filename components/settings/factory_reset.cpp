@@ -4,13 +4,48 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "nvs_flash.h"
+#include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace settings {
 namespace {
 constexpr const char* kTag = "factory-reset";
 }  // namespace
+
+void PerformWifiReset() {
+  ESP_LOGW(kTag, "wiping STA credentials and rebooting");
+  {
+    // Scope the Prefs handles so nvs_close runs before nvs_commit's
+    // partition flush is interrupted by esp_restart(). Both Commit()s
+    // are issued while the handles are still open; the destructors
+    // close them at scope-exit, before the restart below.
+    Prefs net("net");
+    // Remove() returns ESP_ERR_NVS_NOT_FOUND if the key was never set;
+    // both call sites already treat that as a no-op. `app` (SoftAP
+    // password) is intentionally preserved — see header rationale.
+    net.Remove("ssid");
+    net.Remove("pw");
+    net.Commit();
+
+    Prefs settings_ns(prefs::kSettingsNs);
+    // wifiConfigured drives the wpTimeout reboot watchdog in
+    // init_network.cpp; clearing it puts the device back into "first
+    // boot" mode where a portal session won't time-out-reboot before
+    // the user has a chance to enter new creds.
+    settings_ns.Remove(prefs::kWifiConfigured);
+    settings_ns.Commit();
+  }
+  // Same 2s splash dwell as PerformFactoryReset for parity — the EPD
+  // chain needs the full-refresh frame to flush before the CPU drops.
+  vTaskDelay(pdMS_TO_TICKS(2000));
+  esp_restart();
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
 
 void PerformFactoryReset() {
   ESP_LOGW(kTag, "erasing NVS partition and rebooting");

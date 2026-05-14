@@ -32,6 +32,7 @@
 #include "app/boot/init_panels.hpp"
 #include "app/boot/init_screen_manager.hpp"
 #include "app/boot/init_storage.hpp"
+#include "app/boot/init_wifi_reset_button.hpp"
 #include "app/event_loop.hpp"
 #include "boot_spinner.hpp"
 #include "esp_core_dump.h"
@@ -89,6 +90,12 @@ extern "C" void app_main() {
   btclock::InitHardware(ctx);
   btclock::InitPanelsAndSplash(ctx);
   btclock::InitStorage(ctx);
+  // Boot-time button-1 hold path: clears STA creds + reboots into
+  // SoftAP if held continuously for 3 s. Runs AFTER InitStorage so
+  // NVS is open, BEFORE InitNetwork so the creds we're about to wipe
+  // haven't been used to associate yet. Cheap fall-through when the
+  // button isn't held.
+  btclock::MaybeWifiResetAtBoot(ctx);
   btclock::InitNetwork(ctx);
   // Splash stayed painted through hardware bring-up + WiFi association.
   // Now that the network is up (STA only — AP mode keeps the splash

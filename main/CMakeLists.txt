@@ -16,6 +16,7 @@ idf_component_register(
          "app/boot/init_panels.cpp"
          "app/boot/init_screen_manager.cpp"
          "app/boot/init_storage.cpp"
+         "app/boot/init_wifi_reset_button.cpp"
          "app/boot/init_zap_listener.cpp"
          "app/event_loop.cpp"
          "app/control_command_drain.cpp"

@@ -12,6 +12,7 @@
 #include "board/board.hpp"
 #include "buttons.hpp"
 #include "data_core/hub.hpp"
+#include "dnd/dnd.hpp"
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -118,9 +119,28 @@ constexpr const char* kTag = "btclock";
 
     ButtonInput ev{};
     if (xQueueReceive(button_q, &ev, 0) == pdTRUE) {
-      // Only the falling-edge kClick drives actions today; kLongPress
-      // events are intentionally dropped until someone finds them a
-      // semantic. Mirrors the brief: "ignore long-press for now".
+      // Long-press on button 1 toggles the manual DND override. The
+      // user-facing numbering (per buttons.hpp) maps "button 1" → the
+      // leftmost physical pin → logical ButtonId::k3 in the default,
+      // non-inverted orientation. Long-press on the other three IDs
+      // stays unmapped — same drop-it semantic the loop had before.
+      // LED feedback fires after the toggle so the post-state colour
+      // matches what DND is now: red blink = "you just MUTED", green
+      // blink = "you just UNMUTED". Reusing the existing kFlashError /
+      // kFlashSuccess effects avoids adding new LED patterns and keeps
+      // the Rev A footprint flat.
+      if (ev.event == ButtonEvent::kLongPress) {
+        if (ev.id == ButtonId::k3) {
+          auto& d = dnd::Instance();
+          const bool now_enabled = !d.GetConfig().enabled;
+          d.SetEnabled(now_enabled);
+          PostLedEffect(now_enabled ? LedEffect::kFlashError
+                                    : LedEffect::kFlashSuccess);
+          ESP_LOGI(kTag, "button 1 long-press: DND %s",
+                   now_enabled ? "ON" : "OFF");
+        }
+        continue;
+      }
       if (ev.event != ButtonEvent::kClick) continue;
       bool re_render = false;
       bool show_debug = false;
