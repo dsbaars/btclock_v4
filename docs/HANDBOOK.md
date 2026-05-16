@@ -144,9 +144,9 @@ full reset, use the WebUI **Factory reset** button (or the
 
 ### Inverse buttons
 
-Settings → Light & LEDs → **Inverse buttons** swaps button-1 with
-button-4 (and 2 with 3). Useful if you mount the BTClock upside-down
-or on the opposite side of a desk. The pref is honoured by both the
+Settings → Light & LEDs → **Inverse buttons** reverses the button
+order end-to-end (physical 1 ↔ 4, 2 ↔ 3). Useful if you mount the
+BTClock upside-down or on the opposite side of a desk. The pref is honoured by both the
 runtime click / long-press router AND the boot-hold WiFi reset, so
 the same physical button keeps the same meaning regardless of
 orientation.
@@ -870,6 +870,8 @@ Affected by: `nostrZapNotify`, `nostrZapPubkey`, `ledFlashOnZap`,
 
 ### NWC wallet balance
 
+![NWC wallet balance — 1.2M sats](img/screens/nwc_balance.png)
+
 Available on devices paired with a [NIP-47 Nostr Wallet Connect](#9-nostr-zap-and-wallet-connect-setup)
 wallet. Layout (left to right): a `BAL` label cell, an MDI
 lightning-bolt brand-cue cell, then the wallet balance right-justified
@@ -877,7 +879,10 @@ into the remaining cells with the sats glyph one slot ahead of the
 most-significant digit. Wallets ≥ 1 BTC switch from sats to a four-
 decimal BTC form (`1.0000`) so the value stays legible; long balances
 spill leftward through the blanks and drop the glyph when the digit
-run would otherwise overflow.
+run would otherwise overflow. The render above shows the suffix path
+at 1,234,567 sats (rounded to `1.2M`) with the sats glyph on
+(`priceSymMode=1`, `satsVariant=6` — the U+E006 SatoshiSymbol cut);
+set `priceSymMode=0` to leave the slot blank.
 
 Polled on `nwcRefreshSecs` (default 60 s) plus once on every payment
 notification. Cached in `rt/nwcLastBalSat` so a reboot paints the
@@ -890,6 +895,10 @@ Affected by: `nwcEnabled`, `nwcUri`, `nwcRefreshSecs`, `priceSymMode`,
 `satsVariant`, `fontName`.
 
 ### NWC payment notification (push overlay)
+
+| Incoming (`payment_received`) | Outgoing (`payment_sent`) |
+|---|---|
+| ![NWC payment received — 4,200 sats](img/screens/nwc_payment_recv.png) | ![NWC payment sent — 15,000 sats](img/screens/nwc_payment_paid.png) |
 
 Pop-up triggered by a `payment_received` / `payment_sent` NIP-47
 notification from the paired wallet. Layout matches the balance

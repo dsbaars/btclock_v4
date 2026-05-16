@@ -108,6 +108,7 @@ em++ \
     "${SCREENS_DIR}/assets/bitaxe_logo.cpp" \
     "${SCREENS_DIR}/bitaxe.cpp" \
     "${SCREENS_DIR}/nostr_zap.cpp" \
+    "${SCREENS_DIR}/nwc_balance.cpp" \
     "${MAIN_DIR}/fonts_app.cpp" \
     "${FONTS_DIR}/font.cpp" \
     "${FONTS_DIR}/stb_truetype_impl.c" \

@@ -1,5 +1,5 @@
 {
-  "rendered_at": "2026-05-12T12:10:48.214Z",
+  "rendered_at": "2026-05-16T22:55:40.472Z",
   "px_per_mm": 8,
   "panel_geometry_mm": {
     "w": 24,
@@ -137,6 +137,24 @@
       "id": "nostr_zap",
       "title": "Nostr zap overlay",
       "path": "docs/img/screens/nostr_zap.png"
+    },
+    {
+      "kind": "screen",
+      "id": "nwc_balance",
+      "title": "NWC wallet balance",
+      "path": "docs/img/screens/nwc_balance.png"
+    },
+    {
+      "kind": "screen",
+      "id": "nwc_payment_recv",
+      "title": "NWC payment received",
+      "path": "docs/img/screens/nwc_payment_recv.png"
+    },
+    {
+      "kind": "screen",
+      "id": "nwc_payment_paid",
+      "title": "NWC payment sent",
+      "path": "docs/img/screens/nwc_payment_paid.png"
     },
     {
       "kind": "screen",

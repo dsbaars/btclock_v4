@@ -652,6 +652,38 @@ const SCREENS = [
     fn: () => mod.renderNostrZapAlphaBuffer(21000),
   },
   {
+    // NWC wallet balance. 1,234,567 sats is a believable casual-wallet
+    // balance — small enough to stay in the sats path (FormatSatsCompact
+    // delegates to FormatZapAmount below 100M, so this renders as
+    // "1.2M") and shows the standard BAL + bolt + sats-glyph + digits
+    // layout described in HANDBOOK § 5. use_sats_symbol=true with
+    // satsVariant index 6 (= variant #7, the U+E006 glyph) prefixes
+    // the digit run with the documented sats marker.
+    id: "nwc_balance",
+    title: "NWC wallet balance",
+    fn: () => mod.renderNwcBalanceAlphaBuffer(1234567, true, 6),
+  },
+  {
+    // Incoming-payment overlay — direction=1 → "RECV" + arrow-down.
+    // 4,200 sats is small enough that the digits render in raw form
+    // (no k/M suffix) so the layout reads as a typical zap-sized
+    // micropayment. Sats glyph on (variant index 6) — matches balance.
+    id: "nwc_payment_recv",
+    title: "NWC payment received",
+    fn: () => mod.renderNwcPaymentNotifyAlphaBuffer(1, 4200, true, 6),
+  },
+  {
+    // Outgoing-payment overlay — direction=2 → "PAID" + arrow-up.
+    // 250k sats is a realistic small Lightning purchase; the suffix
+    // path collapses it to "250k" (4 chars) so the glyph slot
+    // survives — keeps the three NWC renders visually consistent.
+    // A raw 5-char tail (e.g. 15000) would let the layout fill the
+    // whole tail and drop the glyph per ComputeNwcLayout's rule.
+    id: "nwc_payment_paid",
+    title: "NWC payment sent",
+    fn: () => mod.renderNwcPaymentNotifyAlphaBuffer(2, 250000, true, 6),
+  },
+  {
     id: "debug",
     title: "Debug overlay",
     // Realistic snapshot. fwVersion is a tag-shaped string for the

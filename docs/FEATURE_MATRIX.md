@@ -276,7 +276,7 @@ brightness / block-flash colour / disable / flash-on-update.
 | SSD1680 EPDs (2.13" + 2.9", shared SPI bus, shadow-FB partial refresh) | [epd.cpp](https://git.btclock.dev/btclock/btclock_v3/src/commit/eac3a28/src/lib/drivers/epd/epd.cpp) | [epd_ssd1680](../components/epd_ssd1680) | Implemented (native driver) | — |
 | BH1750 ambient-light sensor | BH1750 Arduino lib | [bh1750](../components/bh1750) — feeds frontlight auto-off through `event_loop.cpp` | Implemented | — |
 | PCA9685 frontlight driver | PCA9685 Arduino lib | [pca9685](../components/pca9685) + `frontlight_controller.cpp` (fade + block-flash + zap-flash) | Implemented | — |
-| Inverse-buttons pref (`InverseButtons`) | button_handler.cpp | [main/sources/sources.cpp:189](../main/sources/sources.cpp) reads `kInverseButtons` and swaps button-1↔button-N at post time | Implemented | `btclock_v4-7da` |
+| Inverse-buttons pref (`InverseButtons`) | button_handler.cpp | [main/sources/sources.cpp:189](../main/sources/sources.cpp) reads `kInverseButtons` and reverses the button order (physical 1 ↔ 4, 2 ↔ 3) at post time | Implemented | `btclock_v4-7da` |
 
 ## Persistence (NVS / settings)
 

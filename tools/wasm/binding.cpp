@@ -1328,6 +1328,73 @@ val renderNostrZapAlpha(double amount_sats) {
   });
 }
 
+// NWC balance — paints "BAL" + bolt + sats glyph + right-justified
+// amount. Negative `balance_sats` is the "no successful poll yet"
+// state (renders as a single em-dash). `use_sats_symbol` and
+// `sats_variant` mirror the device prefs `priceSymMode == 1` and
+// `satsVariant` (0..15, U+E000..U+E00F).
+val renderNwcBalanceAlpha(double balance_sats, bool use_sats_symbol,
+                          int sats_variant) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    std::optional<int64_t> bal;
+    if (balance_sats >= 0.0) bal = static_cast<int64_t>(balance_sats);
+    const uint8_t variant = btclock::ClampSatsVariant(
+        sats_variant < 0 ? 0u : static_cast<uint32_t>(sats_variant));
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderNwcBalanceScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, bal, /*prev_balance_sats=*/std::nullopt,
+          use_sats_symbol, /*use_btc_symbol=*/false, variant,
+          /*full_refresh_mode=*/true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderNwcBalanceScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, bal, /*prev_balance_sats=*/std::nullopt,
+          use_sats_symbol, /*use_btc_symbol=*/false, variant,
+          /*full_refresh_mode=*/true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
+// NWC payment notification overlay — same layout as the balance
+// screen, but the label flips with the payment direction
+// (1 = incoming → "RECV" + arrow-down, 2 = outgoing → "PAID" +
+// arrow-up). Negative amount becomes a unknown/em-dash state.
+val renderNwcPaymentNotifyAlpha(int direction, double amount_sats,
+                                bool use_sats_symbol, int sats_variant) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    btclock::DataSnapshot::NwcPayment pmt;
+    pmt.direction = (direction < 0 || direction > 255)
+                        ? 0
+                        : static_cast<uint8_t>(direction);
+    if (amount_sats >= 0.0) pmt.amount_sats = static_cast<int64_t>(amount_sats);
+    pmt.received_ms = 1;  // non-zero so renderer treats it as fresh
+    const uint8_t variant = btclock::ClampSatsVariant(
+        sats_variant < 0 ? 0u : static_cast<uint32_t>(sats_variant));
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderNwcPaymentNotifyScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, pmt, use_sats_symbol,
+          /*use_btc_symbol=*/false, variant,
+          /*full_refresh_mode=*/true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderNwcPaymentNotifyScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, pmt, use_sats_symbol,
+          /*use_btc_symbol=*/false, variant,
+          /*full_refresh_mode=*/true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
 // Clock screen — date/HH:MM. Args are (hour 0..23, minute 0..59,
 // mday 1..31, month 1..12, hide_leading_zero). Always renders as a
 // "valid" frame (no NTP-pending placeholder) so the docs render
@@ -1526,6 +1593,9 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
   emscripten::function("renderBitaxeBestDiffAlphaBuffer",
                        &renderBitaxeBestDiffAlpha);
   emscripten::function("renderNostrZapAlphaBuffer", &renderNostrZapAlpha);
+  emscripten::function("renderNwcBalanceAlphaBuffer", &renderNwcBalanceAlpha);
+  emscripten::function("renderNwcPaymentNotifyAlphaBuffer",
+                       &renderNwcPaymentNotifyAlpha);
   emscripten::function("renderClockAlphaBuffer", &renderClockAlpha);
   emscripten::function("renderDebugAlphaBuffer", &renderDebugAlpha);
   emscripten::function("getCodepointMetrics", &getCodepointMetrics);
