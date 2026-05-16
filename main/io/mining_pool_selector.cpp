@@ -8,7 +8,6 @@
 #include "mining_pool_ckpool/ckpool.hpp"
 #include "mining_pool_common/pool_base.hpp"
 #include "mining_pool_foundry/foundry.hpp"
-#include "mining_pool_gobrrr/gobrrr.hpp"
 #include "mining_pool_nerdminer/nerdminer.hpp"
 #include "mining_pool_noderunners/noderunners.hpp"
 #include "mining_pool_ocean/ocean.hpp"
@@ -70,7 +69,6 @@ std::unique_ptr<DataSource> BuildByName(const std::string& name) {
   if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
-  if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
   if (name == "blitzpool") return std::make_unique<BlitzPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
@@ -93,7 +91,6 @@ std::unique_ptr<PoolDataSource> BuildPoolByName(const std::string& name) {
   if (name == "braiins") return std::make_unique<BraiinsPool>();
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
-  if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
   if (name == "blitzpool") return std::make_unique<BlitzPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
@@ -112,12 +109,17 @@ std::vector<std::string> AvailablePoolNames() {
   // family forks (NerdMiner) are appended after the original ckpool
   // entries to keep the existing pool order stable.
   // Blitzpool is a public-pool fork (PPLNS / group-solo / Stratum V2);
-  // grouped next to public_pool / gobrrr to keep family ordering.
-  return {"ocean",       "noderunners",    "satoshi_radio",
-          "braiins",     "public_pool",    "local_public_pool",
-          "gobrrr_pool", "blitzpool",      "ckpool",
-          "eu_ckpool",   "nerdminers_org", "nerdminer_io",
-          "foundry_usa", "viabtc"};
+  // grouped next to public_pool to keep family ordering.
+  // gobrrr_pool was dropped in 2026-05 after the upstream migration to
+  // ckpool-solo behind a per-instance API-token wall — a BTClock can't
+  // legally obtain that token (it's regenerated on every WebUI restart
+  // and only injected into rendered HTML). A pre-existing NVS value
+  // tolerates: BuildByName returns nullptr and the mining-pool screens
+  // render the offline placeholder until the user picks another pool.
+  return {"ocean",       "noderunners",       "satoshi_radio", "braiins",
+          "public_pool", "local_public_pool", "blitzpool",     "ckpool",
+          "eu_ckpool",   "nerdminers_org",    "nerdminer_io",  "foundry_usa",
+          "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {

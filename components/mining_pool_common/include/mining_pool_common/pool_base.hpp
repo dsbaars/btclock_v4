@@ -128,7 +128,7 @@ class PoolDataSource : public DataSource {
   // earnings slot stays off when a solo pool is active.
   //
   // Default `true` keeps parity with the old firmware for every pool
-  // that actually exposes daily_sats (Ocean, Braiins, GoBrrr Pool).
+  // that actually exposes daily_sats (Ocean, Braiins).
   virtual bool SupportsDailyEarnings() const { return true; }
 
   // Whether this pool produces a forward-looking payout estimate

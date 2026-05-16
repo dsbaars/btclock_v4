@@ -56,7 +56,7 @@ idf_component_register(
              data_core btclock_data buttons nostr nwc timezone dnd settings ota
              mining_pool_common mining_pool_blitzpool mining_pool_braiins
              mining_pool_ckpool
-             mining_pool_foundry mining_pool_gobrrr mining_pool_nerdminer
+             mining_pool_foundry mining_pool_nerdminer
              mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio
              mining_pool_viabtc

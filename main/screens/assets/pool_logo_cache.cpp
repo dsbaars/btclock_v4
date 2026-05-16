@@ -10,7 +10,7 @@
 //
 // Memory: cached bitmaps live in PSRAM (`heap_caps_malloc_prefer`
 // SPIRAM-first, internal fallback). Worst-case footprint is one
-// 1-bpp 250x122 page = ~3.8 KiB; the actual ocean/noderunners/gobrrr
+// 1-bpp 250x122 page = ~3.8 KiB; the actual ocean/noderunners/blitzpool
 // 122x122 logos are ~1.9 KiB each. The slot is owned by a static
 // unique_ptr with a custom deleter so cold paths never leak.
 //

@@ -965,7 +965,7 @@ The BTClock supports 13 pools:
 | `braiins` | Braiins | Username-based. |
 | `public_pool` | Public-Pool | Worker / address based. |
 | `local_public_pool` | Local Public-Pool | Self-hosted instance — set `localPoolHost`. |
-| `gobrrr_pool` | GoBRRR Pool | |
+| `blitzpool` | Blitzpool | Public-pool fork with PPLNS / Stratum V2. Surfaces an Estimated Earnings screen on top of the regular Earnings panel. |
 | `ckpool` / `eu_ckpool` | CKPool / EU CKPool | Worker name based. |
 | `nerdminers_org` / `nerdminer_io` | NerdMiner.org / NerdMiner.io | BTC-address based. |
 | `viabtc` | ViaBTC | **API-key pool** — `miningPoolUser` is a secret; GET emits `miningPoolUserSet` instead of the raw value. |

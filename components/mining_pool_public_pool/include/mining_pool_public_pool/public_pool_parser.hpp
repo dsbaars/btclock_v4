@@ -1,5 +1,5 @@
 // Pure-logic JSON parsers for the public-pool family (public-pool.io,
-// gobrrr, blitzpool, local forks).
+// blitzpool, local forks).
 //
 // Per-user shape (parse, from /api/client/<addr>):
 //   { "workers": [ { "hashRate": <number>, ... }, ... ], ... }

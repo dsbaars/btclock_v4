@@ -46,10 +46,10 @@ slot at all.
 
 - Mining-pool API base URLs (`pool.braiins.com`,
   `api.ocean.xyz`, `solo.ckpool.org`, `pool.satoshiradio.nl`,
-  `pool.noderunners.network`, `public-pool.io`,
-  `pool.gobrrr.me`). Each pool's URL is a contract with that
-  pool's API; the **selector** (`miningPoolName`) is already
-  configurable. v3 hardcoded the URLs the same way.
+  `pool.noderunners.network`, `public-pool.io`). Each pool's URL
+  is a contract with that pool's API; the **selector**
+  (`miningPoolName`) is already configurable. v3 hardcoded the
+  URLs the same way.
 - Bitaxe URL (`http://<host>/api/system/info`) — `<host>` is
   `kBitaxeHostname`-driven; the path is the AxeOS API contract.
 - WS reconnect cadence (5 s linear) and ping-interval (20-30 s)

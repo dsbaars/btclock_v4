@@ -34,7 +34,7 @@ presentation does.
 | `braiins` | "Username" | no | "Worker name (optional)" | show |
 | `public_pool` | "BTC address" | no | — | hide |
 | `local_public_pool` | "BTC address" | no | — | hide |
-| `gobrrr_pool` | "BTC address" | no | — | hide |
+| `blitzpool` | "BTC address" | no | — | hide |
 | `ckpool` | "BTC address" | no | "Worker name (optional)" | show |
 | `eu_ckpool` | "BTC address" | no | "Worker name (optional)" | show |
 | `nerdminers_org` | "BTC address" | no | — | hide |

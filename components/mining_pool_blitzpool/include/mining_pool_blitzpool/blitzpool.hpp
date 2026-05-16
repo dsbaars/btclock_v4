@@ -64,7 +64,7 @@ class BlitzPool : public PublicPoolBase {
   }
   const char* pool_name() const override { return "blitzpool"; }
   // 122x122 1-bpp logo from the mining-pool-logos repo (same size as
-  // ocean/noderunners/gobrrr — fits the 2.13" panel's 122 px tall slot).
+  // ocean/noderunners — fits the 2.13" panel's 122 px tall slot).
   const char* logo_filename() const override { return "blitzpool.bin"; }
   int logo_width() const override { return 122; }
   int logo_height() const override { return 122; }
