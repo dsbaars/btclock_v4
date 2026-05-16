@@ -24,12 +24,17 @@ inline bool parse_pplns_balance(const char* body, ParsedStats& out) {
   cJSON* root = cJSON_Parse(body);
   if (root == nullptr) return false;
 
+  // Settled ledger balance only. For PPLNS miners below the payout
+  // threshold this is zero — the *projected* payout estimate
+  // (currentWindowPercent × next-block reward × (1 - fee)) is
+  // intentionally NOT folded into daily_sats: that field carries
+  // settled sats on other pools (Braiins, Ocean), and mixing a live
+  // estimate that can drop by >50 % on a single share-window update
+  // would silently break the earnings screen's semantic on those
+  // pools. Projected payout is tracked under btclock_v4 follow-up
+  // for a dedicated screen (see commit message).
   cJSON* sats = cJSON_GetObjectItemCaseSensitive(root, "balanceSats");
   if (cJSON_IsNumber(sats)) {
-    // balanceSats can be non-integer if the pool ever switches to
-    // fractional-sat accounting; round to the nearest sat. Zero
-    // leaves has_daily_sats=false so the earnings screen renders
-    // "n/a" rather than "0 SATS" for solo addresses.
     const double v = sats->valuedouble;
     if (v > 0.0) {
       out.has_daily_sats = true;

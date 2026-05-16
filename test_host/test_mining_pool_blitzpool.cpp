@@ -33,14 +33,16 @@ TEST_CASE("blitzpool: pplns balance with pending sats sets daily_sats") {
 }
 
 TEST_CASE("blitzpool: zero balance leaves daily_sats unset") {
-  // Solo addresses always return balanceSats=0 — the earnings screen
-  // should fall back to "n/a" rather than displaying 0 SATS, so we
-  // leave has_daily_sats=false in that case.
+  // PPLNS miners below the payout threshold report balanceSats=0;
+  // the *projected* payout estimate (currentWindowPercent × next-block
+  // reward) is deliberately NOT folded into daily_sats — that's a
+  // separate-screen concern (live estimate vs. settled payout).
+  // Solo addresses also report balanceSats=0 and hit this path.
   constexpr const char* body = R"({
     "balanceSats": 0,
     "totalPaidSats": 0,
-    "currentWindowShares": 0,
-    "currentWindowPercent": 0,
+    "currentWindowShares": 92000,
+    "currentWindowPercent": 7.4e-05,
     "balanceLabel": "zero"
   })";
   ParsedStats out;
