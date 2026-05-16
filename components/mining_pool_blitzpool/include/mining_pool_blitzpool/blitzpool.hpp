@@ -54,6 +54,14 @@ class BlitzPool : public PublicPoolBase {
   // Dispatches on the `pool/global` NVS flag between the public_pool
   // worker-list parser (per-address) and parse_pool_global (pool-wide).
   bool parse_response(const char* body, ParsedStats& out) const override;
+  // Folds /api/pplns/<addr> on top of the primary parse. Without this,
+  // the secondary fetch lands but the default no-op parser drops the
+  // body — balanceSats + currentWindowPercent never reach ParsedStats
+  // and both screens render empty digits.
+  bool parse_secondary_response(const char* body,
+                                ParsedStats& out) const override {
+    return blitzpool::parse_pplns_balance(body, out);
+  }
   const char* pool_name() const override { return "blitzpool"; }
   // 122x122 1-bpp logo from the mining-pool-logos repo (same size as
   // ocean/noderunners/gobrrr — fits the 2.13" panel's 122 px tall slot).
