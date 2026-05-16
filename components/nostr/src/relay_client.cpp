@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_transport_ws.h"
+#include "net_util/user_agent.hpp"
 #include "proxy_transport/proxy_prefs.hpp"
 #include "proxy_transport/proxy_transport.hpp"
 #include "settings/nvs_store.hpp"
@@ -69,6 +70,7 @@ esp_err_t RelayClient::Start() {
   // Sha256Ctx frame. 12 KB is the measured-safe threshold; 6 KB caused
   // a hard stack-overflow boot-loop in production.
   cfg.task_stack = 12288;
+  cfg.user_agent = btclock::net_util::WebsocketUserAgent();
   cfg.ext_transport = proxy_ws_;
 
   client_ = esp_websocket_client_init(&cfg);

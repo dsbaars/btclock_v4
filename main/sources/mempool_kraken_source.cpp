@@ -13,6 +13,7 @@
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "esp_transport_ws.h"
+#include "net_util/user_agent.hpp"
 #include "proxy_transport/proxy_prefs.hpp"
 #include "proxy_transport/proxy_transport.hpp"
 #include "settings/nvs_store.hpp"
@@ -108,6 +109,7 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
     // the v3 firmware patched ArduinoWebsockets for.
     cfg.buffer_size = 16384;
     cfg.task_stack = 6144;
+    cfg.user_agent = btclock::net_util::WebsocketUserAgent();
     cfg.ext_transport = mempool_proxy_ws_;
 
     mempool_client_ = esp_websocket_client_init(&cfg);
@@ -166,6 +168,7 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
     // depth — 4 KB is comfortable.
     cfg.buffer_size = 4096;
     cfg.task_stack = 6144;
+    cfg.user_agent = btclock::net_util::WebsocketUserAgent();
     cfg.ext_transport = kraken_proxy_ws_;
 
     kraken_client_ = esp_websocket_client_init(&cfg);
