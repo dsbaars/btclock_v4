@@ -15,8 +15,15 @@ y sensor de luz ambiental). La V8 de 8 paneles y la Rev A con panel
 ## Lo que necesitas
 
 - El propio BTClock.
-- Un cable USB-C y una fuente de 5 V. El BTClock consume < 250 mA en
-  régimen estable — cualquier cargador de móvil moderno sirve.
+- Un cable USB-C y una fuente de 5 V:
+    - **Rev B** (con frontlight): mínimo **1 A**. Los 21 LED blanco-cálido
+      del frontlight (3 por panel × 7 paneles) más el anillo WS2812B de
+      4 píxeles consumen ~500–800 mA según el brillo.
+    - **Rev A / V8** (sin frontlight): **500 mA** sobran.
+
+    La mayoría de cargadores de móvil modernos superan ambos valores, pero
+    los cargadores baratos de 500 mA que venían con los hubs USB antiguos
+    pueden colapsar bajo una Rev B a pleno brillo.
 - Una red Wi-Fi de 2,4 GHz. La radio del ESP32-S3 no soporta 5 GHz.
 - Un móvil o portátil en la misma red para el WebUI.
 

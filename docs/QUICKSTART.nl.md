@@ -15,8 +15,15 @@ de scope; behandel die als prototypes.
 ## Wat je nodig hebt
 
 - De BTClock zelf.
-- Een USB-C-kabel en een 5 V-voeding. De BTClock trekt < 250 mA in
-  rust — elke moderne telefoonlader voldoet.
+- Een USB-C-kabel en een 5 V-voeding:
+    - **Rev B** (mét frontlight): minstens **1 A**. De 21 warmwitte
+      frontlight-leds (3 per paneel × 7 panelen) plus de 4-pixel WS2812B-ring
+      trekken samen ~500–800 mA afhankelijk van de helderheid.
+    - **Rev A / V8** (zonder frontlight): **500 mA** is ruim voldoende.
+
+    De meeste moderne telefoonladers halen dit makkelijk, maar de goedkope
+    500 mA-stekkertjes die soms bij oude USB-hubs zaten kunnen onder volle
+    Rev B-belasting onderuit gaan.
 - Een 2,4 GHz wifi-netwerk. De ESP32-S3-radio ondersteunt geen 5 GHz.
 - Een telefoon of laptop op datzelfde netwerk voor de WebUI.
 

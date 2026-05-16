@@ -72,9 +72,28 @@ behaviour.
 | EPDs | 7 × 2.13" GDEY0213B74 | 7 × 2.13" GDEY0213B74 |
 | Buttons | 4 × tactile | 4 × tactile |
 | NeoPixel strip | yes | yes |
-| Frontlight (PCA9685, soft white) | no | yes |
+| Frontlight (PCA9685, soft white) | no | yes (7 × 3 = 21 LEDs) |
 | BH1750 ambient sensor | no | yes |
 | Default panel build | `BTCLOCK_PANEL=2_13` | `BTCLOCK_PANEL=2_13` |
+| Power supply (5 V, USB-C) | 500 mA | **1 A** |
+
+### Power budget
+
+| Load | Per-unit | Count (Rev B) | Subtotal at 100 % |
+|---|---|---|---|
+| WS2812B pixel (full white = R+G+B) | ~60 mA | 4 | ~240 mA |
+| Frontlight warm-white SMD LED | ~20 mA | 21 (3 × 7 panels) | ~420 mA |
+| ESP32-S3 + Wi-Fi (avg, with TX bursts) | ~100 mA avg | 1 | ~100 mA |
+| MCP23017 + PCA9685 + BH1750 | ~5 mA | 1 each | ~5 mA |
+| e-ink refresh (burst, ~1 s per panel) | ~30 mA | 1 panel active | ~30 mA |
+
+Worst-case Rev B sum (full-white pixel ring + frontlight at 100 % + Wi-Fi TX) is
+around 800 mA. In practice the LED ring is rarely at full white and the frontlight
+sits below 100 %, so 500–600 mA is the realistic steady-state draw — which is why
+the spec is **1 A** and not 500 mA: it leaves headroom for the Wi-Fi-TX pulses and
+the occasional frontlight flash on a new block. Rev A and V8 don't have the
+frontlight stage at all and stay below 250 mA average / ~400 mA peak, so a 500 mA
+supply is fine for them.
 
 Front of the device:
 

@@ -15,8 +15,14 @@ here; treat them as prototypes.
 ## What you'll need
 
 - The BTClock itself.
-- A USB-C cable and a 5 V power source. The BTClock draws < 250 mA in
-  steady state — any modern phone charger works.
+- A USB-C cable and a 5 V power supply:
+    - **Rev B** (with frontlight): rated for **at least 1 A**. The 21 warm-white
+      frontlight LEDs (3 per panel × 7 panels) plus the 4-pixel WS2812B ring can
+      pull ~500–800 mA depending on brightness.
+    - **Rev A / V8** (no frontlight): **500 mA** is plenty.
+
+    Most modern phone chargers exceed both, but the cheap 500 mA wall warts that
+    ship with old USB hubs can brown out a Rev B at full brightness.
 - A 2.4 GHz Wi-Fi network. The ESP32-S3 radio has no 5 GHz support.
 - A phone or laptop on the same network for the WebUI.
 

@@ -16,8 +16,15 @@ als Prototypen.
 ## Was du brauchst
 
 - Die BTClock selbst.
-- Ein USB-C-Kabel und eine 5-V-Stromquelle. Die BTClock zieht im
-  Normalbetrieb < 250 mA — jedes moderne Handy-Netzteil reicht.
+- Ein USB-C-Kabel und ein 5-V-Netzteil:
+    - **Rev B** (mit Frontlight): mindestens **1 A**. Die 21 warmweißen
+      Frontlight-LEDs (3 pro Panel × 7 Panels) plus der 4-Pixel-WS2812B-Ring
+      ziehen je nach Helligkeit zusammen ~500–800 mA.
+    - **Rev A / V8** (ohne Frontlight): **500 mA** reichen locker.
+
+    Moderne Handy-Netzteile schaffen beides problemlos, aber die billigen
+    500-mA-Stecker, die mancher alten USB-Hub beilag, können bei voller
+    Rev-B-Last einbrechen.
 - Ein 2,4-GHz-WLAN. Der ESP32-S3 unterstützt kein 5 GHz.
 - Ein Smartphone oder Laptop im selben Netzwerk für das WebUI.
 
