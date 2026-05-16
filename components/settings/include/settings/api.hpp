@@ -116,11 +116,13 @@ struct DeviceContext {
   // the feature is off.
   //   - `mining_pool_stats_enabled == false` drops ids 70 + 71.
   //   - `bitaxe_enabled == false` drops ids 80 + 81.
+  //   - `nwc_enabled == false` drops id 90 (NWC balance).
   // Default to `true` so host tests that don't populate the context
   // continue to emit the full catalogue; the IDF caller always sets
   // these explicitly from NVS.
   bool mining_pool_stats_enabled = true;
   bool bitaxe_enabled = true;
+  bool nwc_enabled = true;
 };
 
 // Build the full GET /api/settings body. Caller owns the returned

@@ -2884,6 +2884,7 @@ btclock::settings::DeviceContext BuildDeviceContext(
     ctx.mining_pool_stats_enabled =
         btclock::settings::ReadBool(p, prefs::kMiningPoolStats);
     ctx.bitaxe_enabled = btclock::settings::ReadBool(p, prefs::kBitaxeEnabled);
+    ctx.nwc_enabled = btclock::settings::ReadBool(p, prefs::kNwcEnabled);
   }
   for (const auto& s : cfg.screens_catalog) {
     ctx.screens.push_back({s.id, s.name, s.default_visible});

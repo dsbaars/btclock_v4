@@ -180,6 +180,10 @@ bool DrainControlCommands(AppCtx& ctx) {
               !btclock::settings::ReadBool(p, prefs::kBitaxeEnabled)) {
             return false;
           }
+          if (api_id == 90 &&
+              !btclock::settings::ReadBool(p, prefs::kNwcEnabled)) {
+            return false;
+          }
           char vkey[24];
           std::snprintf(vkey, sizeof(vkey), "screen%dVisible", api_id);
           return p.GetBool(vkey, slot_map::DefaultScreenVisible(api_id));

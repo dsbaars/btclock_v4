@@ -251,6 +251,14 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
     hidden.insert(80);  // Bitaxe Hashrate
     hidden.insert(81);  // Bitaxe Best Difficulty
   }
+  if (!ctx.nwc_enabled) {
+    hidden.insert(90);  // NWC Balance — pre-fix, the screen stayed in
+                        // the WebUI dropdown / rotation picker even when
+                        // nwcEnabled=false, matching neither the
+                        // miningPoolStats/bitaxe pattern nor the
+                        // privacy intent baked into the default-off
+                        // visibility in slot_map.
+  }
   // Build emission order: persisted screenOrder ids first (filtered to
   // ids the catalog still recognises and not hidden), then any catalog
   // entries the CSV omitted, in catalog order. A partial CSV is allowed
@@ -1079,6 +1087,9 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         if (!ctx.bitaxe_enabled) {
           effective_catalog.erase(80);
           effective_catalog.erase(81);
+        }
+        if (!ctx.nwc_enabled) {
+          effective_catalog.erase(90);
         }
         std::set<int> seen_ids;
         std::set<int> seen_orders;

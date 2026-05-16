@@ -407,6 +407,45 @@ TEST_CASE("GET drops bitaxe screens (80,81) when bitaxeEnabled off") {
   cJSON_Delete(root);
 }
 
+TEST_CASE("GET drops NWC balance (id 90) when nwcEnabled off") {
+  // Bug fix: pre-fix the NWC balance screen stayed in screens[] (and the
+  // rotation picker) even with nwcEnabled=false, unlike the
+  // miningPoolStats / bitaxeEnabled parent-feature gates. With this gate
+  // the screen disappears from the GET response and the WebUI dropdown
+  // matches the device's actual capability.
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = DefaultCtx();
+  ctx.screens = {
+      {0, "Block Height"}, {3, "Time"}, {6, "Block Fee Rate"},
+      {90, "NWC Balance"},
+  };
+  ctx.nwc_enabled = false;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 90) == ids.end());
+  CHECK(ids.size() == 3);  // 0, 3, 6 — 90 dropped by the gate
+  cJSON_Delete(root);
+}
+
+TEST_CASE("GET keeps NWC balance (id 90) when nwcEnabled on") {
+  // Inverse of the above — confirms the default DeviceContext value
+  // (true) keeps the screen visible so a user can opt into the rotation
+  // slot once NWC is configured.
+  FakePrefs prefs;
+  btclock::settings::DeviceContext ctx = DefaultCtx();
+  ctx.screens = {
+      {0, "Block Height"}, {3, "Time"}, {6, "Block Fee Rate"},
+      {90, "NWC Balance"},
+  };
+  ctx.nwc_enabled = true;
+  cJSON* root = btclock::settings::BuildGetResponse(prefs, ctx);
+  REQUIRE(root != nullptr);
+  const auto ids = EmittedScreenIds(root);
+  CHECK(std::find(ids.begin(), ids.end(), 90) != ids.end());
+  cJSON_Delete(root);
+}
+
 TEST_CASE(
     "GET drops 70/80/81 when both features off (71 stays dropped via mining "
     "gate)") {
