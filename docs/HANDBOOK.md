@@ -1488,19 +1488,17 @@ password is separate from the HTTP-auth password).
 
 ### Factory reset
 
-The bottom of the Control card carries a **Factory reset** button. A
-confirmation modal pops; click confirm to wipe NVS (every setting
-back to default) and reboot the device straight into the
-provisioning AP — same as a fresh-from-the-box first boot.
+For most "WiFi changed" or "AP doesn't appear" cases, the on-device
+**button-1 boot-hold** (3 s) is the right tool — it only resets the
+STA credentials and keeps everything else (timezone, currencies,
+screen order, LED colours, NWC, Nostr, mining-pool, Bitaxe). See
+[§3 On-device controls](#3-on-device-controls).
 
-Use this when:
-
-- You want a clean slate for testing,
-- A bad PATCH from a script left the device in an unusable state,
-- You're handing the device to someone else.
-
-Headless equivalent (the JSON body is mandatory — guards against
-accidental wipes from auto-saved curl history):
+A **full NVS wipe** (every setting back to default, device reboots
+into the provisioning AP) is only reachable via the HTTP API today —
+there's no button for it in the WebUI. The JSON body is mandatory so
+an auto-completed curl from shell history can't trigger it by
+accident:
 
 ```bash
 curl -X POST -H 'Content-Type: application/json' \
@@ -1508,11 +1506,15 @@ curl -X POST -H 'Content-Type: application/json' \
   http://btclock-xxxxxx.local/api/factory_reset
 ```
 
-If you only need to **change the WiFi network** (without losing every
-other setting), use the button-1 boot-hold path instead — see
-[§3 On-device controls](#3-on-device-controls). That keeps timezone,
-currencies, screen order, LED colours, NWC, Nostr, mining-pool and
-Bitaxe configuration intact and only resets the STA credentials.
+Use the full wipe when:
+
+- You want a clean slate for testing,
+- A bad PATCH from a script left the device in an unusable state,
+- You're handing the device to someone else.
+
+If the device is unreachable on the network entirely, USB-flash with
+esptool `erase_flash` is the offline equivalent — wipes the NVS
+partition along with the firmware, then re-flash.
 
 ## 16. Troubleshooting
 
