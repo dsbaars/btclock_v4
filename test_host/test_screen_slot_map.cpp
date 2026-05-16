@@ -3,6 +3,13 @@
 // `currentScreen` field. The mapping must track
 // ScreenManager::current_kind() exactly; these tests lock that contract
 // without linking the renderer / FreeRTOS.
+//
+// Slot literals for the agnostic prefix (0..kAgnosticSlots-1) are kept
+// as bare integers: those positions ARE the contract — bumping a slot
+// by inserting a new agnostic kind in the middle is supposed to break
+// the test. Per-currency and fee-rate positions derive from
+// kAgnosticSlots / kPerCurrencySlots / SlotCount so a kAgnosticSlots
+// bump doesn't ripple through every assertion.
 
 #include <initializer_list>
 
@@ -11,18 +18,43 @@
 
 namespace sm = btclock::slot_map;
 
-TEST_CASE("SlotCount matches 9 + 3C + 1") {
-  // 9 currency-agnostic slots (block, clock, halving, supply,
-  // mining-pool-hashrate, mining-pool-earnings, bitaxe-hashrate,
-  // bitaxe-best-diff, nwc-balance) + 3 per-currency slots + 1
-  // trailing fee-rate slot. The NWC balance slot was added in
-  // bd btclock_v4-lwf.6 — pushes the per-currency block start to 9.
-  CHECK(sm::SlotCount(1) == 14);
-  CHECK(sm::SlotCount(2) == 17);
-  CHECK(sm::SlotCount(4) == 23);  // the Rev B default (USD/EUR/GBP/JPY)
+namespace {
+
+// Derived helpers — `Slot(...)` reads as "the BtcPrice slot for the
+// second currency under a 4-currency layout".
+constexpr std::size_t Slot(int api_id, std::size_t currency_count,
+                           std::size_t pref = 0) {
+  return static_cast<std::size_t>(
+      sm::SlotForApiId(api_id, currency_count, pref));
+}
+
+// Locally-scoped formula for the trailing fee-rate slot. Same as
+// sm::SlotCount(C) - 1, just spelled out for readability where the
+// slot is named (rather than counted).
+constexpr std::size_t FeeSlot(std::size_t currency_count) {
+  return sm::SlotCount(currency_count) - 1;
+}
+
+}  // namespace
+
+TEST_CASE("SlotCount follows kAgnosticSlots + kPerCurrencySlots*C + 1") {
+  // Formula contract: agnostic prefix + per-currency block + trailing
+  // fee-rate singleton. The asserted side is derived from the same
+  // constants so a kAgnosticSlots bump auto-propagates; the test still
+  // catches drift in the *shape* of the formula (e.g. losing the +1
+  // for the fee slot, or doubling the per-currency stride).
+  for (std::size_t C :
+       {std::size_t{1}, std::size_t{2}, std::size_t{4}, std::size_t{7}}) {
+    CAPTURE(C);
+    CHECK(sm::SlotCount(C) ==
+          sm::kAgnosticSlots + sm::kPerCurrencySlots * C + 1);
+  }
 }
 
 TEST_CASE("ApiIdForSlot covers the agnostic prefix") {
+  // Slot 0..8 are the stable agnostic prefix — these literals ARE the
+  // contract. A new agnostic kind inserted *before* one of these is
+  // supposed to break the test (slot index shifted).
   CHECK(sm::ApiIdForSlot(0, 4) == sm::kApiIdBlockHeight);
   CHECK(sm::ApiIdForSlot(1, 4) == sm::kApiIdClock);
   CHECK(sm::ApiIdForSlot(2, 4) == sm::kApiIdHalving);
@@ -45,23 +77,26 @@ TEST_CASE(
 }
 
 TEST_CASE("ApiIdForSlot walks the per-currency stride") {
-  // With 4 currencies: slots 10..21 cycle (moscow, price, mcap) four times.
-  CHECK(sm::ApiIdForSlot(10, 4) == sm::kApiIdMoscowTime);
-  CHECK(sm::ApiIdForSlot(11, 4) == sm::kApiIdBtcPrice);
-  CHECK(sm::ApiIdForSlot(12, 4) == sm::kApiIdMarketCap);
-  CHECK(sm::ApiIdForSlot(13, 4) == sm::kApiIdMoscowTime);  // currencies[1]
-  CHECK(sm::ApiIdForSlot(15, 4) == sm::kApiIdMarketCap);   // currencies[1]
-  CHECK(sm::ApiIdForSlot(21, 4) == sm::kApiIdMarketCap);   // currencies[3]
+  // 4 currencies → kAgnosticSlots..kAgnosticSlots+11 cycle the
+  // (Moscow, Price, MCap) triple four times. Indices derived from
+  // kAgnosticSlots so a bump doesn't break this assertion.
+  const std::size_t base = sm::kAgnosticSlots;
+  CHECK(sm::ApiIdForSlot(base + 0, 4) == sm::kApiIdMoscowTime);
+  CHECK(sm::ApiIdForSlot(base + 1, 4) == sm::kApiIdBtcPrice);
+  CHECK(sm::ApiIdForSlot(base + 2, 4) == sm::kApiIdMarketCap);
+  CHECK(sm::ApiIdForSlot(base + 3, 4) == sm::kApiIdMoscowTime);  // ccy 1
+  CHECK(sm::ApiIdForSlot(base + 5, 4) == sm::kApiIdMarketCap);   // ccy 1
+  CHECK(sm::ApiIdForSlot(base + 11, 4) == sm::kApiIdMarketCap);  // ccy 3
 }
 
 TEST_CASE("ApiIdForSlot recognises the trailing fee-rate singleton") {
-  CHECK(sm::ApiIdForSlot(22, 4) == sm::kApiIdBlockFeeRate);
-  CHECK(sm::ApiIdForSlot(16, 2) == sm::kApiIdBlockFeeRate);
-  CHECK(sm::ApiIdForSlot(13, 1) == sm::kApiIdBlockFeeRate);
+  CHECK(sm::ApiIdForSlot(FeeSlot(4), 4) == sm::kApiIdBlockFeeRate);
+  CHECK(sm::ApiIdForSlot(FeeSlot(2), 2) == sm::kApiIdBlockFeeRate);
+  CHECK(sm::ApiIdForSlot(FeeSlot(1), 1) == sm::kApiIdBlockFeeRate);
 }
 
 TEST_CASE("ApiIdForSlot returns -1 for out-of-range slots") {
-  CHECK(sm::ApiIdForSlot(23, 4) == -1);
+  CHECK(sm::ApiIdForSlot(sm::SlotCount(4), 4) == -1);
   CHECK(sm::ApiIdForSlot(100, 1) == -1);
 }
 
@@ -81,27 +116,37 @@ TEST_CASE("SlotForApiId maps the agnostic prefix stably") {
   CHECK(sm::SlotForApiId(sm::kApiIdBitaxeHashrate, 4, 0) == 6);
   CHECK(sm::SlotForApiId(sm::kApiIdBitaxeBestDiff, 4, 0) == 7);
   CHECK(sm::SlotForApiId(sm::kApiIdNwcBalance, 4, 0) == 8);
+  CHECK(sm::SlotForApiId(sm::kApiIdMiningPoolEstimatedEarnings, 4, 0) == 9);
 }
 
 TEST_CASE("SlotForApiId lands on the preferred currency index") {
   // Per-currency screens with a preferred currency of 2 (third slot of 4).
-  // Base slot = kAgnosticSlots (10) + kPerCurrencySlots (3) * 2 = 16.
-  CHECK(sm::SlotForApiId(sm::kApiIdMoscowTime, 4, 2) == 16);
-  CHECK(sm::SlotForApiId(sm::kApiIdBtcPrice, 4, 2) == 17);
-  CHECK(sm::SlotForApiId(sm::kApiIdMarketCap, 4, 2) == 18);
+  // Base slot = kAgnosticSlots + kPerCurrencySlots * 2.
+  const std::size_t base = sm::kAgnosticSlots + sm::kPerCurrencySlots * 2;
+  CHECK(sm::SlotForApiId(sm::kApiIdMoscowTime, 4, 2) ==
+        static_cast<int>(base + 0));
+  CHECK(sm::SlotForApiId(sm::kApiIdBtcPrice, 4, 2) ==
+        static_cast<int>(base + 1));
+  CHECK(sm::SlotForApiId(sm::kApiIdMarketCap, 4, 2) ==
+        static_cast<int>(base + 2));
 }
 
 TEST_CASE("SlotForApiId clamps an out-of-range preferred_currency_index") {
   // Garbage preferred index falls back to currencies[0] instead of
   // producing an out-of-range slot.
-  CHECK(sm::SlotForApiId(sm::kApiIdMoscowTime, 4, 99) == 10);
-  CHECK(sm::SlotForApiId(sm::kApiIdBtcPrice, 4, 99) == 11);
+  CHECK(sm::SlotForApiId(sm::kApiIdMoscowTime, 4, 99) ==
+        static_cast<int>(sm::kAgnosticSlots));
+  CHECK(sm::SlotForApiId(sm::kApiIdBtcPrice, 4, 99) ==
+        static_cast<int>(sm::kAgnosticSlots + 1));
 }
 
 TEST_CASE("SlotForApiId for fee-rate lands on the trailing singleton") {
-  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 4, 0) == 22);
-  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 2, 0) == 16);
-  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 1, 0) == 13);
+  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 4, 0) ==
+        static_cast<int>(FeeSlot(4)));
+  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 2, 0) ==
+        static_cast<int>(FeeSlot(2)));
+  CHECK(sm::SlotForApiId(sm::kApiIdBlockFeeRate, 1, 0) ==
+        static_cast<int>(FeeSlot(1)));
 }
 
 TEST_CASE("SlotForApiId returns -1 when there are no active currencies") {
@@ -114,16 +159,23 @@ TEST_CASE("SlotForApiId returns -1 when there are no active currencies") {
 
 TEST_CASE("Round-trip: slot -> api_id -> slot holds for agnostic + fee") {
   const std::size_t C = 4;
-  const std::size_t total = sm::SlotCount(C);
-  for (std::size_t slot :
-       {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{3},
-        std::size_t{4}, std::size_t{5}, std::size_t{6}, std::size_t{7},
-        std::size_t{8}, total - 1}) {
+  // Sweep every agnostic slot + the fee-rate trailing slot; round-trip
+  // each through ApiIdForSlot → SlotForApiId and expect the same slot
+  // back (pref=0 since agnostic slots ignore the currency hint).
+  for (std::size_t slot = 0; slot < sm::kAgnosticSlots; ++slot) {
     const int api_id = sm::ApiIdForSlot(slot, C);
     CAPTURE(slot);
     CAPTURE(api_id);
     const int back =
         sm::SlotForApiId(api_id, C, /*preferred_currency_index=*/0);
+    CHECK(back == static_cast<int>(slot));
+  }
+  {
+    const std::size_t slot = FeeSlot(C);
+    const int api_id = sm::ApiIdForSlot(slot, C);
+    CAPTURE(slot);
+    CAPTURE(api_id);
+    const int back = sm::SlotForApiId(api_id, C, 0);
     CHECK(back == static_cast<int>(slot));
   }
 }
@@ -133,8 +185,7 @@ TEST_CASE(
   const std::size_t C = 4;
   // Iterate every per-currency slot; round-tripping with the currency
   // index derived from the slot must recover the original slot.
-  for (std::size_t slot = sm::kAgnosticSlots; slot < sm::SlotCount(C) - 1;
-       ++slot) {
+  for (std::size_t slot = sm::kAgnosticSlots; slot < FeeSlot(C); ++slot) {
     const int api_id = sm::ApiIdForSlot(slot, C);
     const std::size_t pref =
         (slot - sm::kAgnosticSlots) / sm::kPerCurrencySlots;
@@ -148,19 +199,20 @@ TEST_CASE(
 
 TEST_CASE(
     "TransposeSlotToCurrency preserves per-currency kind across currencies") {
-  // 4 currencies → per-currency block starts at 10, stride 3.
+  // 4 currencies → per-currency block starts at kAgnosticSlots, stride 3.
   const std::size_t C = 4;
-  // Market Cap USD (slot 12, ccy 0, off 2) → Market Cap EUR (ccy 1, off 2)
-  // = 15.
-  CHECK(sm::TransposeSlotToCurrency(/*current_slot=*/12,
-                                    /*new_currency_index=*/1, C) == 15);
-  // Moscow Time JPY (slot 19, ccy 3, off 0) → Moscow Time GBP (ccy 2, off 0)
-  // = 16.
-  CHECK(sm::TransposeSlotToCurrency(/*current_slot=*/19,
-                                    /*new_currency_index=*/2, C) == 16);
-  // Price EUR (slot 14, ccy 1, off 1) → Price USD (ccy 0, off 1) = 11.
-  CHECK(sm::TransposeSlotToCurrency(/*current_slot=*/14,
-                                    /*new_currency_index=*/0, C) == 11);
+  // Market Cap USD → Market Cap EUR.
+  CHECK(sm::TransposeSlotToCurrency(Slot(sm::kApiIdMarketCap, C, 0),
+                                    /*new_currency_index=*/1,
+                                    C) == Slot(sm::kApiIdMarketCap, C, 1));
+  // Moscow Time JPY → Moscow Time GBP.
+  CHECK(sm::TransposeSlotToCurrency(Slot(sm::kApiIdMoscowTime, C, 3),
+                                    /*new_currency_index=*/2,
+                                    C) == Slot(sm::kApiIdMoscowTime, C, 2));
+  // Price EUR → Price USD.
+  CHECK(sm::TransposeSlotToCurrency(Slot(sm::kApiIdBtcPrice, C, 1),
+                                    /*new_currency_index=*/0,
+                                    C) == Slot(sm::kApiIdBtcPrice, C, 0));
 }
 
 TEST_CASE(
@@ -169,31 +221,32 @@ TEST_CASE(
   // Agnostic slots have no per-currency offset to carry — default to
   // off=0 (Moscow) so auto-rotate walks Moscow → Price → MarketCap next.
   const std::size_t C = 4;
-  for (std::size_t agnostic :
-       {std::size_t{0}, std::size_t{1}, std::size_t{2}, std::size_t{3},
-        std::size_t{4}, std::size_t{5}, std::size_t{6}, std::size_t{7},
-        std::size_t{8}, std::size_t{9}}) {
+  for (std::size_t agnostic = 0; agnostic < sm::kAgnosticSlots; ++agnostic) {
     CAPTURE(agnostic);
-    // New currency index 2 → Moscow slot = 10 + 3*2 = 16.
-    CHECK(sm::TransposeSlotToCurrency(agnostic, 2, C) == 16);
+    CHECK(sm::TransposeSlotToCurrency(agnostic, 2, C) ==
+          Slot(sm::kApiIdMoscowTime, C, 2));
   }
 }
 
 TEST_CASE("TransposeSlotToCurrency from fee-rate slot lands on Moscow") {
   const std::size_t C = 4;
-  const std::size_t fee_slot = sm::SlotCount(C) - 1;  // 22
+  const std::size_t fee = FeeSlot(C);
   // Fee rate is agnostic-ish — no offset to carry.
-  CHECK(sm::TransposeSlotToCurrency(fee_slot, 1, C) == 13);  // Moscow EUR
-  CHECK(sm::TransposeSlotToCurrency(fee_slot, 3, C) == 19);  // Moscow JPY
+  CHECK(sm::TransposeSlotToCurrency(fee, 1, C) ==
+        Slot(sm::kApiIdMoscowTime, C, 1));
+  CHECK(sm::TransposeSlotToCurrency(fee, 3, C) ==
+        Slot(sm::kApiIdMoscowTime, C, 3));
 }
 
 TEST_CASE(
     "TransposeSlotToCurrency is a no-op when target currency == current") {
   const std::size_t C = 4;
-  // Market Cap EUR (slot 15, ccy 1) asked to switch to EUR (ccy 1) stays.
-  CHECK(sm::TransposeSlotToCurrency(15, 1, C) == 15);
-  // Moscow Time USD (slot 10, ccy 0) asked to stay on USD.
-  CHECK(sm::TransposeSlotToCurrency(10, 0, C) == 10);
+  // Market Cap EUR asked to switch to EUR stays.
+  CHECK(sm::TransposeSlotToCurrency(Slot(sm::kApiIdMarketCap, C, 1), 1, C) ==
+        Slot(sm::kApiIdMarketCap, C, 1));
+  // Moscow Time USD asked to stay on USD.
+  CHECK(sm::TransposeSlotToCurrency(Slot(sm::kApiIdMoscowTime, C, 0), 0, C) ==
+        Slot(sm::kApiIdMoscowTime, C, 0));
 }
 
 TEST_CASE(
@@ -213,13 +266,12 @@ TEST_CASE(
   // every consumer relies on, across the currency-count axis where the
   // bug initially surfaced (C=1 fee slot landed in a per-currency OOB).
   for (std::size_t C = 1; C <= 7; ++C) {
-    const std::size_t total = sm::SlotCount(C);
     CAPTURE(C);
-    CHECK(sm::ApiIdForSlot(total - 1, C) == sm::kApiIdBlockFeeRate);
+    CHECK(sm::ApiIdForSlot(FeeSlot(C), C) == sm::kApiIdBlockFeeRate);
     CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots, C) == sm::kApiIdMoscowTime);
     CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots + 1, C) == sm::kApiIdBtcPrice);
     CHECK(sm::ApiIdForSlot(sm::kAgnosticSlots + 2, C) == sm::kApiIdMarketCap);
-    // NWC balance is the last agnostic slot — must NOT slip into the
+    // NWC balance is in the agnostic prefix — must NOT slip into the
     // per-currency stride. Pre-fix, ScreenManager.kAgnosticSlots=8 made
     // current_currency() return currencies_[0] for slot 8 (NWC), and
     // KindForSlot(slot_count-1) hit the per-currency arithmetic with an
