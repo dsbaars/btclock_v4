@@ -1720,7 +1720,7 @@ TEST_CASE("panel_texts — nostr zap integer fills tail (21000 on 7 panels)") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  // 5-digit integer fills the 5-cell tail — no need for "21k".
+  // 5-digit integer fills the 5-cell tail — no need for "21K".
   CHECK(out[0] == "ZAP");
   CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "2");
@@ -1737,14 +1737,14 @@ TEST_CASE("panel_texts — nostr zap k-suffix when integer overflows tail") {
   in.use_sats_symbol = false;
   const auto out = BuildPanelTexts(in, 7);
   REQUIRE(out.size() == 7);
-  // Falls back to "210k" right-justified.
+  // Falls back to "210K" right-justified.
   CHECK(out[0] == "ZAP");
   CHECK(out[1] == "");  // bolt
   CHECK(out[2] == "");
   CHECK(out[3] == "2");
   CHECK(out[4] == "1");
   CHECK(out[5] == "0");
-  CHECK(out[6] == "k");
+  CHECK(out[6] == "K");
 }
 
 TEST_CASE("panel_texts — nostr zap million-suffix (1.2M)") {
@@ -1876,7 +1876,7 @@ TEST_CASE("panel_texts — nostr zap with sats glyph (8 panels, 21000)") {
 
 TEST_CASE("panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
   // Same input, only the pref flips. With an amount that triggers the
-  // suffix path ("210k", 4 chars on a 5-cell tail), toggling the glyph
+  // suffix path ("210K", 4 chars on a 5-cell tail), toggling the glyph
   // pref only swaps the cell just before the most-significant amount
   // digit between blank and "STS". The bolt cell stays at slot 1.
   PanelTextInputs in;
@@ -1892,7 +1892,7 @@ TEST_CASE("panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
   CHECK(off[3] == "2");
   CHECK(off[4] == "1");
   CHECK(off[5] == "0");
-  CHECK(off[6] == "k");
+  CHECK(off[6] == "K");
 
   in.use_sats_symbol = true;
   const auto on = BuildPanelTexts(in, 7);
@@ -1903,7 +1903,7 @@ TEST_CASE("panel_texts — nostr zap glyph on/off parity: suffix-form amount") {
   CHECK(on[3] == "2");
   CHECK(on[4] == "1");
   CHECK(on[5] == "0");
-  CHECK(on[6] == "k");
+  CHECK(on[6] == "K");
 }
 
 TEST_CASE("panel_texts — nostr zap edge: 1 sat still surfaces (Bug-1 edge)") {

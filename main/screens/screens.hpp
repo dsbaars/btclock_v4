@@ -297,7 +297,7 @@ void RenderBitaxeBestDiffScreen(
 // ZAP and the bolt anchor at the leftmost two cells; V8's extra panel
 // widens the blank gap between bolt and sats glyph. The bolt cell paints the
 // mdi-lightning-bolt MDI glyph (icon font role, 130 px). The amount
-// is scaled via FormatZapAmount ("21k", "1.2M", "100") and
+// is scaled via FormatZapAmount ("21K", "1.2M", "100") and
 // right-justified, anchored to panel N-1; longer amounts spill
 // leftward through the blank middle cells. When `use_sats_symbol=true`
 // (default) the sats glyph cell sits one slot before the
@@ -315,17 +315,9 @@ void RenderNostrZapScreen(
     bool use_btc_symbol = false, uint8_t sats_variant = kSatsVariantDefault,
     bool full_refresh_mode = true, bool vertical_desc = false);
 
-// Format a zap amount (sats) into the string painted on the trailing
-// panels. `max_int_cells` is the panel-tail budget for an integer
-// rendering — when the raw integer fits, it's preferred over the
-// suffix form so a 1000-sat zap on a 7-panel board reads "1000" not
-// "1.0k". When it doesn't fit, falls back to k / M / B suffix:
-// 1000..999_999 → "Nk" / "N.Nk", >= 1_000_000 → "NM" / "N.NM",
-// >= 1_000_000_000 → "NB". Negative / missing → "?". Pure-logic
-// helper so host tests can pin the rules without pulling the EPD
-// driver.
-std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
-                            std::size_t max_int_cells);
+// FormatZapAmount lives in screen_math.hpp (EPD-free) so panel_texts and
+// the renderer share one body. Re-declared inline here as a #include of
+// screen_math.hpp via common.hpp.
 
 // --- NWC wallet balance ---
 // Rotatable screen. Layout (7- and 8-panel):

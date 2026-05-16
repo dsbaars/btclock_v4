@@ -24,42 +24,6 @@
 
 namespace btclock {
 
-std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
-                            std::size_t max_int_cells) {
-  if (!amount_sats || *amount_sats < 0) return "?";
-  const int64_t v = *amount_sats;
-  // Prefer the raw integer when it fits the panel-tail budget — readers
-  // see "1000" / "10000" instead of "1.0k" / "10k". The budget is the
-  // tail width without the sats glyph reserved; ComputeZapLayout will
-  // drop the glyph automatically when the integer fills the tail.
-  char int_buf[24];
-  std::snprintf(int_buf, sizeof(int_buf), "%lld", static_cast<long long>(v));
-  if (std::strlen(int_buf) <= max_int_cells) return int_buf;
-  // Fall back to k / M / B suffix for values that don't fit.
-  // Three-digit integer part: "12k", "123k". Two-digit: "12k". One-
-  // digit: "1.2k" — the fractional digit gives a finer read at the
-  // small end of each magnitude band.
-  double x = static_cast<double>(v);
-  const char* suffix;
-  if (v >= 1'000'000'000LL) {
-    x /= 1e9;
-    suffix = "B";
-  } else if (v >= 1'000'000LL) {
-    x /= 1e6;
-    suffix = "M";
-  } else {
-    x /= 1e3;
-    suffix = "k";
-  }
-  char buf[16];
-  if (x >= 10.0) {
-    std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
-  } else {
-    std::snprintf(buf, sizeof(buf), "%.1f%s", x, suffix);
-  }
-  return buf;
-}
-
 namespace {
 
 // Ref chars for the "ZAP" label panel. Matches the uppercase + digit
@@ -68,7 +32,7 @@ namespace {
 constexpr const char* kLabelRef = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 // Ref chars for the amount digits — includes the suffix letters so a
-// "21k" / "1.2M" tail shares a baseline with a plain "100".
+// "21K" / "1.2M" tail shares a baseline with a plain "100".
 constexpr const char* kAmountRef = "0123456789kMB.";
 
 // ZAP@0, bolt@1, [blanks 2..N-3], sats glyph just before the amount,

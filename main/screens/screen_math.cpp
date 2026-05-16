@@ -5,9 +5,49 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 
 namespace btclock {
+
+std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
+                            std::size_t max_int_cells) {
+  if (!amount_sats || *amount_sats < 0) return "?";
+  const int64_t v = *amount_sats;
+  // Prefer the raw integer when it fits the panel-tail budget — readers
+  // see "1000" / "10000" instead of "1.0K" / "10K". The budget is the
+  // tail width without the sats glyph reserved; the caller-side layout
+  // (ComputeZapLayout / ComputeNwcLayout / BuildLabelGlyphAmount) drops
+  // the glyph automatically when the integer fills the tail.
+  char int_buf[24];
+  std::snprintf(int_buf, sizeof(int_buf), "%lld", static_cast<long long>(v));
+  if (std::strlen(int_buf) <= max_int_cells) return int_buf;
+  // Fall back to K / M / B suffix for values that don't fit. Uppercase
+  // K matches FormatNumberWithSuffix above, so the BTC ticker, market
+  // cap, supply, zap, and NWC paths share one suffix vocabulary.
+  // Three-digit integer part: "12K", "123K". Two-digit: "12K". One-
+  // digit: "1.2K" — the fractional digit gives a finer read at the
+  // small end of each magnitude band.
+  double x = static_cast<double>(v);
+  const char* suffix;
+  if (v >= 1'000'000'000LL) {
+    x /= 1e9;
+    suffix = "B";
+  } else if (v >= 1'000'000LL) {
+    x /= 1e6;
+    suffix = "M";
+  } else {
+    x /= 1e3;
+    suffix = "K";
+  }
+  char buf[16];
+  if (x >= 10.0) {
+    std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
+  } else {
+    std::snprintf(buf, sizeof(buf), "%.1f%s", x, suffix);
+  }
+  return buf;
+}
 
 void FormatDigits64(uint64_t v, char* digits, std::size_t slots) {
   char buf[24];

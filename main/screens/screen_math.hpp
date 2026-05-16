@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -116,6 +117,21 @@ std::vector<std::string> SmallCharsGroups(uint64_t value,
 // FreeRTOS dependencies so host tests can exercise it directly.
 std::string FormatNumberWithSuffix(uint64_t num, int num_characters = 4,
                                    bool mow_mode = false);
+
+// Format a zap-like sats amount (Nostr zap, NWC balance, NWC payment
+// notify) into the string painted on the trailing panels.
+// `max_int_cells` is the panel-tail budget for the integer rendering —
+// when the raw integer fits, it is preferred over the suffix form so a
+// 1000-sat zap on a 7-panel board reads "1000" not "1.0K". When it
+// doesn't fit, falls back to K / M / B suffix (uppercase — matches
+// FormatNumberWithSuffix above so the BTC-ticker, market-cap, supply,
+// zap, and NWC paths share one suffix vocabulary):
+// 1000..999_999 → "NK" / "N.NK", >= 1_000_000 → "NM" / "N.NM",
+// >= 1_000_000_000 → "NB". Negative / missing → "?". EPD-free so the
+// /api/status panel-text mirror and the on-device renderer share one
+// body.
+std::string FormatZapAmount(const std::optional<int64_t>& amount_sats,
+                            std::size_t max_int_cells);
 
 // Block-height screen layout: when the decimal form of `height` needs
 // at least `panels` digits (7 on a 7-panel board) the "BLOCK/HEIGHT"

@@ -650,39 +650,6 @@ std::vector<std::string> BuildMiningPoolHashrate(const MiningPoolMirror& pool,
   return out;
 }
 
-// Scaled zap amount → short string ("21", "1.2k", "100M", "?"). Kept
-// local to panel_texts so the header stays EPD-free. Must match the
-// renderer-side FormatZapAmount in nostr_zap.cpp so the /api/status
-// mirror agrees with what the panels paint. test_panel_texts pins the
-// key cases.
-std::string FormatZapAmountLocal(const std::optional<int64_t>& amount_sats,
-                                 std::size_t max_int_cells) {
-  if (!amount_sats || *amount_sats < 0) return "?";
-  const int64_t v = *amount_sats;
-  char int_buf[24];
-  std::snprintf(int_buf, sizeof(int_buf), "%lld", static_cast<long long>(v));
-  if (std::strlen(int_buf) <= max_int_cells) return int_buf;
-  double x = static_cast<double>(v);
-  const char* suffix;
-  if (v >= 1'000'000'000LL) {
-    x /= 1e9;
-    suffix = "B";
-  } else if (v >= 1'000'000LL) {
-    x /= 1e6;
-    suffix = "M";
-  } else {
-    x /= 1e3;
-    suffix = "k";
-  }
-  char buf[16];
-  if (x >= 10.0) {
-    std::snprintf(buf, sizeof(buf), "%d%s", static_cast<int>(x + 0.5), suffix);
-  } else {
-    std::snprintf(buf, sizeof(buf), "%.1f%s", x, suffix);
-  }
-  return buf;
-}
-
 std::vector<std::string> BuildLabelGlyphAmount(
     const char* label, std::string_view glyph_mirror,
     const std::optional<int64_t>& amount_sats, bool use_sats_symbol,
@@ -715,11 +682,11 @@ std::vector<std::string> BuildLabelGlyphAmount(
   if (n_panels <= bolt_slot + 1) return out;
 
   // Budget the integer formatter against the full tail (no glyph
-  // reserve). When the integer overflows the tail, FormatZapAmountLocal
+  // reserve). When the integer overflows the tail, FormatZapAmount
   // falls back to suffix; when it fits, the layout step below drops the
   // glyph so the digits aren't truncated.
   const std::size_t available_tail = n_panels - (bolt_slot + 1);
-  const std::string amount = FormatZapAmountLocal(amount_sats, available_tail);
+  const std::string amount = FormatZapAmount(amount_sats, available_tail);
   std::size_t amount_cells = amount.size();
   if (amount_cells > available_tail) amount_cells = available_tail;
   if (amount_cells < 1) amount_cells = 1;
