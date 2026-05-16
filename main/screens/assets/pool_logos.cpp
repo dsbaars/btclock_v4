@@ -34,6 +34,7 @@ namespace {
 // from and the renderer knows the dimensions. Filenames mirror the
 // upstream `mining-pool-logos` repo layout.
 constexpr PoolLogoMeta kLogoMetaTable[] = {
+    {"blitzpool", "blitzpool.bin", 122, 122},
     {"braiins", "braiins.bin", 37, 230},
     {"gobrrr_pool", "gobrrr.bin", 122, 122},
     {"noderunners", "noderunners.bin", 122, 122},
