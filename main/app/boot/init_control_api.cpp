@@ -448,11 +448,20 @@ void InitControlApi(AppCtx& ctx) {
     // per-request so switching pool via PATCH /api/settings takes effect on
     // the next GET. Read is a cheap cached NVS lookup.
     ccfg.screen_is_hidden = [](int api_id) -> bool {
-      if (api_id != slot_map::kApiIdMiningPoolEarnings) return false;
+      if (api_id != slot_map::kApiIdMiningPoolEarnings &&
+          api_id != slot_map::kApiIdMiningPoolEstimatedEarnings) {
+        return false;
+      }
       Prefs p(prefs::kSettingsNs);
       const std::string name =
           btclock::settings::ReadString(p, prefs::kMiningPoolName);
-      return !mining_pools::PoolSupportsDailyEarnings(name);
+      if (api_id == slot_map::kApiIdMiningPoolEarnings) {
+        return !mining_pools::PoolSupportsDailyEarnings(name);
+      }
+      // kApiIdMiningPoolEstimatedEarnings — gated separately so a
+      // pool that has settled-earnings (Ocean) can still hide the
+      // estimate slot (no PPLNS window to project from).
+      return !mining_pools::PoolSupportsEstimatedEarnings(name);
     };
     // Body-first POST /api/show/screen {"s":<api_id>} and the
     // `currentScreen` field in

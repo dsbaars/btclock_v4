@@ -32,6 +32,10 @@ struct MiningPoolMirror {
   std::string name;      // Pool display label for slot 0 when no logo.
   std::string hashrate;  // Raw integer H/s string (empty = no sample).
   std::optional<int64_t> daily_sats;
+  // Projected/estimated payout in sats — set by pools that publish
+  // share-window inputs (Blitzpool PPLNS today). Drives the dedicated
+  // Estimated Earnings screen mirror in /api/status data[].
+  std::optional<int64_t> estimated_sats;
 };
 
 // Bitaxe hashrate formatter. Given GH/s, emit a compact "<val><unit>"

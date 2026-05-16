@@ -102,16 +102,23 @@ void InitScreenManager(AppCtx& ctx) {
       // bitaxeEnabled. Both default false in schema, so a fresh device
       // suppresses these rotation slots even though `screen<id>Visible`
       // defaults to true.
-      if ((api_id == 70 || api_id == 71) &&
+      if ((api_id == 70 || api_id == 71 || api_id == 72) &&
           !btclock::settings::ReadBool(p, prefs::kMiningPoolStats)) {
         return false;
+      }
+      // Estimated Earnings (72) additionally requires the active pool
+      // to publish a projection — covers solo / non-PPLNS pools that
+      // can't compute one.
+      if (api_id == 72) {
+        const std::string name =
+            btclock::settings::ReadString(p, prefs::kMiningPoolName);
+        if (!mining_pools::PoolSupportsEstimatedEarnings(name)) return false;
       }
       if ((api_id == 80 || api_id == 81) &&
           !btclock::settings::ReadBool(p, prefs::kBitaxeEnabled)) {
         return false;
       }
-      if (api_id == 90 &&
-          !btclock::settings::ReadBool(p, prefs::kNwcEnabled)) {
+      if (api_id == 90 && !btclock::settings::ReadBool(p, prefs::kNwcEnabled)) {
         return false;
       }
       char vkey[24];

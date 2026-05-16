@@ -130,6 +130,8 @@ const char* KindName(ScreenType k) {
       return "poolhash";
     case ScreenType::kMiningPoolEarnings:
       return "poolearn";
+    case ScreenType::kMiningPoolEstimatedEarnings:
+      return "poolest";
     case ScreenType::kBitaxeHashrate:
       return "bxhash";
     case ScreenType::kBitaxeBestDiff:
@@ -167,8 +169,8 @@ ScreenType ScreenManager::KindForSlot(size_t slot) const {
   // btclock_v4-oni (NWC balance shifted the per-currency block but
   // ScreenManager's local kAgnosticSlots constant stayed at 8) is the
   // motivating regression.
-  static_assert(kAgnosticSlots == 9,
-                "KindForSlot agnostic switch covers slots 0..8; bump it "
+  static_assert(kAgnosticSlots == 10,
+                "KindForSlot agnostic switch covers slots 0..9; bump it "
                 "alongside slot_map::kAgnosticSlots.");
   if (slot == slot_count() - 1) return ScreenType::kBlockFeeRate;
   switch (slot) {
@@ -190,6 +192,8 @@ ScreenType ScreenManager::KindForSlot(size_t slot) const {
       return ScreenType::kBitaxeBestDiff;
     case 8:
       return ScreenType::kNwcBalance;
+    case 9:
+      return ScreenType::kMiningPoolEstimatedEarnings;
     default:
       break;
   }
@@ -663,6 +667,10 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
     case ScreenType::kMiningPoolEarnings:
       return snap.pool.daily_sats != last_rendered_pool_earnings_.daily_sats ||
              snap.pool.name != last_rendered_pool_earnings_.name;
+    case ScreenType::kMiningPoolEstimatedEarnings:
+      return snap.pool.estimated_sats !=
+                 last_rendered_pool_estimated_earnings_.estimated_sats ||
+             snap.pool.name != last_rendered_pool_estimated_earnings_.name;
     case ScreenType::kBitaxeHashrate: {
       // Re-render when the formatted value string differs from what
       // we last painted — lets the bitaxe poller's every-10-s tick
@@ -945,6 +953,15 @@ void ScreenManager::Render(
       last_rendered_pool_earnings_ = snap.pool;
       break;
     }
+    case ScreenType::kMiningPoolEstimatedEarnings: {
+      const DataSnapshot::PoolStats& prev =
+          force_repaint ? DataSnapshot::PoolStats{}
+                        : last_rendered_pool_estimated_earnings_;
+      RenderMiningPoolEstimatedEarningsScreen(
+          panels, fb, fonts, snap.pool, prev, force_full, rp.vertical_desc);
+      last_rendered_pool_estimated_earnings_ = snap.pool;
+      break;
+    }
     case ScreenType::kBitaxeHashrate: {
       RenderBitaxeHashrateScreen(
           panels, fb, fonts, snap.bitaxe.hostname, snap.bitaxe.hashrate_ghs,
@@ -1050,6 +1067,7 @@ void ScreenManager::Render(
   pti.pool.name = snap.pool.name;
   pti.pool.hashrate = snap.pool.hashrate;
   pti.pool.daily_sats = snap.pool.daily_sats;
+  pti.pool.estimated_sats = snap.pool.estimated_sats;
   // Decoration flags: read per-render (cheap) so a PATCH lands live.
   pti.halving_as_blocks = rp.use_blk_countdown;
   pti.supply_big_chars = rp.mcap_big_char;

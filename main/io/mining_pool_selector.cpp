@@ -113,10 +113,11 @@ std::vector<std::string> AvailablePoolNames() {
   // entries to keep the existing pool order stable.
   // Blitzpool is a public-pool fork (PPLNS / group-solo / Stratum V2);
   // grouped next to public_pool / gobrrr to keep family ordering.
-  return {"ocean",       "noderunners",       "satoshi_radio", "braiins",
-          "public_pool", "local_public_pool", "gobrrr_pool",   "blitzpool",
-          "ckpool",      "eu_ckpool",         "nerdminers_org",
-          "nerdminer_io", "foundry_usa",      "viabtc"};
+  return {"ocean",       "noderunners",    "satoshi_radio",
+          "braiins",     "public_pool",    "local_public_pool",
+          "gobrrr_pool", "blitzpool",      "ckpool",
+          "eu_ckpool",   "nerdminers_org", "nerdminer_io",
+          "foundry_usa", "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {
@@ -167,6 +168,16 @@ bool PoolSupportsDailyEarnings(const std::string& pool_name) {
   auto src = BuildPoolByName(pool_name);
   if (!src) return true;
   return src->SupportsDailyEarnings();
+}
+
+bool PoolSupportsEstimatedEarnings(const std::string& pool_name) {
+  // Opt-in capability: default off (false). Empty name + unknown pool
+  // fall back to false so the Estimated Earnings slot stays hidden
+  // unless the active pool explicitly opts in.
+  if (pool_name.empty()) return false;
+  auto src = BuildPoolByName(pool_name);
+  if (!src) return false;
+  return src->SupportsEstimatedEarnings();
 }
 
 }  // namespace mining_pools

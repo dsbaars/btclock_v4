@@ -131,6 +131,16 @@ class PoolDataSource : public DataSource {
   // that actually exposes daily_sats (Ocean, Braiins, GoBrrr Pool).
   virtual bool SupportsDailyEarnings() const { return true; }
 
+  // Whether this pool produces a forward-looking payout estimate
+  // (ParsedStats.estimated_sats — e.g. Blitzpool PPLNS' projection
+  // from currentWindowPercent × next-block reward). Gates the
+  // dedicated Estimated Earnings screen (api_id 72) in the settings
+  // catalog and the rotation predicate so pools that only report
+  // settled payouts don't advertise the slot.
+  //
+  // Default `false` — opt-in. Only Blitzpool overrides today.
+  virtual bool SupportsEstimatedEarnings() const { return false; }
+
   // Mining-pool logo metadata. Mirrors v3's
   // `MiningPoolInterface::hasLogo()` / `getLogoFilename()` /
   // `getLogoWidth()` / `getLogoHeight()` quartet so the runtime fetcher

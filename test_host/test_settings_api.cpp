@@ -416,7 +416,9 @@ TEST_CASE("GET drops NWC balance (id 90) when nwcEnabled off") {
   FakePrefs prefs;
   btclock::settings::DeviceContext ctx = DefaultCtx();
   ctx.screens = {
-      {0, "Block Height"}, {3, "Time"}, {6, "Block Fee Rate"},
+      {0, "Block Height"},
+      {3, "Time"},
+      {6, "Block Fee Rate"},
       {90, "NWC Balance"},
   };
   ctx.nwc_enabled = false;
@@ -435,7 +437,9 @@ TEST_CASE("GET keeps NWC balance (id 90) when nwcEnabled on") {
   FakePrefs prefs;
   btclock::settings::DeviceContext ctx = DefaultCtx();
   ctx.screens = {
-      {0, "Block Height"}, {3, "Time"}, {6, "Block Fee Rate"},
+      {0, "Block Height"},
+      {3, "Time"},
+      {6, "Block Fee Rate"},
       {90, "NWC Balance"},
   };
   ctx.nwc_enabled = true;

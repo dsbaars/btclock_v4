@@ -372,6 +372,7 @@ class ScreenManager {
   // updates (same pool logo + unit label, only digits change).
   DataSnapshot::PoolStats last_rendered_pool_hashrate_;
   DataSnapshot::PoolStats last_rendered_pool_earnings_;
+  DataSnapshot::PoolStats last_rendered_pool_estimated_earnings_;
   // Bitaxe screen diff — keep the last painted values so a repeated
   // poll with identical numbers doesn't repaint. Empty hostname means
   // "never rendered"; the first frame with data forces a full refresh

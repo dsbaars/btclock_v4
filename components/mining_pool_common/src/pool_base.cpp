@@ -1,5 +1,6 @@
 #include "mining_pool_common/pool_base.hpp"
 
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -23,6 +24,20 @@ namespace mining_pools {
 namespace {
 
 constexpr const char* kTag = "pool.base";
+
+// Block subsidy (sats) at `height`. Mirrors the canonical
+// BlockRewardSats in main/screens/screen_math.hpp; duplicated locally
+// because mining_pool_common is a component and can't reach into
+// main/ headers without inverting the dep layering. Both copies must
+// move in lockstep — kept tiny precisely so the duplication is cheap
+// to audit.
+inline uint64_t BlockRewardSatsAt(uint32_t height) {
+  constexpr uint32_t kHalvingInterval = 210000;
+  constexpr uint32_t kMaxHalvingEras = 33;
+  const uint32_t era = height / kHalvingInterval;
+  if (era >= kMaxHalvingEras) return 0;
+  return 5000000000ULL >> era;
+}
 
 // Response-body accumulator backed by PSRAM. Pool responses can reach
 // 32–64 KiB (public_pool worker list) — previously a std::vector<char>
@@ -295,10 +310,35 @@ void PoolDataSource::PollOnce() {
     }
   }
 
+  // Translate share-window inputs into a final projected payout
+  // using the *current* block subsidy (BlockRewardSats(tip_height)).
+  // Doing the multiply here (not inside the per-pool parser) keeps
+  // the parser free of an embedded reward constant that would silently
+  // go stale across halvings — same pattern the market-cap math uses
+  // via SupplyAtBlock(height).
+  if (hub_ != nullptr && !parsed.has_estimated_sats &&
+      parsed.has_window_percent) {
+    const auto snap = hub_->GetSnapshot();
+    if (snap.block_height && *snap.block_height > 0) {
+      const uint64_t subsidy = BlockRewardSatsAt(*snap.block_height);
+      const double fee_frac =
+          parsed.has_fee_percent ? parsed.fee_percent / 100.0 : 0.0;
+      const double pending =
+          std::floor(parsed.window_percent / 100.0 *
+                     static_cast<double>(subsidy) * (1.0 - fee_frac));
+      if (pending >= 1.0) {
+        parsed.has_estimated_sats = true;
+        parsed.estimated_sats = static_cast<int64_t>(pending);
+      }
+    }
+  }
+
   ESP_LOGI(
-      kTag, "%s: hashrate=%s daily_sats=%lld", pool_name(),
+      kTag, "%s: hashrate=%s daily_sats=%lld est_sats=%lld", pool_name(),
       parsed.hashrate.c_str(),
-      parsed.has_daily_sats ? static_cast<long long>(parsed.daily_sats) : 0LL);
+      parsed.has_daily_sats ? static_cast<long long>(parsed.daily_sats) : 0LL,
+      parsed.has_estimated_sats ? static_cast<long long>(parsed.estimated_sats)
+                                : 0LL);
 
   if (hub_ == nullptr) return;
   DataSnapshot partial;
@@ -306,6 +346,9 @@ void PoolDataSource::PollOnce() {
   partial.pool.hashrate = std::move(parsed.hashrate);
   if (parsed.has_daily_sats) partial.pool.daily_sats = parsed.daily_sats;
   if (parsed.has_workers) partial.pool.workers = parsed.workers;
+  if (parsed.has_estimated_sats) {
+    partial.pool.estimated_sats = parsed.estimated_sats;
+  }
   hub_->Report(partial);
 }
 

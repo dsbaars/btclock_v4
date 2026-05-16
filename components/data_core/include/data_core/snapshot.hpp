@@ -48,6 +48,12 @@ struct DataSnapshot {
     std::optional<int64_t> daily_sats;
     // Worker count, if the pool publishes one. nullopt otherwise.
     std::optional<int32_t> workers;
+    // Forward-looking payout estimate in sats — projected from share-
+    // window position rather than settled (Blitzpool PPLNS currently;
+    // future ckpool-style pools could add it too). Renders on a
+    // dedicated screen (api_id 72) so the existing daily_sats screen
+    // keeps its "money I've earned" semantic.
+    std::optional<int64_t> estimated_sats;
   };
   PoolStats pool{};
 

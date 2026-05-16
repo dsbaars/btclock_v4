@@ -36,12 +36,17 @@ class BlitzPool : public PublicPoolBase {
   BlitzPool() = default;
   const char* name() const override { return "pool.blitzpool"; }
 
-  // Surface the earnings screen so PPLNS / group-solo addresses see
-  // their pending balance. Solo addresses report balanceSats=0 and
-  // simply leave DataSnapshot.pool.daily_sats nullopt; the earnings
-  // screen will show "n/a" in that case (same UX as Ocean before any
-  // payouts) and the user can disable the screen via settings.
+  // Surface the settled-earnings screen — balanceSats is the actual
+  // ledger payout, zero until the address clears minPayoutSats. We
+  // emit zero as a literal 0 (not nullopt) so a configured PPLNS
+  // miner sees "0 SATS" instead of empty digits while waiting for
+  // the first payout.
   bool SupportsDailyEarnings() const override { return true; }
+
+  // Surface the dedicated Estimated Earnings screen — projected
+  // payout for the current PPLNS window. See parsed_stats.hpp for
+  // why this is a separate field from daily_sats.
+  bool SupportsEstimatedEarnings() const override { return true; }
 
  protected:
   std::string api_url() const override;

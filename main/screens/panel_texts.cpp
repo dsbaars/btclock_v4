@@ -748,28 +748,28 @@ std::vector<std::string> BuildLabelGlyphAmount(
   return out;
 }
 
-std::vector<std::string> BuildMiningPoolEarnings(const MiningPoolMirror& pool,
-                                                 std::size_t n_panels) {
+// Shared core for the two sats-payout panel-text mirrors (Earnings +
+// Estimated Earnings). `estimate=true` flips the trailing unit cell
+// from "SATS"/"BTC" to "EST/SATS"/"EST/BTC" so /api/status mirrors
+// what the EPD renderer paints on the projected-payout screen.
+std::vector<std::string> BuildMiningPoolSatsRow(
+    const MiningPoolMirror& pool, std::optional<int64_t> value_sats,
+    bool estimate, std::size_t n_panels) {
   std::vector<std::string> out(n_panels);
   if (n_panels == 0) return out;
   out[0] = PoolLabelCellFor(pool.name);
   if (n_panels < 3) return out;
 
-  // Digit slots start at index 1 (after the single-panel label) and stop
-  // before the trailing unit cell at N-1. Matches the hashrate screen so
-  // a switch between the two screens keeps the same column alignment.
   const std::size_t digit_slots = n_panels - 2;
   const std::size_t first_digit = 1;
   const MiningPoolEarningsLayout layout =
-      LayoutMiningPoolEarnings(pool.daily_sats.value_or(-1));
+      LayoutMiningPoolEarnings(value_sats.value_or(-1));
+  const std::string prefix = estimate ? std::string("EST/") : std::string();
   if (!layout.valid) {
-    // Pool without a daily-earnings figure → blank digits, trailing
-    // "SATS" placeholder. Keeps the mirror shape stable so the WebUI
-    // still renders the row instead of going blank.
-    out[n_panels - 1] = "SATS";
+    out[n_panels - 1] = prefix + std::string("SATS");
     return out;
   }
-  out[n_panels - 1] = layout.unit_label;
+  out[n_panels - 1] = prefix + layout.unit_label;
 
   std::string s = layout.value;
   if (s.size() > digit_slots) s = s.substr(s.size() - digit_slots);
@@ -779,6 +779,18 @@ std::vector<std::string> BuildMiningPoolEarnings(const MiningPoolMirror& pool,
     out[first_digit + i] = CharSlot(c);
   }
   return out;
+}
+
+std::vector<std::string> BuildMiningPoolEarnings(const MiningPoolMirror& pool,
+                                                 std::size_t n_panels) {
+  return BuildMiningPoolSatsRow(pool, pool.daily_sats, /*estimate=*/false,
+                                n_panels);
+}
+
+std::vector<std::string> BuildMiningPoolEstimatedEarnings(
+    const MiningPoolMirror& pool, std::size_t n_panels) {
+  return BuildMiningPoolSatsRow(pool, pool.estimated_sats, /*estimate=*/true,
+                                n_panels);
 }
 
 // Bitaxe panel-text mirror. Slot 0 is blank because the EPD renderer
@@ -910,6 +922,8 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
       return BuildMiningPoolHashrate(in.pool, n_panels);
     case ScreenType::kMiningPoolEarnings:
       return BuildMiningPoolEarnings(in.pool, n_panels);
+    case ScreenType::kMiningPoolEstimatedEarnings:
+      return BuildMiningPoolEstimatedEarnings(in.pool, n_panels);
     case ScreenType::kBitaxeHashrate:
       return BuildBitaxeHashrate(in, n_panels);
     case ScreenType::kBitaxeBestDiff:

@@ -20,6 +20,7 @@
 #include "fonts_app.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "io/mining_pool_selector.hpp"
 #include "io/led_controller.hpp"
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
@@ -172,9 +173,16 @@ bool DrainControlCommands(AppCtx& ctx) {
           // boot-time init_screen_manager. Without these checks a
           // PATCH that flips miningPoolStats / bitaxeEnabled wouldn't
           // drop the disabled slots from rotation until reboot.
-          if ((api_id == 70 || api_id == 71) &&
+          if ((api_id == 70 || api_id == 71 || api_id == 72) &&
               !btclock::settings::ReadBool(p, prefs::kMiningPoolStats)) {
             return false;
+          }
+          if (api_id == 72) {
+            const std::string name =
+                btclock::settings::ReadString(p, prefs::kMiningPoolName);
+            if (!mining_pools::PoolSupportsEstimatedEarnings(name)) {
+              return false;
+            }
           }
           if ((api_id == 80 || api_id == 81) &&
               !btclock::settings::ReadBool(p, prefs::kBitaxeEnabled)) {

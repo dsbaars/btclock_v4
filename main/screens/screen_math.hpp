@@ -33,6 +33,18 @@ inline constexpr uint32_t HalvingCountdown(uint32_t height) {
 // adds the partial current era (`blocks_in_era * reward_era`). Reward
 // halves every era; after 33 eras the reward is 0 sats and supply is
 // capped.
+// Block subsidy (sats) at `height`. Starts at 50 BTC (5_000_000_000
+// sats), halves every kHalvingInterval blocks. Returns 0 once the
+// reward shifts past 0 (after kMaxHalvingEras eras). Mirrors the
+// SupplyAtBlock loop's reward computation — kept as a separate helper
+// so callers that need just the next-block subsidy (e.g. the mining-
+// pool projected-payout math) don't pay for the full supply sum.
+inline constexpr uint64_t BlockRewardSats(uint32_t height) {
+  const uint32_t era = height / kHalvingInterval;
+  if (era >= kMaxHalvingEras) return 0;
+  return 5000000000ULL >> era;
+}
+
 inline constexpr uint64_t SupplyAtBlock(uint32_t height) {
   uint64_t sats = 0;
   // 50 BTC = 5_000_000_000 sats. Use sats for integer precision.

@@ -4,24 +4,38 @@
 //
 // Slot layout (must stay in lock-step with ScreenManager::current_kind):
 //
-//   slot 0          : kBlockHeight          api_id 0
-//   slot 1          : kClock                api_id 3
-//   slot 2          : kHalving              api_id 4
-//   slot 3          : kBitcoinSupply        api_id 40
-//   slot 4          : kMiningPoolHashrate   api_id 70
-//   slot 5          : kMiningPoolEarnings   api_id 71
-//   slot 6          : kBitaxeHashrate       api_id 80
-//   slot 7          : kBitaxeBestDiff       api_id 81
-//   slot 8          : kNwcBalance           api_id 90
-//   slot 9 + 3k     : kMoscowTime           api_id 10   for currencies[k]
-//   slot 10 + 3k    : kBtcPrice             api_id 20   for currencies[k]
-//   slot 11 + 3k    : kMarketCap            api_id 30   for currencies[k]
-//   slot last       : kBlockFeeRate         api_id 6
+//   slot 0          : kBlockHeight                 api_id 0
+//   slot 1          : kClock                       api_id 3
+//   slot 2          : kHalving                     api_id 4
+//   slot 3          : kBitcoinSupply               api_id 40
+//   slot 4          : kMiningPoolHashrate          api_id 70
+//   slot 5          : kMiningPoolEarnings          api_id 71
+//   slot 6          : kBitaxeHashrate              api_id 80
+//   slot 7          : kBitaxeBestDiff              api_id 81
+//   slot 8          : kNwcBalance                  api_id 90
+//   slot 9          : kMiningPoolEstimatedEarnings api_id 72
+//   slot 10 + 3k    : kMoscowTime                  api_id 10  for currencies[k]
+//   slot 11 + 3k    : kBtcPrice                    api_id 20  for currencies[k]
+//   slot 12 + 3k    : kMarketCap                   api_id 30  for currencies[k]
+//   slot last       : kBlockFeeRate                api_id 6
 //
 // The api_id ↔ slot relationship is many-to-one for per-currency screens
 // (one api_id, N slots — one per active currency). The forward
 // (api_id → slot) helpers land on a caller-chosen preferred-currency
 // index; the inverse (slot → api_id) is total.
+//
+// Adding a new agnostic slot bumps kAgnosticSlots and shifts every
+// per-currency slot up by one. The persisted screenOrder CSV uses
+// api_ids (stable), so a user's saved rotation survives the renumber —
+// the slot indices are only consumed inside ScreenManager and rebuilt
+// from the CSV on each boot / settings PATCH.
+//
+// NB: kMiningPoolEstimatedEarnings sits at slot 9 (after NWC, not
+// adjacent to kMiningPoolEarnings) so the new agnostic entry lands at
+// the *end* of the agnostic block, avoiding a shift of the existing
+// bitaxe / NWC slot indices. Catalog-walk adjacency (next to earnings
+// in the WebUI dropdown) is preserved by the X-macro order in
+// screen_kind.hpp, which is independent of the slot index.
 //
 // Kept in a header so both the ScreenManager (device) and host tests
 // (no ESP-IDF) can link the same implementation without a .cpp pulling
@@ -47,6 +61,7 @@ inline constexpr int kApiIdMarketCap = 30;
 inline constexpr int kApiIdBitcoinSupply = 40;
 inline constexpr int kApiIdMiningPoolHashrate = 70;
 inline constexpr int kApiIdMiningPoolEarnings = 71;
+inline constexpr int kApiIdMiningPoolEstimatedEarnings = 72;
 inline constexpr int kApiIdBitaxeHashrate = 80;
 inline constexpr int kApiIdBitaxeBestDiff = 81;
 inline constexpr int kApiIdNwcBalance = 90;
@@ -66,14 +81,14 @@ inline constexpr bool DefaultScreenVisible(int api_id) {
 // Currency-agnostic slots before per-currency fan-out:
 //   0=block, 1=clock, 2=halving, 3=supply,
 //   4=mining-pool-hashrate, 5=mining-pool-earnings,
-//   6=bitaxe-hashrate, 7=bitaxe-best-diff,
-//   8=nwc-balance.
+//   6=bitaxe-hashrate, 7=bitaxe-best-diff, 8=nwc-balance,
+//   9=mining-pool-estimated-earnings.
 // Mining-pool + bitaxe + NWC slots stay in the rotation whether or
 // not the user has the feature enabled; the renderers paint an
 // OFFLINE / placeholder frame when no data has arrived so slot_count
 // stays stable across pref flips — persisted screenOrder keeps
 // working.
-inline constexpr std::size_t kAgnosticSlots = 9;
+inline constexpr std::size_t kAgnosticSlots = 10;
 inline constexpr std::size_t kPerCurrencySlots = 3;
 
 inline std::size_t SlotCount(std::size_t currency_count) {
@@ -106,6 +121,8 @@ inline int ApiIdForSlot(std::size_t slot, std::size_t currency_count) {
       return kApiIdBitaxeBestDiff;
     case 8:
       return kApiIdNwcBalance;
+    case 9:
+      return kApiIdMiningPoolEstimatedEarnings;
     default:
       break;
   }
@@ -179,6 +196,8 @@ inline int SlotForApiId(int api_id, std::size_t currency_count,
       return 7;
     case kApiIdNwcBalance:
       return 8;
+    case kApiIdMiningPoolEstimatedEarnings:
+      return 9;
     case kApiIdBlockFeeRate:
       return static_cast<int>(total - 1);
     case kApiIdMoscowTime:

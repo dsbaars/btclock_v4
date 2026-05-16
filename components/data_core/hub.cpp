@@ -56,7 +56,8 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
   if (!other.pool.name.empty()) {
     if (pool.name != other.pool.name || pool.hashrate != other.pool.hashrate ||
         pool.daily_sats != other.pool.daily_sats ||
-        pool.workers != other.pool.workers) {
+        pool.workers != other.pool.workers ||
+        pool.estimated_sats != other.pool.estimated_sats) {
       pool = other.pool;
       changed = true;
     }

@@ -246,6 +246,7 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   if (!ctx.mining_pool_stats_enabled) {
     hidden.insert(70);  // Mining Pool Hashrate
     hidden.insert(71);  // Mining Pool Earnings
+    hidden.insert(72);  // Mining Pool Estimated Earnings
   }
   if (!ctx.bitaxe_enabled) {
     hidden.insert(80);  // Bitaxe Hashrate
@@ -1083,6 +1084,7 @@ PatchResult ApplyPatch(const char* body_json, const DeviceContext& ctx,
         if (!ctx.mining_pool_stats_enabled) {
           effective_catalog.erase(70);
           effective_catalog.erase(71);
+          effective_catalog.erase(72);
         }
         if (!ctx.bitaxe_enabled) {
           effective_catalog.erase(80);

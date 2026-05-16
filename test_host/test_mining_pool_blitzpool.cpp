@@ -32,12 +32,11 @@ TEST_CASE("blitzpool: pplns balance with pending sats sets daily_sats") {
   CHECK(out.daily_sats == 12345);
 }
 
-TEST_CASE("blitzpool: zero balance leaves daily_sats unset") {
-  // PPLNS miners below the payout threshold report balanceSats=0;
-  // the *projected* payout estimate (currentWindowPercent × next-block
-  // reward) is deliberately NOT folded into daily_sats — that's a
-  // separate-screen concern (live estimate vs. settled payout).
-  // Solo addresses also report balanceSats=0 and hit this path.
+TEST_CASE("blitzpool: zero balance still reports daily_sats=0") {
+  // PPLNS miners below the payout threshold see balanceSats=0. The
+  // earnings screen renders that as a literal "0 SATS" rather than
+  // empty digits, so the parser must report `has_daily_sats=true`
+  // and `daily_sats=0` instead of leaving the field unset.
   constexpr const char* body = R"({
     "balanceSats": 0,
     "totalPaidSats": 0,
@@ -47,7 +46,38 @@ TEST_CASE("blitzpool: zero balance leaves daily_sats unset") {
   })";
   ParsedStats out;
   CHECK(parse_pplns_balance(body, out));
-  CHECK_FALSE(out.has_daily_sats);
+  CHECK(out.has_daily_sats);
+  CHECK(out.daily_sats == 0);
+}
+
+TEST_CASE("blitzpool: PPLNS window populates estimated-payout inputs") {
+  // Active window: parser exposes raw window_percent + fee for
+  // pool_base to scale by BlockRewardSats(tip_height). The projected
+  // sats *value* is computed in pool_base (live block subsidy), not
+  // here, so the test only asserts the carrier fields landed.
+  constexpr const char* body = R"({
+    "balanceSats": 0,
+    "currentWindowPercent": 7.406626762869607e-05
+  })";
+  ParsedStats out;
+  CHECK(parse_pplns_balance(body, out));
+  CHECK(out.has_window_percent);
+  CHECK(out.window_percent == doctest::Approx(7.406626762869607e-05));
+  CHECK(out.has_fee_percent);
+  CHECK(out.fee_percent == doctest::Approx(1.5));
+  // estimated_sats stays unset — pool_base owns the scaling step.
+  CHECK_FALSE(out.has_estimated_sats);
+}
+
+TEST_CASE("blitzpool: zero window keeps estimated-payout inputs unset") {
+  constexpr const char* body = R"({
+    "balanceSats": 0,
+    "currentWindowPercent": 0
+  })";
+  ParsedStats out;
+  CHECK(parse_pplns_balance(body, out));
+  CHECK_FALSE(out.has_window_percent);
+  CHECK_FALSE(out.has_fee_percent);
 }
 
 TEST_CASE("blitzpool: fractional sats round to nearest integer") {

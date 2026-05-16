@@ -38,8 +38,8 @@ TEST_CASE("per-currency kinds expand to one slot per active currency") {
   // Just BtcPrice with 2 currencies → slots 10 and 13 (stride 3, offset 1).
   const auto seq = rp::BuildRotationSequence("20", kAllEnabled, 2);
   REQUIRE(seq.size() == 2);
-  CHECK(seq[0] == 10);
-  CHECK(seq[1] == 13);
+  CHECK(seq[0] == 11);
+  CHECK(seq[1] == 14);
 }
 
 TEST_CASE("Bug 1: screenOrder=20 with 4 currencies emits 4 BtcPrice slots") {
@@ -48,10 +48,10 @@ TEST_CASE("Bug 1: screenOrder=20 with 4 currencies emits 4 BtcPrice slots") {
   // against a future refactor that accidentally stops at currencies[0].
   const auto seq = rp::BuildRotationSequence("20", kAllEnabled, 4);
   REQUIRE(seq.size() == 4);
-  CHECK(seq[0] == 10);  // USD price
-  CHECK(seq[1] == 13);  // EUR price
-  CHECK(seq[2] == 16);  // GBP price
-  CHECK(seq[3] == 19);  // JPY price
+  CHECK(seq[0] == 11);  // USD price
+  CHECK(seq[1] == 14);  // EUR price
+  CHECK(seq[2] == 17);  // GBP price
+  CHECK(seq[3] == 20);  // JPY price
 }
 
 TEST_CASE(
@@ -62,8 +62,8 @@ TEST_CASE(
   // even when screenOrder asks for MarketCap (api_id 30). 2 entries max.
   const auto seq = rp::BuildRotationSequence("30", kAllEnabled, 2);
   REQUIRE(seq.size() == 2);
-  CHECK(seq[0] == 11);  // MarketCap USD
-  CHECK(seq[1] == 14);  // MarketCap EUR
+  CHECK(seq[0] == 12);  // MarketCap USD
+  CHECK(seq[1] == 15);  // MarketCap EUR
   // sm::kAgnosticSlots + 3*2 + 2 = 17 — would be GBP's MarketCap slot
   // with 3 currencies. With currencies=2 this slot doesn't exist.
   for (const auto s : seq) CHECK(s != 17);
@@ -75,10 +75,10 @@ TEST_CASE("Bug 2: screenOrder drives traversal, not slot_map index order") {
   const auto seq = rp::BuildRotationSequence("0,20,10", kAllEnabled, 2);
   REQUIRE(seq.size() == 5);
   CHECK(seq[0] == 0);   // block height
-  CHECK(seq[1] == 10);  // price USD
-  CHECK(seq[2] == 13);  // price EUR
-  CHECK(seq[3] == 9);   // moscow USD
-  CHECK(seq[4] == 12);  // moscow EUR
+  CHECK(seq[1] == 11);  // price USD
+  CHECK(seq[2] == 14);  // price EUR
+  CHECK(seq[3] == 10);  // moscow USD
+  CHECK(seq[4] == 13);  // moscow EUR
 }
 
 TEST_CASE(
@@ -103,14 +103,14 @@ TEST_CASE(
   // 1 (block) + 4 (price) + 4 (moscow) = 9.
   REQUIRE(seq.size() == 9);
   CHECK(seq[0] == 0);
-  CHECK(seq[1] == 10);  // price USD
-  CHECK(seq[2] == 13);
-  CHECK(seq[3] == 16);
-  CHECK(seq[4] == 19);
-  CHECK(seq[5] == 9);  // moscow USD
-  CHECK(seq[6] == 12);
-  CHECK(seq[7] == 15);
-  CHECK(seq[8] == 18);
+  CHECK(seq[1] == 11);  // price USD
+  CHECK(seq[2] == 14);
+  CHECK(seq[3] == 17);
+  CHECK(seq[4] == 20);
+  CHECK(seq[5] == 10);  // moscow USD
+  CHECK(seq[6] == 13);
+  CHECK(seq[7] == 16);
+  CHECK(seq[8] == 19);
   for (const auto s : seq) CHECK(s != 1);
 }
 
@@ -120,7 +120,7 @@ TEST_CASE("fee-rate slot appears when the user's screenOrder keeps api_id 6") {
   const auto seq = rp::BuildRotationSequence("0,6", kAllEnabled, 2);
   REQUIRE(seq.size() == 2);
   CHECK(seq[0] == 0);
-  CHECK(seq[1] == 15);
+  CHECK(seq[1] == 16);
 }
 
 TEST_CASE(
@@ -158,7 +158,7 @@ TEST_CASE(
   // With 4 currencies and 9 agnostic + 12 per-ccy + 1 fee = 22 slots.
   // The NWC balance slot lifted kAgnosticSlots from 8 to 9.
   const auto seq = rp::BuildRotationSequence("", kAllEnabled, 4);
-  REQUIRE(seq.size() == 22);
+  REQUIRE(seq.size() == 23);
   for (std::size_t i = 0; i < 22; ++i) CHECK(seq[i] == i);
 }
 
@@ -172,10 +172,14 @@ TEST_CASE(
   auto enabled = [](int api_id) {
     if (api_id == 70 || api_id == 71) return false;
     if (api_id == 80 || api_id == 81) return false;
+    // api_id 72 (mining-pool estimated earnings) shares the
+    // miningPoolStats gate in production, so drop it here for the
+    // same cold-boot scenario.
+    if (api_id == 72) return false;
     return true;
   };
   const auto seq = rp::BuildRotationSequence("", enabled, 1);
-  // 9 agnostic slots minus 4 hidden (4,5,6,7) + 3 per-ccy + 1 fee = 9.
+  // 10 agnostic slots minus 5 hidden (4,5,6,7,9) + 3 per-ccy + 1 fee = 9.
   // The NWC balance slot (8) is included by default because the cold-
   // boot predicate doesn't gate it off here (the production predicate
   // checks nwc.enabled — exercised in test_screen_rotation).
@@ -185,10 +189,10 @@ TEST_CASE(
   CHECK(seq[2] == 2);   // Halving
   CHECK(seq[3] == 3);   // BitcoinSupply
   CHECK(seq[4] == 8);   // NwcBalance (slot 4..7 dropped)
-  CHECK(seq[5] == 9);   // Moscow USD
-  CHECK(seq[6] == 10);  // Price USD
-  CHECK(seq[7] == 11);  // MarketCap USD
-  CHECK(seq[8] == 12);  // BlockFeeRate (trailing slot)
+  CHECK(seq[5] == 10);  // Moscow USD
+  CHECK(seq[6] == 11);  // Price USD
+  CHECK(seq[7] == 12);  // MarketCap USD
+  CHECK(seq[8] == 13);  // BlockFeeRate (trailing slot)
   for (const auto s : seq) {
     CHECK(s != 4);
     CHECK(s != 5);
@@ -229,12 +233,12 @@ TEST_CASE("ResumeSlot: trailing fee-rate slot resumes even without sequence") {
   // rotation_sequence_ unless the user keeps api_id 6 in screenOrder.
   // ResumeSlot still restores it because the user explicitly navigated
   // there before the reboot — dropping them onto sequence[0] would
-  // surprise them. SlotCount(1) = 9 + 3 + 1 = 13 → fee slot is 12.
+  // surprise them. SlotCount(1) = 10 + 3 + 1 = 14 → fee slot is 13.
   const std::vector<std::size_t> seq = {0, 1, 2};
   const std::size_t slot_count = sm::SlotCount(1);
-  REQUIRE(slot_count == 13);
-  const auto r = rp::ResumeSlot(/*saved_slot=*/12u, slot_count, seq);
-  CHECK(r == std::optional<std::size_t>{12});
+  REQUIRE(slot_count == 14);
+  const auto r = rp::ResumeSlot(/*saved_slot=*/13u, slot_count, seq);
+  CHECK(r == std::optional<std::size_t>{13});
 }
 
 TEST_CASE(
@@ -316,13 +320,13 @@ TEST_CASE(
   // GBP slot.
   const auto seq = rp::BuildRotationSequence("30", kAllEnabled, 2);
   REQUIRE(seq.size() == 2);
-  CHECK(seq[0] == 11);
-  CHECK(seq[1] == 14);
+  CHECK(seq[0] == 12);
+  CHECK(seq[1] == 15);
 
   auto [slot1, idx1] = rp::StepSequence(seq, 0, +1);
-  CHECK(slot1 == 14);  // MCap EUR
+  CHECK(slot1 == 15);  // MCap EUR
   auto [slot2, idx2] = rp::StepSequence(seq, idx1, +1);
-  CHECK(slot2 == 11);  // wraps back to MCap USD, NOT GBP
+  CHECK(slot2 == 12);  // wraps back to MCap USD, NOT GBP
   // No GBP/JPY slots in a 2-currency config so this is automatic, but
   // the point of the test is that StepSequence never produces an index
   // outside the 2-entry sequence.
@@ -335,13 +339,13 @@ TEST_CASE(
   const auto seq = rp::BuildRotationSequence("0,30,4", kAllEnabled, 2);
   REQUIRE(seq.size() == 4);
   CHECK(seq[0] == 0);
-  CHECK(seq[1] == 11);
-  CHECK(seq[2] == 14);
+  CHECK(seq[1] == 12);
+  CHECK(seq[2] == 15);
   CHECK(seq[3] == 2);
 
   // Start on MCap USD (idx=1). Step 1 → MCap EUR; step 2 → Halving.
   auto [slot1, idx1] = rp::StepSequence(seq, 1, +1);
-  CHECK(slot1 == 14);
+  CHECK(slot1 == 15);
   auto [slot2, _] = rp::StepSequence(seq, idx1, +1);
   CHECK(slot2 == 2);  // Halving — NEVER GBP or any other per-currency.
 }
@@ -368,12 +372,12 @@ TEST_CASE(
   // (bd btclock_v4-lwf.6 shifted every per-currency slot by +1).
   REQUIRE(visited.size() == 7);
   CHECK(visited[0] == 0);
-  CHECK(visited[1] == 10);
-  CHECK(visited[2] == 13);
-  CHECK(visited[3] == 9);
-  CHECK(visited[4] == 12);
+  CHECK(visited[1] == 11);
+  CHECK(visited[2] == 14);
+  CHECK(visited[3] == 10);
+  CHECK(visited[4] == 13);
   CHECK(visited[5] == 0);  // wrap
-  CHECK(visited[6] == 10);
+  CHECK(visited[6] == 11);
   // Critically: no Clock slot (slot_map slot 1) appears.
   for (const auto s : visited) CHECK(s != 1);
 }
@@ -401,17 +405,17 @@ TEST_CASE("actCurrencies=[USD] only: per-currency screens each emit one slot") {
   // The `actCurrencies=[USD]` scenario from the bug report.
   const auto seq = rp::BuildRotationSequence("10,20,30", kAllEnabled, 1);
   REQUIRE(seq.size() == 3);
-  CHECK(seq[0] == 9);   // Moscow USD
-  CHECK(seq[1] == 10);  // Price USD
-  CHECK(seq[2] == 11);  // MCap USD
+  CHECK(seq[0] == 10);  // Moscow USD
+  CHECK(seq[1] == 11);  // Price USD
+  CHECK(seq[2] == 12);  // MCap USD
 
   // Step through: walks 9 → 10 → 11 → 9.
   auto [s1, i1] = rp::StepSequence(seq, 0, +1);
-  CHECK(s1 == 10);
+  CHECK(s1 == 11);
   auto [s2, i2] = rp::StepSequence(seq, i1, +1);
-  CHECK(s2 == 11);
+  CHECK(s2 == 12);
   auto [s3, _] = rp::StepSequence(seq, i2, +1);
-  CHECK(s3 == 9);
+  CHECK(s3 == 10);
 }
 
 TEST_CASE("PrevScreen walks the sequence backwards") {
@@ -419,9 +423,9 @@ TEST_CASE("PrevScreen walks the sequence backwards") {
   REQUIRE(seq.size() == 5);
   // From idx 0 (BlockHeight), Prev → idx 4 (Moscow EUR = slot 12).
   auto [slot, idx] = rp::StepSequence(seq, 0, -1);
-  CHECK(slot == 12);
+  CHECK(slot == 13);
   CHECK(idx == 4);
   // Prev again → Moscow USD (slot 9).
   auto [slot2, _] = rp::StepSequence(seq, idx, -1);
-  CHECK(slot2 == 9);
+  CHECK(slot2 == 10);
 }

@@ -225,17 +225,21 @@ void RenderMiningPoolHashrateScreen(
                   vertical_desc);
 }
 
+// Shared core for the two pool-sats screens (Earnings + Estimated
+// Earnings). Same layout shape; differs only in which int-sats field
+// of PoolStats is consumed and whether the unit panel carries an
+// "EST/" prefix that marks the value as a projection rather than a
+// settled payout.
 template <size_t N>
-void RenderMiningPoolEarningsScreen(
+void RenderMiningPoolSatsScreen(
     std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
     uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
     const DataSnapshot::PoolStats& pool,
-    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
+    const DataSnapshot::PoolStats& prev_pool, int64_t value_sats,
+    int64_t prev_value_sats, bool unit_estimate_prefix, bool full_refresh_mode,
     bool vertical_desc) {
-  static_assert(N >= 7, "mining-pool earnings layout needs at least 7 panels");
-  // Same (label, digits…, unit) shape as the hashrate screen: 1 label +
-  // N-2 digits + 1 unit. Previous 2-label layout truncated the 5-char
-  // "50.0K" to "0.0K" on a 4-slot digit area.
+  static_assert(N >= 7,
+                "mining-pool sats screen layout needs at least 7 panels");
   constexpr std::size_t kDigitPanels = N - 2;
   constexpr std::size_t kFirstDigitPanel = 1;
 
@@ -244,11 +248,10 @@ void RenderMiningPoolEarningsScreen(
       (!pool.name.empty() && !SamePoolName(pool.name, prev_pool.name));
 
   const MiningPoolEarningsLayout now_layout =
-      LayoutMiningPoolEarnings(pool.daily_sats.value_or(-1));
+      LayoutMiningPoolEarnings(value_sats);
   const MiningPoolEarningsLayout prev_layout =
-      cell_diff_reset
-          ? MiningPoolEarningsLayout{}
-          : LayoutMiningPoolEarnings(prev_pool.daily_sats.value_or(-1));
+      cell_diff_reset ? MiningPoolEarningsLayout{}
+                      : LayoutMiningPoolEarnings(prev_value_sats);
 
   const std::string now_value =
       now_layout.valid ? now_layout.value : std::string();
@@ -279,18 +282,49 @@ void RenderMiningPoolEarningsScreen(
                                 : now_digits[i] != ' ');
   }
 
-  // Unit label: "SATS" by default; "BTC" when the whale-mode branch
-  // fires in LayoutMiningPoolEarnings. Invalid data still paints "SATS"
-  // so users see an expected unit on the trailing panel.
-  const std::string unit =
-      now_layout.valid ? now_layout.unit_label : std::string("SATS");
-  const std::string prev_unit =
-      prev_layout.valid ? prev_layout.unit_label : std::string("SATS");
+  // Unit label: "SATS" / "BTC" (whale-mode) by default. The Estimated
+  // Earnings screen prefixes "EST/" so the kUnitSplit renderer paints
+  // two stacked rows ("EST" / "SATS") — clear visual cue that the
+  // value is projected, not settled. Invalid data still paints the
+  // expected unit so users see the right glyphs while data is loading.
+  const auto with_prefix = [&](const std::string& u) {
+    return unit_estimate_prefix ? std::string("EST/") + u : u;
+  };
+  const std::string unit = with_prefix(now_layout.valid ? now_layout.unit_label
+                                                        : std::string("SATS"));
+  const std::string prev_unit = with_prefix(
+      prev_layout.valid ? prev_layout.unit_label : std::string("SATS"));
   slots[N - 1] = BuildUnitSlot(unit);
   update[N - 1] = cell_diff_reset || full_refresh_mode || unit != prev_unit;
 
   PaintDataScreen(panels, fb_storage, fonts, slots, update, full_refresh_mode,
                   vertical_desc);
+}
+
+template <size_t N>
+void RenderMiningPoolEarningsScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::PoolStats& pool,
+    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
+    bool vertical_desc) {
+  RenderMiningPoolSatsScreen(
+      panels, fb_storage, fonts, pool, prev_pool, pool.daily_sats.value_or(-1),
+      prev_pool.daily_sats.value_or(-1),
+      /*unit_estimate_prefix=*/false, full_refresh_mode, vertical_desc);
+}
+
+template <size_t N>
+void RenderMiningPoolEstimatedEarningsScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::PoolStats& pool,
+    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode,
+    bool vertical_desc) {
+  RenderMiningPoolSatsScreen(
+      panels, fb_storage, fonts, pool, prev_pool,
+      pool.estimated_sats.value_or(-1), prev_pool.estimated_sats.value_or(-1),
+      /*unit_estimate_prefix=*/true, full_refresh_mode, vertical_desc);
 }
 
 template void RenderMiningPoolHashrateScreen<7>(
@@ -303,6 +337,14 @@ template void RenderMiningPoolHashrateScreen<8>(
     const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<7>(
     std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const DataSnapshot::PoolStats&,
+    const DataSnapshot::PoolStats&, bool, bool);
+template void RenderMiningPoolEstimatedEarningsScreen<7>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 7>&, uint8_t (&)[7][16 * 296],
+    const AppFonts&, const DataSnapshot::PoolStats&,
+    const DataSnapshot::PoolStats&, bool, bool);
+template void RenderMiningPoolEstimatedEarningsScreen<8>(
+    std::array<std::unique_ptr<epd::IEpdPanel>, 8>&, uint8_t (&)[8][16 * 296],
     const AppFonts&, const DataSnapshot::PoolStats&,
     const DataSnapshot::PoolStats&, bool, bool);
 template void RenderMiningPoolEarningsScreen<8>(

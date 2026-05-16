@@ -41,6 +41,8 @@ namespace btclock {
   X(kBitcoinSupply, 40, "supply", "Bitcoin Supply")              \
   X(kMiningPoolHashrate, 70, "poolhash", "Mining Pool Hashrate") \
   X(kMiningPoolEarnings, 71, "poolearn", "Mining Pool Earnings") \
+  X(kMiningPoolEstimatedEarnings, 72, "poolest",                 \
+    "Mining Pool Estimated Earnings")                            \
   X(kBitaxeHashrate, 80, "bxhash", "Bitaxe Hashrate")            \
   X(kBitaxeBestDiff, 81, "bxdiff", "Bitaxe Best Difficulty")     \
   X(kNwcBalance, 90, "nwcbal", "NWC Balance")
@@ -81,6 +83,7 @@ enum class ScreenType : uint8_t {
   kMarketCap,
   kMiningPoolHashrate,
   kMiningPoolEarnings,
+  kMiningPoolEstimatedEarnings,
   kBitaxeHashrate,
   kBitaxeBestDiff,
   kNwcBalance,

@@ -259,11 +259,11 @@ TEST_CASE("screen kinds do not drift from ScreenType enum") {
   // reverse-lookup helper; instead pin that every enum that exists
   // shows up by its api_id here. If a new ScreenType is added and
   // forgotten in BTCLOCK_SCREEN_KIND_LIST, this count check catches it.
-  // 13: 8 base kinds + MiningPoolHashrate/MiningPoolEarnings +
-  // BitaxeHashrate/BitaxeBestDiff + NwcBalance. kCustom, kDebug,
-  // kNostrZap and kNwcPaymentNotify are intentionally excluded —
-  // they're off-rotation overrides, not user-rotatable catalogue
-  // entries.
-  constexpr std::size_t kEnumCount = 13;
+  // 14: 8 base kinds + MiningPoolHashrate/MiningPoolEarnings/
+  // MiningPoolEstimatedEarnings + BitaxeHashrate/BitaxeBestDiff +
+  // NwcBalance. kCustom, kDebug, kNostrZap and kNwcPaymentNotify are
+  // intentionally excluded — they're off-rotation overrides, not
+  // user-rotatable catalogue entries.
+  constexpr std::size_t kEnumCount = 14;
   CHECK(btclock::catalogs::kScreenKinds.size() == kEnumCount);
 }

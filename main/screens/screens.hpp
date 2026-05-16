@@ -201,6 +201,20 @@ void RenderMiningPoolEarningsScreen(
     const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode = true,
     bool vertical_desc = false);
 
+// --- Mining pool *estimated* earnings (forward-looking sats) ---
+// Mirrors RenderMiningPoolEarningsScreen but draws `pool.estimated_sats`
+// and overrides the unit panel with an "EST/SATS" (or "EST/BTC") split
+// label so the user sees the value is projected, not settled.
+// Capability-gated to pools that override
+// PoolDataSource::SupportsEstimatedEarnings (Blitzpool today).
+template <size_t N>
+void RenderMiningPoolEstimatedEarningsScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    const DataSnapshot::PoolStats& pool,
+    const DataSnapshot::PoolStats& prev_pool, bool full_refresh_mode = true,
+    bool vertical_desc = false);
+
 // --- Runtime-pushed custom content ---
 // Renders the string in `cells[i]` centered on panel i for i in [0, N).
 // A cell containing a single '/' is drawn via DrawSplitText (top/bottom

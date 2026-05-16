@@ -61,5 +61,13 @@ std::unique_ptr<DataSource> MakeActivePoolSource();
 // without an overriding hook is not accidentally demoted to hidden.
 bool PoolSupportsDailyEarnings(const std::string& pool_name);
 
+// True iff the named pool produces a forward-looking payout estimate
+// (`PoolDataSource::SupportsEstimatedEarnings()`). Gates the Estimated
+// Earnings screen (api_id 72) — hidden from /api/settings and skipped
+// in rotation otherwise. Defaults to `false` for unknown pools so the
+// dedicated estimate slot stays off unless a pool explicitly opts in
+// (Blitzpool today).
+bool PoolSupportsEstimatedEarnings(const std::string& pool_name);
+
 }  // namespace mining_pools
 }  // namespace btclock
