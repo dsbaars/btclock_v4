@@ -1,4 +1,4 @@
-#include "io/frontlight_ambient_policy.hpp"
+#include "frontlight_logic/frontlight_ambient_policy.hpp"
 
 namespace btclock {
 

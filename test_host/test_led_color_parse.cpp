@@ -9,7 +9,7 @@
 #include <string_view>
 
 #include "doctest.h"
-#include "io/led_curves.hpp"
+#include "led_strip_logic/led_curves.hpp"
 
 using btclock::led_curves::FormatHexColor;
 using btclock::led_curves::ParseHexColor;

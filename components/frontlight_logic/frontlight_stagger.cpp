@@ -1,4 +1,4 @@
-#include "io/frontlight_stagger.hpp"
+#include "frontlight_logic/frontlight_stagger.hpp"
 
 namespace btclock {
 

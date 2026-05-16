@@ -26,9 +26,9 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
-#include "io/frontlight_ambient_policy.hpp"
-#include "io/frontlight_fader.hpp"
-#include "io/frontlight_stagger.hpp"
+#include "frontlight_logic/frontlight_ambient_policy.hpp"
+#include "frontlight_logic/frontlight_fader.hpp"
+#include "frontlight_logic/frontlight_stagger.hpp"
 #include "pca9685.hpp"
 
 namespace btclock {
@@ -88,7 +88,7 @@ constexpr uint32_t kZapFlashHoldMs = 250;
 // — restored after the initial IDF port dropped it — so the flash
 // animation matches v3 Arduino's visual signature (LED index 0 leads
 // on the fade-in half, index N-1 lags; reversed on the fade-out half).
-// See io/frontlight_stagger.hpp for the pure math.
+// See frontlight_logic/frontlight_stagger.hpp for the pure math.
 enum class FrontlightEvent : uint8_t {
   kOn,          // user-on: clears user-off latch, fades to configured
   kOff,         // user-off: sets user-off latch, fades to 0

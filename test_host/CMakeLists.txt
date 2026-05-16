@@ -102,7 +102,7 @@ add_executable(btclock_host_tests
     test_led_curves.cpp
     test_led_color_parse.cpp
     test_led_prefs.cpp
-    ../main/io/led_prefs.cpp
+    ../components/led_strip_logic/led_prefs.cpp
     test_datahandler_parity.cpp
     test_settings_api.cpp
     test_settings_catalogs.cpp
@@ -150,11 +150,11 @@ add_executable(btclock_host_tests
     ../components/proxy_transport/src/proxy_framing.cpp
     ../components/proxy_transport/src/proxy_bypass.cpp
     ../main/sources/sources_uri.cpp
-    ../main/app/refresh_policy.cpp
-    ../main/io/frontlight_fader.cpp
-    ../main/io/frontlight_ambient_policy.cpp
-    ../main/io/frontlight_stagger.cpp
-    ../main/io/led_curves.cpp
+    ../components/refresh_policy/refresh_policy.cpp
+    ../components/frontlight_logic/frontlight_fader.cpp
+    ../components/frontlight_logic/frontlight_ambient_policy.cpp
+    ../components/frontlight_logic/frontlight_stagger.cpp
+    ../components/led_strip_logic/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
     ../components/btclock_format/btclock_format.cpp
@@ -223,6 +223,9 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/settings/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_format/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/frontlight_logic/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/led_strip_logic/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/refresh_policy/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/fonts/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/bh1750/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/proxy_transport/include

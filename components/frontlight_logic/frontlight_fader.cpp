@@ -1,4 +1,4 @@
-#include "io/frontlight_fader.hpp"
+#include "frontlight_logic/frontlight_fader.hpp"
 
 namespace btclock {
 

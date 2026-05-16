@@ -23,15 +23,13 @@ idf_component_register(
          "sources/sources.cpp"
          "sources/sources_uri.cpp"
          "sources/mempool_kraken_source.cpp"
-         "io/frontlight_fader.cpp" "io/frontlight_controller.cpp"
-         "io/frontlight_ambient_policy.cpp" "io/frontlight_stagger.cpp"
-         "io/led_controller.cpp" "io/led_curves.cpp" "io/led_prefs.cpp"
+         "io/frontlight_controller.cpp"
+         "io/led_controller.cpp"
          "io/light_sensor.cpp"
          "io/network_led_watchdog.cpp"
          "io/wifi_guard.cpp"
          "io/mining_pool_selector.cpp"
          "app/time_sync.cpp" "app/screen_manager.cpp"
-         "app/refresh_policy.cpp"
          "screens/common.cpp" "screens/screen_math.cpp"
          "screens/panel_texts.cpp"
          "screens/block_height.cpp"
@@ -53,7 +51,7 @@ idf_component_register(
     REQUIRES esp_driver_gpio esp_driver_ledc esp_timer esp_psram esp_wifi
              i2c_bus mcp23017 pca9685
              bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
-             btclock_format
+             btclock_format frontlight_logic led_strip_logic refresh_policy
              data_core btclock_data buttons nostr nwc timezone dnd settings ota
              mining_pool_common mining_pool_blitzpool mining_pool_braiins
              mining_pool_ckpool

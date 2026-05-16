@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include "doctest.h"
-#include "io/frontlight_fader.hpp"
+#include "frontlight_logic/frontlight_fader.hpp"
 
 using btclock::FrontlightFader;
 

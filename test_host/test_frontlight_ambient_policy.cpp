@@ -6,7 +6,7 @@
 #include <initializer_list>
 
 #include "doctest.h"
-#include "io/frontlight_ambient_policy.hpp"
+#include "frontlight_logic/frontlight_ambient_policy.hpp"
 
 using btclock::FrontlightAmbientAction;
 using btclock::FrontlightAmbientConfig;

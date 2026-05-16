@@ -1,4 +1,4 @@
-// Host tests for the LED prefs loader (main/io/led_prefs.cpp).
+// Host tests for the LED prefs loader (components/led_strip_logic/led_prefs.cpp).
 //
 // Covers two responsibilities of ResolveLedPrefs:
 //   1. PATCH read-back — when the WebUI writes a key into the
@@ -20,7 +20,7 @@
 #include <string>
 
 #include "doctest.h"
-#include "io/led_prefs.hpp"
+#include "led_strip_logic/led_prefs.hpp"
 #include "settings/api.hpp"
 #include "settings/pref_keys.hpp"
 

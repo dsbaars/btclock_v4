@@ -51,8 +51,8 @@
 #include <string>
 #include <vector>
 
-#include "app/refresh_policy.hpp"
 #include "app/rotation_timer.hpp"
+#include "refresh_policy/refresh_policy.hpp"
 #include "app/screen_slot_map.hpp"
 #include "data_core/snapshot.hpp"
 #include "epd/panel.hpp"
