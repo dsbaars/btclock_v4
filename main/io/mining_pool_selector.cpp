@@ -3,6 +3,7 @@
 #include <string>
 
 #include "esp_log.h"
+#include "mining_pool_blitzpool/blitzpool.hpp"
 #include "mining_pool_braiins/braiins.hpp"
 #include "mining_pool_ckpool/ckpool.hpp"
 #include "mining_pool_common/pool_base.hpp"
@@ -70,6 +71,7 @@ std::unique_ptr<DataSource> BuildByName(const std::string& name) {
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
   if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
+  if (name == "blitzpool") return std::make_unique<BlitzPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
   if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
@@ -92,6 +94,7 @@ std::unique_ptr<PoolDataSource> BuildPoolByName(const std::string& name) {
   if (name == "public_pool") return std::make_unique<PublicPool>();
   if (name == "local_public_pool") return std::make_unique<LocalPublicPool>();
   if (name == "gobrrr_pool") return std::make_unique<GoBrrrPool>();
+  if (name == "blitzpool") return std::make_unique<BlitzPool>();
   if (name == "ckpool") return std::make_unique<CKPool>();
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
   if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
@@ -108,10 +111,12 @@ std::vector<std::string> AvailablePoolNames() {
   // so the WebUI dropdown renders identically on upgrade. New ckpool-
   // family forks (NerdMiner) are appended after the original ckpool
   // entries to keep the existing pool order stable.
+  // Blitzpool is a public-pool fork (PPLNS / group-solo / Stratum V2);
+  // grouped next to public_pool / gobrrr to keep family ordering.
   return {"ocean",       "noderunners",       "satoshi_radio", "braiins",
-          "public_pool", "local_public_pool", "gobrrr_pool",   "ckpool",
-          "eu_ckpool",   "nerdminers_org",    "nerdminer_io",  "foundry_usa",
-          "viabtc"};
+          "public_pool", "local_public_pool", "gobrrr_pool",   "blitzpool",
+          "ckpool",      "eu_ckpool",         "nerdminers_org",
+          "nerdminer_io", "foundry_usa",      "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {

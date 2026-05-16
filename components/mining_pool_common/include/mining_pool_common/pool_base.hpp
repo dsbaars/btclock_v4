@@ -86,6 +86,29 @@ class PoolDataSource : public DataSource {
   // worker list) raise this. Default 32 KB.
   virtual size_t max_response_bytes() const { return 32 * 1024; }
 
+  // Optional second URL polled on the same tick, after the primary
+  // fetch + parse succeeds. Used by Blitzpool to layer the PPLNS
+  // balance (/api/pplns/<addr>) on top of the worker list
+  // (/api/client/<addr>) without spawning a parallel poll task that
+  // would step on the hub's all-or-nothing PoolStats merge. Default
+  // empty = no secondary call; the base class skips the second fetch
+  // entirely so other pools pay zero cost.
+  virtual std::string secondary_api_url() const { return ""; }
+
+  // Parser for the secondary body. Called with the same `out` already
+  // populated by parse_response(), so subclasses fold fields together
+  // (typically: fill out.daily_sats from a balance/earnings field).
+  // Return false on parse failure — the base discards the secondary
+  // result and reports just the primary parse.
+  virtual bool parse_secondary_response(const char* /*body*/,
+                                        ParsedStats& /*out*/) const {
+    return true;
+  }
+
+  // Cap on secondary response body. PPLNS balance is ~100 bytes; keep
+  // the default tight so a misconfigured upstream can't eat heap.
+  virtual size_t max_secondary_response_bytes() const { return 4 * 1024; }
+
  public:
   // True when miningPoolUser holds a secret API key rather than a public
   // identifier (address, username). The /api/settings GET emitter

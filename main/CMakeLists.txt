@@ -54,7 +54,8 @@ idf_component_register(
              i2c_bus mcp23017 pca9685
              bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
              data_core btclock_data buttons nostr nwc timezone dnd settings ota
-             mining_pool_common mining_pool_braiins mining_pool_ckpool
+             mining_pool_common mining_pool_blitzpool mining_pool_braiins
+             mining_pool_ckpool
              mining_pool_foundry mining_pool_gobrrr mining_pool_nerdminer
              mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio

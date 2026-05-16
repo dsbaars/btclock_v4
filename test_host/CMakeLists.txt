@@ -90,6 +90,7 @@ add_executable(btclock_host_tests
     test_mining_pool_public_pool.cpp
     test_mining_pool_ckpool.cpp
     test_mining_pool_gobrrr.cpp
+    test_mining_pool_blitzpool.cpp
     test_mining_pool_foundry.cpp
     test_bitaxe_parser.cpp
     test_bitaxe_panel_texts.cpp
@@ -214,6 +215,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_public_pool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_ckpool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_gobrrr/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_blitzpool/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/mining_pool_foundry/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/bitaxe/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_fs/include

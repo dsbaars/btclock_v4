@@ -170,18 +170,15 @@ void PoolDataSource::Run() {
   }
 }
 
-void PoolDataSource::PollOnce() {
-  const std::string url = api_url();
-  if (url.empty()) {
-    ESP_LOGD(kTag, "%s: empty url, skipping", pool_name());
-    return;
-  }
+namespace {
 
-  FetchContext ctx;
-  ctx.cap = max_response_bytes();
-
-  // OwnedTransport drops on scope exit, covering all early-return
-  // paths in PollOnce without needing destroy on each cleanup site.
+// One-shot HTTPS GET into a PSRAM-backed body buffer. Returns
+// ESP_OK + ctx.body on success; the caller frees ctx via FetchContext's
+// dtor. `token` / `header_name` are forwarded as request headers when
+// `token` is non-empty.
+esp_err_t FetchJson(const char* tag, const std::string& url,
+                    const std::string& token, const char* header_name,
+                    FetchContext& ctx) {
   btclock::settings::NvsPrefs proxy_prefs(btclock::prefs::kSettingsNs);
   const auto proxy_cfg = btclock::proxy::LoadConfigFromPrefs(proxy_prefs);
   btclock::proxy::OwnedTransport proxy_t(btclock::proxy::MakeProxyTransport(
@@ -199,13 +196,12 @@ void PoolDataSource::PollOnce() {
 
   esp_http_client_handle_t client = esp_http_client_init(&cfg);
   if (client == nullptr) {
-    ESP_LOGW(kTag, "%s: http_client_init failed", pool_name());
-    return;
+    ESP_LOGW(kTag, "%s: http_client_init failed", tag);
+    return ESP_FAIL;
   }
 
-  const std::string token = auth_token();
   if (!token.empty()) {
-    esp_http_client_set_header(client, auth_header_name(), token.c_str());
+    esp_http_client_set_header(client, header_name, token.c_str());
   }
   esp_http_client_set_header(client, "Accept", "application/json");
 
@@ -220,37 +216,50 @@ void PoolDataSource::PollOnce() {
     err = esp_http_client_perform(client);
     status = esp_http_client_get_status_code(client);
   }
-
-  if (err != ESP_OK) {
-    ESP_LOGW(kTag, "%s: perform failed: %s", pool_name(), esp_err_to_name(err));
-    esp_http_client_cleanup(client);
-    return;
-  }
-  if (status < 200 || status >= 300) {
-    ESP_LOGW(kTag, "%s: HTTP %d", pool_name(), status);
-    esp_http_client_cleanup(client);
-    return;
-  }
-  if (ctx.alloc_failed) {
-    ESP_LOGW(kTag, "%s: body alloc failed (cap=%u)", pool_name(),
-             static_cast<unsigned>(ctx.cap));
-    esp_http_client_cleanup(client);
-    return;
-  }
-  if (ctx.truncated) {
-    ESP_LOGW(kTag, "%s: response exceeded %u bytes, skipping parse",
-             pool_name(), static_cast<unsigned>(ctx.cap));
-    esp_http_client_cleanup(client);
-    return;
-  }
   esp_http_client_cleanup(client);
 
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "%s: perform failed: %s", tag, esp_err_to_name(err));
+    return err;
+  }
+  if (status < 200 || status >= 300) {
+    ESP_LOGW(kTag, "%s: HTTP %d", tag, status);
+    return ESP_FAIL;
+  }
+  if (ctx.alloc_failed) {
+    ESP_LOGW(kTag, "%s: body alloc failed (cap=%u)", tag,
+             static_cast<unsigned>(ctx.cap));
+    return ESP_ERR_NO_MEM;
+  }
+  if (ctx.truncated) {
+    ESP_LOGW(kTag, "%s: response exceeded %u bytes, skipping parse", tag,
+             static_cast<unsigned>(ctx.cap));
+    return ESP_ERR_INVALID_SIZE;
+  }
   if (ctx.body == nullptr) {
-    ESP_LOGW(kTag, "%s: empty response body", pool_name());
-    return;
+    ESP_LOGW(kTag, "%s: empty response body", tag);
+    return ESP_ERR_NOT_FOUND;
   }
   // cJSON expects a NUL-terminated C string; accumulator is raw bytes.
   ctx.body[ctx.size] = '\0';
+  return ESP_OK;
+}
+
+}  // namespace
+
+void PoolDataSource::PollOnce() {
+  const std::string url = api_url();
+  if (url.empty()) {
+    ESP_LOGD(kTag, "%s: empty url, skipping", pool_name());
+    return;
+  }
+
+  FetchContext ctx;
+  ctx.cap = max_response_bytes();
+  if (FetchJson(pool_name(), url, auth_token(), auth_header_name(), ctx) !=
+      ESP_OK) {
+    return;
+  }
 
   ParsedStats parsed;
   parsed.name = pool_name();
@@ -264,6 +273,26 @@ void PoolDataSource::PollOnce() {
     ESP_LOGD(kTag, "%s: parse ok but empty hashrate, skipping report",
              pool_name());
     return;
+  }
+
+  // Optional second fetch (Blitzpool PPLNS balance). Failures here are
+  // non-fatal: we still report the primary parse, just without daily
+  // sats. Empty URL = subclass declined; default base impl returns "".
+  const std::string url2 = secondary_api_url();
+  if (!url2.empty()) {
+    FetchContext ctx2;
+    ctx2.cap = max_secondary_response_bytes();
+    const esp_err_t rc2 =
+        FetchJson(pool_name(), url2, auth_token(), auth_header_name(), ctx2);
+    if (rc2 == ESP_OK) {
+      if (!parse_secondary_response(ctx2.body, parsed)) {
+        ESP_LOGW(kTag, "%s: secondary parse failed (%u bytes)", pool_name(),
+                 static_cast<unsigned>(ctx2.size));
+      }
+    } else {
+      ESP_LOGD(kTag, "%s: secondary fetch skipped (%s)", pool_name(),
+               esp_err_to_name(rc2));
+    }
   }
 
   ESP_LOGI(
