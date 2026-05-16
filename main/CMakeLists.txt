@@ -53,6 +53,7 @@ idf_component_register(
     REQUIRES esp_driver_gpio esp_driver_ledc esp_timer esp_psram esp_wifi
              i2c_bus mcp23017 pca9685
              bh1750 epd fonts wifi prefs btclock_fs webserver qrcode
+             btclock_format
              data_core btclock_data buttons nostr nwc timezone dnd settings ota
              mining_pool_common mining_pool_blitzpool mining_pool_braiins
              mining_pool_ckpool

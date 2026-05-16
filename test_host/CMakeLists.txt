@@ -157,6 +157,7 @@ add_executable(btclock_host_tests
     ../main/io/led_curves.cpp
     ../main/screens/screen_math.cpp
     ../main/screens/panel_texts.cpp
+    ../components/btclock_format/btclock_format.cpp
     ../main/screens/assets/pool_logos.cpp
     ../main/screens/assets/pool_logo_cache_host.cpp
     ../components/bitaxe/src/bitaxe_parser.cpp
@@ -221,6 +222,7 @@ target_include_directories(btclock_host_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/timezone/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/settings/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/dnd/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../components/btclock_format/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/fonts/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/bh1750/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../components/proxy_transport/include

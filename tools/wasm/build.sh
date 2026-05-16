@@ -31,6 +31,7 @@ SCREENS_DIR="${REPO_ROOT}/main/screens"
 MAIN_DIR="${REPO_ROOT}/main"
 FONTS_DIR="${REPO_ROOT}/components/fonts"
 DATA_CORE_DIR="${REPO_ROOT}/components/data_core"
+FORMAT_DIR="${REPO_ROOT}/components/btclock_format"
 DIST_DIR="${SCRIPT_DIR}/dist"
 
 : "${EMSCRIPTEN_MIN_VERSION:=3.1.0}"
@@ -90,7 +91,9 @@ em++ \
     -I"${FONTS_DIR}/include" \
     -I"${FONTS_DIR}" \
     -I"${DATA_CORE_DIR}/include" \
+    -I"${FORMAT_DIR}/include" \
     -I"${SCRIPT_DIR}" \
+    "${FORMAT_DIR}/btclock_format.cpp" \
     "${SCREENS_DIR}/common.cpp" \
     "${SCREENS_DIR}/screen_math.cpp" \
     "${SCREENS_DIR}/panel_texts.cpp" \
