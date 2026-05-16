@@ -91,21 +91,46 @@ Back / sides:
 ## 3. On-device controls
 
 Four physical buttons, numbered left-to-right when looking at the
-back. By default each press fires on release (a falling edge):
+back. Most actions fire on release (a falling edge); button 1 also
+has long-press and boot-hold behaviours described below.
 
-| Button | Action |
-|---|---|
-| **Button 1** | Pause / resume the rotation timer. The current screen stays up. |
-| **Button 2** | Next screen (same as the auto-rotate step; the timer restarts). |
-| **Button 3** | Previous screen. |
-| **Button 4** | Toggle the debug overlay. A second press exits back to whatever data screen was up. |
+| Button | Click (release) | Long-press (≥ 800 ms) |
+|---|---|---|
+| **Button 1** | Pause / resume the rotation timer. The current screen stays up. | Toggle Do Not Disturb (manual override). LED plays a soft purple fade-pulse on ON and a warm amber fade-pulse on OFF. |
+| **Button 2** | Next screen (same as the auto-rotate step; the timer restarts). | — |
+| **Button 3** | Previous screen. | — |
+| **Button 4** | Toggle the debug overlay. A second press exits back to whatever data screen was up. | — |
 
-Long-presses are detected by the firmware but currently unused —
-nothing happens when you hold a button down.
+### Boot-hold: WiFi-only reset (button 1, 3 s)
+
+Hold **button 1 while powering on or rebooting** the device. As soon
+as the firmware detects the held button it lights the NeoPixel ring
+red (`kFlashError`); keep holding for **3 seconds** to wipe the WiFi
+credentials (`net/ssid`, `net/pw`, and `wifiConfigured`) and reboot
+straight into the provisioning AP. Release earlier to fall through to
+a normal boot — no settings are touched.
+
+This is a targeted partial reset, not a full factory wipe:
+
+- **Wiped**: STA SSID, STA password, the "WiFi already configured"
+  flag.
+- **Kept**: every other user setting — timezone, currencies, screen
+  order, font, LED colours, frontlight, NWC, Nostr, DND schedule,
+  mining-pool / Bitaxe config.
+
+Use it when the WiFi password changed or the device is on the wrong
+SSID and you don't want to lose the rest of your configuration. For a
+full reset, use the WebUI **Factory reset** button (or the
+`/api/factory_reset` endpoint) — see [§15 Firmware updates](#15-firmware-updates).
+
+### Inverse buttons
 
 Settings → Light & LEDs → **Inverse buttons** swaps button-1 with
 button-4 (and 2 with 3). Useful if you mount the BTClock upside-down
-or on the opposite side of a desk.
+or on the opposite side of a desk. The pref is honoured by both the
+runtime click / long-press router AND the boot-hold WiFi reset, so
+the same physical button keeps the same meaning regardless of
+orientation.
 
 The **debug overlay** is for diagnostics: it shows free heap, current
 IP, current screen id, build SHA, current data-source state, and a
@@ -1172,8 +1197,11 @@ effects** is on or DND is active.
 | Two quick purple blinks every ~10 s | Block-source feed (Mempool) is stalled but WiFi is fine. | Usually self-recovers. The Status card's "Blocks" badge tells the same story. |
 | Two quick amber blinks every ~10 s | Price-source feed (Kraken) is stalled but WiFi is fine. | Usually self-recovers. Mirrored in the Status card's "Price" badge. |
 | Yellow-green blink | A data refresh just landed (any source). | Disable via **LED flash on update** if you find it distracting (`ledFlashOnUpd`). |
-| Amber sweep ending in red brake-light | Screen rotation paused (front button held, or `/api/pause` called). | Press the front button again to resume — see [§3 On-device controls](#3-on-device-controls). |
+| Amber sweep ending in red brake-light | Screen rotation paused (button 1 click, or `/api/pause` called). | Click button 1 again to resume — see [§3 On-device controls](#3-on-device-controls). |
 | Red handbrake → green sweep | Screen rotation resumed. | Background. |
+| Soft purple fade-pulse, then strip goes dark | DND just turned ON (button-1 long-press or schedule). | Hold button 1 again to turn DND off — see [§11 Do Not Disturb](#11-do-not-disturb). |
+| Warm amber fade-pulse, then strip returns to its resting colour | DND just turned OFF. | Background. |
+| Solid red (re-painted every ~500 ms while held) | Button 1 is being held at boot — WiFi-reset is arming. | Keep holding for 3 s to wipe WiFi creds + reboot into the AP, or release to fall through to a normal boot. See [§3 On-device controls](#3-on-device-controls). |
 | All pixels solid red | Boot sanity failure. | Reflash via the [Web flasher](#14-web-flasher) — the firmware never made it to a usable state. |
 
 The fault indicators (red breath / purple / amber blinks) only fire
@@ -1249,6 +1277,14 @@ cycle":
 Click it to mute the LEDs immediately, click again to un-mute. The
 toggle applies optimistically — if the API call rejects, the pill
 snaps back to server truth and a toast surfaces the error.
+
+You can also toggle manual DND **without leaving the room**: hold
+**button 1 for ≥ 800 ms** (see [§3 On-device controls](#3-on-device-controls)).
+The NeoPixel ring acknowledges the transition with a fade-pulse —
+soft purple going ON (lights "entering sleep"), warm amber going OFF
+(lights "waking up"). The purple cue is routed through a DND-bypass
+path so it's still visible even though the strip is already entering
+the DND blackout.
 
 ### Scheduled DND (Settings → Extra features)
 
@@ -1459,10 +1495,9 @@ provisioning AP — same as a fresh-from-the-box first boot.
 
 Use this when:
 
-- You've forgotten the WiFi password and need the AP back to
-  re-enter creds,
 - You want a clean slate for testing,
-- A bad PATCH from a script left the device in an unusable state.
+- A bad PATCH from a script left the device in an unusable state,
+- You're handing the device to someone else.
 
 Headless equivalent (the JSON body is mandatory — guards against
 accidental wipes from auto-saved curl history):
@@ -1473,12 +1508,18 @@ curl -X POST -H 'Content-Type: application/json' \
   http://btclock-xxxxxx.local/api/factory_reset
 ```
 
+If you only need to **change the WiFi network** (without losing every
+other setting), use the button-1 boot-hold path instead — see
+[§3 On-device controls](#3-on-device-controls). That keeps timezone,
+currencies, screen order, LED colours, NWC, Nostr, mining-pool and
+Bitaxe configuration intact and only resets the STA credentials.
+
 ## 16. Troubleshooting
 
 | Symptom | What's happening | Fix |
 |---|---|---|
 | Can't reach the WebUI on `http://btclock-xxxx.local/` or its IP | Your client and the device aren't sharing a layer-2 segment, or the client's traffic is being shipped elsewhere. | Make sure your phone/laptop is on the **same Wi-Fi network** the device joined (not a Guest SSID, not a separate VLAN). **Disable any VPN** on the client — split-tunnel routing usually sends LAN ranges over the tunnel and mDNS broadcasts never reach the device. In your router, **disable "Client / AP / Guest Isolation"** (sometimes labelled "Wireless Isolation" or "AP Isolation") — that setting blocks station-to-station traffic and the device becomes invisible to other clients on the same SSID. mDNS resolution (`*.local`) additionally needs UDP/5353 multicast forwarding to be on. |
-| AP won't appear | Booted into STA mode but the credentials are bad. | Wait `wpTimeout` (default 15 min) for the auto-reboot. Or USB-flash and `factory_reset`. |
+| AP won't appear | Booted into STA mode but the credentials are bad. | Hold **button 1 during boot for 3 s** to wipe just the WiFi creds and reboot into the AP — keeps every other setting. Or wait `wpTimeout` (default 15 min) for the auto-reboot. Last resort: USB-flash + `/api/factory_reset` (full NVS wipe). |
 | WebUI loads but screens are stale | Data source disconnected. | Status card shows "BTClock data-source connection" red — try Settings → Data sources, swap to mempool.space (`dataSource=1`) and restart. |
 | Panels show the same content forever | Rotation is paused. | Click "Resume" on the Status card, or press Button-1. |
 | "Firmware version different from WebUI" warning | OTA stopped halfway and only reflashed firmware (or WebUI). | Re-flash the missing half (firmware via `/upload/firmware`, WebUI via `/upload/webui`). The Web flasher does both at once. |
