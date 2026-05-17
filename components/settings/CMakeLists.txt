@@ -10,4 +10,4 @@ idf_component_register(
     REQUIRES cjson nwc
     PRIV_REQUIRES prefs nvs_flash
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

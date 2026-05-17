@@ -7,4 +7,4 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES nostr secp256k1
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

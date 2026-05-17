@@ -3,4 +3,4 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES mining_pool_common data_core tls_gate esp_http_client cjson prefs
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

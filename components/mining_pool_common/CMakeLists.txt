@@ -5,4 +5,4 @@ idf_component_register(
     REQUIRES data_core tls_gate esp_http_client esp-tls cjson
     PRIV_REQUIRES prefs settings proxy_transport
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

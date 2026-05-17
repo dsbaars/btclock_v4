@@ -58,4 +58,4 @@ idf_component_register(
     REQUIRES esp_psram esp_rom
     EMBED_FILES ${_FONT_EMBEDS}
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

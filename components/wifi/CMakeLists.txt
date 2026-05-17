@@ -4,4 +4,4 @@ idf_component_register(
     REQUIRES esp_wifi esp_netif esp_event esp_timer nvs_flash
     PRIV_REQUIRES lwip
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

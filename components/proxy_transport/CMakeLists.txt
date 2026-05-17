@@ -14,4 +14,4 @@ idf_component_register(
     REQUIRES tcp_transport esp-tls settings
     PRIV_REQUIRES esp_timer log lwip
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

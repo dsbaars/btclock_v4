@@ -64,7 +64,7 @@ idf_component_register(
              espcoredump queue_metrics tcp_transport proxy_transport
 )
 
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)
 
 # BTClock hardware variant. Set via
 #   `idf.py build -DBTCLOCK_BOARD=REV_A|REV_B|V8 [-DBTCLOCK_PANEL=2_13|2_9|7_5]`

@@ -14,4 +14,4 @@ idf_component_register(
     REQUIRES esp_websocket_client esp-tls data_core cjson secp256k1
              tcp_transport proxy_transport prefs settings net_util
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

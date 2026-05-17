@@ -17,7 +17,7 @@ idf_component_register(
              queue_metrics
     EMBED_FILES "${_PORTAL_GZ}"
 )
-target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_17)
+target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)
 
 # `fsRev` (the SystemInfo "WebUI commit" field) is sourced at runtime from
 # /lfs/www/commit.txt — written by data/gzip_build.py from the WebUI
