@@ -4,9 +4,11 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <expected>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 
 #include "cJSON.h"
 #include "esp_crt_bundle.h"
@@ -252,6 +254,205 @@ bool HashOtaPartition(const esp_partition_t* part, size_t image_bytes,
     std::snprintf(&(*out_hex)[i * 2], 3, "%02x", digest[i]);
   }
   return true;
+}
+
+// RAII guard for an esp_ota_handle_t obtained from esp_ota_begin.
+// Aborts the handle on destruction unless Release() has been called
+// (used right before esp_ota_end takes ownership). Cleans up the
+// half-dozen `esp_ota_abort(handle); return ...` patterns scattered
+// through WritePushImage and concentrates the failure path into the
+// destructor.
+class OtaHandleGuard {
+ public:
+  explicit OtaHandleGuard(esp_ota_handle_t h) : h_(h), released_(false) {}
+  ~OtaHandleGuard() {
+    if (!released_) esp_ota_abort(h_);
+  }
+  OtaHandleGuard(const OtaHandleGuard&) = delete;
+  OtaHandleGuard& operator=(const OtaHandleGuard&) = delete;
+
+  esp_ota_handle_t handle() const { return h_; }
+  // Surrender ownership — call once esp_ota_end / esp_ota_set_boot has
+  // succeeded so the destructor won't re-abort an already-finalized
+  // handle.
+  void Release() { released_ = true; }
+
+ private:
+  esp_ota_handle_t h_;
+  bool released_;
+};
+
+// RAII guard for mbedtls_md_context_t — pairs init/setup with free.
+// Same motivation as OtaHandleGuard: collapses many duplicated
+// `mbedtls_md_free(&md); return ...` lines into a single destructor.
+class MdContextGuard {
+ public:
+  MdContextGuard() { mbedtls_md_init(&md_); }
+  ~MdContextGuard() { mbedtls_md_free(&md_); }
+  MdContextGuard(const MdContextGuard&) = delete;
+  MdContextGuard& operator=(const MdContextGuard&) = delete;
+  mbedtls_md_context_t* get() { return &md_; }
+
+ private:
+  mbedtls_md_context_t md_;
+};
+
+// Failure descriptor for the push-OTA pipeline. Carries both the
+// esp_err_t to surface to the HTTP layer (preserves the
+// control_server.cpp mapping — INVALID_STATE → 503, INVALID_CRC →
+// 400, etc.) and the byte offset at which the failure occurred so the
+// outer wrapper can emit one final kFailed progress event with the
+// correct `written` field.
+struct PushFailure {
+  esp_err_t rc;
+  size_t written;
+};
+
+// Body of the push-OTA pipeline. Templated on the emit callback so
+// the captured `this`-lambda from WritePushImage inlines without
+// std::function overhead — and so std::expected stays out of the
+// public header (which would otherwise drag <expected> into every
+// TU that touches ota_manager.hpp).
+//
+// Uses RAII guards (OtaHandleGuard / MdContextGuard / BufGuard) so
+// the dozen failure paths can just `return std::unexpected(...)` and
+// let the destructors run instead of duplicating cleanup at each
+// site.
+template <class EmitFn>
+std::expected<size_t, PushFailure> WritePushImageImpl(
+    EmitFn&& emit, OtaManager::RecvFn recv, void* ctx, size_t expected_bytes,
+    const char* expected_sha256_hex) {
+  const esp_partition_t* part = esp_ota_get_next_update_partition(nullptr);
+  if (!part) return std::unexpected(PushFailure{ESP_ERR_NOT_FOUND, 0});
+  if (expected_bytes > part->size) {
+    return std::unexpected(PushFailure{ESP_ERR_INVALID_SIZE, 0});
+  }
+
+  // Always drive the OTA sequentially. Passing `expected_bytes` to
+  // esp_ota_begin makes it erase ALIGN_UP(expected_bytes, erase_size)
+  // up-front — 5–10 s of blocking flash work during which no socket
+  // reads happen, the client's TCP window saturates, and intermittent
+  // stalls cascade into HTTPD_SOCK_ERR_TIMEOUT failures. SEQUENTIAL
+  // erases each 4 KiB sector lazily on first write, interleaving flash
+  // work with socket reads. Same net cost, far friendlier to slow/
+  // congested WiFi.
+  esp_ota_handle_t handle = 0;
+  if (esp_err_t rc = esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &handle);
+      rc != ESP_OK) {
+    ESP_LOGE(kTag, "esp_ota_begin: %s", esp_err_to_name(rc));
+    return std::unexpected(PushFailure{rc, 0});
+  }
+  OtaHandleGuard ota_guard(handle);
+
+  MdContextGuard md_guard;
+  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (!info || mbedtls_md_setup(md_guard.get(), info, 0) != 0) {
+    return std::unexpected(PushFailure{ESP_ERR_NO_MEM, 0});
+  }
+  mbedtls_md_starts(md_guard.get());
+
+  // 4 KiB matches the flash sector size, so each esp_ota_write lines
+  // up with exactly one erase+write cycle in SEQUENTIAL mode. Allocate
+  // in PSRAM — internal heap is commonly ~20 KB free under load and a
+  // larger buffer there would risk OOM, whereas PSRAM has ~2 MB headroom.
+  constexpr size_t kChunk = 4096;
+  char* buf = static_cast<char*>(
+      esp_psram_is_initialized()
+          ? heap_caps_malloc(kChunk, MALLOC_CAP_SPIRAM)
+          : heap_caps_malloc(kChunk, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  if (!buf) return std::unexpected(PushFailure{ESP_ERR_NO_MEM, 0});
+  struct BufGuard {
+    char* p;
+    ~BufGuard() { heap_caps_free(p); }
+  } buf_guard{buf};
+  size_t written = 0;
+  const size_t cap = expected_bytes > 0 ? expected_bytes : part->size;
+
+  // Emit progress at least every kProgressStepBytes — matches 16 KiB /
+  // 4 chunks so the LED bar advances multiple times even on tiny images.
+  // The WritePushImage caller's httpd worker is the one invoking the
+  // callback; keep it cheap.
+  constexpr size_t kProgressStepBytes = 16 * 1024;
+  size_t next_progress = kProgressStepBytes;
+  OtaProgress prog;
+  prog.total = expected_bytes;
+  prog.phase = OtaProgress::Phase::kWriting;
+  prog.written = 0;
+  emit(prog);
+
+  while (written < cap) {
+    const size_t want = std::min(kChunk, cap - written);
+    const int n = recv(ctx, buf, want);
+    if (n == 0 && expected_bytes == 0) {
+      // Content-Length was absent and the peer closed cleanly — treat
+      // whatever we have as the full image.
+      break;
+    }
+    if (n <= 0) {
+      ESP_LOGE(kTag, "recv error at %u: %d", static_cast<unsigned>(written), n);
+      return std::unexpected(PushFailure{ESP_FAIL, written});
+    }
+    mbedtls_md_update(md_guard.get(), reinterpret_cast<uint8_t*>(buf),
+                      static_cast<size_t>(n));
+    if (esp_err_t rc = esp_ota_write(handle, buf, static_cast<size_t>(n));
+        rc != ESP_OK) {
+      ESP_LOGE(kTag, "esp_ota_write@%u: %s", static_cast<unsigned>(written),
+               esp_err_to_name(rc));
+      return std::unexpected(PushFailure{rc, written});
+    }
+    written += static_cast<size_t>(n);
+    if (written >= next_progress || written == cap) {
+      prog.written = written;
+      prog.phase = OtaProgress::Phase::kWriting;
+      emit(prog);
+      next_progress = written + kProgressStepBytes;
+    }
+  }
+
+  if (expected_bytes > 0 && written != expected_bytes) {
+    ESP_LOGE(kTag, "push OTA truncated: got %u want %u",
+             static_cast<unsigned>(written),
+             static_cast<unsigned>(expected_bytes));
+    return std::unexpected(PushFailure{ESP_ERR_INVALID_SIZE, written});
+  }
+
+  prog.written = written;
+  prog.phase = OtaProgress::Phase::kVerifying;
+  emit(prog);
+
+  uint8_t digest[32];
+  mbedtls_md_finish(md_guard.get(), digest);
+
+  if (expected_sha256_hex && *expected_sha256_hex) {
+    char actual[65];
+    for (int i = 0; i < 32; ++i) {
+      std::snprintf(actual + i * 2, 3, "%02x", digest[i]);
+    }
+    actual[64] = 0;
+    std::string expected_lc(expected_sha256_hex);
+    for (char& c : expected_lc) {
+      if (c >= 'A' && c <= 'F') c = static_cast<char>(c + ('a' - 'A'));
+    }
+    if (expected_lc.size() != 64 || expected_lc != actual) {
+      ESP_LOGE(kTag, "push sha256 mismatch: expected=%s actual=%s",
+               expected_sha256_hex, actual);
+      return std::unexpected(PushFailure{ESP_ERR_INVALID_CRC, written});
+    }
+  }
+
+  if (esp_err_t rc = esp_ota_end(handle); rc != ESP_OK) {
+    ESP_LOGE(kTag, "esp_ota_end: %s", esp_err_to_name(rc));
+    return std::unexpected(PushFailure{rc, written});
+  }
+  // esp_ota_end consumed the handle; OtaHandleGuard's destructor must
+  // NOT call esp_ota_abort on it now.
+  ota_guard.Release();
+
+  if (esp_err_t rc = esp_ota_set_boot_partition(part); rc != ESP_OK) {
+    ESP_LOGE(kTag, "esp_ota_set_boot_partition: %s", esp_err_to_name(rc));
+    return std::unexpected(PushFailure{rc, written});
+  }
+  return written;
 }
 
 }  // namespace
@@ -555,171 +756,31 @@ esp_err_t OtaManager::WritePushImage(RecvFn recv, void* ctx,
     if (hook) hook();
   }
 
-  const esp_partition_t* part = esp_ota_get_next_update_partition(nullptr);
-  if (!part) {
+  // Impl runs the actual write/verify/finalize pipeline with RAII
+  // cleanup. On failure we emit one kFailed progress event here at the
+  // shared exit point; on success we emit kRebooting. This is the
+  // centralisation the std::expected refactor exists for — pre-refactor
+  // every error path duplicated 3–4 lines of "set kFailed; emit; return
+  // rc" boilerplate (and several also had to manually call
+  // mbedtls_md_free + esp_ota_abort before that).
+  //
+  // Impl is a templated file-local helper; the captured `this`-lambda
+  // here inlines the EmitProgress call without a std::function vtable
+  // hop, and keeps <expected> out of the public header (which would
+  // otherwise force every TU that touches ota_manager.hpp to compile
+  // the <expected> template machinery).
+  auto r = WritePushImageImpl(
+      [this](const OtaProgress& p) { this->EmitProgress(p); }, recv, ctx,
+      expected_bytes, expected_sha256_hex);
+  if (!r) {
     prog.phase = OtaProgress::Phase::kFailed;
+    prog.written = r.error().written;
     EmitProgress(prog);
-    return ESP_ERR_NOT_FOUND;
+    return r.error().rc;
   }
-  if (expected_bytes > part->size) {
-    prog.phase = OtaProgress::Phase::kFailed;
-    EmitProgress(prog);
-    return ESP_ERR_INVALID_SIZE;
-  }
-
-  // Always drive the OTA sequentially. Passing `expected_bytes` to
-  // esp_ota_begin makes it erase ALIGN_UP(expected_bytes, erase_size)
-  // up-front — 5–10 s of blocking flash work during which no socket
-  // reads happen, the client's TCP window saturates, and intermittent
-  // stalls cascade into HTTPD_SOCK_ERR_TIMEOUT failures. SEQUENTIAL
-  // erases each 4 KiB sector lazily on first write, interleaving flash
-  // work with socket reads. Same net cost, far friendlier to slow/
-  // congested WiFi.
-  esp_ota_handle_t handle = 0;
-  esp_err_t rc = esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &handle);
-  if (rc != ESP_OK) {
-    ESP_LOGE(kTag, "esp_ota_begin: %s", esp_err_to_name(rc));
-    return rc;
-  }
-
-  mbedtls_md_context_t md;
-  mbedtls_md_init(&md);
-  const mbedtls_md_info_t* info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-  if (!info || mbedtls_md_setup(&md, info, 0) != 0) {
-    mbedtls_md_free(&md);
-    esp_ota_abort(handle);
-    return ESP_ERR_NO_MEM;
-  }
-  mbedtls_md_starts(&md);
-
-  // 4 KiB matches the flash sector size, so each esp_ota_write lines
-  // up with exactly one erase+write cycle in SEQUENTIAL mode. Allocate
-  // in PSRAM — internal heap is commonly ~20 KB free under load and a
-  // larger buffer there would risk OOM, whereas PSRAM has ~2 MB headroom.
-  constexpr size_t kChunk = 4096;
-  char* buf = static_cast<char*>(
-      esp_psram_is_initialized()
-          ? heap_caps_malloc(kChunk, MALLOC_CAP_SPIRAM)
-          : heap_caps_malloc(kChunk, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  if (!buf) {
-    mbedtls_md_free(&md);
-    esp_ota_abort(handle);
-    return ESP_ERR_NO_MEM;
-  }
-  struct BufGuard {
-    char* p;
-    ~BufGuard() { heap_caps_free(p); }
-  } buf_guard{buf};
-  size_t written = 0;
-  const size_t cap = expected_bytes > 0 ? expected_bytes : part->size;
-
-  // Emit progress at least every kProgressStepBytes — matches 16 KiB /
-  // 4 chunks so the LED bar advances multiple times even on tiny images.
-  // The WritePushImage caller's httpd worker is the one invoking the
-  // callback; keep it cheap.
-  constexpr size_t kProgressStepBytes = 16 * 1024;
-  size_t next_progress = kProgressStepBytes;
-  prog.phase = OtaProgress::Phase::kWriting;
-  prog.written = 0;
-  EmitProgress(prog);
-
-  while (written < cap) {
-    const size_t want = std::min(kChunk, cap - written);
-    const int n = recv(ctx, buf, want);
-    if (n == 0 && expected_bytes == 0) {
-      // Content-Length was absent and the peer closed cleanly — treat
-      // whatever we have as the full image.
-      break;
-    }
-    if (n <= 0) {
-      ESP_LOGE(kTag, "recv error at %u: %d", static_cast<unsigned>(written), n);
-      mbedtls_md_free(&md);
-      esp_ota_abort(handle);
-      prog.phase = OtaProgress::Phase::kFailed;
-      prog.written = written;
-      EmitProgress(prog);
-      return ESP_FAIL;
-    }
-    mbedtls_md_update(&md, reinterpret_cast<uint8_t*>(buf),
-                      static_cast<size_t>(n));
-    rc = esp_ota_write(handle, buf, static_cast<size_t>(n));
-    if (rc != ESP_OK) {
-      ESP_LOGE(kTag, "esp_ota_write@%u: %s", static_cast<unsigned>(written),
-               esp_err_to_name(rc));
-      mbedtls_md_free(&md);
-      esp_ota_abort(handle);
-      prog.phase = OtaProgress::Phase::kFailed;
-      prog.written = written;
-      EmitProgress(prog);
-      return rc;
-    }
-    written += static_cast<size_t>(n);
-    if (written >= next_progress || written == cap) {
-      prog.written = written;
-      prog.phase = OtaProgress::Phase::kWriting;
-      EmitProgress(prog);
-      next_progress = written + kProgressStepBytes;
-    }
-  }
-
-  if (expected_bytes > 0 && written != expected_bytes) {
-    ESP_LOGE(kTag, "push OTA truncated: got %u want %u",
-             static_cast<unsigned>(written),
-             static_cast<unsigned>(expected_bytes));
-    mbedtls_md_free(&md);
-    esp_ota_abort(handle);
-    prog.phase = OtaProgress::Phase::kFailed;
-    prog.written = written;
-    EmitProgress(prog);
-    return ESP_ERR_INVALID_SIZE;
-  }
-
-  prog.written = written;
-  prog.phase = OtaProgress::Phase::kVerifying;
-  EmitProgress(prog);
-
-  uint8_t digest[32];
-  mbedtls_md_finish(&md, digest);
-  mbedtls_md_free(&md);
-
-  if (expected_sha256_hex && *expected_sha256_hex) {
-    char actual[65];
-    for (int i = 0; i < 32; ++i) {
-      std::snprintf(actual + i * 2, 3, "%02x", digest[i]);
-    }
-    actual[64] = 0;
-    std::string expected_lc(expected_sha256_hex);
-    for (char& c : expected_lc) {
-      if (c >= 'A' && c <= 'F') c = static_cast<char>(c + ('a' - 'A'));
-    }
-    if (expected_lc.size() != 64 || expected_lc != actual) {
-      ESP_LOGE(kTag, "push sha256 mismatch: expected=%s actual=%s",
-               expected_sha256_hex, actual);
-      esp_ota_abort(handle);
-      prog.phase = OtaProgress::Phase::kFailed;
-      EmitProgress(prog);
-      return ESP_ERR_INVALID_CRC;
-    }
-  }
-
-  rc = esp_ota_end(handle);
-  if (rc != ESP_OK) {
-    ESP_LOGE(kTag, "esp_ota_end: %s", esp_err_to_name(rc));
-    prog.phase = OtaProgress::Phase::kFailed;
-    EmitProgress(prog);
-    return rc;
-  }
-  rc = esp_ota_set_boot_partition(part);
-  if (rc != ESP_OK) {
-    ESP_LOGE(kTag, "esp_ota_set_boot_partition: %s", esp_err_to_name(rc));
-    prog.phase = OtaProgress::Phase::kFailed;
-    EmitProgress(prog);
-    return rc;
-  }
-
-  if (out_written) *out_written = written;
-  ESP_LOGW(kTag, "push OTA ok: bytes=%u", static_cast<unsigned>(written));
-  prog.written = written;
+  if (out_written) *out_written = *r;
+  ESP_LOGW(kTag, "push OTA ok: bytes=%u", static_cast<unsigned>(*r));
+  prog.written = *r;
   prog.phase = OtaProgress::Phase::kRebooting;
   EmitProgress(prog);
   return ESP_OK;
