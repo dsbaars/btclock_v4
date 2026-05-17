@@ -20,6 +20,12 @@
 
 #pragma once
 
+// Header is variant-gated. On boards without a PCA9685 backlight the
+// class isn't defined; consumers must wrap any use in
+// `#if BTCLOCK_HAS_FRONTLIGHT` and the file isn't included at all on
+// Rev A / V8.
+#if BTCLOCK_HAS_FRONTLIGHT
+
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -335,3 +341,5 @@ class FrontlightController {
 };
 
 }  // namespace btclock
+
+#endif  // BTCLOCK_HAS_FRONTLIGHT

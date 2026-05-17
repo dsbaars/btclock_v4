@@ -39,6 +39,20 @@ add_compile_definitions(BTCLOCK_PANEL_${BTCLOCK_PANEL}=1)
 # is the project-wide emit.
 add_compile_definitions(BTCLOCK_BOARD_${BTCLOCK_BOARD}=1)
 
+# Capability flags — set ONCE per board variant, consumed everywhere
+# (main + components). Prefer capability over board: a future landscape
+# variant that happens to share Rev B's frontlight hardware should
+# light up via BTCLOCK_HAS_FRONTLIGHT alone, no per-board enumeration
+# in the consumer. Flags match the constexpr `kHasFrontlight` /
+# `kHasBh1750` in main/board/board_*.hpp.
+if(BTCLOCK_BOARD STREQUAL "REV_B")
+    add_compile_definitions(BTCLOCK_HAS_FRONTLIGHT=1)
+    add_compile_definitions(BTCLOCK_HAS_BH1750=1)
+else()
+    add_compile_definitions(BTCLOCK_HAS_FRONTLIGHT=0)
+    add_compile_definitions(BTCLOCK_HAS_BH1750=0)
+endif()
+
 # String slugs used by init_control_api.cpp to synthesise OTA asset
 # names (`btclock_<board>[_<panel>]_ota.bin` /
 # `..._webui.bin`) without a #if pyramid. The suffix is empty for the

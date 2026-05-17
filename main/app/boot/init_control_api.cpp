@@ -31,9 +31,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#if BTCLOCK_HAS_FRONTLIGHT
 #include "io/frontlight_controller.hpp"
+#endif
 #include "io/led_controller.hpp"
+#if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
+#endif
 #include "io/mining_pool_selector.hpp"
 #include "io/network_led_watchdog.hpp"
 #include "nostr/nostr_data_source.hpp"
@@ -91,15 +95,19 @@ void InitControlApi(AppCtx& ctx) {
   // holds raw Iface* pointers to them. AppCtx owns both, and the
   // declaration order in AppCtx puts `ctrl` ahead of the adapter
   // members so destruction runs in the right order (ctrl first).
+#if BTCLOCK_HAS_FRONTLIGHT
   if (ctx.frontlight) {
     ctx.fl_adapter = std::make_unique<FrontlightAdapter>(ctx.frontlight.get());
   }
+#endif
   ctx.leds_adapter = std::make_unique<LedsAdapter>();
   ctx.dnd_adapter = std::make_unique<DndAdapter>();
+#if BTCLOCK_HAS_BH1750
   if (ctx.light_sensor) {
     ctx.light_sensor_adapter =
         std::make_unique<LightSensorAdapter>(ctx.light_sensor.get());
   }
+#endif
   ctx.timer_adapter = std::make_unique<TimerAdapter>(*ctx.sm, MsNow);
 
   // Factory-reset trigger shared by the HTTP endpoint and the
@@ -128,11 +136,15 @@ void InitControlApi(AppCtx& ctx) {
     // matches the compiled-in pool list. Kept in sync with the factory
     // in mining_pool_selector.cpp.
     ccfg.available_pools = mining_pools::AvailablePoolNames();
+#if BTCLOCK_HAS_FRONTLIGHT
     ccfg.frontlight = ctx.fl_adapter.get();
+#endif
     ccfg.leds = ctx.leds_adapter.get();
     ccfg.dnd = ctx.dnd_adapter.get();
     ccfg.timer = ctx.timer_adapter.get();
+#if BTCLOCK_HAS_BH1750
     ccfg.light_sensor = ctx.light_sensor_adapter.get();
+#endif
     ccfg.on_factory_reset = factory_reset_trigger;
     // tzString PATCH -> setenv("TZ", ...) + tzset() so the clock screen
     // follows the new zone without reboot. Old firmware applied the zone
@@ -230,6 +242,7 @@ void InitControlApi(AppCtx& ctx) {
     // (queue-backed fade); the policy / gate setters are plain stores
     // and safe to call from the httpd worker. bd btclock_v4-7xv /
     // btclock_v4-63p.
+#if BTCLOCK_HAS_FRONTLIGHT
     if (FrontlightController* fl = ctx.frontlight.get()) {
       ccfg.on_frontlight_changed = [fl] {
         Prefs settings(prefs::kSettingsNs);
@@ -256,6 +269,7 @@ void InitControlApi(AppCtx& ctx) {
             btclock::settings::ReadBool(settings, prefs::kFlOffOnDnd));
       };
     }
+#endif  // BTCLOCK_HAS_FRONTLIGHT
     // Every successful /api/settings PATCH pulses the LEDs green so
     // the user sees an immediate confirmation the save landed. Piggy-
     // backs on the existing kFlashSuccess effect (3x green, 150ms) —

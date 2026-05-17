@@ -8,6 +8,10 @@
 
 #pragma once
 
+// Header is variant-gated on BH1750 presence. Rev A / V8 don't ship
+// the sensor, so the class isn't compiled there.
+#if BTCLOCK_HAS_BH1750
+
 #include <atomic>
 #include <cstdint>
 
@@ -64,3 +68,5 @@ class LightSensor {
 };
 
 }  // namespace btclock
+
+#endif  // BTCLOCK_HAS_BH1750

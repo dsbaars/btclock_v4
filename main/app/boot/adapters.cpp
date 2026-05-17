@@ -4,14 +4,19 @@
 
 #include "app/screen_manager.hpp"
 #include "dnd/dnd.hpp"
-#include "io/frontlight_controller.hpp"
 #include "io/led_controller.hpp"
+#if BTCLOCK_HAS_FRONTLIGHT
+#include "io/frontlight_controller.hpp"
+#endif
+#if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
+#endif
 
 namespace btclock {
 
 // --- FrontlightAdapter ------------------------------------------------
 
+#if BTCLOCK_HAS_FRONTLIGHT
 FrontlightAdapter::FrontlightAdapter(FrontlightController* fl) : fl_(fl) {}
 
 void FrontlightAdapter::On() {
@@ -43,6 +48,7 @@ FrontlightAdapter::Status FrontlightAdapter::GetStatus() const {
   for (uint8_t i = 0; i < n; ++i) out.duties[i] = s.duties[i];
   return out;
 }
+#endif  // BTCLOCK_HAS_FRONTLIGHT
 
 // --- LedsAdapter ------------------------------------------------------
 
@@ -145,6 +151,7 @@ void DndAdapter::SetEnabled(bool enabled) {
 
 // --- LightSensorAdapter ----------------------------------------------
 
+#if BTCLOCK_HAS_BH1750
 LightSensorAdapter::LightSensorAdapter(LightSensor* ls) : ls_(ls) {}
 
 bool LightSensorAdapter::IsAvailable() const {
@@ -153,6 +160,7 @@ bool LightSensorAdapter::IsAvailable() const {
 float LightSensorAdapter::GetLux() const {
   return ls_ ? ls_->GetLux() : -1.0f;
 }
+#endif  // BTCLOCK_HAS_BH1750
 
 // --- TimerAdapter -----------------------------------------------------
 

@@ -677,12 +677,19 @@ esp_err_t ControlServer::Start() {
   reg("/api/screen/previous", HTTP_POST, TrampolineScreenPrev);
   reg("/api/stop_datasources", HTTP_POST, TrampolineStopDataSources);
   reg("/api/restart_datasources", HTTP_POST, TrampolineRestartDataSources);
+#if BTCLOCK_HAS_FRONTLIGHT
+  // Boards without a frontlight (Rev A, V8) skip registering these
+  // endpoints entirely — the address-of references go away, linker GC
+  // then strips the Trampoline / Handle methods and the FrontlightIface
+  // call sites in them, recovering ~600 B of .text on the tight 4 MB
+  // Rev A app partition.
   reg("/api/frontlight/on", HTTP_POST, TrampolineFrontlightOn);
   reg("/api/frontlight/off", HTTP_POST, TrampolineFrontlightOff);
   reg("/api/frontlight/flash", HTTP_POST, TrampolineFrontlightFlash);
   reg("/api/frontlight/status", HTTP_GET, TrampolineFrontlightStatus);
   reg("/api/frontlight/brightness", HTTP_POST, TrampolineFrontlightBrightness);
   reg("/api/frontlight/set", HTTP_POST, TrampolineFrontlightSet);
+#endif  // BTCLOCK_HAS_FRONTLIGHT
   reg("/api/wifi_set_tx_power", HTTP_POST, TrampolineWifiTxPower);
   reg("/upload/webui", HTTP_POST, TrampolineUploadWebui);
   reg("/api/lights", HTTP_GET, TrampolineLightsStatus);
@@ -1127,8 +1134,10 @@ std::string ControlServer::BuildStatusJson() const {
   // channel so a staggered flash renders correctly. `targetDuty` is
   // still useful as the single fader-target (where the bank is heading)
   // and `configuredBrightness` echoes the user's "on" pref.
-  // Suppressed when the board has no frontlight (Rev A / V8 pass
-  // nullptr) so the WebUI can hide the row entirely on those variants.
+  // Suppressed when the board has no frontlight (Rev A / V8 — the whole
+  // block goes away at preprocessor time, recovering ~150 B + the
+  // FrontlightIface::GetStatus address-of).
+#if BTCLOCK_HAS_FRONTLIGHT
   if (cfg_.frontlight) {
     const FrontlightIface::Status fls = cfg_.frontlight->GetStatus();
     cJSON* fl = cJSON_AddObjectToObject(root, "frontlight");
@@ -1145,6 +1154,7 @@ std::string ControlServer::BuildStatusJson() const {
     cJSON_AddNumberToObject(fl, "configuredBrightness",
                             static_cast<double>(fls.configured_brightness));
   }
+#endif  // BTCLOCK_HAS_FRONTLIGHT
 
   char* txt = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);

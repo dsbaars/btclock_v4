@@ -11,8 +11,12 @@
 #include "app/boot/adapters.hpp"
 #include "control_server.hpp"
 #include "esp_timer.h"
+#if BTCLOCK_HAS_FRONTLIGHT
 #include "io/frontlight_controller.hpp"
+#endif
+#if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
+#endif
 #include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "nostr/relay_client.hpp"

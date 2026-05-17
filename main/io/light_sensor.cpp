@@ -1,3 +1,6 @@
+// Variant-gated TU — see light_sensor.hpp's `#if BTCLOCK_HAS_BH1750`.
+#if BTCLOCK_HAS_BH1750
+
 #include "io/light_sensor.hpp"
 
 #include "esp_log.h"
@@ -52,3 +55,5 @@ void LightSensor::Run() {
 }
 
 }  // namespace btclock
+
+#endif  // BTCLOCK_HAS_BH1750

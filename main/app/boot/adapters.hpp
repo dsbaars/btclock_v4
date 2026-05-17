@@ -23,10 +23,15 @@
 
 namespace btclock {
 
+#if BTCLOCK_HAS_FRONTLIGHT
 class FrontlightController;
+#endif
+#if BTCLOCK_HAS_BH1750
 class LightSensor;
+#endif
 class ScreenManager;
 
+#if BTCLOCK_HAS_FRONTLIGHT
 struct FrontlightAdapter : FrontlightIface {
   explicit FrontlightAdapter(FrontlightController* fl);
   void On() override;
@@ -37,6 +42,7 @@ struct FrontlightAdapter : FrontlightIface {
   Status GetStatus() const override;
   FrontlightController* fl_;
 };
+#endif  // BTCLOCK_HAS_FRONTLIGHT
 
 struct LedsAdapter : LedsIface {
   Status GetStatus() const override;
@@ -54,12 +60,14 @@ struct DndAdapter : DndIface {
   void SetEnabled(bool enabled) override;
 };
 
+#if BTCLOCK_HAS_BH1750
 struct LightSensorAdapter : LightSensorIface {
   explicit LightSensorAdapter(LightSensor* ls);
   bool IsAvailable() const override;
   float GetLux() const override;
   LightSensor* ls_;
 };
+#endif  // BTCLOCK_HAS_BH1750
 
 struct TimerAdapter : TimerIface {
   TimerAdapter(ScreenManager& sm_ref, int64_t (*now_fn)());

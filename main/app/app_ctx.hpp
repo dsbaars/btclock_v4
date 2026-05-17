@@ -44,8 +44,12 @@ class BtclockDataSource;
 class ControlServer;
 class SseServer;
 class DnsHijack;
+#if BTCLOCK_HAS_FRONTLIGHT
 class FrontlightController;
+#endif
+#if BTCLOCK_HAS_BH1750
 class LightSensor;
+#endif
 class NetworkLedWatchdog;
 class OutageWatchdog;
 class ProvisioningServer;
@@ -67,10 +71,14 @@ namespace btclock {
 
 // Forward-declared so app_ctx.hpp doesn't need control_server.hpp.
 // Full definitions in main/app/boot/adapters.hpp.
+#if BTCLOCK_HAS_FRONTLIGHT
 struct FrontlightAdapter;
+#endif
 struct LedsAdapter;
 struct DndAdapter;
+#if BTCLOCK_HAS_BH1750
 struct LightSensorAdapter;
+#endif
 struct TimerAdapter;
 
 struct AppCtx {
@@ -83,10 +91,14 @@ struct AppCtx {
   std::optional<I2cBus> i2c;
   std::optional<Mcp23017> mcp;   // always present
   std::optional<Mcp23017> mcp2;  // V8 only
+#if BTCLOCK_HAS_FRONTLIGHT
   std::optional<Pca9685> pca;    // boards with frontlight
   std::unique_ptr<FrontlightController> frontlight;
+#endif
+#if BTCLOCK_HAS_BH1750
   std::optional<Bh1750> bh;
   std::unique_ptr<LightSensor> light_sensor;
+#endif
 
   // Panels + framebuffer storage. fb_storage lives inline because it
   // needs a fixed address passed by reference into Render().
@@ -248,10 +260,14 @@ struct AppCtx {
   // to them). Adapter structs declared in app/boot/adapters.hpp.
   std::unique_ptr<ControlServer> ctrl;
   std::unique_ptr<SseServer> sse;
+#if BTCLOCK_HAS_FRONTLIGHT
   std::unique_ptr<FrontlightAdapter> fl_adapter;
+#endif
   std::unique_ptr<LedsAdapter> leds_adapter;
   std::unique_ptr<DndAdapter> dnd_adapter;
+#if BTCLOCK_HAS_BH1750
   std::unique_ptr<LightSensorAdapter> light_sensor_adapter;
+#endif
   std::unique_ptr<TimerAdapter> timer_adapter;
 };
 

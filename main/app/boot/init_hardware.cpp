@@ -8,8 +8,12 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#if BTCLOCK_HAS_FRONTLIGHT
 #include "io/frontlight_controller.hpp"
+#endif
+#if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
+#endif
 #include "prefs.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
@@ -81,7 +85,8 @@ void InitHardware(AppCtx& ctx) {
     ESP_ERROR_CHECK(ctx.mcp2->WritePort(0xFFFF));
   }
 
-  if constexpr (kHasFrontlight) {
+#if BTCLOCK_HAS_FRONTLIGHT
+  {
     ctx.pca.emplace(*ctx.i2c, kPcaAddr, kPcaOe);
     ESP_ERROR_CHECK(ctx.pca->Begin(1000));
     ctx.pca->SetOutputEnable(true);
@@ -152,8 +157,10 @@ void InitHardware(AppCtx& ctx) {
     // initialised.
     ctx.frontlight->On();
   }
+#endif  // BTCLOCK_HAS_FRONTLIGHT
 
-  if constexpr (kHasAmbientLight) {
+#if BTCLOCK_HAS_BH1750
+  {
     ctx.bh.emplace(*ctx.i2c, kBhAddr);
     // Init() probes the bus, so a depopulated/absent sensor reports
     // ESP_ERR_NOT_FOUND rather than aborting the boot — the downstream
@@ -167,6 +174,7 @@ void InitHardware(AppCtx& ctx) {
     ctx.light_sensor = std::make_unique<LightSensor>(*ctx.bh);
     ctx.light_sensor->Start();
   }
+#endif  // BTCLOCK_HAS_BH1750
 }
 
 }  // namespace btclock

@@ -1,3 +1,9 @@
+// Whole TU is variant-gated: on boards without a PCA9685 backlight the
+// FrontlightController class doesn't exist (the header is also gated on
+// BTCLOCK_HAS_FRONTLIGHT), so compiling this .cpp would fail. Wrapping
+// the whole body keeps the file in main/CMakeLists.txt SRCS unchanged.
+#if BTCLOCK_HAS_FRONTLIGHT
+
 #include "io/frontlight_controller.hpp"
 
 #include "esp_log.h"
@@ -528,3 +534,5 @@ void FrontlightController::TaskLoop() {
 }
 
 }  // namespace btclock
+
+#endif  // BTCLOCK_HAS_FRONTLIGHT

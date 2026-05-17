@@ -20,9 +20,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#if BTCLOCK_HAS_FRONTLIGHT
 #include "io/frontlight_controller.hpp"
+#endif
 #include "io/led_controller.hpp"
+#if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
+#endif
 #include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "lwip/sockets.h"
@@ -47,8 +51,12 @@ constexpr const char* kTag = "btclock";
   auto& panels = ctx.panels;
   auto& fb_storage = AppCtx::fb_storage();
   auto& fonts = ctx.fonts;
+#if BTCLOCK_HAS_FRONTLIGHT
   auto& frontlight = ctx.frontlight;
+#endif
+#if BTCLOCK_HAS_BH1750
   auto& light_sensor = ctx.light_sensor;
+#endif
   Wifi& wifi = *ctx.wifi;
   Mcp23017& mcp = *ctx.mcp;
   OutageWatchdog& outage_watchdog = *ctx.outage_watchdog;
@@ -226,14 +234,20 @@ constexpr const char* kTag = "btclock";
     // something else nudges the queue. Driving this from the 1 Hz
     // wake-up gives a worst-case 1 s lag on minute-aligned time-based
     // DND boundaries, and near-immediate response on manual toggles.
+#if BTCLOCK_HAS_FRONTLIGHT
     if (frontlight) frontlight->OnDndStateMaybeChanged();
+#endif
 
     if (now_ms - last_heartbeat_ms >= 10'000) {
       uint16_t port = 0;
       mcp.ReadPort(&port);
       // Prefer the cached reading from the poll task so we don't race
       // on the I2C bus with it. Falls back to -1.0 when no sensor.
+#if BTCLOCK_HAS_BH1750
       const float lux = light_sensor ? light_sensor->GetLux() : -1.0f;
+#else
+      const float lux = -1.0f;
+#endif
       ESP_LOGI(
           kTag, "t=%llds buttons=0x%X lux=%.1f heap=%u psram=%u",
           static_cast<long long>(now_ms / 1000),
@@ -267,7 +281,9 @@ constexpr const char* kTag = "btclock";
       // Auto-off: feed each fresh lux reading to the frontlight
       // controller. Below threshold -> on, above -> off. No-op if the
       // board has no frontlight or no ambient sensor.
+#if BTCLOCK_HAS_FRONTLIGHT
       if (frontlight) frontlight->OnAmbientLux(lux);
+#endif
       last_heartbeat_ms = now_ms;
     }
 
@@ -331,9 +347,11 @@ constexpr const char* kTag = "btclock";
       if (flash_on_zap_enabled.load()) {
         PostLedEffect(LedEffect::kZap);
       }
+#if BTCLOCK_HAS_FRONTLIGHT
       if (frontlight && flash_frontlight_on_zap_enabled.load()) {
         frontlight->ZapFlash();
       }
+#endif
       continue;
     }
 
@@ -380,7 +398,9 @@ constexpr const char* kTag = "btclock";
       publish_status();
       if (nwc_flash_on_payment_enabled.load()) {
         PostLedEffect(LedEffect::kZap);
+#if BTCLOCK_HAS_FRONTLIGHT
         if (frontlight) frontlight->ZapFlash();
+#endif
       }
       continue;
     }
@@ -455,7 +475,9 @@ constexpr const char* kTag = "btclock";
             publish_status();
             if (pending_block_notify) {
               PostLedEffect(LedEffect::kBlockFlash);
+#if BTCLOCK_HAS_FRONTLIGHT
               if (frontlight) frontlight->Flash();
+#endif
             }
             continue;
           }
@@ -497,7 +519,9 @@ constexpr const char* kTag = "btclock";
     // into "alert me on every block".
     if (pending_block_notify) {
       PostLedEffect(LedEffect::kBlockFlash);
+#if BTCLOCK_HAS_FRONTLIGHT
       if (frontlight) frontlight->Flash();
+#endif
       pending_block_notify = false;
     }
   }
