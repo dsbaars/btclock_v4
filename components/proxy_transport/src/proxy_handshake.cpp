@@ -91,14 +91,9 @@ int RunSocks4a(int fd, const Config& cfg, const char* dest_host,
 
 int RunSocks4(int fd, const Config& cfg, const char* dest_host,
               uint16_t dest_port, int timeout_ms) {
-  // Plain SOCKS4 = SOCKS4a's wire format with the resolved IPv4 in the
-  // address slot and no trailing host. We resolve here so the proxy
-  // doesn't have to. Reuses the SOCKS4a builder by passing the literal
-  // IP as `host` and constructing the request manually for now.
-  // Simpler path: since we're not adding SOCKS4 to the schema unless
-  // the proxy doesn't support 4a, just delegate to SOCKS4a — most
-  // SOCKS4 proxies also accept 4a-style requests because of the
-  // 0.0.0.X marker.
+  // The schema doesn't expose a separate SOCKS4 mode; this entry point
+  // exists for completeness and just delegates to SOCKS4a — virtually
+  // all SOCKS4 proxies accept 4a-style requests via the 0.0.0.X marker.
   return RunSocks4a(fd, cfg, dest_host, dest_port, timeout_ms);
 }
 

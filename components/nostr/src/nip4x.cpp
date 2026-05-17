@@ -239,8 +239,6 @@ bool HkdfExpand(const uint8_t prk[32], const uint8_t* info, size_t info_len,
       std::memcpy(buf, t, 32);
       buf_len = 32;
     }
-    Sha256Ctx unused;
-    (void)unused;
     // Compose the HMAC message in-place. We could call HmacSha256
     // with separate buffers but the prefix-then-suffix shape costs an
     // extra alloc; reuse two HMAC calls with manual concatenation
