@@ -21,10 +21,21 @@ bool RefreshPolicy::Decide(RefreshPolicyState& state, int64_t now_ms,
   //      settings change resets the window).
   //   4. Anything else → partial. Digit-flip re-paints on the same
   //      slot fall here; they only repaint the cells that changed.
+  // Hint: by far the most frequent caller of Decide() is the
+  // same-screen data-update path (digit flip every minute, hashprice
+  // tick, mempool blocks bump) where every input flag is false and
+  // we fall straight through to "partial". The full-refresh paths
+  // (force-full, screen change with refrScrnChange=true, or the
+  // periodic ghost-clear schedule) all run orders of magnitude less
+  // often. Marking those as [[unlikely]] lets the compiler keep the
+  // straight-through path as the hot fall-through with the full
+  // branches cold. Measured against this codebase the hint is
+  // size-neutral at -Os (0 B Rev A delta) — kept as documentation
+  // and a perf hedge for future call-site growth.
   bool full = false;
-  if (is_force_full) {
+  if (is_force_full) [[unlikely]] {
     full = true;
-  } else if (is_screen_change) {
+  } else if (is_screen_change) [[unlikely]] {
     if (refr_scrn_change) {
       full = true;
     } else {
@@ -43,7 +54,8 @@ bool RefreshPolicy::Decide(RefreshPolicyState& state, int64_t now_ms,
       full = never || elapsed >= threshold_ms;
     }
   }
-  if (full) state.last_full_refresh_ms = now_ms;
+  if (full) [[unlikely]]
+    state.last_full_refresh_ms = now_ms;
   return full;
 }
 

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,9 +12,10 @@ namespace proxy {
 namespace framing {
 
 // All `Build*` helpers return the exact bytes to write on the wire.
-// All `Parse*` helpers take a buffer + length and return a status code,
-// optionally reporting how many bytes they consumed so callers can tell
-// the streaming framing parser how to slide its window.
+// All `Parse*` helpers take a span of received bytes and return a
+// status code, optionally reporting how many bytes they consumed so
+// callers can tell the streaming framing parser how to slide its
+// window.
 
 // ---- SOCKS5 (RFC 1928) ----------------------------------------------
 
@@ -31,7 +33,7 @@ std::vector<uint8_t> BuildSocks5Greeting(bool offer_user_pass);
 
 // Parses the 2-byte server reply. Returns false on a malformed/short
 // buffer or version mismatch.
-bool ParseSocks5GreetingReply(const uint8_t* buf, size_t len,
+bool ParseSocks5GreetingReply(std::span<const uint8_t> buf,
                               Socks5Method* out_method);
 
 // User/pass sub-negotiation (RFC 1929). Lengths > 255 get clamped at
@@ -41,7 +43,7 @@ std::vector<uint8_t> BuildSocks5UserPass(std::string_view user,
                                          std::string_view pass);
 
 // Returns true when the server returned STATUS=0x00 (success).
-bool ParseSocks5UserPassReply(const uint8_t* buf, size_t len);
+bool ParseSocks5UserPassReply(std::span<const uint8_t> buf);
 
 // CONNECT request with ATYP=domain, so the proxy resolves the host.
 // We could fall back to ATYP=ipv4 when host is a literal IP; not
@@ -55,8 +57,7 @@ std::vector<uint8_t> BuildSocks5Connect(std::string_view host, uint16_t port);
 //   -2     malformed (version mismatch)
 // On success, writes the total reply byte count to *out_consumed so the
 // caller's stream parser can advance.
-int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
-                            size_t* out_consumed);
+int ParseSocks5ConnectReply(std::span<const uint8_t> buf, size_t* out_consumed);
 
 // ---- SOCKS4 / SOCKS4a -----------------------------------------------
 
@@ -72,7 +73,7 @@ std::vector<uint8_t> BuildSocks4aRequest(std::string_view host, uint16_t port,
 
 // 8-byte fixed reply. Returns 0x5A on success, the error byte
 // (0x5B-0x5D) on protocol-level failure, or -1 on malformed.
-int ParseSocks4Reply(const uint8_t* buf, size_t len);
+int ParseSocks4Reply(std::span<const uint8_t> buf);
 
 // ---- HTTP CONNECT (RFC 7231 §4.3.6) ---------------------------------
 
@@ -89,8 +90,7 @@ std::vector<uint8_t> BuildHttpConnectRequest(std::string_view host,
 //   -1      header block still incomplete (need more bytes)
 //   -2      malformed status line
 // On success, writes the offset just past `\r\n\r\n` to *out_consumed.
-int ParseHttpConnectStatus(const uint8_t* buf, size_t len,
-                           size_t* out_consumed);
+int ParseHttpConnectStatus(std::span<const uint8_t> buf, size_t* out_consumed);
 
 // Standard base64 (RFC 4648). Used to encode `user:pass` for the
 // Proxy-Authorization header. Not exposed beyond this layer; lives in

@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <cstring>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -52,24 +53,24 @@ TEST_CASE("SOCKS5 greeting offers NoAuth + UserPass when auth is enabled") {
 TEST_CASE("SOCKS5 greeting reply parser accepts NoAuth and UserPass") {
   Socks5Method m = Socks5Method::kRejected;
   uint8_t ok_no_auth[] = {0x05, 0x00};
-  CHECK(ParseSocks5GreetingReply(ok_no_auth, sizeof(ok_no_auth), &m));
+  CHECK(ParseSocks5GreetingReply(ok_no_auth, &m));
   CHECK(m == Socks5Method::kNoAuth);
 
   uint8_t ok_user_pass[] = {0x05, 0x02};
-  CHECK(ParseSocks5GreetingReply(ok_user_pass, sizeof(ok_user_pass), &m));
+  CHECK(ParseSocks5GreetingReply(ok_user_pass, &m));
   CHECK(m == Socks5Method::kUserPass);
 
   uint8_t reject[] = {0x05, 0xFF};
-  CHECK(ParseSocks5GreetingReply(reject, sizeof(reject), &m));
+  CHECK(ParseSocks5GreetingReply(reject, &m));
   CHECK(m == Socks5Method::kRejected);
 }
 
 TEST_CASE("SOCKS5 greeting reply rejects wrong version + truncation") {
   Socks5Method m{};
   uint8_t v4[] = {0x04, 0x00};
-  CHECK(!ParseSocks5GreetingReply(v4, 2, &m));
+  CHECK(!ParseSocks5GreetingReply(v4, &m));
   uint8_t one[] = {0x05};
-  CHECK(!ParseSocks5GreetingReply(one, 1, &m));
+  CHECK(!ParseSocks5GreetingReply(one, &m));
 }
 
 // ---- SOCKS5 user/pass ------------------------------------------------
@@ -88,13 +89,13 @@ TEST_CASE("SOCKS5 user/pass framing matches RFC 1929 byte-for-byte") {
 
 TEST_CASE("SOCKS5 user/pass reply parser") {
   uint8_t ok[] = {0x01, 0x00};
-  CHECK(ParseSocks5UserPassReply(ok, 2));
+  CHECK(ParseSocks5UserPassReply(ok));
   uint8_t bad_status[] = {0x01, 0x01};
-  CHECK(!ParseSocks5UserPassReply(bad_status, 2));
+  CHECK(!ParseSocks5UserPassReply(bad_status));
   uint8_t bad_ver[] = {0x05, 0x00};
-  CHECK(!ParseSocks5UserPassReply(bad_ver, 2));
+  CHECK(!ParseSocks5UserPassReply(bad_ver));
   uint8_t one[] = {0x01};
-  CHECK(!ParseSocks5UserPassReply(one, 1));
+  CHECK(!ParseSocks5UserPassReply(one));
 }
 
 // ---- SOCKS5 CONNECT --------------------------------------------------
@@ -119,19 +120,19 @@ TEST_CASE("SOCKS5 CONNECT reply parses each ATYP correctly") {
   uint8_t ipv4_ok[] = {0x05, 0x00, 0x00, 0x01,
                        0x7F, 0x00, 0x00, 0x01,  // 127.0.0.1
                        0x01, 0xBB};
-  CHECK(ParseSocks5ConnectReply(ipv4_ok, sizeof(ipv4_ok), &consumed) == 0);
+  CHECK(ParseSocks5ConnectReply(ipv4_ok, &consumed) == 0);
   CHECK(consumed == 10);
 
   uint8_t domain_ok[] = {0x05, 0x00, 0x00, 0x03, 0x03,
                          'a',  'b',  'c',  0x00, 0x50};
-  CHECK(ParseSocks5ConnectReply(domain_ok, sizeof(domain_ok), &consumed) == 0);
+  CHECK(ParseSocks5ConnectReply(domain_ok, &consumed) == 0);
   CHECK(consumed == 10);
 
   // 4 header + 16 IPv6 + 2 port = 22 bytes.
   uint8_t ipv6_ok[22] = {0x05, 0x00, 0x00, 0x04};
   ipv6_ok[20] = 0x01;
   ipv6_ok[21] = 0xBB;
-  CHECK(ParseSocks5ConnectReply(ipv6_ok, sizeof(ipv6_ok), &consumed) == 0);
+  CHECK(ParseSocks5ConnectReply(ipv6_ok, &consumed) == 0);
   CHECK(consumed == 22);
 }
 
@@ -139,13 +140,13 @@ TEST_CASE("SOCKS5 CONNECT reply propagates REP byte and incompleteness") {
   size_t consumed = 0;
   uint8_t rejected[] = {0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0};
   // 0x05 == "Connection refused"
-  CHECK(ParseSocks5ConnectReply(rejected, sizeof(rejected), &consumed) == 5);
+  CHECK(ParseSocks5ConnectReply(rejected, &consumed) == 5);
 
   uint8_t partial[] = {0x05, 0x00, 0x00, 0x01, 0x7F, 0x00};
-  CHECK(ParseSocks5ConnectReply(partial, sizeof(partial), &consumed) == -1);
+  CHECK(ParseSocks5ConnectReply(partial, &consumed) == -1);
 
   uint8_t bad_ver[] = {0x04, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0};
-  CHECK(ParseSocks5ConnectReply(bad_ver, sizeof(bad_ver), &consumed) == -2);
+  CHECK(ParseSocks5ConnectReply(bad_ver, &consumed) == -2);
 }
 
 // ---- SOCKS4a ---------------------------------------------------------
@@ -168,11 +169,11 @@ TEST_CASE("SOCKS4a request uses 0.0.0.X marker + null-terminated host") {
 
 TEST_CASE("SOCKS4 reply parsing — success and failure") {
   uint8_t ok[] = {0x00, 0x5A, 0, 0, 0, 0, 0, 0};
-  CHECK(ParseSocks4Reply(ok, sizeof(ok)) == 0x5A);
+  CHECK(ParseSocks4Reply(ok) == 0x5A);
   uint8_t reject[] = {0x00, 0x5B, 0, 0, 0, 0, 0, 0};
-  CHECK(ParseSocks4Reply(reject, sizeof(reject)) == 0x5B);
+  CHECK(ParseSocks4Reply(reject) == 0x5B);
   uint8_t bad_first[] = {0x04, 0x5A, 0, 0, 0, 0, 0, 0};
-  CHECK(ParseSocks4Reply(bad_first, sizeof(bad_first)) == -1);
+  CHECK(ParseSocks4Reply(bad_first) == -1);
 }
 
 // ---- HTTP CONNECT ----------------------------------------------------
@@ -201,28 +202,29 @@ TEST_CASE("HTTP CONNECT request with Basic auth") {
 
 TEST_CASE("HTTP CONNECT status parser") {
   size_t consumed = 0;
+  // Local helper: HTTP parser takes std::span<const uint8_t>; the test
+  // fixtures are C-string literals, so wrap them with explicit CTAD on
+  // the cast pointer + std::strlen length.
+  auto AsBytes = [](const char* s) {
+    return std::span(reinterpret_cast<const uint8_t*>(s), std::strlen(s));
+  };
   const char* ok =
       "HTTP/1.1 200 Connection established\r\n"
       "Server: 3proxy/0.9\r\n\r\n";
-  CHECK(ParseHttpConnectStatus(reinterpret_cast<const uint8_t*>(ok),
-                               std::strlen(ok), &consumed) == 200);
+  CHECK(ParseHttpConnectStatus(AsBytes(ok), &consumed) == 200);
   CHECK(consumed == std::strlen(ok));
 
   const char* auth_required = "HTTP/1.0 407 Proxy Auth Required\r\n\r\n";
-  CHECK(ParseHttpConnectStatus(reinterpret_cast<const uint8_t*>(auth_required),
-                               std::strlen(auth_required), &consumed) == 407);
+  CHECK(ParseHttpConnectStatus(AsBytes(auth_required), &consumed) == 407);
 
   const char* bad_gw = "HTTP/1.1 502 Bad Gateway\r\n\r\n";
-  CHECK(ParseHttpConnectStatus(reinterpret_cast<const uint8_t*>(bad_gw),
-                               std::strlen(bad_gw), &consumed) == 502);
+  CHECK(ParseHttpConnectStatus(AsBytes(bad_gw), &consumed) == 502);
 
   const char* partial = "HTTP/1.1 200 Connection established\r\n";
-  CHECK(ParseHttpConnectStatus(reinterpret_cast<const uint8_t*>(partial),
-                               std::strlen(partial), &consumed) == -1);
+  CHECK(ParseHttpConnectStatus(AsBytes(partial), &consumed) == -1);
 
   const char* malformed = "ICAP/1.1 200 OK\r\n\r\n";
-  CHECK(ParseHttpConnectStatus(reinterpret_cast<const uint8_t*>(malformed),
-                               std::strlen(malformed), &consumed) == -2);
+  CHECK(ParseHttpConnectStatus(AsBytes(malformed), &consumed) == -2);
 }
 
 TEST_CASE("Base64 encoder covers RFC 4648 padding cases") {

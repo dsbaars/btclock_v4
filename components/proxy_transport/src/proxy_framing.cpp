@@ -38,9 +38,9 @@ std::vector<uint8_t> BuildSocks5Greeting(bool offer_user_pass) {
   return out;
 }
 
-bool ParseSocks5GreetingReply(const uint8_t* buf, size_t len,
+bool ParseSocks5GreetingReply(std::span<const uint8_t> buf,
                               Socks5Method* out_method) {
-  if (len < 2 || buf[0] != 0x05) return false;
+  if (buf.size() < 2 || buf[0] != 0x05) return false;
   *out_method = static_cast<Socks5Method>(buf[1]);
   return true;
 }
@@ -62,8 +62,8 @@ std::vector<uint8_t> BuildSocks5UserPass(std::string_view user,
   return out;
 }
 
-bool ParseSocks5UserPassReply(const uint8_t* buf, size_t len) {
-  return len >= 2 && buf[0] == 0x01 && buf[1] == 0x00;
+bool ParseSocks5UserPassReply(std::span<const uint8_t> buf) {
+  return buf.size() >= 2 && buf[0] == 0x01 && buf[1] == 0x00;
 }
 
 std::vector<uint8_t> BuildSocks5Connect(std::string_view host, uint16_t port) {
@@ -81,10 +81,10 @@ std::vector<uint8_t> BuildSocks5Connect(std::string_view host, uint16_t port) {
   return out;
 }
 
-int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
+int ParseSocks5ConnectReply(std::span<const uint8_t> buf,
                             size_t* out_consumed) {
   if (out_consumed) *out_consumed = 0;
-  if (len < 4) return -1;
+  if (buf.size() < 4) return -1;
   if (buf[0] != 0x05) return -2;
   const uint8_t rep = buf[1];
   const uint8_t atyp = buf[3];
@@ -94,7 +94,7 @@ int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
       addr_len = 4;
       break;    // IPv4
     case 0x03:  // domain
-      if (len < 5) return -1;
+      if (buf.size() < 5) return -1;
       addr_len = 1 + buf[4];
       break;
     case 0x04:
@@ -104,7 +104,7 @@ int ParseSocks5ConnectReply(const uint8_t* buf, size_t len,
       return -2;
   }
   const size_t total = 4 + addr_len + 2;
-  if (len < total) return -1;
+  if (buf.size() < total) return -1;
   if (out_consumed) *out_consumed = total;
   return rep;
 }
@@ -133,8 +133,8 @@ std::vector<uint8_t> BuildSocks4aRequest(std::string_view host, uint16_t port,
   return out;
 }
 
-int ParseSocks4Reply(const uint8_t* buf, size_t len) {
-  if (len < 8 || buf[0] != 0x00) return -1;
+int ParseSocks4Reply(std::span<const uint8_t> buf) {
+  if (buf.size() < 8 || buf[0] != 0x00) return -1;
   return buf[1];
 }
 
@@ -170,13 +170,13 @@ std::vector<uint8_t> BuildHttpConnectRequest(std::string_view host,
   return out;
 }
 
-int ParseHttpConnectStatus(const uint8_t* buf, size_t len,
-                           size_t* out_consumed) {
+int ParseHttpConnectStatus(std::span<const uint8_t> buf, size_t* out_consumed) {
   if (out_consumed) *out_consumed = 0;
+  const size_t len = buf.size();
   // Need at least "HTTP/1.x ddd \r\n\r\n" — 14 bytes minimum.
   if (len < 14) return -1;
   // Status line must start with HTTP/1.
-  if (std::memcmp(buf, "HTTP/1.", 7) != 0) return -2;
+  if (std::memcmp(buf.data(), "HTTP/1.", 7) != 0) return -2;
 
   // Parse status code.
   size_t i = 8;  // skip "HTTP/1.x"

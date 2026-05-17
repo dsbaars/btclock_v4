@@ -21,7 +21,7 @@ int RunSocks5(int fd, const Config& cfg, const char* dest_host,
   uint8_t reply[2];
   if (RecvAll(fd, reply, sizeof(reply), timeout_ms) < 0) return -1;
   framing::Socks5Method m{};
-  if (!framing::ParseSocks5GreetingReply(reply, sizeof(reply), &m)) {
+  if (!framing::ParseSocks5GreetingReply(reply, &m)) {
     ESP_LOGW(kTag, "socks5 greeting reply malformed");
     return -1;
   }
@@ -34,7 +34,7 @@ int RunSocks5(int fd, const Config& cfg, const char* dest_host,
     if (SendAll(fd, up.data(), up.size(), timeout_ms) < 0) return -1;
     uint8_t up_reply[2];
     if (RecvAll(fd, up_reply, sizeof(up_reply), timeout_ms) < 0) return -1;
-    if (!framing::ParseSocks5UserPassReply(up_reply, sizeof(up_reply))) {
+    if (!framing::ParseSocks5UserPassReply(up_reply)) {
       ESP_LOGW(kTag, "socks5 user/pass auth failed");
       return -1;
     }
@@ -80,7 +80,7 @@ int RunSocks4a(int fd, const Config& cfg, const char* dest_host,
   if (SendAll(fd, req.data(), req.size(), timeout_ms) < 0) return -1;
   uint8_t reply[8];
   if (RecvAll(fd, reply, sizeof(reply), timeout_ms) < 0) return -1;
-  int code = framing::ParseSocks4Reply(reply, sizeof(reply));
+  int code = framing::ParseSocks4Reply(reply);
   if (code != 0x5A) {
     ESP_LOGW(kTag, "socks4a proxy refused: code=0x%02x for %s:%u", code,
              dest_host, dest_port);
@@ -118,7 +118,7 @@ int RunHttpConnect(int fd, const Config& cfg, const char* dest_host,
   int status = RecvUntilParsed(
       fd, buf, sizeof(buf),
       [](const uint8_t* b, size_t n, size_t* c) -> int {
-        return framing::ParseHttpConnectStatus(b, n, c);
+        return framing::ParseHttpConnectStatus({b, n}, c);
       },
       &consumed, timeout_ms);
   if (status < 0) {
