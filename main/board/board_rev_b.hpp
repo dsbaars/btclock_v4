@@ -64,6 +64,13 @@ constexpr PinSource kEpdCsSource = PinSource::kNative;
 constexpr PinSource kEpdBusySource = PinSource::kNative;
 constexpr PinSource kEpdResetSource = PinSource::kMcp1;
 
+// --- Hardware orientation of LEDs and buttons ---
+// Same wiring story as Rev A: the WS2812B chain's physical tail is the
+// leftmost LED, and MCP1 GPA3 is the leftmost button label. See
+// board_rev_a.hpp for the full rationale.
+constexpr bool kLedChainReversed = true;
+constexpr bool kButtonsInvertedDefault = false;
+
 // --- Display-friendly hardware name ---
 // Composes board + non-default panel suffix; 2.13" is the default for
 // every board so the bare-board string stays stable for the common

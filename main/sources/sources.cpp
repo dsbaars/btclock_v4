@@ -9,6 +9,7 @@
 #include "app/boot/helpers.hpp"
 #include "app/screen_manager.hpp"
 #include "bitaxe/bitaxe_source.hpp"
+#include "board/board.hpp"
 #include "boot_spinner.hpp"
 #include "btclock_currencies_fetch.hpp"
 #include "btclock_data.hpp"
@@ -259,11 +260,14 @@ void FinishWiringDataSources(AppCtx& ctx) {
   // inverseButtons swaps button-1↔button-N at post time so users with
   // an upside-down enclosure get nav/pause aligned with the physical
   // layout. Boot-only read; live PATCH requires a reboot per
-  // SETTINGS.md.
+  // SETTINGS.md. XOR'd against the board's hardware-default orientation
+  // because V8 wires its buttons opposite of Rev A/B (V8: MCP1 pin 0 ==
+  // button 1; Rev A/B: pin 3 == button 1).
   {
     Prefs settings_for_btn(prefs::kSettingsNs);
-    ctx.buttons->SetInverted(
-        btclock::settings::ReadBool(settings_for_btn, prefs::kInverseButtons));
+    const bool pref =
+        btclock::settings::ReadBool(settings_for_btn, prefs::kInverseButtons);
+    ctx.buttons->SetInverted(board::kButtonsInvertedDefault ^ pref);
   }
   ESP_ERROR_CHECK(ctx.buttons->Start());
 

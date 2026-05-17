@@ -82,6 +82,18 @@ constexpr PinSource kEpdCsSource = PinSource::kMcp2;
 constexpr PinSource kEpdBusySource = PinSource::kMcp1;
 constexpr PinSource kEpdResetSource = PinSource::kMcp2;
 
+// --- Hardware orientation of LEDs and buttons ---
+// V8 wires the WS2812B chain head-first: logical index 0 (leftmost
+// LED on the enclosure) is also physical index 0 in the strip, so the
+// LED controller's PhysIdx() does NOT flip.
+constexpr bool kLedChainReversed = false;
+// V8 wires MCP1 GPA0 to the leftmost button label ("button 1"),
+// counting up toward GPA3 ("button 4") — the opposite of Rev A/B. The
+// existing ButtonReader::SetInverted(true) semantics match this, so
+// the per-board default is true. The user-facing `inverseButtons`
+// pref still XORs on top to flip from the hardware default.
+constexpr bool kButtonsInvertedDefault = true;
+
 // Composes board + non-default panel suffix; 2.13" is the default so
 // the bare-board string stays stable for the common case.
 #if defined(BTCLOCK_PANEL_2_9)

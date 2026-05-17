@@ -1,6 +1,7 @@
 #include "app/boot/init_wifi_reset_button.hpp"
 
 #include "app/app_ctx.hpp"
+#include "board/board.hpp"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,18 +23,21 @@ constexpr int kHoldMs = 3000;
 constexpr int kPollMs = 50;
 
 // MCP pin backing the device's front-of-device "button 1" label.
-// The pin depends on the inverseButtons pref (matches the runtime
-// ButtonReader mapping documented in buttons.hpp):
+// The pin depends on board::kButtonsInvertedDefault XOR'd with the
+// inverseButtons pref — same composition that ButtonReader does at
+// runtime, kept in sync so the boot-time check reads the SAME physical
+// pin the user calls "button 1".
 //
-//   inverseButtons=false (default): button 1 → ButtonId::k0 → GPA3
-//   inverseButtons=true:            button 1 → ButtonId::k0 → GPA0
+//   final inverted=false: button 1 → ButtonId::k0 → GPA3 (Rev A/B default)
+//   final inverted=true:  button 1 → ButtonId::k0 → GPA0 (V8 default)
 //
 // We read the MCP directly here — ButtonReader isn't running this
 // early in boot — but we still want the user-facing button label to
 // stay consistent with what the same button does at runtime.
 uint8_t Button1Pin() {
   Prefs settings(prefs::kSettingsNs);
-  const bool inverted = settings.GetBool(prefs::kInverseButtons, false);
+  const bool pref = settings.GetBool(prefs::kInverseButtons, false);
+  const bool inverted = board::kButtonsInvertedDefault ^ pref;
   return inverted ? 0 : 3;
 }
 

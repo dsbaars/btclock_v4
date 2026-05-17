@@ -68,6 +68,19 @@ constexpr PinSource kEpdCsSource = PinSource::kNative;
 constexpr PinSource kEpdBusySource = PinSource::kNative;
 constexpr PinSource kEpdResetSource = PinSource::kMcp1;
 
+// --- Hardware orientation of LEDs and buttons ---
+// Rev A wires the WS2812B chain so its physical tail is the leftmost
+// LED on the enclosure (logical index 0 == physical count-1). The
+// LED controller's PhysIdx() flips when this is true. V8 wires it
+// the other way and sets this to false.
+constexpr bool kLedChainReversed = true;
+// Rev A wires the four front buttons so MCP1 pin GPA3 is the leftmost
+// label ("button 1"), counting down toward GPA0 ("button 4"). The
+// existing ButtonReader::SetInverted(false) default already matches
+// this layout, so the per-board default here is false. V8 wires it
+// the other way and sets this to true.
+constexpr bool kButtonsInvertedDefault = false;
+
 // Human-readable name composes board + non-default panel. 2.13" is
 // the default for every board so we elide the suffix in that case;
 // the WebUI/mDNS TXT layer disambiguates same-board different-panel

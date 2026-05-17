@@ -6,6 +6,7 @@
 #include <functional>
 #include <mutex>
 
+#include "board/board.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -101,13 +102,20 @@ void Unpack(uint32_t rgb, uint8_t* r, uint8_t* g, uint8_t* b) {
   *b = static_cast<uint8_t>(rgb & 0xFFu);
 }
 
-// Hardware orientation: the WS2812B chain is wired so that the user-
-// facing leftmost LED is the physical tail of the strip. Every pixel
-// write goes through PhysIdx() so the rest of the controller (and the
-// /api/lights mirror) can think in visual indices, where 0 is the
-// leftmost LED and `g_count-1` is the rightmost.
+// Hardware orientation: on Rev A/B the WS2812B chain runs right-to-left
+// (the physical tail of the strip is the user-facing leftmost LED), so
+// the mapping flips. V8 wires the chain head-first (logical 0 ==
+// physical 0) and skips the flip. The board picks via
+// board::kLedChainReversed. Every pixel write goes through PhysIdx() so
+// the rest of the controller (and the /api/lights mirror) can think in
+// visual indices, where 0 is the leftmost LED and `g_count-1` is the
+// rightmost.
 inline uint32_t PhysIdx(uint32_t logical) {
-  return g_count - 1 - logical;
+  if constexpr (board::kLedChainReversed) {
+    return g_count - 1 - logical;
+  } else {
+    return logical;
+  }
 }
 
 // Single point of contact with led_strip_set_pixel — applies the
