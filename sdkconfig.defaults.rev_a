@@ -12,3 +12,52 @@ CONFIG_PARTITION_TABLE_FILENAME="partitions_4mb.csv"
 # capture is disabled, so the WebUI can stay one-size-fits-all.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=n
 CONFIG_ESP_COREDUMP_DATA_FORMAT_NONE=y
+
+# --- Rev-A-only WiFi / TLS / lwIP trimming ---
+# Rev A sits at 1% free on the 4 MB app partition; every kilobyte we can
+# strip from the IDF runtime is one less feature we'd otherwise have to
+# gate out of our own code. None of these affect Rev B or V8 (they keep
+# the full default surface for forward-compatibility).
+#
+# WPA-Enterprise (802.1X / EAP). BTClock is a home appliance — we don't
+# expect anyone to put one on a corporate 802.1X SSID. Disabling drops
+# the EAP state machine + cert handling out of libwpa_supplicant.
+# Non-enterprise WPA3 stays enabled (CONFIG_ESP_WIFI_ENABLE_WPA3_SAE and
+# CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA in the global defaults remain on),
+# so home users on WPA3-Personal or OWE-encrypted open hotspots are
+# unaffected — only 802.1X enterprise (EAP-TLS / PEAP / TTLS / etc.) is
+# stripped.
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+CONFIG_ESP32_WIFI_ENTERPRISE_SUPPORT=n
+# High-speed TCP retransmission is for >1 MB streams (file servers,
+# media). BTClock payloads top out at ~1.7 MiB OTA and tens of KB JSON
+# elsewhere; the standard retransmission is plenty.
+CONFIG_LWIP_TCP_HIGH_SPEED_RETRANSMISSION=n
+
+# --- Knobs that LOOKED safe but actually break the runtime ---
+# Tried 2026-05-17 — all confirmed to brick Rev A; DO NOT re-disable
+# without a deeper investigation.
+#
+# CONFIG_LWIP_NETIF_LOOPBACK=n
+#   Breaks esp_http_server: its internal cs_create_ctrl_sock() requires
+#   the lwIP loopback interface to open the control signaling socket
+#   between the listener and worker tasks. Without it, httpd_server_init
+#   fails and the /api/* surface never comes up — the WebUI's loading
+#   spinner hangs forever.
+#
+# CONFIG_MBEDTLS_TLS_SERVER=n   /   CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+#   Despite "we only do TLS client" looking obviously correct, switching
+#   to CLIENT_ONLY caused every outbound TLS handshake to fail with
+#   -0x3A00 FATAL_ALERT (ws.btclock.dev:443, relay.primal.net:443, and
+#   the default nostr/price/blocks paths). Suspect: the client-only
+#   build path strips a cipher / extension the IDF crt_bundle handshake
+#   expects, or breaks a session-cache code path. Needs a focused
+#   investigation before retrying.
+#
+# CONFIG_MBEDTLS_ECP_DP_SECP384R1_ENABLED=n
+#   P-384 leaves are rare on the public endpoints we hit, but several
+#   Root CAs in the IDF crt_bundle use P-384 keys (e.g. DigiCert Global
+#   Root G3 / G4). Disabling P-384 breaks cert-chain verification for
+#   any endpoint whose chain transits one of those Roots — observed as
+#   mbedtls_ssl_handshake -0x3A00 FATAL_ALERT for mempool / nostr /
+#   ws.btclock.dev paths despite the leaves being P-256.

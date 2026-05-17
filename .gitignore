@@ -15,6 +15,10 @@ site/
 # Local photos / captures from the hardware-operator agents.
 photos/
 
+# Framebuffer snapshots from tools/preview_capture/capture.mjs — per-flash
+# verification output, regenerated on demand, not version-controlled.
+preview-capture/
+
 # On-device diagnostic dumps (heap traces, coredumps, addr2line output).
 # Build-environment-specific and not useful in version control.
 docs/diag/
