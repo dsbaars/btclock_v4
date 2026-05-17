@@ -6,6 +6,13 @@
 # 4 MiB Rev A. ECMULT_WINDOW_SIZE is set to 4 (vs. upstream default
 # 15) because verification frequency is < 1 Hz and the default 1 MiB
 # precomputed table would not fit Rev A's app partition.
+#
+# Local patches:
+#   - src/hash.h + src/hash_impl.h: secp256k1_sha256_* routed through
+#     mbedtls so the ESP32-S3 hardware SHA peripheral does the work
+#     (CONFIG_MBEDTLS_HARDWARE_SHA=y). Saves ~9 KiB code on every
+#     variant. PRIV_REQUIRES mbedtls below makes the include path
+#     visible to src/secp256k1.c.
 
 idf_component_register(
     SRCS
@@ -14,6 +21,7 @@ idf_component_register(
         "src/precomputed_ecmult_gen.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src"
+    PRIV_REQUIRES mbedtls
 )
 
 # Compile-time configuration. ENABLE_MODULE_EXTRAKEYS is implied by

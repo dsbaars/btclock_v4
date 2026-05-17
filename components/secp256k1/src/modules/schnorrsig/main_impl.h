@@ -11,36 +11,24 @@
 #include "../../../include/secp256k1_schnorrsig.h"
 #include "../../hash.h"
 
-/* Initializes SHA256 with fixed midstate. This midstate was computed by applying
- * SHA256 to SHA256("BIP0340/nonce")||SHA256("BIP0340/nonce"). */
+/* Upstream poked a precomputed SHA256("BIP0340/nonce")||SHA256("BIP0340/nonce")
+ * midstate directly into sha->s/sha->bytes here to save the cost of the
+ * tag-prefix block on every nonce derivation. The btclock_v4 local patch
+ * routes secp256k1_sha256_* through the HW SHA peripheral via mbedtls,
+ * which doesn't expose its internal state fields — so we fall back to
+ * computing the tagged-init the long way. Costs ~64 SHA rounds per
+ * nonce (Schnorr signing is rare here so the perf hit is negligible). */
 static void secp256k1_nonce_function_bip340_sha256_tagged(secp256k1_sha256 *sha) {
-    secp256k1_sha256_initialize(sha);
-    sha->s[0] = 0x46615b35ul;
-    sha->s[1] = 0xf4bfbff7ul;
-    sha->s[2] = 0x9f8dc671ul;
-    sha->s[3] = 0x83627ab3ul;
-    sha->s[4] = 0x60217180ul;
-    sha->s[5] = 0x57358661ul;
-    sha->s[6] = 0x21a29e54ul;
-    sha->s[7] = 0x68b07b4cul;
-
-    sha->bytes = 64;
+    static const unsigned char kTag[] = {'B','I','P','0','3','4','0','/','n','o','n','c','e'};
+    secp256k1_sha256_initialize_tagged(sha, kTag, sizeof(kTag));
 }
 
-/* Initializes SHA256 with fixed midstate. This midstate was computed by applying
- * SHA256 to SHA256("BIP0340/aux")||SHA256("BIP0340/aux"). */
+/* See secp256k1_nonce_function_bip340_sha256_tagged above for why we
+ * compute the tag the long way instead of poking a precomputed
+ * SHA256("BIP0340/aux")||SHA256("BIP0340/aux") midstate. */
 static void secp256k1_nonce_function_bip340_sha256_tagged_aux(secp256k1_sha256 *sha) {
-    secp256k1_sha256_initialize(sha);
-    sha->s[0] = 0x24dd3219ul;
-    sha->s[1] = 0x4eba7e70ul;
-    sha->s[2] = 0xca0fabb9ul;
-    sha->s[3] = 0x0fa3166dul;
-    sha->s[4] = 0x3afbe4b1ul;
-    sha->s[5] = 0x4c44df97ul;
-    sha->s[6] = 0x4aac2739ul;
-    sha->s[7] = 0x249e850aul;
-
-    sha->bytes = 64;
+    static const unsigned char kTag[] = {'B','I','P','0','3','4','0','/','a','u','x'};
+    secp256k1_sha256_initialize_tagged(sha, kTag, sizeof(kTag));
 }
 
 /* algo argument for nonce_function_bip340 to derive the nonce exactly as stated in BIP-340
@@ -101,19 +89,12 @@ static int nonce_function_bip340(unsigned char *nonce32, const unsigned char *ms
 
 const secp256k1_nonce_function_hardened secp256k1_nonce_function_bip340 = nonce_function_bip340;
 
-/* Initializes SHA256 with fixed midstate. This midstate was computed by applying
- * SHA256 to SHA256("BIP0340/challenge")||SHA256("BIP0340/challenge"). */
+/* See secp256k1_nonce_function_bip340_sha256_tagged above for why we
+ * compute the tag the long way instead of poking a precomputed
+ * SHA256("BIP0340/challenge")||SHA256("BIP0340/challenge") midstate. */
 static void secp256k1_schnorrsig_sha256_tagged(secp256k1_sha256 *sha) {
-    secp256k1_sha256_initialize(sha);
-    sha->s[0] = 0x9cecba11ul;
-    sha->s[1] = 0x23925381ul;
-    sha->s[2] = 0x11679112ul;
-    sha->s[3] = 0xd1627e0ful;
-    sha->s[4] = 0x97c87550ul;
-    sha->s[5] = 0x003cc765ul;
-    sha->s[6] = 0x90f61164ul;
-    sha->s[7] = 0x33e9b66aul;
-    sha->bytes = 64;
+    static const unsigned char kTag[] = {'B','I','P','0','3','4','0','/','c','h','a','l','l','e','n','g','e'};
+    secp256k1_sha256_initialize_tagged(sha, kTag, sizeof(kTag));
 }
 
 static void secp256k1_schnorrsig_challenge(secp256k1_scalar* e, const unsigned char *r32, const unsigned char *msg, size_t msglen, const unsigned char *pubkey32)

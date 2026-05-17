@@ -14,6 +14,43 @@
 #include <stdint.h>
 #include <string.h>
 
+/* btclock_v4 local patch: secp256k1_sha256_{initialize,write,finalize,clear}
+ * are routed through mbedtls on the IDF target so the ESP32-S3
+ * hardware SHA peripheral (CONFIG_MBEDTLS_HARDWARE_SHA=y) does the
+ * compression. Saves ~9 KiB of code on every variant. The HMAC and
+ * RFC6979 layers later in this file sit on top of these four
+ * functions and don't need to change.
+ *
+ * On host builds (test_host doctest, no IDF / no mbedtls) we keep
+ * the upstream software implementation unchanged. */
+
+#if defined(ESP_PLATFORM)
+/* IDF / HW SHA path. The mbedtls return code is ignored to preserve
+ * the original `void` signatures. On ESP32-S3 these calls fail only
+ * when the SHA peripheral hardware faults — at which point
+ * cryptographic verification is going to fail anyway and the caller
+ * (e.g. secp256k1_schnorrsig_verify) reports the mismatch.
+ *
+ * `secp256k1_sha256_initialize` re-inits an existing struct (this is
+ * how secp256k1_sha256_initialize_tagged uses it after a finalize),
+ * so the wrapper pairs each starts() with a matching init() to keep
+ * mbedtls's internal state consistent. */
+static void secp256k1_sha256_initialize(secp256k1_sha256 *hash) {
+    mbedtls_sha256_init(&hash->md);
+    (void)mbedtls_sha256_starts(&hash->md, 0 /* is224 = false */);
+}
+
+static void secp256k1_sha256_write(secp256k1_sha256 *hash, const unsigned char *data, size_t len) {
+    (void)mbedtls_sha256_update(&hash->md, data, len);
+}
+
+static void secp256k1_sha256_finalize(secp256k1_sha256 *hash, unsigned char *out32) {
+    (void)mbedtls_sha256_finish(&hash->md, out32);
+    mbedtls_sha256_free(&hash->md);
+}
+
+#else
+/* Host build: upstream software SHA-256, unchanged. */
 #define Ch(x,y,z) ((z) ^ ((x) & ((y) ^ (z))))
 #define Maj(x,y,z) (((x) & (y)) | ((z) & ((x) | (y))))
 #define Sigma0(x) (((x) >> 2 | (x) << 30) ^ ((x) >> 13 | (x) << 19) ^ ((x) >> 22 | (x) << 10))
@@ -157,6 +194,7 @@ static void secp256k1_sha256_finalize(secp256k1_sha256 *hash, unsigned char *out
         hash->s[i] = 0;
     }
 }
+#endif /* ESP_PLATFORM */
 
 /* Initializes a sha256 struct and writes the 64 byte string
  * SHA256(tag)||SHA256(tag) into it. */
@@ -172,6 +210,12 @@ static void secp256k1_sha256_initialize_tagged(secp256k1_sha256 *hash, const uns
 }
 
 static void secp256k1_sha256_clear(secp256k1_sha256 *hash) {
+#if defined(ESP_PLATFORM)
+    /* Free the mbedtls context (zeroes its state) and belt-and-braces
+     * memclear the rest of the struct so callers relying on the
+     * "everything zeroed" original contract still see that. */
+    mbedtls_sha256_free(&hash->md);
+#endif
     secp256k1_memclear(hash, sizeof(*hash));
 }
 
@@ -288,6 +332,9 @@ static void secp256k1_rfc6979_hmac_sha256_clear(secp256k1_rfc6979_hmac_sha256 *r
     secp256k1_memclear(rng, sizeof(*rng));
 }
 
+#if !defined(ESP_PLATFORM)
+/* Host build only — the IDF target's hash_impl.h doesn't define these
+ * macros (it calls mbedtls instead). */
 #undef Round
 #undef sigma1
 #undef sigma0
@@ -295,5 +342,6 @@ static void secp256k1_rfc6979_hmac_sha256_clear(secp256k1_rfc6979_hmac_sha256 *r
 #undef Sigma0
 #undef Maj
 #undef Ch
+#endif
 
 #endif /* SECP256K1_HASH_IMPL_H */
