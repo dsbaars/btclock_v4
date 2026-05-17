@@ -13,5 +13,6 @@ idf_component_register(
     INCLUDE_DIRS "include"
     REQUIRES esp_websocket_client esp-tls data_core cjson secp256k1
              tcp_transport proxy_transport prefs settings net_util
+    PRIV_REQUIRES mbedtls  # nip4x.cpp routes AES-256-CBC through the HW AES peripheral
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

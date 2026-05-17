@@ -29,6 +29,23 @@
 
 #include "secp256k1.h"
 
+// btclock_v4 local: on the IDF target route the CBC layer through
+// mbedtls so the ESP32-S3 AES peripheral (CONFIG_MBEDTLS_HARDWARE_AES=y
+// across all variants) does the round work. The padding helpers and
+// the upstream textbook software AES (gated below) stay so the
+// test_host nip4x vectors keep running on the host build, which has
+// no IDF / no mbedtls.
+//
+// mbedtls 4 (IDF v6.0) moved aes.h under mbedtls/private/ and gates
+// the function declarations behind MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS.
+// We don't poke struct internals — just call the public Encrypt/Decrypt
+// API — so MBEDTLS_ALLOW_PRIVATE_ACCESS isn't needed here, unlike the
+// secp256k1 SHA wrapper. Same opt-in path IDF's own AES port uses.
+#if defined(ESP_PLATFORM)
+#define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#include "mbedtls/private/aes.h"
+#endif
+
 namespace btclock {
 namespace nostr {
 namespace {
@@ -334,6 +351,13 @@ void ChaCha20(const uint8_t key[32], const uint8_t nonce[12], const uint8_t* in,
 }
 
 // =========================================================== 4. AES-256-CBC
+//
+// On ESP_PLATFORM the round work goes through mbedtls_aes_crypt_cbc;
+// the textbook AES below is compiled only on the host build. PKCS#7
+// padding/strip lives in the Aes256CbcPkcs7* wrappers — mbedtls's AES
+// API takes already-padded buffers, and mbedtls_cipher_* (which does
+// padding) mallocs an inner ctx every call.
+#if !defined(ESP_PLATFORM)
 
 // AES S-box (FIPS 197 §5.1.1).
 constexpr uint8_t kAesSbox[256] = {
@@ -559,15 +583,38 @@ void Aes256DecryptBlock(const uint8_t* round_keys, const uint8_t in[16],
   std::memcpy(out, s, 16);
 }
 
+#endif  // !defined(ESP_PLATFORM)
+
 // AES-256-CBC with PKCS#7 padding. `out` must have room for
 // `in_len + (16 - in_len % 16)` bytes (i.e. always at least one full
 // padding block). Returns the ciphertext length.
+//
+// On ESP_PLATFORM the inner CBC loop runs on the ESP32-S3 AES HW
+// peripheral via mbedtls; on host it uses the textbook implementation
+// above. Padding is applied in-place into a scratch buffer before the
+// single mbedtls_aes_crypt_cbc call because mbedtls's plain AES API
+// only handles already-padded input (the padded-mode cipher layer
+// mallocs an inner ctx per call, which we don't want here).
 size_t Aes256CbcPkcs7Encrypt(const uint8_t key[32], const uint8_t iv[16],
                              const uint8_t* in, size_t in_len, uint8_t* out) {
-  uint8_t round_keys[240];
-  AesKeyExpansion(key, round_keys);
   const size_t pad = 16 - (in_len % 16);
   const size_t total = in_len + pad;
+#if defined(ESP_PLATFORM)
+  // Build the padded plaintext directly in `out` (caller-supplied,
+  // already sized for `total`), then encrypt in place.
+  std::memcpy(out, in, in_len);
+  for (size_t i = in_len; i < total; ++i) out[i] = static_cast<uint8_t>(pad);
+  uint8_t iv_copy[16];
+  std::memcpy(iv_copy, iv, 16);  // mbedtls updates iv in-place; protect caller.
+  mbedtls_aes_context ctx;
+  mbedtls_aes_init(&ctx);
+  (void)mbedtls_aes_setkey_enc(&ctx, key, 256);
+  (void)mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_ENCRYPT, total, iv_copy, out,
+                              out);
+  mbedtls_aes_free(&ctx);
+#else
+  uint8_t round_keys[240];
+  AesKeyExpansion(key, round_keys);
   uint8_t prev[16];
   std::memcpy(prev, iv, 16);
   uint8_t block[16];
@@ -583,6 +630,7 @@ size_t Aes256CbcPkcs7Encrypt(const uint8_t key[32], const uint8_t iv[16],
     Aes256EncryptBlock(round_keys, block, out + off);
     std::memcpy(prev, out + off, 16);
   }
+#endif
   return total;
 }
 
@@ -591,6 +639,16 @@ size_t Aes256CbcPkcs7Encrypt(const uint8_t key[32], const uint8_t iv[16],
 size_t Aes256CbcPkcs7Decrypt(const uint8_t key[32], const uint8_t iv[16],
                              const uint8_t* in, size_t in_len, uint8_t* out) {
   if (in_len == 0 || (in_len % 16) != 0) return SIZE_MAX;
+#if defined(ESP_PLATFORM)
+  uint8_t iv_copy[16];
+  std::memcpy(iv_copy, iv, 16);
+  mbedtls_aes_context ctx;
+  mbedtls_aes_init(&ctx);
+  (void)mbedtls_aes_setkey_dec(&ctx, key, 256);
+  (void)mbedtls_aes_crypt_cbc(&ctx, MBEDTLS_AES_DECRYPT, in_len, iv_copy, in,
+                              out);
+  mbedtls_aes_free(&ctx);
+#else
   uint8_t round_keys[240];
   AesKeyExpansion(key, round_keys);
   uint8_t prev[16];
@@ -602,6 +660,7 @@ size_t Aes256CbcPkcs7Decrypt(const uint8_t key[32], const uint8_t iv[16],
       out[off + i] = static_cast<uint8_t>(block[i] ^ prev[i]);
     std::memcpy(prev, in + off, 16);
   }
+#endif
   // Strip PKCS#7.
   const uint8_t pad = out[in_len - 1];
   if (pad == 0 || pad > 16) return SIZE_MAX;
