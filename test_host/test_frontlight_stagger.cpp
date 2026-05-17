@@ -2,9 +2,9 @@
 //
 // Pins the v3 visual signature: LED index 0 leads on kIn, lags on kOut,
 // and the full animation completes in a deterministic tick count given
-// (max_brightness, step, num_leds). See frontlight_logic/frontlight_stagger.hpp for
-// the contract; see v3_fci src/lib/drivers/leds/led_handler.cpp:573-646
-// for the original loops this ports.
+// (max_brightness, step, num_leds). See frontlight_logic/frontlight_stagger.hpp
+// for the contract; see v3_fci src/lib/drivers/leds/led_handler.cpp:573-646 for
+// the original loops this ports.
 
 #include <cstdint>
 

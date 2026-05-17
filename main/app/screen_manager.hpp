@@ -52,11 +52,11 @@
 #include <vector>
 
 #include "app/rotation_timer.hpp"
-#include "refresh_policy/refresh_policy.hpp"
 #include "app/screen_slot_map.hpp"
 #include "data_core/snapshot.hpp"
 #include "epd/panel.hpp"
 #include "fonts_app.hpp"
+#include "refresh_policy/refresh_policy.hpp"
 #include "screens/screens.hpp"
 
 namespace btclock {

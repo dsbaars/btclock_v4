@@ -1,8 +1,8 @@
 // Host tests for the NeoPixel effect curve helpers.
 //
-// Pure-logic only — see components/led_strip_logic/include/led_strip_logic/led_curves.hpp
-// for the contract.
-// Exercises the Breath + Ramp + Scale helpers that the FreeRTOS-side
+// Pure-logic only — see
+// components/led_strip_logic/include/led_strip_logic/led_curves.hpp for the
+// contract. Exercises the Breath + Ramp + Scale helpers that the FreeRTOS-side
 // effect handlers rely on (heartbeat, data-error, identify decay).
 
 #include <cstdint>

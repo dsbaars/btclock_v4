@@ -92,7 +92,7 @@ struct AppCtx {
   std::optional<Mcp23017> mcp;   // always present
   std::optional<Mcp23017> mcp2;  // V8 only
 #if BTCLOCK_HAS_FRONTLIGHT
-  std::optional<Pca9685> pca;    // boards with frontlight
+  std::optional<Pca9685> pca;  // boards with frontlight
   std::unique_ptr<FrontlightController> frontlight;
 #endif
 #if BTCLOCK_HAS_BH1750

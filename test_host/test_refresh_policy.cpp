@@ -8,8 +8,8 @@
 // render pipeline. Matches the contract specified by the bug brief
 // ("fix full-vs-partial EPD refresh cadence").
 
-#include "refresh_policy/refresh_policy.hpp"
 #include "doctest.h"
+#include "refresh_policy/refresh_policy.hpp"
 
 using btclock::RefreshPolicy;
 using btclock::RefreshPolicyState;
