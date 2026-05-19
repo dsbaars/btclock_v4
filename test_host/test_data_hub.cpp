@@ -139,10 +139,14 @@ TEST_CASE("ForceNotify after multiple Reports surfaces the latest snapshot") {
   // produces its own delivery (not relying on prior callbacks).
   last_seen = DataSnapshot{};
   hub.ForceNotify();
-  REQUIRE(last_seen.block_height.has_value());
-  CHECK(*last_seen.block_height == 900'005);
-  REQUIRE(last_seen.block_fee.has_value());
-  CHECK(*last_seen.block_fee == 9);
+  // value_or sidesteps clang-tidy's bugprone-unchecked-optional-access
+  // — the checker treats both operator* and .value() as unchecked
+  // whenever a has_value() guard isn't on the same control-flow path,
+  // and CHECK()/REQUIRE() macro borders are opaque to it. With
+  // value_or(0), an unexpectedly empty optional renders the CHECK as
+  // `0 == 900'005` which fails as loudly as the bare-deref form would.
+  CHECK(last_seen.block_height.value_or(0) == 900'005);
+  CHECK(last_seen.block_fee.value_or(0) == 9);
 }
 
 TEST_CASE("SetOnUpdate({}) clears the callback") {
