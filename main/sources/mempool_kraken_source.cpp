@@ -251,6 +251,13 @@ void MempoolKrakenSource::HandleMempoolEvent(int32_t event_id,
       ESP_LOGI(kTag, "mempool ws connected");
       mempool_frame_.clear();
       SendMempoolSubscriptions();
+      // Re-engage the renderer pipeline. The server's first frame after
+      // (re-)subscribe may carry the same height as our cached snapshot
+      // (no new block during a silent TCP-drop), in which case
+      // DataSnapshot::Merge short-circuits and the renderer never sees a
+      // notify. Force one here so reconnect always wakes the screen
+      // pipeline. See btclock_v4-et8.
+      if (hub_ != nullptr) hub_->ForceNotify();
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       mempool_connected_.store(false);
@@ -396,6 +403,8 @@ void MempoolKrakenSource::HandleKrakenEvent(int32_t event_id,
       ESP_LOGI(kTag, "kraken ws connected");
       kraken_frame_.clear();
       SendKrakenSubscriptions();
+      // Same reconnect-re-render rationale as the mempool handler above.
+      if (hub_ != nullptr) hub_->ForceNotify();
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       kraken_connected_.store(false);

@@ -153,4 +153,15 @@ void DataHub::Report(const DataSnapshot& partial) {
   if (cb) cb(copy);
 }
 
+void DataHub::ForceNotify() {
+  UpdateCallback cb;
+  DataSnapshot copy;
+  {
+    std::lock_guard<std::mutex> lk(mu_);
+    copy = snapshot_;
+    cb = on_update_;
+  }
+  if (cb) cb(copy);
+}
+
 }  // namespace btclock

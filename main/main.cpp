@@ -35,6 +35,7 @@
 #include "app/boot/init_wifi_reset_button.hpp"
 #include "app/event_loop.hpp"
 #include "boot_spinner.hpp"
+#include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -65,8 +66,30 @@ extern "C" void app_main() {
     size_t addr = 0;
     size_t size = 0;
     if (esp_core_dump_image_get(&addr, &size) == ESP_OK) {
-      ESP_LOGE("boot", "coredump from previous run present (%u bytes)",
-               static_cast<unsigned>(size));
+      // Log the CURRENT app's ELF SHA next to the coredump notice so
+      // operators can spot SHA-mismatch decode problems before they
+      // burn an hour reverse-engineering an unreliable backtrace. The
+      // coredump partition embeds its own app_elf_sha256 (the crashing
+      // build's SHA); espcoredump.py compares that against the ELF
+      // passed on the command line. If the device was re-flashed
+      // between crash + decode, those SHAs don't match and the decoded
+      // frames past panic-handler are symbol-resolution illusions
+      // against the wrong binary. See btclock_v4-ajf.
+      const esp_app_desc_t* app = esp_app_get_description();
+      char sha_prefix[9] = {};
+      if (app != nullptr) {
+        for (int i = 0; i < 4; ++i) {
+          static const char kHex[] = "0123456789abcdef";
+          sha_prefix[i * 2 + 0] = kHex[(app->app_elf_sha256[i] >> 4) & 0xF];
+          sha_prefix[i * 2 + 1] = kHex[app->app_elf_sha256[i] & 0xF];
+        }
+      }
+      ESP_LOGE("boot",
+               "coredump from previous run present (%u bytes); current app "
+               "ELF SHA prefix=%s — pull /api/coredump BEFORE next re-flash, "
+               "and use this build's build-<variant>/btclock_v4.elf to decode "
+               "(SHA mismatch = unreliable decode past frame #3)",
+               static_cast<unsigned>(size), sha_prefix);
     }
   }
 

@@ -410,10 +410,17 @@ inline constexpr std::array<FieldSpec, 90> kFields = {{
     {prefs::kWpTimeout, FieldKind::kUint, true, 0, 3600, false, 15 * 60, {}},
 }};
 
-// Lookup by key. Returns nullptr if unknown. Linear scan — N ~ 60,
+// Lookup by key. Returns nullptr if unknown. Linear scan — N ~ 90,
 // the table lives in flash, and PATCH calls are rare, so std::find
 // + friends would out-weigh themselves.
 inline const FieldSpec* FindField(std::string_view key) {
+  // Explicit early-return on empty so an accidental "" lookup short-
+  // circuits before the scan. No catalogued key is empty, so the
+  // semantics are unchanged; making the contract explicit gives us a
+  // single hand-off point if defensive instrumentation needs to land
+  // here later (see btclock_v4-ajf for the stale-coredump that
+  // prompted the edge-case audit).
+  if (key.empty()) return nullptr;
   for (const auto& f : kFields) {
     if (f.key == key) return &f;
   }

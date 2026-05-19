@@ -248,6 +248,12 @@ void BtclockDataSource::HandleEvent(int32_t event_id, void* event_data) {
     case WEBSOCKET_EVENT_CONNECTED:
       ESP_LOGI(kTag, "ws connected");
       SendSubscriptions();
+      // Wake the renderer pipeline on (re-)connect even if the upcoming
+      // frames carry the same snapshot fields as the cached state.
+      // Without this a silent TCP-drop + reconnect with no intervening
+      // block lets DataSnapshot::Merge short-circuit, so the screen
+      // never re-renders. See btclock_v4-et8.
+      if (hub_ != nullptr) hub_->ForceNotify();
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       ESP_LOGW(kTag, "ws disconnected");

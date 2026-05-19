@@ -62,6 +62,16 @@ class DataHub {
   // that changed — unset optionals and absent map keys are ignored.
   void Report(const DataSnapshot& partial);
 
+  // Force the update callback to fire with the current snapshot, even
+  // when nothing changed. Used by source WS CONNECTED handlers after a
+  // (re-)connect: the next inbound frame may carry the same height as
+  // the cached one (no new block during the gap), in which case
+  // Report()'s Merge() short-circuits and the renderer never sees a
+  // notify — leaving a stale display behind a "healthy" connection.
+  // ForceNotify() bypasses the dedupe so reconnect always re-engages
+  // the screen pipeline.
+  void ForceNotify();
+
  private:
   mutable std::mutex mu_;
   DataSnapshot snapshot_;
