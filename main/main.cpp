@@ -35,6 +35,7 @@
 #include "app/boot/init_wifi_reset_button.hpp"
 #include "app/event_loop.hpp"
 #include "boot_spinner.hpp"
+#include "diag/heap_integrity.hpp"
 #include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_log.h"
@@ -137,6 +138,15 @@ extern "C" void app_main() {
   // responsive while the first data is still in flight.
   btclock::DispatchBootPath(ctx);
   btclock::InitControlApi(ctx);
+  // Periodic heap integrity check task. Spawned after the heaviest
+  // boot-time allocations have settled so the first walk doesn't
+  // race active init traffic. Detects allocator-arena corruption
+  // (and, with HEAP_POISONING_LIGHT enabled, adjacent-block stomp
+  // bugs) within the configured interval and panics on detection,
+  // so a coredump captures the live state of the offending pattern
+  // instead of a secondary-victim panic at the next unrelated
+  // allocation. See bd btclock_v4-28n.
+  btclock::InitHeapIntegrityMonitor();
   // Tail of WireDataSources: blocking wait for first blockheight,
   // first render, button bring-up. Idempotent in AP mode (skips when
   // there's no hub).

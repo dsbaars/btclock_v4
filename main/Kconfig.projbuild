@@ -1,0 +1,29 @@
+menu "BTClock diagnostics"
+
+config BTCLOCK_HEAP_INTEGRITY_INTERVAL_MS
+    int "Heap integrity check interval (ms)"
+    range 1000 3600000
+    default 30000
+    help
+      How often the periodic heap integrity check task calls
+      heap_caps_check_integrity_all(). Detects allocator-metadata
+      corruption shortly after it happens so the coredump captures
+      the live state at the corruption site, instead of the
+      secondary-victim panic that lands later when an unrelated
+      allocator call hits the damaged arena.
+
+      30 s (default) walks ~300 allocator blocks in ~1-2 ms — about
+      0.005 % CPU. Tighten for active corruption hunts (e.g. 5000
+      ms), loosen for production soaks where the cost should be
+      effectively zero (e.g. 300000).
+
+      Pair with CONFIG_HEAP_POISONING_LIGHT (or COMPREHENSIVE) under
+      "Component config → Heap memory debugging" for finer-grained
+      corruption detection — without poisoning, the integrity walk
+      only catches allocator-arena damage, not adjacent-block stomp
+      bugs.
+
+      See bd btclock_v4-28n for the original httpd-task crash trail
+      this monitor was added to catch.
+
+endmenu
