@@ -1,0 +1,20 @@
+menu "BTClock data source"
+
+config BTCLOCK_WATCHDOG_FAST_FOR_TEST
+    bool "Use short watchdog timings (development/testing only)"
+    default n
+    help
+      When enabled, the BtclockDataSource staleness watchdog uses
+      development-friendly short timings:
+        - Tick: 20 s (production: 5 min)
+        - Stale threshold: 60 s (production: 60 min)
+
+      This is for local fault-injection testing (e.g. against a modified
+      backend that artificially drops the blockheight subscription) so a
+      full failure → detect → recover cycle fits in ~2 minutes instead of
+      ~70. Production firmware MUST leave this off — short timings would
+      trigger a reconnect on every natural >60 s block-interval gap.
+
+      See bd btclock_v4-lfd for the watchdog implementation.
+
+endmenu

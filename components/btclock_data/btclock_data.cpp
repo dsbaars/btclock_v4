@@ -35,8 +35,18 @@ constexpr const char* kTag = "btclock-data";
 // even on a perfectly healthy connection. That's fine: when we fire on
 // a healthy gap, the HTTP probe sees the same height as the snapshot
 // and we don't reconnect.
+//
+// CONFIG_BTCLOCK_WATCHDOG_FAST_FOR_TEST shrinks both to dev-friendly
+// values (20 s tick / 60 s threshold) so a synthetic fault-injection
+// test against a modified local backend completes in minutes, not
+// hours. Production builds leave the Kconfig off.
+#if CONFIG_BTCLOCK_WATCHDOG_FAST_FOR_TEST
+constexpr uint32_t kWatchdogTickMs = 20 * 1000;
+constexpr uint32_t kStaleThresholdMs = 60 * 1000;
+#else
 constexpr uint32_t kWatchdogTickMs = 5 * 60 * 1000;
 constexpr uint32_t kStaleThresholdMs = 60 * 60 * 1000;
+#endif
 
 // /api/lastblock returns the integer height as plain text (e.g.
 // "947195\n"). 32 bytes is generous headroom; if the body grows past
@@ -233,6 +243,10 @@ esp_err_t BtclockDataSource::Stop() {
     proxy_inner_ = nullptr;
   }
   hub_ = nullptr;
+  // Clear the WS-connected mirror so a subsequent IsConnected() poll
+  // (e.g. /api/status during a bounce) reports the real torn-down state
+  // until Start() + WEBSOCKET_EVENT_CONNECTED restore it.
+  ws_connected_.store(false, std::memory_order_release);
   return ESP_OK;
 }
 
@@ -247,6 +261,7 @@ void BtclockDataSource::HandleEvent(int32_t event_id, void* event_data) {
   switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
       ESP_LOGI(kTag, "ws connected");
+      ws_connected_.store(true, std::memory_order_release);
       SendSubscriptions();
       // Wake the renderer pipeline on (re-)connect even if the upcoming
       // frames carry the same snapshot fields as the cached state.
@@ -257,6 +272,7 @@ void BtclockDataSource::HandleEvent(int32_t event_id, void* event_data) {
       break;
     case WEBSOCKET_EVENT_DISCONNECTED:
       ESP_LOGW(kTag, "ws disconnected");
+      ws_connected_.store(false, std::memory_order_release);
       break;
     case WEBSOCKET_EVENT_DATA:
       if (ev && ev->op_code == 0x2 /* binary */) {
@@ -398,15 +414,33 @@ void BtclockDataSource::OnWatchdogTick() {
   const TickType_t now = xTaskGetTickCount();
   const TickType_t since_tick =
       last_change_tick_.load(std::memory_order_acquire);
-  if (since_tick == 0) return;  // no sample yet; nothing to compare
+  if (since_tick == 0) {
+    // No sample yet; nothing to compare. Logged at INFO once-per-tick
+    // so a device that boots and never receives blockheight is visible
+    // in the field log without enableDebugLog. bd btclock_v4-lfd.
+    ESP_LOGI(kTag,
+             "watchdog tick: no sample yet (waiting for first blockheight)");
+    return;
+  }
   const uint32_t since_ms = (now - since_tick) * portTICK_PERIOD_MS;
-  if (since_ms < kStaleThresholdMs) return;
+  if (since_ms < kStaleThresholdMs) {
+    ESP_LOGI(kTag,
+             "watchdog tick: blockheight age %u min (threshold %u min); ok",
+             static_cast<unsigned>(since_ms / 60000),
+             static_cast<unsigned>(kStaleThresholdMs / 60000));
+    return;
+  }
+  ESP_LOGW(
+      kTag,
+      "watchdog tick: blockheight age %u min exceeds threshold; spawning probe",
+      static_cast<unsigned>(since_ms / 60000));
 
   // Skip if a probe is already running so a backed-up timer queue can't
   // pile up workers while one is mid-handshake.
   bool expected = false;
   if (!probe_in_flight_.compare_exchange_strong(expected, true,
                                                 std::memory_order_acq_rel)) {
+    ESP_LOGW(kTag, "watchdog: probe already in flight; skipping this tick");
     return;
   }
   // 6 KiB stack mirrors the WS client's task_stack — same TLS path.
@@ -429,12 +463,14 @@ void BtclockDataSource::RunStalenessProbe() {
   // Svc spawning us and our first instruction here.
   if (client_ == nullptr) return;
 
+  ESP_LOGI(kTag, "watchdog probe: fetching upstream tip from /api/lastblock");
   uint32_t upstream = 0;
   if (!FetchUpstreamHeight(upstream)) {
     // Graceful: HTTP failure is not a reconnect signal. Could be DNS,
     // a captive portal, transient TLS failure, or the custom endpoint
     // not exposing /api/lastblock. Try again on the next tick.
-    ESP_LOGW(kTag, "watchdog: lastblock probe failed; deferring reconnect");
+    ESP_LOGW(kTag,
+             "watchdog probe: lastblock fetch failed; deferring reconnect");
     return;
   }
 
@@ -448,20 +484,43 @@ void BtclockDataSource::RunStalenessProbe() {
     // Healthy gap: the network really hadn't produced a block in 60+
     // min. Reset the clock so we don't re-probe every tick until the
     // next block lands.
-    ESP_LOGI(kTag, "watchdog: %u min idle but tip matches upstream (%u); ok",
+    ESP_LOGI(kTag,
+             "watchdog probe: %u min idle but tip matches upstream (%u); ok",
              static_cast<unsigned>(since_ms / 60000),
              static_cast<unsigned>(upstream));
     last_change_tick_.store(now, std::memory_order_release);
     return;
   }
 
-  ESP_LOGW(kTag,
-           "watchdog: stale (%u min idle, cached=%u upstream=%u); reconnecting",
-           static_cast<unsigned>(since_ms / 60000),
-           static_cast<unsigned>(cached), static_cast<unsigned>(upstream));
-  ForceReconnect();
+  // Stale confirmed: prefer the hub-level Stop+Start path when wired,
+  // fall back to esp_websocket_client_close() otherwise. The hub bounce
+  // is what /api/restart_datasources triggers and is the only path we
+  // know recovers a silent-subscription-drop on multi-panel today — the
+  // close-only path leaves the lib's "connected" state intact and the
+  // subscription stays wedged (bd btclock_v4-lfd, observed on V8 +
+  // Rev B 2026-05-22 with the watchdog firing for 50+ hours without
+  // recovery on the close-only path). Mini variant already moved to
+  // a hub-bounce in 93135b8 — this is the matching multi-panel fix.
+  if (restart_requester_) {
+    ESP_LOGW(kTag,
+             "watchdog probe: stale (%u min idle, cached=%u upstream=%u); "
+             "requesting hub restart",
+             static_cast<unsigned>(since_ms / 60000),
+             static_cast<unsigned>(cached), static_cast<unsigned>(upstream));
+    restart_requester_();
+  } else {
+    ESP_LOGW(kTag,
+             "watchdog probe: stale (%u min idle, cached=%u upstream=%u); "
+             "no restart_requester wired, falling back to ws close",
+             static_cast<unsigned>(since_ms / 60000),
+             static_cast<unsigned>(cached), static_cast<unsigned>(upstream));
+    ForceReconnect();
+  }
   // Reset the clock around the reconnect so the next tick gives the
-  // fresh session a full window before re-evaluating.
+  // fresh session a full window before re-evaluating. (For the hub
+  // restart path, the command queue may not have drained yet — the
+  // reset is still right: we don't want to fire another probe before
+  // the bounce completes.)
   last_change_tick_.store(xTaskGetTickCount(), std::memory_order_release);
 }
 

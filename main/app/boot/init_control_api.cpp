@@ -406,6 +406,24 @@ void InitControlApi(AppCtx& ctx) {
         nlw->SetPriceConnected([mk]() { return mk->IsKrakenConnected(); });
         nlw->SetBlocksConnected([mk]() { return mk->IsMempoolConnected(); });
       }
+    } else if (BtclockDataSource* bws = ctx.btclock_ws) {
+      // dataSource=0: the single v2 WSS carries price + blocks + fees,
+      // so every "is X reachable" callback resolves to the same state.
+      // Pre-fix these were all unwired and ControlServer's emit fell
+      // back to "hub != nullptr" — always true, never reflected an
+      // actual outage. Now wired to the WS-layer CONNECTED/DISCONNECTED
+      // mirror in BtclockDataSource so /api/status's badge tracks the
+      // real socket state. Note: this still doesn't catch a silent
+      // subscription drop where the socket is alive but blockheight
+      // stops flowing — that case is covered by the staleness watchdog
+      // (see bd btclock_v4-lfd). bd btclock_v4-1xc.
+      ccfg.price_connected = [bws]() { return bws->IsConnected(); };
+      ccfg.blocks_connected = [bws]() { return bws->IsConnected(); };
+      ccfg.v2_connected = [bws]() { return bws->IsConnected(); };
+      if (auto* nlw = ctx.network_led_watchdog.get()) {
+        nlw->SetPriceConnected([bws]() { return bws->IsConnected(); });
+        nlw->SetBlocksConnected([bws]() { return bws->IsConnected(); });
+      }
     }
     // Live PATCH refresh for the runtime-editable nostr keys
     // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,
@@ -520,6 +538,25 @@ void InitControlApi(AppCtx& ctx) {
       ESP_LOGE(kTag, "control server failed to start; control API disabled");
       ctx.ctrl.reset();
       ctx.sse.reset();
+    }
+    // Wire the v2 WS staleness watchdog's restart hook now that
+    // ctx.ctrl exists. The watchdog detects "WS alive but blockheight
+    // stream silently dropped" inside BtclockDataSource and used to
+    // call esp_websocket_client_close() directly. That close-only path
+    // failed to recover on multi-panel — observed live on V8 + Rev B
+    // 2026-05-22 with 50+ hours of stale blocks while price ticks kept
+    // flowing. Posting kRestartDataSources here mirrors the mini-
+    // variant fix in 93135b8 and the manual /api/restart_datasources
+    // recovery that proven to work. Main task drains the command and
+    // does hub->StopAll() + hub->StartAll() — full BtclockDataSource
+    // teardown + re-init, which clears whatever subscription state the
+    // relay held. bd btclock_v4-lfd.
+    if (ctx.ctrl && ctx.btclock_ws) {
+      ControlServer* ctrl_for_restart = ctx.ctrl.get();
+      ctx.btclock_ws->SetRestartRequester([ctrl_for_restart]() {
+        ControlCommand cmd{ControlCommand::Kind::kRestartDataSources};
+        ctrl_for_restart->PostCommand(cmd);
+      });
     }
   }
 

@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,32 @@ class BtclockDataSource : public DataSource {
   // bug. Pre-Start callers (test harnesses) just update the field and
   // the next Start picks it up.
   void SetBlockFeeDec(bool block_fee_dec);
+
+  // True iff WEBSOCKET_EVENT_CONNECTED fired more recently than
+  // WEBSOCKET_EVENT_DISCONNECTED. Set/cleared by HandleEvent; survives
+  // SetCurrencies/SetBlockFeeDec bounces because Stop() clears it on
+  // the way out and Start()'s CONNECTED event re-sets it. Used by
+  // ControlServer's `cfg_.v2_connected` callback on dataSource=0 so
+  // /api/status reflects real WS-layer liveness instead of the
+  // pre-fix "hub != nullptr" heuristic (bd btclock_v4-1xc / -lfd).
+  bool IsConnected() const { return ws_connected_.load(); }
+
+  // Install a callback that requests a hub-level Stop+Start when the
+  // staleness watchdog confirms the WS is wedged (blockheight hasn't
+  // changed in 60+ min AND upstream tip disagrees). The expected
+  // implementation posts a `ControlCommand::Kind::kRestartDataSources`
+  // to the main task so the lifecycle stays single-threaded — see
+  // bd btclock_v4-lfd. Pre-fix the watchdog called
+  // `esp_websocket_client_close()` directly from the probe task; on a
+  // silently-wedged WS the lib treated that as a no-op and the device
+  // stayed stale until operator intervention. Empty callback falls back
+  // to the close-only behaviour (kept as defense-in-depth — the
+  // close+reconnect path still works for the common TCP-level drop
+  // case, just not for the silent-subscription-drop case the bug
+  // is about).
+  void SetRestartRequester(std::function<void()> cb) {
+    restart_requester_ = std::move(cb);
+  }
 
  private:
   static void EventHandlerTrampoline(void* arg, esp_event_base_t base,
@@ -129,6 +156,18 @@ class BtclockDataSource : public DataSource {
   // Stop() polls it before destroying the WS client so the worker
   // can't dereference a destroyed handle.
   std::atomic<bool> probe_in_flight_{false};
+  // WS-layer connection state, driven by the CONNECTED/DISCONNECTED
+  // events on the client. NOT the same as data freshness — silent
+  // subscription drops leave this `true` while blockheight stops
+  // updating; that case is what the staleness watchdog handles. See
+  // IsConnected().
+  std::atomic<bool> ws_connected_{false};
+  // Optional hub-level restart hook. When set (wired in
+  // init_control_api.cpp once ControlServer exists), the staleness
+  // watchdog uses it instead of `esp_websocket_client_close()`. Null
+  // by default so test harnesses without a ControlServer fall through
+  // to ForceReconnect(). See SetRestartRequester().
+  std::function<void()> restart_requester_;
 };
 
 }  // namespace btclock

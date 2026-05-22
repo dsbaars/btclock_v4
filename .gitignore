@@ -22,6 +22,7 @@ preview-capture/
 # On-device diagnostic dumps (heap traces, coredumps, addr2line output).
 # Build-environment-specific and not useful in version control.
 docs/diag/
+.coredumps/
 
 # Local Chrome/memlab heap snapshots (debugging only).
 tmp-memlab/
