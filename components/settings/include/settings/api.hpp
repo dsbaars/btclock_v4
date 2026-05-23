@@ -65,6 +65,11 @@ class PrefsWriter {
 struct DeviceContext {
   std::string hostname;
   std::string ip;
+  // WiFi STA MAC, lowercase hex with colon separators ("aa:bb:cc:dd:ee:ff").
+  // Surfaced so the WebUI can render a unique-per-device identifier on
+  // the system info panel without having to derive it from `hostname`
+  // (which only carries the last three bytes after the prefix).
+  std::string wifi_mac;
   int32_t tx_power = 0;
   int32_t num_screens = 3;
   bool has_frontlight = false;

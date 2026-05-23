@@ -97,6 +97,7 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
   AddI32(root, "numScreens", ctx.num_screens);
   AddString(root, "hostname", ctx.hostname);
   AddString(root, "ip", ctx.ip);
+  AddString(root, "wifiMac", ctx.wifi_mac);
   AddI32(root, "txPower", ctx.tx_power);
   AddString(root, "hwRev", ctx.hw_rev);
   AddString(root, "fsRev", ctx.fs_rev);

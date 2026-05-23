@@ -76,6 +76,7 @@ btclock::settings::DeviceContext DefaultCtx() {
   btclock::settings::DeviceContext ctx;
   ctx.hostname = "btclock-abc123";
   ctx.ip = "10.0.0.7";
+  ctx.wifi_mac = "aa:bb:cc:dd:ee:ff";
   ctx.tx_power = 44;
   ctx.num_screens = 3;
   ctx.has_frontlight = true;
@@ -165,6 +166,10 @@ TEST_CASE("GET /api/settings emits device-context fields") {
   cJSON* hostname = cJSON_GetObjectItemCaseSensitive(root, "hostname");
   REQUIRE(cJSON_IsString(hostname));
   CHECK(std::string(hostname->valuestring) == "btclock-abc123");
+
+  cJSON* mac = cJSON_GetObjectItemCaseSensitive(root, "wifiMac");
+  REQUIRE(cJSON_IsString(mac));
+  CHECK(std::string(mac->valuestring) == "aa:bb:cc:dd:ee:ff");
 
   cJSON* hw = cJSON_GetObjectItemCaseSensitive(root, "hwRev");
   REQUIRE(cJSON_IsString(hw));
