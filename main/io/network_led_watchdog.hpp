@@ -41,26 +41,22 @@ class NetworkLedWatchdog {
   // owner's lifetime — InitNetwork constructs the watchdog before
   // data sources exist; sources.cpp / init_control_api.cpp install
   // the probes once they're up.
+  //
+  // Probes are LIFECYCLE-AWARE: they return true ("ok") both when the
+  // source is connected AND when the source is intentionally stopped
+  // (between Stop() and the next Start()). This is deliberately
+  // different from the same data source's IsConnected() probe wired
+  // into /api/status, which reports the WIRE truth. Coupling the LED
+  // watchdog to lifecycle instead of wire state means every
+  // by-design stop — OTA quiesce, /api/stop_datasources, factory
+  // reset, dataSource toggle — naturally silences the indicator
+  // without per-call-site gating. bd btclock_v4-28n.
   void SetWifi(Wifi* wifi) { wifi_ = wifi; }
   void SetPriceConnected(std::function<bool()> f) {
     price_connected_ = std::move(f);
   }
   void SetBlocksConnected(std::function<bool()> f) {
     blocks_connected_ = std::move(f);
-  }
-
-  // OTA-active probe. While the probe returns true the watchdog is
-  // muted: Tick() returns immediately without classifying or posting.
-  // Without this gate, the OTA flow's pre-flash quiesce
-  // (`hub->StopAll()`) makes the data-source probes report disconnected
-  // a full ~10-30 s before the device reboots into the new image, and
-  // every 5 s during that window the watchdog would correctly classify
-  // Tier::kMulti and paint a slow red breath over whatever OTA-progress
-  // indicator the LED bar is showing. Probe is the same atomic
-  // ScreenManager exposes to its own OTA-overlay short-circuit, so the
-  // two stay in lockstep. bd btclock_v4-28n.
-  void SetOtaActiveProbe(std::function<bool()> f) {
-    ota_active_probe_ = std::move(f);
   }
 
   // Advance the state machine. Call once per second from the event
@@ -84,7 +80,6 @@ class NetworkLedWatchdog {
   Wifi* wifi_ = nullptr;
   std::function<bool()> price_connected_;
   std::function<bool()> blocks_connected_;
-  std::function<bool()> ota_active_probe_;
   Tier current_tier_ = Tier::kNone;
   uint32_t last_post_ms_ = 0;
 };

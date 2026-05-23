@@ -232,8 +232,14 @@ esp_err_t BtclockDataSource::Stop() {
     hub_ = nullptr;
     return ESP_OK;
   }
-  SafeShutdownWsClient(client_);
+  // Null the pointer FIRST so observers see IsActive() == false from
+  // the very start of teardown. SafeShutdownWsClient takes 50+ ms; if
+  // we nulled after that call, the LED watchdog could tick during the
+  // window and classify (IsActive=true, IsConnected=false) as a fault
+  // even though the source is being torn down on purpose.
+  auto* to_destroy = client_;
   client_ = nullptr;
+  SafeShutdownWsClient(to_destroy);
   if (proxy_ws_) {
     esp_transport_destroy(proxy_ws_);
     proxy_ws_ = nullptr;

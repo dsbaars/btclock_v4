@@ -396,15 +396,19 @@ void InitControlApi(AppCtx& ctx) {
       ccfg.price_connected = [mk]() { return mk->IsKrakenConnected(); };
       ccfg.blocks_connected = [mk]() { return mk->IsMempoolConnected(); };
       ccfg.v2_connected = []() { return false; };
-      // Same probes feed the runtime LED indicator: a slow red breath
-      // when WiFi drops or both sources stall, a per-source blink when
-      // only one source is unhealthy. Watchdog ticks once per second
-      // from the event loop. dataSource=0 (single v2 WS) leaves the
-      // probes unset and the indicator falls back to the WiFi-only
-      // signal — bd btclock_v4-1xc tracks adding a v2 probe.
+      // The LED-indicator probes are lifecycle-aware: ok when the
+      // source is connected OR intentionally stopped. /api/status's
+      // probes above stay wire-truth so the WebUI badge still flips
+      // on a real outage, but the LED watchdog needs to stay quiet
+      // through every Stop() (OTA quiesce, /api/stop_datasources,
+      // factory reset, dataSource toggle). bd btclock_v4-28n.
       if (auto* nlw = ctx.network_led_watchdog.get()) {
-        nlw->SetPriceConnected([mk]() { return mk->IsKrakenConnected(); });
-        nlw->SetBlocksConnected([mk]() { return mk->IsMempoolConnected(); });
+        nlw->SetPriceConnected([mk]() {
+          return !mk->IsKrakenActive() || mk->IsKrakenConnected();
+        });
+        nlw->SetBlocksConnected([mk]() {
+          return !mk->IsMempoolActive() || mk->IsMempoolConnected();
+        });
       }
     } else if (BtclockDataSource* bws = ctx.btclock_ws) {
       // dataSource=0: the single v2 WSS carries price + blocks + fees,
@@ -420,21 +424,17 @@ void InitControlApi(AppCtx& ctx) {
       ccfg.price_connected = [bws]() { return bws->IsConnected(); };
       ccfg.blocks_connected = [bws]() { return bws->IsConnected(); };
       ccfg.v2_connected = [bws]() { return bws->IsConnected(); };
+      // Lifecycle-aware LED probes — see the equivalent MempoolKraken
+      // branch above. Stop() clears client_ so IsActive() goes false
+      // and the watchdog falls silent; once Start() runs again and
+      // the WS reconnects, IsConnected() flips true and the steady
+      // state is "ok" without any in-between red breath.
       if (auto* nlw = ctx.network_led_watchdog.get()) {
-        nlw->SetPriceConnected([bws]() { return bws->IsConnected(); });
-        nlw->SetBlocksConnected([bws]() { return bws->IsConnected(); });
+        nlw->SetPriceConnected(
+            [bws]() { return !bws->IsActive() || bws->IsConnected(); });
+        nlw->SetBlocksConnected(
+            [bws]() { return !bws->IsActive() || bws->IsConnected(); });
       }
-    }
-    // Mute the LED watchdog while OTA is active. pre_flash_hook above
-    // sets SetOtaOverlay(true) BEFORE hub->StopAll(), so the watchdog
-    // sees the OTA flag flip a beat before the data-source probes go
-    // disconnected — no in-between window where it could paint the red
-    // breath over the OTA progress bar. ScreenManager already owns the
-    // canonical "OTA active" atomic; reuse it instead of plumbing a
-    // second one. Works for both dataSource branches above.
-    if (auto* nlw = ctx.network_led_watchdog.get(); nlw && ctx.sm) {
-      ScreenManager* sm = ctx.sm.get();
-      nlw->SetOtaActiveProbe([sm]() { return sm->IsOtaActive(); });
     }
     // Live PATCH refresh for the runtime-editable nostr keys
     // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,

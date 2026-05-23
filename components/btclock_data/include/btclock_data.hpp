@@ -72,6 +72,16 @@ class BtclockDataSource : public DataSource {
   // pre-fix "hub != nullptr" heuristic (bd btclock_v4-1xc / -lfd).
   bool IsConnected() const { return ws_connected_.load(); }
 
+  // Lifecycle state: true between Start() and Stop(). Distinct from
+  // IsConnected() — the latter reflects the live WS handshake while
+  // this one captures "this source is running by design". Consumers
+  // that want a fault signal (e.g. NetworkLedWatchdog) care about
+  // "running but disconnected", not "stopped on purpose". Without this
+  // distinction every intentional Stop() (OTA quiesce,
+  // /api/stop_datasources, factory reset, dataSource flip) trips a red
+  // breath over whatever the user is actually trying to do.
+  bool IsActive() const { return client_ != nullptr; }
+
   // Install a callback that requests a hub-level Stop+Start when the
   // staleness watchdog confirms the WS is wedged (blockheight hasn't
   // changed in 60+ min AND upstream tip disagrees). The expected

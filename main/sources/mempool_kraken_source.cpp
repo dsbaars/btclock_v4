@@ -203,8 +203,11 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
 
 esp_err_t MempoolKrakenSource::Stop() {
   if (mempool_client_ != nullptr) {
-    SafeShutdownWsClient(mempool_client_);
+    // Null first, shutdown second — see BtclockDataSource::Stop() for
+    // the lifecycle-vs-wire-state race this avoids on the LED watchdog.
+    auto* to_destroy = mempool_client_;
     mempool_client_ = nullptr;
+    SafeShutdownWsClient(to_destroy);
   }
   if (mempool_proxy_ws_) {
     esp_transport_destroy(mempool_proxy_ws_);
@@ -215,8 +218,9 @@ esp_err_t MempoolKrakenSource::Stop() {
     mempool_proxy_inner_ = nullptr;
   }
   if (kraken_client_ != nullptr) {
-    SafeShutdownWsClient(kraken_client_);
+    auto* to_destroy = kraken_client_;
     kraken_client_ = nullptr;
+    SafeShutdownWsClient(to_destroy);
   }
   if (kraken_proxy_ws_) {
     esp_transport_destroy(kraken_proxy_ws_);

@@ -56,6 +56,13 @@ class MempoolKrakenSource : public DataSource {
   bool IsMempoolConnected() const { return mempool_connected_.load(); }
   bool IsKrakenConnected() const { return kraken_connected_.load(); }
 
+  // Lifecycle predicates — see BtclockDataSource::IsActive() for the
+  // why. Mempool + kraken are independent clients; they can be in
+  // different lifecycle states (e.g. one Start() succeeded, the other
+  // failed) so the LED watchdog needs to ask per source.
+  bool IsMempoolActive() const { return mempool_client_ != nullptr; }
+  bool IsKrakenActive() const { return kraken_client_ != nullptr; }
+
  private:
   static void MempoolEventTrampoline(void* arg, esp_event_base_t base,
                                      int32_t event_id, void* event_data);
