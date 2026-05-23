@@ -27,8 +27,17 @@
 //     force `CONFIG_MBEDTLS_CHACHA20_C=y` (currently `n` by default)
 //     which links a duplicate ~9 KiB software impl into every variant
 //     — measurably worse on Rev A's 4 MB partition (≈8 % free).
-//   * Base64 stays hand-rolled. mbedtls_base64_* is fine but pulls
-//     mbedtls_base64.o which we'd otherwise leave out of the link.
+//   * Base64 routes through mbedtls on ESP_PLATFORM. The earlier
+//     "stays hand-rolled" rationale was wrong — `mbedtls_base64_*`
+//     is already in the link on every variant via `esp-tls`
+//     (`esp_tls_crypto.c` pulls it for Basic-auth header encoding),
+//     so routing nip4x's encoder/decoder to it costs zero extra TUs
+//     and drops the ~800 B textbook impl + 256 B reverse LUT. Host
+//     keeps the textbook path. The two backends diverge on tolerance
+//     (mbedtls accepts \r/\n/space + unpadded quartets) but never on
+//     well-formed wire input, and any malformed payload that decode-
+//     accepts on device still trips the downstream HMAC / PKCS#7 /
+//     version-byte checks.
 //
 // On the host (test_host/, no IDF / no mbedTLS), every primitive
 // stays in its textbook software form so the official NIP-44 v2

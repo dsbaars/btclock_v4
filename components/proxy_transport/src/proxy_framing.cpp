@@ -5,6 +5,14 @@
 #include <cstdio>
 #include <cstring>
 
+// On ESP_PLATFORM defer Base64Encode to mbedtls — already in the link
+// via esp-tls (mbedtls_base64_* is pulled by esp_tls_crypto.c) — and
+// drop the local ~250 B textbook impl + alphabet table. Host keeps the
+// textbook path so test_host doesn't grow an mbedtls dep.
+#if defined(ESP_PLATFORM)
+#include "mbedtls/base64.h"
+#endif
+
 namespace btclock {
 namespace proxy {
 namespace framing {
@@ -201,6 +209,18 @@ int ParseHttpConnectStatus(std::span<const uint8_t> buf, size_t* out_consumed) {
 }
 
 std::string Base64Encode(std::string_view in) {
+#if defined(ESP_PLATFORM)
+  if (in.empty()) return std::string();
+  const size_t encoded_len = ((in.size() + 2) / 3) * 4;
+  std::string out;
+  out.resize(encoded_len + 1);  // mbedtls writes a trailing NUL.
+  size_t olen = 0;
+  (void)mbedtls_base64_encode(
+      reinterpret_cast<unsigned char*>(&out[0]), out.size(), &olen,
+      reinterpret_cast<const unsigned char*>(in.data()), in.size());
+  out.resize(olen);
+  return out;
+#else
   static const char kTbl[] =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   std::string out;
@@ -225,6 +245,7 @@ std::string Base64Encode(std::string_view in) {
     out.push_back('=');
   }
   return out;
+#endif
 }
 
 }  // namespace framing

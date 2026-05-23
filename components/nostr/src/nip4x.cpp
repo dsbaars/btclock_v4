@@ -52,6 +52,7 @@
 #if defined(ESP_PLATFORM)
 #define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
 #define MBEDTLS_ALLOW_PRIVATE_ACCESS
+#include "mbedtls/base64.h"
 #include "mbedtls/private/aes.h"
 #include "mbedtls/private/sha256.h"
 #endif
@@ -719,6 +720,56 @@ size_t Aes256CbcPkcs7Decrypt(const uint8_t key[32], const uint8_t iv[16],
 }
 
 // ====================================================== 5. Base64 (RFC 4648)
+//
+// On ESP_PLATFORM defer to mbedtls's base64 — it's already linked in
+// every variant via esp-tls (esp_tls_crypto.c pulls mbedtls_base64_*
+// for the HTTP Basic-auth header path), so routing through it costs
+// zero extra TUs and drops the ~800 B textbook impl + 256 B reverse-
+// lookup LUT from the link. Host keeps the textbook impl (no IDF /
+// no mbedtls). Tiny behavioural quirk on the device path: mbedtls's
+// decoder skips \r/\n/space whitespace and accepts unpadded inputs
+// whose digit-count mod 4 ≠ 1 — both are wire-irrelevant for NIP-04 /
+// NIP-44 since (a) no legitimate relay injects whitespace and (b) any
+// malformed payload that decode-accepts will still trip the HMAC /
+// PKCS#7 / version-byte checks downstream. See nip4x.hpp for full
+// rationale.
+
+#if defined(ESP_PLATFORM)
+
+std::string Base64Encode(const uint8_t* data, size_t len) {
+  if (len == 0) return std::string();
+  // Encoded length per RFC 4648 — always padded to a multiple of 4.
+  // mbedtls additionally writes a trailing NUL, so allocate +1.
+  const size_t encoded_len = ((len + 2) / 3) * 4;
+  std::string out;
+  out.resize(encoded_len + 1);
+  size_t olen = 0;
+  (void)mbedtls_base64_encode(reinterpret_cast<unsigned char*>(&out[0]),
+                              out.size(), &olen, data, len);
+  out.resize(olen);
+  return out;
+}
+
+bool Base64Decode(const std::string& s, std::string& out) {
+  out.clear();
+  if (s.empty()) return true;
+  // Upper bound on decoded size: every 4 input chars yield 3 output
+  // bytes (the actual count is olen ≤ this). +3 covers the partial-
+  // quartet rounding.
+  out.resize((s.size() / 4) * 3 + 3);
+  size_t olen = 0;
+  const int rc = mbedtls_base64_decode(
+      reinterpret_cast<unsigned char*>(&out[0]), out.size(), &olen,
+      reinterpret_cast<const unsigned char*>(s.data()), s.size());
+  if (rc != 0) {
+    out.clear();
+    return false;
+  }
+  out.resize(olen);
+  return true;
+}
+
+#else  // !defined(ESP_PLATFORM) → host textbook base64.
 
 constexpr const char* kBase64Alphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -800,6 +851,8 @@ bool Base64Decode(const std::string& s, std::string& out) {
   }
   return true;
 }
+
+#endif  // ESP_PLATFORM
 
 // =================================================== 6. Constant-time compare
 

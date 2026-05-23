@@ -12,6 +12,6 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src"
     REQUIRES tcp_transport esp-tls settings
-    PRIV_REQUIRES esp_timer log lwip
+    PRIV_REQUIRES esp_timer log lwip mbedtls  # proxy_framing.cpp routes Base64Encode through mbedtls_base64_encode
 )
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)
