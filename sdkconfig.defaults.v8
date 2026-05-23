@@ -6,3 +6,18 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_16mb.csv"
 CONFIG_PARTITION_TABLE_FILENAME="partitions_16mb.csv"
 CONFIG_SPIRAM_MODE_OCT=y
+
+# Explicit duplicate of the value already set in `sdkconfig.defaults`.
+# Repeated here as a tripwire after 2026-05-23: V8's build-v8/sdkconfig
+# was found persisting the IDF default (=16384) for 19 days because IDF
+# treats user sdkconfig as sticky once generated. The repo default had
+# been dropped to 0 by commit b681496 (mitigates the IDF v6.0.1
+# esp_crt_bundle handshake leak by routing it to PSRAM), but V8's
+# build state never picked it up. Result: every alloc <= 16 KiB on V8
+# pinned to the 327 KiB internal SRAM, leaking ~140 B/handshake into it
+# directly. Under HTTP flood the internal minFree dipped to 3 KiB
+# (close to OOM); after the fix V8 holds 121 KiB free / 115 KiB minFree
+# under the same load. Keeping the value here forces a fresh
+# `defconfig`-equivalent regeneration on any future V8 build to
+# converge on 0 even if a stale per-developer sdkconfig drifts.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=0
