@@ -49,6 +49,20 @@ class NetworkLedWatchdog {
     blocks_connected_ = std::move(f);
   }
 
+  // OTA-active probe. While the probe returns true the watchdog is
+  // muted: Tick() returns immediately without classifying or posting.
+  // Without this gate, the OTA flow's pre-flash quiesce
+  // (`hub->StopAll()`) makes the data-source probes report disconnected
+  // a full ~10-30 s before the device reboots into the new image, and
+  // every 5 s during that window the watchdog would correctly classify
+  // Tier::kMulti and paint a slow red breath over whatever OTA-progress
+  // indicator the LED bar is showing. Probe is the same atomic
+  // ScreenManager exposes to its own OTA-overlay short-circuit, so the
+  // two stay in lockstep. bd btclock_v4-28n.
+  void SetOtaActiveProbe(std::function<bool()> f) {
+    ota_active_probe_ = std::move(f);
+  }
+
   // Advance the state machine. Call once per second from the event
   // loop. `now_ms` should be a monotonic millisecond clock
   // (esp_timer_get_time()/1000 or equivalent). Cheap when no fault is
@@ -70,6 +84,7 @@ class NetworkLedWatchdog {
   Wifi* wifi_ = nullptr;
   std::function<bool()> price_connected_;
   std::function<bool()> blocks_connected_;
+  std::function<bool()> ota_active_probe_;
   Tier current_tier_ = Tier::kNone;
   uint32_t last_post_ms_ = 0;
 };

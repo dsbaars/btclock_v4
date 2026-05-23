@@ -425,6 +425,17 @@ void InitControlApi(AppCtx& ctx) {
         nlw->SetBlocksConnected([bws]() { return bws->IsConnected(); });
       }
     }
+    // Mute the LED watchdog while OTA is active. pre_flash_hook above
+    // sets SetOtaOverlay(true) BEFORE hub->StopAll(), so the watchdog
+    // sees the OTA flag flip a beat before the data-source probes go
+    // disconnected — no in-between window where it could paint the red
+    // breath over the OTA progress bar. ScreenManager already owns the
+    // canonical "OTA active" atomic; reuse it instead of plumbing a
+    // second one. Works for both dataSource branches above.
+    if (auto* nlw = ctx.network_led_watchdog.get(); nlw && ctx.sm) {
+      ScreenManager* sm = ctx.sm.get();
+      nlw->SetOtaActiveProbe([sm]() { return sm->IsOtaActive(); });
+    }
     // Live PATCH refresh for the runtime-editable nostr keys
     // (nostrZapPubkey, nostrZapNotify, ledFlashOnZap, flFlashOnZap,
     // scrnRestoreZap). The hook re-reads the canonical "settings"

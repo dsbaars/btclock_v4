@@ -68,6 +68,11 @@ void NetworkLedWatchdog::PostEffectFor(Tier t) {
 }
 
 void NetworkLedWatchdog::Tick(uint32_t now_ms) {
+  // OTA quiesce (`hub->StopAll()`) makes the data-source probes report
+  // disconnected for the entire flash window. Suppress here rather than
+  // at every caller; the screen_manager's ota_active_ flag is the same
+  // truth source the EPD overlay already keys off.
+  if (ota_active_probe_ && ota_active_probe_()) return;
   const Tier t = ClassifyFault();
   if (t != current_tier_) {
     if (t == Tier::kNone) {
