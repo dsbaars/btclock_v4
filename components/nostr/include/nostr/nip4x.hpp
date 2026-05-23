@@ -12,19 +12,30 @@
 //     fraction of NWC wallets in the field haven't shipped NIP-44 v2
 //     yet (the `encryption` tag was added to NIP-47 in 2024).
 //
-// All symmetric primitives (SHA-256, HMAC-SHA256, HKDF, ChaCha20,
-// AES-256-CBC, base64) are hand-rolled in this component rather than
-// pulled from mbedTLS. Rationale:
+// Crypto routing — host vs target:
 //
-//   1. Host-test parity. test_host/ does not link mbedTLS — the same
-//      pattern as `event_verify.cpp`'s self-contained SHA-256. With
-//      pure-C++ primitives, on-target and host bytes are bit-
-//      identical, and the official NIP-44 v2 spec test vectors run
-//      verbatim in CI without an ESP-IDF build.
-//   2. No new sdkconfig knobs. Avoids `CONFIG_MBEDTLS_CHACHA20_C` /
-//      `CONFIG_MBEDTLS_HKDF_C` churn across all four variants.
-//   3. <1 Hz call rate. NWC balance polling and notification arrival
-//      don't justify the hardware-accelerator coupling cost.
+//   * On ESP_PLATFORM (IDF target), the AES-256-CBC round work and
+//     the SHA-256 core (used by NIP-44's HMAC + HKDF chain) route
+//     through mbedTLS so the ESP32-S3 hardware AES + SHA peripherals
+//     do the heavy lifting (CONFIG_MBEDTLS_HARDWARE_{AES,SHA}=y).
+//     The HMAC/HKDF wrappers above the SHA core stay in this file —
+//     the IDF mbedtls md.h dispatcher mallocs an inner ctx per call,
+//     which we don't want on the per-notify path.
+//   * ChaCha20 stays hand-rolled on both host and target. Mbedtls's
+//     chacha20.c is the same RFC 8439 textbook code and the ESP32-S3
+//     has no ChaCha20 accelerator; routing through mbedtls would
+//     force `CONFIG_MBEDTLS_CHACHA20_C=y` (currently `n` by default)
+//     which links a duplicate ~9 KiB software impl into every variant
+//     — measurably worse on Rev A's 4 MB partition (≈8 % free).
+//   * Base64 stays hand-rolled. mbedtls_base64_* is fine but pulls
+//     mbedtls_base64.o which we'd otherwise leave out of the link.
+//
+// On the host (test_host/, no IDF / no mbedTLS), every primitive
+// stays in its textbook software form so the official NIP-44 v2
+// spec vectors run verbatim in CI without an ESP-IDF build. The
+// HW and SW backends share the same nip4x.cpp public surface; the
+// vectors validate the SW path, on-device NWC traffic stress-tests
+// the HW path (see [[nwc-test-flow]]).
 //
 // ECDH uses the vendored libsecp256k1 via `secp256k1_ec_pubkey_tweak_mul`
 // (already linked for schnorr verify). The shared-X coordinate is the

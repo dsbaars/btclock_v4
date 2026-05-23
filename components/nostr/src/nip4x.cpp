@@ -29,21 +29,31 @@
 
 #include "secp256k1.h"
 
-// btclock_v4 local: on the IDF target route the CBC layer through
-// mbedtls so the ESP32-S3 AES peripheral (CONFIG_MBEDTLS_HARDWARE_AES=y
-// across all variants) does the round work. The padding helpers and
-// the upstream textbook software AES (gated below) stay so the
-// test_host nip4x vectors keep running on the host build, which has
-// no IDF / no mbedtls.
+// btclock_v4 local: on the IDF target route both the AES-256-CBC
+// round work and the SHA-256 core through mbedtls so the ESP32-S3
+// HW AES + SHA peripherals do the heavy lifting (CONFIG_MBEDTLS_
+// HARDWARE_{AES,SHA}=y on every variant). The padding helpers + the
+// upstream textbook software AES + the textbook software SHA-256
+// (gated below) stay so the test_host nip4x vectors keep running
+// on the host build, which has no IDF / no mbedtls. See nip4x.hpp
+// for the full rationale (including why ChaCha20 + base64 stay
+// hand-rolled).
 //
-// mbedtls 4 (IDF v6.0) moved aes.h under mbedtls/private/ and gates
-// the function declarations behind MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS.
-// We don't poke struct internals — just call the public Encrypt/Decrypt
-// API — so MBEDTLS_ALLOW_PRIVATE_ACCESS isn't needed here, unlike the
-// secp256k1 SHA wrapper. Same opt-in path IDF's own AES port uses.
+// mbedtls 4 (IDF v6.0) moved aes.h + sha256.h under mbedtls/private/
+// and gates the function declarations behind MBEDTLS_DECLARE_PRIVATE_
+// IDENTIFIERS. SHA-256 additionally needs MBEDTLS_ALLOW_PRIVATE_ACCESS
+// because the Sha256Ctx struct holds an mbedtls_sha256_context by
+// value (callers stack-allocate Sha256Ctx — letting mbedtls heap-
+// allocate the inner state every HMAC-iteration would tank the
+// per-notification HKDF path). AES only calls public Encrypt/Decrypt
+// — no struct field access — so it gets the lighter opt-in. Same
+// pattern IDF's own ports use, and matches components/secp256k1's
+// SHA routing.
 #if defined(ESP_PLATFORM)
 #define MBEDTLS_DECLARE_PRIVATE_IDENTIFIERS
+#define MBEDTLS_ALLOW_PRIVATE_ACCESS
 #include "mbedtls/private/aes.h"
+#include "mbedtls/private/sha256.h"
 #endif
 
 namespace btclock {
@@ -51,6 +61,44 @@ namespace nostr {
 namespace {
 
 // =============================================================== 1. SHA-256
+//
+// Two backends share the Sha256{Init,Update,Final} + Sha256 one-shot
+// signatures. ESP_PLATFORM routes through mbedtls so the ESP32-S3 HW
+// SHA peripheral compresses the block; host keeps the textbook RFC
+// 6234 software code (no IDF / no mbedtls). The HMAC + HKDF wrappers
+// below sit on top of these five functions unchanged.
+
+#if defined(ESP_PLATFORM)
+
+struct Sha256Ctx {
+  mbedtls_sha256_context md;
+};
+
+void Sha256Init(Sha256Ctx& c) {
+  mbedtls_sha256_init(&c.md);
+  // is224 = 0 → SHA-256, not the 224-bit truncation.
+  (void)mbedtls_sha256_starts(&c.md, 0);
+}
+
+void Sha256Update(Sha256Ctx& c, const uint8_t* data, size_t n) {
+  (void)mbedtls_sha256_update(&c.md, data, n);
+}
+
+void Sha256Final(Sha256Ctx& c, uint8_t out[32]) {
+  (void)mbedtls_sha256_finish(&c.md, out);
+  // Pair the init() in Sha256Init — leaks ~100 B of mbedtls context
+  // otherwise, which is per-NWC-message on the HMAC path.
+  mbedtls_sha256_free(&c.md);
+}
+
+void Sha256(const uint8_t* data, size_t n, uint8_t out[32]) {
+  // mbedtls's one-shot is internally init+starts+update+finish+free,
+  // i.e. exactly what the four-step API does. Use it so we don't
+  // duplicate the dance.
+  (void)mbedtls_sha256(data, n, out, 0 /* is224 = false */);
+}
+
+#else  // !defined(ESP_PLATFORM)  → host textbook software SHA-256.
 
 struct Sha256Ctx {
   uint32_t state[8];
@@ -176,6 +224,8 @@ void Sha256(const uint8_t* data, size_t n, uint8_t out[32]) {
   Sha256Update(c, data, n);
   Sha256Final(c, out);
 }
+
+#endif  // ESP_PLATFORM
 
 // =================================================== 2. HMAC-SHA256 + HKDF
 
