@@ -73,6 +73,19 @@ CONFIG_MBEDTLS_ECP_DP_BP384R1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_BP512R1_ENABLED=n
 CONFIG_MBEDTLS_ECP_DP_SECP521R1_ENABLED=n
 
+# Pin the ESP32-S3 crypto peripherals on. These are IDF defaults today
+# (verified in build-rev-b/config/sdkconfig.h on 2026-05-23), but a
+# silent flip in a future IDF bump would drag every TLS handshake,
+# every secp256k1 schnorr verify (via components/secp256k1's
+# mbedtls-routed SHA), and every NIP-04 AES-CBC round back onto the
+# software backends — measurable regressions across NWC, OTA, and
+# every TLS-fronted data source. Make the intent explicit here so
+# the build fails loudly if an IDF refactor renames any of them.
+CONFIG_MBEDTLS_HARDWARE_SHA=y
+CONFIG_MBEDTLS_HARDWARE_AES=y
+CONFIG_MBEDTLS_HARDWARE_MPI=y
+CONFIG_MBEDTLS_HARDWARE_RSA_DS_PERIPHERAL=y
+
 # GDB stub costs ~6 KiB of flash and we have no in-field debugger.
 # Panic handler still reboots; field crashes are captured via the
 # coredump partition below and pulled off the device with
