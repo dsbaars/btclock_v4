@@ -17,6 +17,7 @@
 #include "esp_transport_ws.h"
 #include "freertos/task.h"
 #include "net_util/user_agent.hpp"
+#include "net_util/ws_client_lifecycle.hpp"
 #include "proxy_transport/proxy_prefs.hpp"
 #include "proxy_transport/proxy_transport.hpp"
 #include "settings/nvs_store.hpp"
@@ -231,8 +232,7 @@ esp_err_t BtclockDataSource::Stop() {
     hub_ = nullptr;
     return ESP_OK;
   }
-  esp_websocket_client_stop(client_);
-  esp_websocket_client_destroy(client_);
+  SafeShutdownWsClient(client_);
   client_ = nullptr;
   if (proxy_ws_) {
     esp_transport_destroy(proxy_ws_);

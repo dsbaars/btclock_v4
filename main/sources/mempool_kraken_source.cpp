@@ -14,6 +14,7 @@
 #include "esp_log.h"
 #include "esp_transport_ws.h"
 #include "net_util/user_agent.hpp"
+#include "net_util/ws_client_lifecycle.hpp"
 #include "proxy_transport/proxy_prefs.hpp"
 #include "proxy_transport/proxy_transport.hpp"
 #include "settings/nvs_store.hpp"
@@ -202,8 +203,7 @@ esp_err_t MempoolKrakenSource::Start(DataHub& hub) {
 
 esp_err_t MempoolKrakenSource::Stop() {
   if (mempool_client_ != nullptr) {
-    esp_websocket_client_stop(mempool_client_);
-    esp_websocket_client_destroy(mempool_client_);
+    SafeShutdownWsClient(mempool_client_);
     mempool_client_ = nullptr;
   }
   if (mempool_proxy_ws_) {
@@ -215,8 +215,7 @@ esp_err_t MempoolKrakenSource::Stop() {
     mempool_proxy_inner_ = nullptr;
   }
   if (kraken_client_ != nullptr) {
-    esp_websocket_client_stop(kraken_client_);
-    esp_websocket_client_destroy(kraken_client_);
+    SafeShutdownWsClient(kraken_client_);
     kraken_client_ = nullptr;
   }
   if (kraken_proxy_ws_) {
