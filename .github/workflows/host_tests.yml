@@ -1,0 +1,195 @@
+name: "Host tests"
+
+# GitHub Actions twin of .forgejo/workflows/host_tests.yaml. Forgejo CI
+# is canonical — keep both in sync.
+#
+# Pure-logic unit tests (test_host/) run on every push and PR.
+# No ESP-IDF toolchain needed — just gcc + cmake.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  host_tests:
+    runs-on: ubuntu-latest
+    env:
+      # CMake compiler launcher path — actions/cache expands `~`
+      # runner-side. ubuntu-latest runs as `runner` so HOME is
+      # /home/runner; sharing the cache key with the sanitizer slot
+      # would mix flag-sensitive object hashes, so each job has its own.
+      CCACHE_DIR: /home/runner/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        # ninja-build + ccache: ninja's dep graph parallelises tighter
+        # than make on cold builds; ccache turns unchanged-source
+        # repushes into ~1-minute relinks instead of full recompiles.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache
+
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ccache-host-tests-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-
+
+      - name: Configure
+        shell: bash
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host -G Ninja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        shell: bash
+        run: cmake --build build-host --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
+
+      - name: Run
+        shell: bash
+        run: ./build-host/btclock_host_tests
+
+  sanitize:
+    # ASan + UBSan catch use-after-free, OOB reads, signed overflow, and
+    # misaligned loads that boot fine on macOS local but misbehave on the
+    # ESP32-S3. Gates the merge — sanitizer reports indicate real bugs.
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: /home/runner/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache
+
+      # Sanitizer build ships its own cache slot — ccache keys
+      # incorporate compile flags, so an ASan/UBSan build won't share
+      # objects with the vanilla `host_tests` job.
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ccache-host-tests-san-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-san-
+
+      - name: Configure
+        shell: bash
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host-san -G Ninja \
+            -DBTCLOCK_HOST_TESTS_SANITIZE=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        shell: bash
+        run: cmake --build build-host-san --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
+
+      - name: Run
+        shell: bash
+        env:
+          # halt_on_error makes the binary exit non-zero on the first
+          # report so the job fails fast.
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ./build-host-san/btclock_host_tests
+
+  coverage:
+    # Informational gcov + gcovr report. Not gating today.
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_DIR: /home/runner/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build ccache gcovr
+
+      - uses: actions/cache@v4
+        with:
+          path: /home/runner/.ccache
+          key: ccache-host-tests-cov-${{ github.sha }}
+          restore-keys: |
+            ccache-host-tests-cov-
+
+      - name: Configure
+        shell: bash
+        run: |
+          ccache -M 500M
+          cmake -S test_host -B build-host-cov -G Ninja \
+            -DBTCLOCK_HOST_TESTS_COVERAGE=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        shell: bash
+        run: cmake --build build-host-cov --parallel
+
+      - name: ccache stats
+        if: always()
+        shell: bash
+        run: ccache -s
+
+      - name: Run
+        shell: bash
+        run: ./build-host-cov/btclock_host_tests
+
+      - name: Generate coverage report
+        shell: bash
+        run: |
+          gcovr --root . \
+            --filter 'components/' --filter 'main/' \
+            --exclude 'test_host/' --exclude '.*vendor/' \
+            --html-details build-host-cov/coverage.html \
+            --txt --print-summary \
+            --output build-host-cov/coverage.txt \
+            build-host-cov/
+
+      - name: Print coverage summary
+        shell: bash
+        run: cat build-host-cov/coverage.txt
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-tests-coverage
+          path: build-host-cov/coverage*.html
+          retention-days: 14
+          include-hidden-files: false

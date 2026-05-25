@@ -1,32 +1,38 @@
 name: "Release pipeline"
 
+# GitHub Actions twin of .forgejo/workflows/release.yaml. Forgejo CI is
+# canonical — keep both in sync.
+#
 # Tag-triggered full pipeline. The graph is:
 #
-#   tag refs/tags/v* (or manual dispatch)
+#   tag refs/tags/[0-9]* (or manual dispatch)
 #     └── host_tests          (gate: regression suite must pass)
 #           └── webui_and_lfs (one WebUI build, three sized storage.bin)
 #                 └── firmware (matrix: rev-a, rev-a-29, rev-b, v8)
 #                       └── release (collects artifacts, publishes tag)
 #
-# On non-tag pushes this file does nothing — host_tests.yaml is the
-# push-time regression guard. The release pipeline is intentionally
-# heavy (IDF toolchain + WebUI + matrix) and only runs when we're
-# actually shipping.
-#
-# Adding a new hardware variant is a single entry in the `variants`
-# matrix include-list below: pick a label, wire it to a BTCLOCK_BOARD
-# value, give it its sdkconfig suffix, and point it at one of the
-# three storage sizes. No other job needs to change.
+# Differences vs the Forgejo file (intentional, minimum-set):
+#   - `runs-on: docker` + `container: ghcr.io/catthehacker/ubuntu:...`
+#     replaced with `runs-on: ubuntu-latest` (the upstream image is
+#     designed for the catthehacker self-hosted runner; GitHub ships
+#     everything we need in ubuntu-latest natively).
+#   - `actions/{cache,checkout,setup-node,upload-artifact}` use their
+#     canonical github.com/actions namespace at v4 instead of the
+#     Forgejo fork's v5/v6 aliases.
+#   - Release publication uses ncipollo/release-action@v1 instead of
+#     the Forgejo Gitea release REST API (different endpoint shape).
+#     Same action the proven-working v3 GitHub CI uses.
+#   - CCACHE_DIR points at /home/runner/.ccache outside containers and
+#     /root/.ccache inside the espressif/idf:v6.0.1 container (runs as
+#     root).
 
 on:
   push:
     tags:
-      # Semver-shaped tags only — `4.0.0`, `4.1.0-beta.2`, etc. The
-      # bare-digit prefix (no `v`) matches the convention the project
-      # ships releases under and what `git describe --match "[0-9]*"`
-      # surfaces as PROJECT_VER. Tags that don't start with a digit
-      # (e.g. `nightly`, `snapshot`) intentionally don't trigger this
-      # heavy release pipeline.
+      # Semver-shaped tags only — `4.0.0`, `4.1.0-beta.2`, etc. Bare
+      # digit prefix (no `v`) matches what `git describe --match
+      # "[0-9]*"` surfaces as PROJECT_VER. Tags like `nightly` /
+      # `snapshot` intentionally don't trigger the heavy release path.
       - "[0-9]*"
   workflow_dispatch:
 
@@ -34,26 +40,21 @@ jobs:
   # ---------------------------------------------------------------
   # 1. Host tests preflight
   # ---------------------------------------------------------------
-  # Duplicates host_tests.yaml's job body on purpose: Forgejo Actions
-  # has no cross-workflow `needs:`, so to gate the release chain on
-  # the host-test suite we re-run it here. The standalone
-  # host_tests.yaml still runs on every push/PR — that's the fast
-  # regression signal — and this copy guarantees the release pipeline
-  # can't bypass it.
+  # Duplicates host_tests.yml's job body on purpose: Actions has no
+  # cross-workflow `needs:`, so to gate the release chain on the
+  # host-test suite we re-run it here.
   host_tests:
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install build tools
         shell: bash
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends build-essential cmake
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake
 
       - name: Configure
         shell: bash
@@ -70,37 +71,31 @@ jobs:
   # ---------------------------------------------------------------
   # 2. WebUI + LittleFS images (built once, shared across variants)
   # ---------------------------------------------------------------
-  # Previously every firmware variant re-ran `pnpm install && pnpm
-  # build && gzip_build.py && littlefs-python create` — three times
-  # the same work for identical output. This job builds the WebUI
-  # exactly once, packs one storage.bin per supported flash size, and
-  # publishes them as artifacts for the firmware matrix to consume.
-  #
-  # The output artifact names are keyed on storage size (4mb / 8mb /
-  # 16mb), not on variant label — this is what lets the `rev-a-29`
-  # entry share Rev A's 4 MB image for free.
+  # Output artifact names are keyed on storage size (4mb / 8mb /
+  # 16mb), not on variant label — this lets the `rev-a-29` entry
+  # share Rev A's 4 MB image for free.
   webui_and_lfs:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: espressif/idf:v6.0.1
     needs: host_tests
     steps:
-      - name: Install Node.js (for JS-based Forgejo actions)
+      - name: Install Node.js (for JS-based actions)
         shell: bash
         run: |
           apt-get update
           curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get install -y --no-install-recommends nodejs
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@v4
         with:
           package_json_file: data/package.json
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: pnpm
@@ -135,7 +130,7 @@ jobs:
         #   8mb  -> 0xCD000   (REV_B)
         #   16mb -> 0x200000  (V8)
         # Block/page/name-max match the on-device littlefs config
-        # (joltwallet__littlefs 1.21.1 / LittleFS v2.11.1).
+        # (joltwallet__littlefs / LittleFS v2.11.x).
         run: |
           . /opt/esp/idf/export.sh
           mkdir -p dist-lfs
@@ -152,7 +147,7 @@ jobs:
           done
           ls -la dist-lfs
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: lfs-storage-images
           path: dist-lfs/*.bin
@@ -162,13 +157,8 @@ jobs:
   # ---------------------------------------------------------------
   # 3. Firmware matrix
   # ---------------------------------------------------------------
-  # One row per hardware variant.
-  #
-  # Every column here is driven off the matrix row: sdkconfig dir,
-  # BTCLOCK_BOARD, storage size label, partition offset. No variant-
-  # specific shell branching in the steps.
   firmware:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: espressif/idf:v6.0.1
     needs: webui_and_lfs
@@ -186,10 +176,9 @@ jobs:
             sdkconfig_dir: build-rev-a
             lfs_size_label: 4mb
             partition_offset: "0x370000"
-          # 2.9" EPD Rev A. Same MCU + 4 MB flash as Rev A, so it
-          # shares the 4mb storage image; only the EPD geometry
-          # differs (BTCLOCK_PANEL=2_9 keys the orthogonal panel
-          # selector that the EPD driver factory consumes).
+          # 2.9" EPD Rev A. Shares the 4mb storage image; only the EPD
+          # geometry differs (BTCLOCK_PANEL=2_9 keys the orthogonal
+          # panel selector the EPD driver factory consumes).
           - variant_label: rev-a-29
             btclock_board: REV_A
             btclock_panel: "2_9"
@@ -209,7 +198,7 @@ jobs:
             lfs_size_label: 16mb
             partition_offset: "0xDF0000"
     steps:
-      - name: Install Node.js (for JS-based Forgejo actions)
+      - name: Install Node.js (for JS-based actions)
         shell: bash
         run: |
           apt-get update
@@ -219,15 +208,13 @@ jobs:
       # ccache shrinks cache-miss rebuilds (sdkconfig touched but
       # source unchanged) from ~10 min/variant to a link + a few
       # recompiles. ESP-IDF picks it up via IDF_CCACHE_ENABLE=1 below.
-      # jq is installed alongside so the manifest-fragment step below
-      # can shell out to it for safe JSON construction.
       - name: Install ccache + jq
         shell: bash
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ccache jq
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -239,7 +226,7 @@ jobs:
       # Cache ESP-IDF managed_components + per-variant build dir.
       # Key reflects the inputs that actually change the build:
       # dependency versions and sdkconfig fragments.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v4
         with:
           path: |
             managed_components
@@ -251,16 +238,10 @@ jobs:
       # Independent ccache cache: the SHA-keyed primary write means
       # each commit gets a fresh save, while the prefix-keyed restore
       # keys let a miss fall back to the most recent variant cache
-      # (and then to any variant's cache as a last resort). Kept
-      # separate from the build-dir cache above so a miss on one key
-      # doesn't blow away the other.
-      #
-      # Path is the literal CCACHE_DIR (see build step env below). We
-      # don't use ~/.ccache here because actions/cache expands `~` at
-      # the runner side, which may not match the in-container HOME for
-      # the espressif/idf image — pin both ends to the same absolute
-      # path and there's no ambiguity.
-      - uses: actions/cache@v5
+      # (and then to any variant's cache as a last resort). The
+      # espressif/idf container runs as root, so CCACHE_DIR is
+      # /root/.ccache.
+      - uses: actions/cache@v4
         with:
           path: /root/.ccache
           key: ccache-idf-v6.0-${{ matrix.variant_label }}-${{ github.sha }}
@@ -269,7 +250,7 @@ jobs:
             ccache-idf-v6.0-
 
       - name: Download prebuilt LFS images
-        uses: https://code.forgejo.org/forgejo/download-artifact@v7
+        uses: actions/download-artifact@v4
         with:
           name: lfs-storage-images
           path: dist-lfs
@@ -287,22 +268,15 @@ jobs:
 
       - name: Configure + build firmware
         shell: bash
-        # The espressif/idf container's entrypoint sources export.sh
-        # but `shell: bash` bypasses the entrypoint, so source it
-        # explicitly here.
-        #
         # IDF_CCACHE_ENABLE is read by ESP-IDF at cmake-configure time,
         # so it has to be in the step's `env:` block, not just exported
-        # in the script body. CCACHE_DIR is pinned to a literal absolute
-        # path (the espressif/idf image runs as root, so $HOME is
-        # /root) so it matches the actions/cache `path:` exactly.
+        # in the script body. CCACHE_DIR is pinned to /root/.ccache —
+        # see the actions/cache `path:` above.
         env:
           IDF_CCACHE_ENABLE: "1"
           CCACHE_DIR: /root/.ccache
         run: |
           . /opt/esp/idf/export.sh
-          # Cap before the build so the limit applies to writes from
-          # this run, not just the next one.
           ccache -M 2G
           idf.py \
             -B "${{ matrix.sdkconfig_dir }}" \
@@ -311,9 +285,6 @@ jobs:
             -D SDKCONFIG="${{ matrix.sdkconfig_dir }}/sdkconfig" \
             build
 
-      # Surface hit/miss rates in the CI log so we can see whether the
-      # cache is actually warming across runs. First run reports ~0%;
-      # second run on unchanged source should be ~95%+.
       - name: ccache stats
         if: always()
         shell: bash
@@ -334,40 +305,21 @@ jobs:
           cp "${{ matrix.sdkconfig_dir }}/ota_data_initial.bin"               "$out/"
           cp "${{ matrix.sdkconfig_dir }}/flash_args"                         "$out/" || true
           cp "dist-lfs/storage-${{ matrix.lfs_size_label }}.bin"              "$out/storage.bin"
-          # SHA-256 of the app binary for OTA integrity checks.
           ( cd "$out" && sha256sum btclock_v4.bin > btclock_v4.bin.sha256 )
 
       - name: Generate variant manifest fragment
         shell: bash
-        # Identity record for this variant artifact bundle. Packed as
-        # JSON so a downstream tool (release job, OTA fetcher, support
-        # script) can match a binary against the exact build inputs
-        # without booting the device. Each release bundles every
-        # fragment into a top-level manifest.json (release job below).
         env:
           IDF_PATH: /opt/esp/idf
         run: |
           set -euo pipefail
           out="dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}"
-          # WebUI submodule SHA — pinned by .gitmodules to the WebUI
-          # repo's commit. Fall back to "" rather than failing the build
-          # if the submodule wasn't checked out (matches the workflow's
-          # `submodules: recursive` so this should always succeed).
           webui_sha="$(git -C data rev-parse HEAD 2>/dev/null || echo '')"
           firmware_sha="$(git rev-parse HEAD)"
           firmware_version="$(git describe --tags --always --dirty --match '[0-9]*' 2>/dev/null || git rev-parse --short HEAD)"
-          # idf.py --version emits e.g. "ESP-IDF v6.0.1" — keep the
-          # whole line, the consumer can parse if it cares about the
-          # version number alone.
           . "$IDF_PATH/export.sh" >/dev/null
           idf_version="$(idf.py --version 2>&1 | tail -n1)"
           fw_sha256="$(awk '{print $1}' "$out/btclock_v4.bin.sha256")"
-          # MD5s computed inline, not emitted as sidecar files —
-          # consumed only by esp-web-tools / esptool post-flash verify
-          # (which speaks the chip's MD5-based flash readback). MD5 is
-          # weak / deprecated for general integrity, so we surface it
-          # solely through manifest.json rather than inviting wider
-          # use via *.bin.md5 sidecars.
           fw_md5="$(md5sum "$out/btclock_v4.bin" | awk '{print $1}')"
           storage_sha256="$(sha256sum "$out/storage.bin" | awk '{print $1}')"
           storage_md5="$(md5sum "$out/storage.bin" | awk '{print $1}')"
@@ -398,7 +350,7 @@ jobs:
             > "$out/manifest-fragment.json"
           cat "$out/manifest-fragment.json"
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}
           path: dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}/**
@@ -409,14 +361,12 @@ jobs:
   # 4. Release publication (tag pushes only)
   # ---------------------------------------------------------------
   # Collects every per-variant artifact and attaches flat `.bin` +
-  # `.sha256` files to a Forgejo release at the pushed tag. The naming
+  # `.sha256` files to a GitHub release at the pushed tag. The naming
   # scheme matches what `MakeOtaConfig()` in init_control_api.cpp
   # selects, so /api/firmware/auto_update can fetch the right asset
   # via the gitReleaseUrl pref.
   release:
-    runs-on: docker
-    container:
-      image: ghcr.io/catthehacker/ubuntu:js-24.04
+    runs-on: ubuntu-latest
     needs: firmware
     permissions:
       contents: write
@@ -424,10 +374,10 @@ jobs:
       - name: Install tools
         shell: bash
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends curl jq coreutils
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl jq coreutils
 
-      - uses: https://code.forgejo.org/forgejo/download-artifact@v7
+      - uses: actions/download-artifact@v4
         with:
           pattern: btclock_v4-*
           merge-multiple: false
@@ -435,18 +385,15 @@ jobs:
 
       - name: Stage release assets (bin, deduped)
         shell: bash
-        # Per-variant output: only the firmware app binary truly differs
-        # per variant — rename it to btclock_<variant>_ota.bin so the
-        # on-device auto-update fetcher can find it via the
-        # gitReleaseUrl pref. Everything else (bootloader, partition
-        # table, LittleFS storage image, blank OTA state) is dedup-keyed
-        # by sha256: the first occurrence wins under a stable name
-        # ("<base>_<size>.bin" for the flash-size-keyed images, plain
+        # See the Forgejo file for the long-form rationale. Briefly:
+        # only the firmware app binary truly differs per variant —
+        # rename it to btclock_<variant>_ota.bin so the on-device
+        # auto-update fetcher finds it via gitReleaseUrl. Bootloader,
+        # partition-table, storage image and blank OTA state are
+        # sha256-deduped: first occurrence wins under a stable name
+        # ("<base>_<size>.bin" for flash-size-keyed images, plain
         # "<base>.bin" for files that hash identically across all
-        # variants — typically ota_data_initial.bin). sha256 sidecars
-        # use sha256sum's default `<hex>  <name>` line so verifiers
-        # know which file the digest belongs to (the v3 release feed
-        # sometimes shipped just the bare hex).
+        # variants — typically ota_data_initial.bin).
         run: |
           set -euo pipefail
           mkdir -p release
@@ -459,20 +406,15 @@ jobs:
           for d in incoming/btclock_v4-*; do
             [ -d "$d" ] || continue
             name="$(basename "$d")"
-            # Pattern: btclock_v4-<variant>-<sha>; <variant> may contain
-            # dashes (rev-a, rev-a-29) so strip only the trailing sha.
             variant="${name#btclock_v4-}"
             variant="${variant%-*}"
             variant_us="${variant//-/_}"
             size="${SIZE_FOR_VARIANT[$variant]:-unknown}"
 
-            # 1. Variant-unique app binary.
             if [ -f "$d/btclock_v4.bin" ]; then
               cp "$d/btclock_v4.bin" "release/btclock_${variant_us}_ota.bin"
             fi
 
-            # 2. Shared-by-flash-size or fully-shared support bins,
-            #    sha256-deduped so identical content uploads once.
             for fname in bootloader partition-table storage ota_data_initial; do
               src="$d/${fname}.bin"
               [ -f "$src" ] || continue
@@ -489,11 +431,6 @@ jobs:
             done
           done
 
-          # sha256 sidecars in the format `<hex>  <name>` so e.g.
-          # `sha256sum -c btclock_rev_b_ota.bin.sha256` works. No md5
-          # sidecar — flasher tools that need MD5 (esptool verify,
-          # esp-web-tools) read it from manifest.json's per-variant
-          # `firmware_md5` / `storage_md5` fields instead.
           ( cd release
             for f in *.bin; do
               sha256sum "$f" > "${f}.sha256"
@@ -503,21 +440,12 @@ jobs:
 
       - name: Generate combined release manifest
         shell: bash
-        # Top-level manifest.json: tag-level metadata + the list of
-        # per-variant fragments. Lets a downstream tool pull a single
-        # JSON to learn which assets exist, which board/panel they're
-        # for, what SHAs they were built from, and which IDF version
-        # produced them — without having to reverse-engineer it from
-        # the asset filenames.
         env:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
           SERVER: ${{ github.server_url }}
         run: |
           set -euo pipefail
-          # Collect every variant fragment from the per-variant artifact
-          # bundles. Order is whatever the glob produces; consumers
-          # should key by `.variants[].variant` rather than position.
           fragments=()
           for d in incoming/btclock_v4-*; do
             f="$d/manifest-fragment.json"
@@ -540,46 +468,25 @@ jobs:
           ( cd release && sha256sum manifest.json > manifest.json.sha256 )
           cat release/manifest.json
 
-      - uses: https://code.forgejo.org/forgejo/upload-artifact@v5
+      - uses: actions/upload-artifact@v4
         with:
           name: release-${{ github.ref_name }}
           path: release/*
           retention-days: 90
 
-      - name: Create Forgejo release and attach assets
+      - name: Create GitHub release and attach assets
         if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        # Forgejo exposes the Gitea-compatible release API. GITHUB_TOKEN
-        # is auto-injected by the runner with repo write scope for this
-        # workflow; no extra secret needed. If the release already
-        # exists (e.g. a re-run), we reuse its id and just upload the
-        # assets.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SERVER: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          api="${SERVER}/api/v1/repos/${REPO}/releases"
-          auth="Authorization: token ${GH_TOKEN}"
-
-          # Look up an existing release for this tag, else create it.
-          existing="$(curl -sSL -H "$auth" "${api}/tags/${TAG}" || true)"
-          rel_id="$(echo "$existing" | jq -r '.id // empty')"
-          if [ -z "$rel_id" ]; then
-            rel_id="$(curl -sSL -X POST -H "$auth" -H "Content-Type: application/json" \
-              -d "$(jq -n --arg tag "$TAG" \
-                    '{tag_name:$tag, name:$tag, draft:false, prerelease:false}')" \
-              "$api" | jq -r '.id')"
-          fi
-          echo "release id: $rel_id"
-
-          for f in release/*.bin release/*.sha256 release/manifest.json; do
-            [ -f "$f" ] || continue
-            echo "uploading $f"
-            curl -sSL -X POST -H "$auth" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @"$f" \
-              "${api}/${rel_id}/assets?name=$(basename "$f")"
-          done
+        # ncipollo/release-action over softprops/action-gh-release for
+        # the `removeArtifacts: true` flag — a re-run of the same tag
+        # clears the previous asset set instead of stacking duplicates.
+        # GITHUB_TOKEN auto-injected by the runner via the
+        # `contents: write` permission block above. Mirrors the
+        # proven-working v3 GitHub CI in btclock_v3_fci.
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          artifacts: "release/*.bin,release/*.sha256,release/manifest.json"
+          allowUpdates: true
+          removeArtifacts: true
+          makeLatest: true

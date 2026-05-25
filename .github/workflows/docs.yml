@@ -1,0 +1,59 @@
+name: "Docs site"
+
+# GitHub Actions twin of .forgejo/workflows/docs.yaml. Forgejo CI is
+# canonical — keep both in sync.
+#
+# Builds the user-facing MkDocs Material site on every push and PR so
+# the gate catches broken links / missing translations / busted
+# Markdown extensions before they land on docs.btclock.dev. The
+# matching deploy step (rsync to docs.btclock.dev or an
+# artifact-publishing target) lives in release.yml — this workflow
+# is build-only.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "mkdocs-requirements.txt"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "mkdocs-requirements.txt"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs Material + plugins
+        shell: bash
+        run: |
+          python3 -m venv .venv-docs
+          .venv-docs/bin/pip install --upgrade pip
+          .venv-docs/bin/pip install -r mkdocs-requirements.txt
+
+      - name: Build static site
+        shell: bash
+        run: .venv-docs/bin/mkdocs build --clean
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-site
+          path: site
+          retention-days: 14

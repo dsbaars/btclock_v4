@@ -1,0 +1,87 @@
+name: "Lint"
+
+# GitHub Actions twin of .forgejo/workflows/lint.yaml. Forgejo CI is
+# canonical — when you touch the gate, edit both files. The diff
+# between the two is intentionally small: only the runtime bits that
+# can't be identical (runner kind, action namespace) differ.
+#
+# Two jobs, both gating:
+#   - format: clang-format dry-run over components/ main/ test_host/
+#   - tidy:   clang-tidy on host-test sources (the only TU set with a
+#             tractable include graph — IDF / mbedTLS / FreeRTOS would
+#             otherwise drown the report).
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    env:
+      # Pin to a specific LLVM major. clang-format's output drifts
+      # between majors (notably 18 → 19 → 20 changed `IncludeBlocks`
+      # heuristics), so CI and `brew install llvm` must agree on the
+      # version or the gate flaps.
+      CLANG_VERSION: "22"
+      CLANG_FORMAT: clang-format-22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install clang-format-${{ env.CLANG_VERSION }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            wget gnupg lsb-release software-properties-common ca-certificates
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-${CLANG_VERSION} main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "clang-format-${CLANG_VERSION}"
+
+      - name: Verify formatting
+        shell: bash
+        run: tools/lint/format.sh --check
+
+  tidy:
+    runs-on: ubuntu-latest
+    env:
+      CLANG_VERSION: "22"
+      CLANG_TIDY: clang-tidy-22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools + clang-tidy-${{ env.CLANG_VERSION }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            wget gnupg lsb-release software-properties-common ca-certificates \
+            build-essential cmake
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/llvm.gpg
+          echo "deb [signed-by=/usr/share/keyrings/llvm.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-${CLANG_VERSION} main" \
+            | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            "clang-tidy-${CLANG_VERSION}" "clang-${CLANG_VERSION}"
+
+      - name: Configure host build with compile_commands.json
+        shell: bash
+        run: cmake -S test_host -B build-host -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        shell: bash
+        run: tools/lint/tidy.sh
