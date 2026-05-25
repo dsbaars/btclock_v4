@@ -31,7 +31,7 @@ jobs:
       CLANG_VERSION: "22"
       CLANG_FORMAT: clang-format-22
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -59,7 +59,7 @@ jobs:
       CLANG_VERSION: "22"
       CLANG_TIDY: clang-tidy-22
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 

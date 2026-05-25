@@ -16,9 +16,11 @@ name: "Release pipeline"
 #     replaced with `runs-on: ubuntu-latest` (the upstream image is
 #     designed for the catthehacker self-hosted runner; GitHub ships
 #     everything we need in ubuntu-latest natively).
-#   - `actions/{cache,checkout,setup-node,upload-artifact}` use their
-#     canonical github.com/actions namespace at v4 instead of the
-#     Forgejo fork's v5/v6 aliases.
+#   - `actions/{cache,checkout,setup-node,upload-artifact,download-
+#     artifact}` use their canonical github.com/actions namespace at
+#     the latest Node.js 24 major (cache@v5, checkout@v6, setup-node@v6,
+#     setup-python@v6, upload-artifact@v7, download-artifact@v8,
+#     pnpm/action-setup@v6) instead of the Forgejo-fork aliases.
 #   - Release publication uses ncipollo/release-action@v1 instead of
 #     the Forgejo Gitea release REST API (different endpoint shape).
 #     Same action the proven-working v3 GitHub CI uses.
@@ -46,7 +48,7 @@ jobs:
   host_tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -87,15 +89,15 @@ jobs:
           curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
           apt-get install -y --no-install-recommends nodejs
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: data/package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -147,7 +149,7 @@ jobs:
           done
           ls -la dist-lfs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lfs-storage-images
           path: dist-lfs/*.bin
@@ -214,7 +216,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ccache jq
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -226,7 +228,7 @@ jobs:
       # Cache ESP-IDF managed_components + per-variant build dir.
       # Key reflects the inputs that actually change the build:
       # dependency versions and sdkconfig fragments.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             managed_components
@@ -241,7 +243,7 @@ jobs:
       # (and then to any variant's cache as a last resort). The
       # espressif/idf container runs as root, so CCACHE_DIR is
       # /root/.ccache.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: /root/.ccache
           key: ccache-idf-v6.0-${{ matrix.variant_label }}-${{ github.sha }}
@@ -250,7 +252,7 @@ jobs:
             ccache-idf-v6.0-
 
       - name: Download prebuilt LFS images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: lfs-storage-images
           path: dist-lfs
@@ -350,7 +352,7 @@ jobs:
             > "$out/manifest-fragment.json"
           cat "$out/manifest-fragment.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}
           path: dist-ci/btclock_v4-${{ matrix.variant_label }}-${{ steps.vars.outputs.short_sha }}/**
@@ -377,7 +379,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends curl jq coreutils
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: btclock_v4-*
           merge-multiple: false
@@ -468,7 +470,7 @@ jobs:
           ( cd release && sha256sum manifest.json > manifest.json.sha256 )
           cat release/manifest.json
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ github.ref_name }}
           path: release/*

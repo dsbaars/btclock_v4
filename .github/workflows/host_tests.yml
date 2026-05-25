@@ -27,7 +27,7 @@ jobs:
       # would mix flag-sensitive object hashes, so each job has its own.
       CCACHE_DIR: /home/runner/.ccache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -41,7 +41,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build ccache
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: /home/runner/.ccache
           key: ccache-host-tests-${{ github.sha }}
@@ -77,7 +77,7 @@ jobs:
     env:
       CCACHE_DIR: /home/runner/.ccache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -91,7 +91,7 @@ jobs:
       # Sanitizer build ships its own cache slot — ccache keys
       # incorporate compile flags, so an ASan/UBSan build won't share
       # objects with the vanilla `host_tests` job.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: /home/runner/.ccache
           key: ccache-host-tests-san-${{ github.sha }}
@@ -131,7 +131,7 @@ jobs:
     env:
       CCACHE_DIR: /home/runner/.ccache
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -142,7 +142,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build ccache gcovr
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: /home/runner/.ccache
           key: ccache-host-tests-cov-${{ github.sha }}
@@ -187,7 +187,7 @@ jobs:
         run: cat build-host-cov/coverage.txt
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: host-tests-coverage
           path: build-host-cov/coverage*.html
