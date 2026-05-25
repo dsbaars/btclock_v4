@@ -220,6 +220,19 @@ jobs:
         with:
           submodules: recursive
 
+      # GitHub mounts the workspace as the host runner user (UID 1001)
+      # but the espressif/idf:v6.0.1 container runs as root (UID 0).
+      # actions/checkout sets safe.directory for its own git calls, but
+      # the value doesn't persist for the bash steps below. Without
+      # this, `git rev-parse --short HEAD` in the next step fails
+      # silently inside `$(...)` (leaving short_sha empty), and the
+      # later manifest step exits 128 on `detected dubious ownership`.
+      # Forgejo's runner avoids the UID mismatch so its release.yaml
+      # doesn't need this step.
+      - name: Trust workspace ownership (container ↔ runner UID mismatch)
+        shell: bash
+        run: git config --global --add safe.directory '*'
+
       - name: Short SHA
         id: vars
         shell: bash
