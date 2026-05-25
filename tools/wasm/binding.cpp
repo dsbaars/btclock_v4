@@ -1053,6 +1053,42 @@ val renderSatsPerCurrencyAlpha(int price_int, std::string currency,
   });
 }
 
+// Moscow-time renderer with the sats-marker flag AND the variant
+// selector exposed. The firmware ships 16 sats-glyph variants (codepoints
+// U+E000–U+E00F); this lets the WASM caller pick any one. ClampSatsVariant
+// guards against out-of-range input so the call is always safe.
+val renderSatsPerCurrencyVariantAlpha(int price_int, std::string currency,
+                                      bool use_sats_symbol,
+                                      int sats_variant) {
+  return RunAlphaRender([&]() {
+    auto& ctx = Ctx();
+    char price_buf[24];
+    std::snprintf(price_buf, sizeof(price_buf), "%d",
+                  price_int < 0 ? 0 : price_int);
+    const uint8_t variant = btclock::ClampSatsVariant(
+        sats_variant < 0 ? btclock::kSatsVariantDefault
+                         : static_cast<uint32_t>(sats_variant));
+    const bool vd = ctx.vertical_desc;
+    if (ctx.panels_active == 8) {
+      auto borrowed = BorrowPanels<8>(ctx);
+      btclock::RenderMoscowTimeScreen<8>(
+          borrowed, As8(ctx), ctx.fonts, currency, price_buf, "",
+          variant, use_sats_symbol,
+          /*use_btc_symbol=*/false, true,
+          /*share_dot=*/false, true, vd);
+      ReturnPanels<8>(ctx, borrowed);
+    } else {
+      auto borrowed = BorrowPanels<7>(ctx);
+      btclock::RenderMoscowTimeScreen<7>(
+          borrowed, As7(ctx), ctx.fonts, currency, price_buf, "",
+          variant, use_sats_symbol,
+          /*use_btc_symbol=*/false, true,
+          /*share_dot=*/false, true, vd);
+      ReturnPanels<7>(ctx, borrowed);
+    }
+  });
+}
+
 // Moscow-time renderer with the sats-marker flag exposed (`use_sats_symbol`).
 // When false the marker cell is blank — mirrors firmware `priceSymMode`
 // (sats glyph path on when mode is 1).
@@ -1574,6 +1610,8 @@ EMSCRIPTEN_BINDINGS(btclock_idf_screens) {
                        &renderSatsPerCurrencyAlpha);
   emscripten::function("renderSatsPerCurrencyWithFlagsAlphaBuffer",
                        &renderSatsPerCurrencyWithFlagsAlpha);
+  emscripten::function("renderSatsPerCurrencyVariantAlphaBuffer",
+                       &renderSatsPerCurrencyVariantAlpha);
   emscripten::function("renderBlockFeesDecimalAlphaBuffer",
                        &renderBlockFeesDecimalAlpha);
   emscripten::function("renderHalvingCountdownWithFlagsAlphaBuffer",
