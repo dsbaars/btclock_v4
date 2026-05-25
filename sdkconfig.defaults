@@ -203,3 +203,11 @@ CONFIG_ESP_HTTP_CLIENT_ENABLE_CUSTOM_TRANSPORT=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 # Flash size + partition CSV live in the per-variant sdkconfig.defaults.<rev>.
 CONFIG_HTTPD_WS_SUPPORT=y
+
+# IDF v6.0 default is 1024 B, which modern browsers blow past once they
+# accumulate cookies + Accept-* + a long User-Agent + Basic auth — the
+# server then returns HTTP 431 "Header fields are too long for server to
+# interpret" and the WebUI breaks. Each accepted httpd connection
+# allocates one buffer of this size; 2 KB × 5 LRU conns = ~10 KB RAM,
+# trivial on the 2/8 MB PSRAM budget.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
