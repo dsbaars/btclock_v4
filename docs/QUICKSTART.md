@@ -73,6 +73,12 @@ open the WebUI:
 - **mDNS** — most desktops and Linux machines support it: visit
   `http://btclock-xxxxxx.local` (where `xxxxxx` is the lowercase
   full-MAC suffix, also visible in the WebUI's System info card).
+- **On the device itself** — press **button 4** (the right-most front
+  button) to flip the panels into the debug overlay. The first cell
+  reads **`IP:`** followed by the address; press button 4 again to
+  return to whatever data screen was up.
+
+  ![Debug overlay](img/screens/debug.png)
 - **By IP** — your router will list the device as `btclock-xxxxxx` in
   its DHCP table; visit that IP directly. The IP is also the
   `Status → System info → IP` line once you're connected.
@@ -149,7 +155,10 @@ each screen looks like.
   LED control. See [`HOMEASSISTANT.md`](HOMEASSISTANT.md) for the full
   setup walkthrough.
 - A web-based ESP-S3 flasher (no toolchain, just Chrome) lives at
-  [web-flasher.btclock.dev](https://web-flasher.btclock.dev/) — the
-  easiest way to flash a fresh board or recover from a bad firmware.
+  [web-flasher-v4.btclock.dev](https://web-flasher-v4.btclock.dev/) —
+  the easiest way to flash a fresh board or recover from a bad
+  firmware.
+- Questions, bug reports, show-and-tell on the Telegram support
+  channel: [t.me/+oPT6SHAu-jA0Nzlk](https://t.me/+oPT6SHAu-jA0Nzlk).
 - Want to build firmware yourself? See
   [`BUILD_FROM_SOURCE.md`](BUILD_FROM_SOURCE.md).

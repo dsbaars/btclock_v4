@@ -1,0 +1,34 @@
+---
+title: "BTClock — Quickstart"
+lang: en
+documentclass: article
+classoption:
+  - 10pt
+  - oneside
+geometry:
+  - paperwidth=210mm
+  - paperheight=297mm
+  - top=12mm
+  - bottom=12mm
+  - inner=13mm
+  - outer=13mm
+  - columnsep=6mm
+  - headheight=14pt
+  - headsep=4mm
+mainfont: "Ubuntu"
+sansfont: "Ubuntu"
+monofont: "Ubuntu Mono"
+mainfontoptions:
+  - BoldFont=Ubuntu Medium
+  - BoldItalicFont=Ubuntu Medium Italic
+sansfontoptions:
+  - BoldFont=Ubuntu Medium
+  - BoldItalicFont=Ubuntu Medium Italic
+fontsize: 10pt
+linestretch: 1.2
+colorlinks: true
+linkcolor: BTOrange
+urlcolor: BTOrange
+toccolor: BTOrange
+header-includes: []
+---

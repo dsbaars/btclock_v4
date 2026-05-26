@@ -1,0 +1,166 @@
+% LaTeX header for the BTClock standalone "Quickstart card" — fits on
+% one double-sided A4 (2 pages total). Compact two-column body, no
+% dedicated title page; the title and intro live in a full-width
+% banner at the top of page 1 (\twocolumn[…]).
+
+\usepackage{xcolor}
+% Card uses the PCB-gold accent palette (matches docs.btclock.dev's
+% editorial layer and the ENIG-gold edge of the BTClock acrylic). The
+% LED-orange (#E04300) is firmware/UI; for printed brand surfaces gold
+% reads as BTClock. `BTOrange` is kept as the named token so the rest
+% of the header doesn't churn, but it points at deep gold now.
+\definecolor{BTOrange}{HTML}{8A6A14}
+\definecolor{BTGoldDeep}{HTML}{8A6A14}
+\definecolor{BTPanelGrey}{HTML}{DADBDE}
+\definecolor{BTGold}{HTML}{D9AA2C}
+\definecolor{BTDark}{HTML}{0A0A0A}
+
+% --- Running header (no footer; this is a one-page print piece) -----------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize\textcolor{BTOrange}{\textbf{BTClock}} \textit{Quickstart}}
+\fancyhead[R]{\footnotesize\textit{docs.btclock.dev}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \fancyhead[L]{\footnotesize\textcolor{BTOrange}{\textbf{BTClock}} \textit{Quickstart}}%
+  \fancyhead[R]{\footnotesize\textit{docs.btclock.dev}}%
+  \renewcommand{\headrulewidth}{0.4pt}%
+  \renewcommand{\headrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \headrulewidth\hfill}}%
+}
+
+% --- Section styling -------------------------------------------------------
+% Use a `runin`-block heading where the orange rule is drawn INSIDE the
+% title (via \rule on the same line) instead of as `[after-code]` —
+% [after-code] is rendered after multicols' column-break logic kicks
+% in for the first column, so the rule drifts down. Drawing the rule
+% as part of the heading body keeps it locked to the baseline.
+\usepackage{titlesec}
+\titleformat{\section}
+  {\normalfont\large\bfseries\color{BTOrange}}{}{0pt}%
+  {}%
+  [{\vspace*{2pt}\noindent\textcolor{BTOrange}{\rule{\linewidth}{0.5pt}}}]
+\titleformat*{\subsection}{\normalsize\bfseries\color{BTDark}}
+\titleformat*{\subsubsection}{\small\bfseries\color{BTDark}}
+\titlespacing*{\section}{0pt}{*0}{6pt}
+\titlespacing*{\subsection}{0pt}{6pt plus 2pt minus 1pt}{2pt}
+
+% --- List spacing ----------------------------------------------------------
+\usepackage{enumitem}
+\setlist[itemize]{topsep=1pt,itemsep=1pt,parsep=0pt,leftmargin=1.1em}
+\setlist[enumerate]{topsep=2pt,itemsep=3pt,parsep=0pt,leftmargin=1.4em}
+
+% --- Paragraph spacing -----------------------------------------------------
+\setlength{\parskip}{3pt plus 1pt minus 1pt}
+\setlength{\parindent}{0pt}
+
+% --- Tables ----------------------------------------------------------------
+% The QR-grid is the only table; skip row-shading to avoid the
+% stray grey cell artifact you get when longtable's row count
+% doesn't match the alternation.
+\usepackage{xcolor,colortbl}
+
+% --- URL wrapping ----------------------------------------------------------
+% URLs in the narrow QR-table cells need to break, but breaking at
+% *every* character (the default of `seqsplit`) is ugly. xurl + url
+% give us \nolinkurl which breaks at URL-friendly characters
+% (. / - _ etc.) and falls back to per-character breaks only when
+% nothing else fits.
+\usepackage{xurl}
+\usepackage{url}
+\urlstyle{tt}
+
+% --- Unicode fallbacks -----------------------------------------------------
+\usepackage{newunicodechar}
+\newunicodechar{✅}{\textcolor{BTOrange}{\checkmark}}
+\newunicodechar{❌}{\textcolor{BTOrange}{$\times$}}
+\newunicodechar{⚠}{\textcolor{BTOrange}{!}}
+\newunicodechar{→}{$\rightarrow$}
+\newunicodechar{←}{$\leftarrow$}
+\newunicodechar{·}{\textperiodcentered}
+\newunicodechar{…}{\ldots}
+\newunicodechar{≥}{$\geq$}
+\newunicodechar{≤}{$\leq$}
+\newunicodechar{₿}{B\kern-0.55em\rule[0.04em]{0.06em}{0.95em}\kern0.45em}
+
+% --- Image sizing ----------------------------------------------------------
+\usepackage{graphicx}
+\setkeys{Gin}{width=\linewidth,keepaspectratio}
+
+% --- Quick-links table: 4 QR columns, fixed-width centered cells ----------
+% QUICKSTART-card has exactly one table (the QR grid). Force the
+% longtable to four equal-width centered paragraph columns so the QRs
+% sit in a tidy row and the URL strings wrap inside their cells.
+\usepackage{etoolbox}
+\usepackage{adjustbox}
+\usepackage{array}
+\newif\ifBTinlongtable
+\AtBeginEnvironment{longtable}{\BTinlongtabletrue}
+\AtEndEnvironment{longtable}{\BTinlongtablefalse}
+\AtBeginDocument{%
+  \renewcommand{\pandocbounded}[1]{%
+    \ifBTinlongtable
+      \begin{adjustbox}{max width=\linewidth,max height=30mm,center}#1\end{adjustbox}%
+    \else
+      \begin{adjustbox}{max size={\linewidth}{0.85\textheight}}#1\end{adjustbox}%
+    \fi
+  }%
+  % Pandoc emits \begin{longtable}[]{<cols>} — accept both args, drop
+  % the column spec, substitute our own fixed-width centered paragraph
+  % columns. (#1 = optional alignment arg; #2 = pandoc-generated cols.)
+  \let\origlongtable\longtable%
+  \def\longtable[#1]#2{%
+    \origlongtable[#1]{%
+      >{\centering\arraybackslash}p{0.225\linewidth}@{\hspace{2pt}}%
+      >{\centering\arraybackslash}p{0.225\linewidth}@{\hspace{2pt}}%
+      >{\centering\arraybackslash}p{0.225\linewidth}@{\hspace{2pt}}%
+      >{\centering\arraybackslash}p{0.225\linewidth}}%
+  }%
+}
+
+% --- Title banner (single column, full text width). The body that
+% follows is wrapped in a multicols env by
+% tools/docs/quickstart-card-before.tex / quickstart-card-after.tex
+% so the title spans the page and the body sits in two columns.
+\usepackage{titling}
+\usepackage{multicol}
+\setlength{\columnsep}{6mm}
+\setlength{\columnseprule}{0pt}
+% Top-align both columns instead of stretching their bottoms to match.
+% Without this, titlesec's `[after-code]` rule under the first column's
+% section title drifts downward because multicols defers it during
+% column balancing.
+\raggedcolumns
+\providecommand{\subtitle}[1]{\gdef\thesubtitle{#1}}
+\providecommand{\thesubtitle}{}
+
+\renewcommand{\maketitle}{%
+  \begingroup%
+    \vspace*{-6mm}%
+    \noindent%
+    \begin{minipage}[t]{0.62\linewidth}%
+      \raggedright%
+      {\fontsize{26pt}{30pt}\selectfont\bfseries\color{BTOrange}\thetitle\par}%
+      \ifx\thesubtitle\empty\else%
+        \vskip 3pt%
+        {\normalsize\itshape\color{BTDark!70}\thesubtitle\par}%
+      \fi%
+    \end{minipage}%
+    \hfill%
+    \begin{minipage}[t]{0.35\linewidth}%
+      \raggedleft\footnotesize\color{BTDark!75}%
+      \textbf{Full reference:}\par
+      \texttt{docs.btclock.dev}\par
+      \vskip 2pt%
+      \textbf{Web flasher (v4):}\par
+      \texttt{web-flasher-v4.btclock.dev}\par
+    \end{minipage}%
+    \par\vskip 5pt%
+    \noindent\textcolor{BTOrange}{\rule{\linewidth}{0.6pt}}%
+    \par\vskip 4pt%
+  \endgroup%
+}
