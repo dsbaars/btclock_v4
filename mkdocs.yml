@@ -20,9 +20,16 @@ docs_dir: docs
 # Internal dev references — kept in the repo (linked from CLAUDE.md and
 # from inside other docs as Forgejo URLs), not shipped on the live
 # user-facing site or in the booklet.
+#
+# `build/` is the pandoc booklet's scratch / output directory (gitignored
+# locally; absent on CI). Excluded here so `mkdocs build --strict`
+# doesn't trip over the preprocessed copies whose cross-links resolve
+# relative to the original docs/ root and therefore look broken when
+# served from docs/build/booklet-src/.
 exclude_docs: |
   FEATURE_MATRIX.md
   HARDCODED_AUDIT.md
+  build/
 
 theme:
   name: material
