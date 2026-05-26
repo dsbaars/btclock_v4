@@ -26,8 +26,14 @@ exclude_docs: |
 
 theme:
   name: material
+  custom_dir: docs/overrides
   favicon: assets/favicon.svg
   language: en
+  # Disable Material's Google-Fonts call. The marketing page makes a
+  # point of self-hosting every glyph (no telemetry pitch); the docs
+  # site does the same. Fraunces / Instrument Sans / JetBrains Mono /
+  # Ubuntu Italic ship from docs/assets/fonts/, wired in btclock-theme.css.
+  font: false
   palette:
     # Light/dark toggle. Defaults to "auto" (system) on first paint.
     # Apply the same palette to the auto-detect entry so first paint
@@ -97,6 +103,12 @@ extra:
     - name: Español
       link: /es/
       lang: es
+
+# Editorial PCB-gold layer over mkdocs-material. Matches the marketing
+# page at btclock.dev — ENIG-gold accents, Fraunces / Instrument Sans /
+# JetBrains Mono / Ubuntu-Italic wordmark, grain + gold mesh.
+extra_css:
+  - stylesheets/btclock-theme.css
 
 plugins:
   - search:

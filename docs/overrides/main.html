@@ -1,0 +1,19 @@
+{# BTClock docs — minimal Material override.
+   The custom look is entirely in docs/stylesheets/btclock-theme.css; this
+   file exists only to give us a `custom_dir` so partial overrides (if we
+   ever need one) have somewhere to live. Extending base.html keeps every
+   Material feature working — search, nav, i18n switcher, mermaid, the
+   lot. #}
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {# Preload the two display/body fonts used on every page. JetBrains Mono
+     and Fraunces-italic only show up on some pages, so leave those to
+     normal lazy load. The marketing-page lives at btclock.dev so we add
+     a dns-prefetch / preconnect for the canonical home, in case the
+     header links there. #}
+  <link rel="preload" href="{{ 'assets/fonts/fraunces-latin-wght-normal.woff2' | url }}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{{ 'assets/fonts/instrument-sans-latin-wght-normal.woff2' | url }}" as="font" type="font/woff2" crossorigin>
+  <link rel="dns-prefetch" href="https://btclock.dev">
+{% endblock %}

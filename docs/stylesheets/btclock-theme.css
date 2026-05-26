@@ -1,0 +1,747 @@
+/* =========================================================================
+   BTClock docs — editorial PCB-gold layer over mkdocs-material.
+   Mirrors the marketing-page voice (btclock.dev): ENIG-gold accents,
+   Fraunces / Instrument Sans / JetBrains Mono, Ubuntu-Italic wordmark.
+   No external CDN / Google Fonts — every glyph is self-hosted under
+   /docs/assets/fonts/ for the no-telemetry pitch to stay honest.
+   ========================================================================= */
+
+/* ---------- Self-hosted webfonts ---------------------------------------- */
+
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/fraunces-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/fraunces-latin-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/fraunces-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../assets/fonts/fraunces-latin-ext-wght-italic.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Instrument Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("../assets/fonts/instrument-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Sans Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("../assets/fonts/instrument-sans-latin-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Instrument Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("../assets/fonts/instrument-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Instrument Sans Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400 700;
+  src: url("../assets/fonts/instrument-sans-latin-ext-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../assets/fonts/jetbrains-mono-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../assets/fonts/jetbrains-mono-latin-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Ubuntu";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 500;
+  src: url("../assets/fonts/ubuntu-latin-500-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ---------- Brand tokens (kept identical to the marketing page) -------- */
+
+:root {
+  --btc-pcb: #0a0a0a;
+  --btc-pcb-2: #15110b;
+  --btc-pcb-3: #1a1612;
+  --btc-ivory: #f3eee2;
+  --btc-ivory-dim: #c9c1ad;
+  --btc-ivory-mute: #8a8472;
+  --btc-gold: #f1c64a;
+  --btc-gold-deep: #d9aa2c;
+  --btc-gold-shadow: #8a6a14;
+  --btc-rule: rgba(243, 238, 226, 0.08);
+
+  --font-display: "Fraunces Variable", ui-serif, Georgia, "Times New Roman",
+    serif;
+  --font-body: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular",
+    Menlo, Consolas, monospace;
+}
+
+/* ---------- Material palette overrides --------------------------------- */
+/* Dark scheme — the marketing-page voice, used as the default look. */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--btc-pcb);
+  --md-default-bg-color--light: var(--btc-pcb-2);
+  --md-default-bg-color--lighter: var(--btc-pcb-3);
+  --md-default-fg-color: var(--btc-ivory);
+  --md-default-fg-color--light: var(--btc-ivory-dim);
+  --md-default-fg-color--lighter: var(--btc-ivory-mute);
+  --md-default-fg-color--lightest: rgba(243, 238, 226, 0.08);
+
+  --md-primary-fg-color: var(--btc-pcb);
+  --md-primary-fg-color--light: var(--btc-pcb-2);
+  --md-primary-fg-color--dark: #050505;
+  --md-primary-bg-color: var(--btc-ivory);
+  --md-primary-bg-color--light: var(--btc-ivory-dim);
+
+  --md-accent-fg-color: var(--btc-gold);
+  --md-accent-fg-color--transparent: rgba(241, 198, 74, 0.12);
+  --md-accent-bg-color: var(--btc-pcb);
+
+  --md-typeset-color: var(--btc-ivory);
+  --md-typeset-a-color: var(--btc-gold);
+  --md-typeset-mark-color: rgba(241, 198, 74, 0.22);
+  --md-typeset-del-color: rgba(241, 198, 74, 0.55);
+  --md-typeset-ins-color: rgba(217, 170, 44, 0.55);
+
+  --md-code-bg-color: var(--btc-pcb-2);
+  --md-code-fg-color: var(--btc-ivory);
+  --md-code-hl-color: rgba(241, 198, 74, 0.16);
+  --md-code-hl-comment-color: #8a8472;
+  --md-code-hl-string-color: #d9aa2c;
+  --md-code-hl-keyword-color: #f1c64a;
+  --md-code-hl-name-color: var(--btc-ivory);
+  --md-code-hl-number-color: #f1c64a;
+  --md-code-hl-operator-color: #c9c1ad;
+  --md-code-hl-function-color: #f3eee2;
+  --md-code-hl-punctuation-color: #c9c1ad;
+  --md-code-hl-special-color: #f1c64a;
+  --md-code-hl-constant-color: #d9aa2c;
+  --md-code-hl-variable-color: #f3eee2;
+
+  --md-admonition-bg-color: rgba(241, 198, 74, 0.04);
+  --md-admonition-fg-color: var(--btc-ivory);
+
+  --md-footer-bg-color: var(--btc-pcb-2);
+  --md-footer-bg-color--dark: var(--btc-pcb);
+  --md-footer-fg-color: var(--btc-ivory-dim);
+}
+
+/* Light scheme — ivory paper with the same gold accent. Reads as the
+   physical e-paper panel rather than a generic white doc site. */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: #f3eee2;
+  --md-default-bg-color--light: #faf6ec;
+  --md-default-bg-color--lighter: #ffffff;
+  --md-default-fg-color: #1a1612;
+  --md-default-fg-color--light: #4a4035;
+  --md-default-fg-color--lighter: #7c7261;
+  --md-default-fg-color--lightest: rgba(26, 22, 18, 0.08);
+
+  --md-primary-fg-color: #1a1612;
+  --md-primary-fg-color--light: #2a241d;
+  --md-primary-fg-color--dark: #0a0a0a;
+  --md-primary-bg-color: var(--btc-ivory);
+
+  --md-accent-fg-color: var(--btc-gold-shadow);
+  --md-accent-fg-color--transparent: rgba(138, 106, 20, 0.12);
+
+  --md-typeset-color: #1a1612;
+  --md-typeset-a-color: var(--btc-gold-shadow);
+  --md-typeset-mark-color: rgba(217, 170, 44, 0.28);
+
+  --md-code-bg-color: #ebe5d6;
+  --md-code-fg-color: #1a1612;
+  --md-code-hl-comment-color: #7c7261;
+  --md-code-hl-string-color: var(--btc-gold-shadow);
+  --md-code-hl-keyword-color: #6b4d04;
+  --md-code-hl-number-color: var(--btc-gold-shadow);
+
+  --md-admonition-bg-color: rgba(217, 170, 44, 0.07);
+
+  --md-footer-bg-color: #1a1612;
+  --md-footer-bg-color--dark: #0a0a0a;
+}
+
+/* ---------- Typography stack ------------------------------------------- */
+
+body,
+.md-typeset {
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "ss02", "cv01", "cv11";
+  font-variation-settings: "wght" 430;
+}
+
+.md-typeset {
+  font-size: 0.82rem;
+  line-height: 1.75;
+}
+
+/* Headings: Fraunces variable with opsz + SOFT axes tuned per size.
+   The big H1 leans display (opsz 144, SOFT 80) for editorial pop;
+   inline headings stay more functional. */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6,
+.md-header__topic .md-ellipsis {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 60, "SOFT" 40, "wght" 460;
+  letter-spacing: -0.012em;
+  color: var(--md-default-fg-color);
+}
+
+.md-typeset h1 {
+  font-variation-settings: "opsz" 144, "SOFT" 80, "wght" 380;
+  font-size: 2.6rem;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin-top: 0.4rem;
+  margin-bottom: 1.4rem;
+  position: relative;
+}
+.md-typeset h1::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--btc-gold) 0%,
+    var(--btc-gold-deep) 100%
+  );
+  opacity: 0.75;
+  margin-bottom: 1.2rem;
+}
+.md-typeset h2 {
+  font-variation-settings: "opsz" 96, "SOFT" 60, "wght" 420;
+  font-size: 1.7rem;
+  letter-spacing: -0.018em;
+  margin-top: 3rem;
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  padding-top: 1.4rem;
+}
+.md-typeset h3 {
+  font-variation-settings: "opsz" 36, "SOFT" 40, "wght" 500;
+  font-size: 1.18rem;
+  letter-spacing: -0.008em;
+  margin-top: 2rem;
+}
+.md-typeset h4 {
+  font-variation-settings: "opsz" 14, "SOFT" 30, "wght" 540;
+  font-size: 1rem;
+  text-transform: none;
+}
+.md-typeset h5,
+.md-typeset h6 {
+  font-family: var(--font-mono);
+  font-variation-settings: "wght" 520;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Mono everywhere code touches. */
+.md-typeset code,
+.md-typeset pre,
+.md-typeset kbd,
+.md-typeset .highlight,
+.md-typeset .codehilite,
+.md-typeset .linenos {
+  font-family: var(--font-mono);
+  font-variation-settings: "wght" 460;
+  font-feature-settings: "ss01", "ss02";
+}
+
+.md-typeset code {
+  font-size: 0.86em;
+  padding: 0.12em 0.42em;
+  border-radius: 3px;
+  background: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset pre > code {
+  border: none;
+  padding: 1rem 1.2rem;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  border-radius: 0;
+}
+
+/* Each code block gets a gold left-edge stripe — the marketing page's
+   signature accent, here used as a code-block frame. */
+.md-typeset pre {
+  border-left: 2px solid var(--btc-gold-deep);
+  background: var(--md-code-bg-color);
+  border-radius: 0;
+  box-shadow:
+    0 1px 0 var(--md-default-fg-color--lightest),
+    0 18px 40px -28px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Header ------------------------------------------------------ */
+
+.md-header {
+  background: var(--md-primary-fg-color);
+  box-shadow: 0 1px 0 var(--btc-rule);
+  height: 3.4rem;
+}
+.md-header[data-md-state="shadow"] {
+  box-shadow:
+    0 1px 0 var(--btc-rule),
+    0 6px 24px -18px rgba(0, 0, 0, 0.55);
+}
+.md-header__inner {
+  align-items: center;
+}
+
+/* Wordmark in the header — Ubuntu Italic, gold-gradient-clip, mirroring
+   the marketing page exactly. The Material default puts an <img> +
+   <span>; we hide the img and restyle the span. */
+.md-header__title {
+  /* Material wraps the wordmark in `.md-header__title > .md-header__ellipsis
+     > .md-ellipsis`. The outer two stretch to the 48px header height; the
+     inline text otherwise drifts to the top of the line box. Make both
+     wrappers flex so the wordmark vertically centers on the gold disc. */
+  display: flex;
+  align-items: center;
+  font-family: "Ubuntu", ui-sans-serif, system-ui, sans-serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.15rem;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  margin-left: 0.2rem;
+}
+.md-header__title .md-header__ellipsis {
+  display: flex;
+  align-items: center;
+}
+.md-header__title .md-ellipsis {
+  background: linear-gradient(
+    180deg,
+    var(--btc-gold) 0%,
+    var(--btc-gold-deep) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: inherit;
+  font-style: inherit;
+  font-weight: inherit;
+  font-variation-settings: normal;
+  letter-spacing: inherit;
+}
+/* Hide Material's site-description sub-line — it competes with the
+   wordmark. */
+.md-header__topic + .md-header__topic {
+  display: none;
+}
+/* Replace the favicon image in the header with a small gold disc that
+   mirrors the marketing-page brand mark. */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  display: none;
+}
+.md-header__button.md-logo {
+  position: relative;
+  padding: 0.4rem;
+}
+.md-header__button.md-logo::before {
+  content: "";
+  display: block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--btc-gold),
+    var(--btc-gold-shadow)
+  );
+  box-shadow: 0 0 0 4px rgba(241, 198, 74, 0.06);
+}
+
+/* Tabs row — quiet, monospace, gold underline on active. */
+.md-tabs {
+  background: var(--md-primary-fg-color);
+  border-top: 1px solid var(--btc-rule);
+  border-bottom: 1px solid var(--btc-rule);
+}
+.md-tabs__link {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin-top: 0.6rem;
+}
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  opacity: 1;
+  color: var(--btc-gold);
+}
+.md-tabs__item--active {
+  position: relative;
+}
+.md-tabs__item--active::after {
+  content: "";
+  position: absolute;
+  left: 0.7rem;
+  right: 0.7rem;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--btc-gold) 0%,
+    var(--btc-gold-deep) 100%
+  );
+}
+
+/* ---------- Nav / sidebar ---------------------------------------------- */
+
+.md-nav__title {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+  font-weight: 500;
+}
+.md-nav__link {
+  font-family: var(--font-body);
+  font-variation-settings: "wght" 430;
+  letter-spacing: -0.005em;
+}
+.md-nav__link--active,
+.md-nav__link[aria-current="page"] {
+  color: var(--btc-gold);
+  font-variation-settings: "wght" 540;
+  position: relative;
+}
+.md-nav__link--active::before {
+  content: "";
+  position: absolute;
+  left: -0.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--btc-gold),
+    var(--btc-gold-shadow)
+  );
+}
+
+/* Sidebar gutter — subtle vertical hairline like the marketing page's
+   editorial dividers. */
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary {
+    border-right: 1px solid var(--btc-rule);
+  }
+}
+
+/* ---------- Links + inline accents ------------------------------------- */
+
+.md-typeset a {
+  color: var(--md-typeset-a-color);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 220ms ease;
+}
+.md-typeset a:hover {
+  border-bottom-color: var(--md-typeset-a-color);
+}
+.md-typeset a code {
+  color: var(--md-typeset-a-color);
+}
+
+/* ---------- Admonitions ------------------------------------------------ */
+
+.md-typeset .admonition,
+.md-typeset details {
+  font-size: 0.78rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-left: 2px solid var(--btc-gold-deep);
+  border-radius: 0;
+  background: var(--md-admonition-bg-color);
+  box-shadow: none;
+}
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--btc-gold-deep);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset .admonition-title::before,
+.md-typeset summary::before {
+  background-color: var(--btc-gold-deep);
+}
+
+/* ---------- Tables ----------------------------------------------------- */
+
+.md-typeset table:not([class]) {
+  font-size: 0.78rem;
+  border-radius: 0;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset table:not([class]) thead {
+  background: rgba(241, 198, 74, 0.05);
+}
+.md-typeset table:not([class]) th {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--md-default-fg-color--light);
+  font-weight: 500;
+}
+.md-typeset table:not([class]) tr {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+/* ---------- Blockquote (editorial pull-quote feel) --------------------- */
+
+.md-typeset blockquote {
+  color: var(--md-default-fg-color--light);
+  border-left: 2px solid var(--btc-gold-deep);
+  background: rgba(241, 198, 74, 0.02);
+  padding: 0.6rem 1.2rem;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "SOFT" 60, "wght" 380;
+  font-style: italic;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+/* ---------- Search ----------------------------------------------------- */
+
+.md-search__form {
+  background: rgba(241, 198, 74, 0.05);
+  border: 1px solid var(--btc-rule);
+  border-radius: 0;
+}
+.md-search__input {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+.md-search-result__article--document .md-search-result__title {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "SOFT" 40, "wght" 480;
+}
+
+/* ---------- Footer ----------------------------------------------------- */
+
+.md-footer-meta {
+  background: var(--md-footer-bg-color--dark);
+  border-top: 1px solid var(--btc-rule);
+}
+.md-footer-meta__inner,
+.md-footer-copyright {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--btc-ivory-mute);
+}
+.md-footer-copyright a {
+  color: var(--btc-gold-deep);
+}
+
+.md-footer__inner {
+  background: var(--md-footer-bg-color);
+}
+.md-footer__link {
+  border-radius: 0;
+}
+.md-footer__title {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 36, "SOFT" 40, "wght" 480;
+  font-style: italic;
+}
+.md-footer__direction {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--btc-gold-deep);
+}
+
+/* ---------- Atmospheric layers ----------------------------------------- */
+
+/* Grain noise overlay — same SVG pattern used on the marketing page.
+   `pointer-events: none` keeps the page interactive; mix-blend-mode
+   screen lifts the gold mesh through it. Only on the dark scheme. */
+[data-md-color-scheme="slate"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.93  0 0 0 0 0.88  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+[data-md-color-scheme="slate"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      circle at 92% 6%,
+      rgba(241, 198, 74, 0.08),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 4% 96%,
+      rgba(217, 170, 44, 0.05),
+      transparent 38%
+    );
+}
+[data-md-color-scheme="slate"] .md-container,
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs,
+[data-md-color-scheme="slate"] .md-footer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Misc polish ------------------------------------------------ */
+
+.md-typeset hr {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  margin: 2.4rem 0;
+}
+
+/* Permalink anchors — quiet until hovered. */
+.md-typeset .headerlink {
+  color: var(--md-default-fg-color--lighter);
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+.md-typeset h1:hover .headerlink,
+.md-typeset h2:hover .headerlink,
+.md-typeset h3:hover .headerlink,
+.md-typeset h4:hover .headerlink {
+  opacity: 1;
+  color: var(--btc-gold);
+}
+
+/* Page edit/source links in the meta footer area. */
+.md-content__button {
+  color: var(--md-default-fg-color--light);
+}
+.md-content__button:hover {
+  color: var(--btc-gold);
+}
+
+/* Selection — gold tint, not the default blue. */
+::selection {
+  background: rgba(241, 198, 74, 0.32);
+  color: var(--md-default-fg-color);
+}
+
+/* Mermaid diagrams — match the background so they don't read as
+   foreign cards. */
+.mermaid {
+  background: transparent !important;
+}
+
+/* Scroll-to-top button. */
+.md-top {
+  background: var(--btc-pcb);
+  color: var(--btc-gold);
+  border: 1px solid var(--btc-rule);
+  box-shadow: 0 6px 18px -12px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.md-top:hover {
+  background: var(--btc-pcb-2);
+  color: var(--btc-gold);
+}
