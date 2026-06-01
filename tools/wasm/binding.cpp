@@ -45,6 +45,7 @@
 #include "fonts_app.hpp"
 #include "screens/common.hpp"
 #include "screens/fee_rate_layout.hpp"
+#include "screens/sats_per_currency_layout.hpp"
 #include "screens/screen_math.hpp"
 #include "screens/screens.hpp"
 
@@ -441,8 +442,14 @@ val parseSatsPerCurrency(int price_int, std::string currency,
   const bool moscow = currency == "USD" && sats > 0 && sats < 100000;
   const std::string label = moscow ? "MSCW/TIME" : ("SATS/" + currency);
 
-  const btclock::DigitLayout layout =
-      btclock::ComputeMoscowLayout(sats, with_sats_symbol);
+  // Route through the same device helper the pixel renderer uses
+  // (ComputeSatsPerCurrencyLayout) so the text mirror agrees with the
+  // framebuffer — in particular it switches a 7-digit sats value (e.g.
+  // sats-per-XAU 6.25M) to the K/M suffix form instead of left-truncating
+  // it the way the legacy ComputeMoscowLayout did. share_dot is false
+  // here (the preview's text mode doesn't expose the decimalShareDot pref).
+  const auto layout = btclock::ComputeSatsPerCurrencyLayout<6>(
+      price_buf, with_sats_symbol, /*share_dot=*/false);
 
   val a = val::array();
   a.set(0, label);
@@ -451,8 +458,7 @@ val parseSatsPerCurrency(int price_int, std::string currency,
     if (layout.is_sats[i]) {
       a.set(i + 1, std::string(kSatsPlaceholder));
     } else {
-      char cell[2] = {layout.digits[i], '\0'};
-      a.set(i + 1, std::string(cell));
+      a.set(i + 1, layout.cells[i]);
     }
   }
   return a;
@@ -502,10 +508,16 @@ val parseMarketCap(int block_height, int price_int, std::string currency,
   if (block_height >= 0 && price_int >= 0) {
     const uint64_t cap = btclock::MarketCap(
         static_cast<uint32_t>(price_int), static_cast<uint32_t>(block_height));
-    // 6 slots on the preview; leading digits are truncated on overflow.
-    char buf[24];
-    btclock::FormatDigits64(cap, buf, 6);
-    for (int i = 0; i < 6; ++i) d[i] = buf[i];
+    // The device's EPD path always paints the big-chars suffix form, so
+    // mirror that here. FormatDigits64 used to truncate the leading
+    // digits of a multi-trillion cap down to its trailing 6 (a $1.98T cap
+    // surfaced as "970000"); the suffix form ("1.980T") keeps the
+    // magnitude honest and matches the pixel render.
+    std::string s = btclock::FormatNumberWithSuffix(cap, 6);
+    const std::size_t pad = s.size() < 6 ? 6 - s.size() : 0;
+    for (std::size_t i = 0; i < 6; ++i) {
+      d[i] = i < pad ? ' ' : s[i - pad];
+    }
   }
   return DigitsToArray(label.c_str(), d);
 }
@@ -536,9 +548,16 @@ val parseBitcoinSupply(int block_height, bool big_chars, bool show_percent) {
       if (s.size() < 6) s.insert(s.begin(), 6 - s.size(), ' ');
       for (std::size_t i = 0; i < 6; ++i) d[i] = s[i];
     } else {
-      char buf[24];
-      btclock::FormatDigits64(supply, buf, 6);
-      for (int i = 0; i < 6; ++i) d[i] = buf[i];
+      // Small-chars mode. The device paints 3-digit groups; the flat
+      // 6-cell preview can't show those faithfully, but it must not
+      // truncate either — FormatDigits64 dropped the leading 2 digits of
+      // the 8-digit whole-BTC supply (21,000,000 → "000000"). Fall back
+      // to the suffix form so the magnitude stays honest in text mode.
+      std::string s = btclock::FormatNumberWithSuffix(supply, 6);
+      const std::size_t pad = s.size() < 6 ? 6 - s.size() : 0;
+      for (std::size_t i = 0; i < 6; ++i) {
+        d[i] = i < pad ? ' ' : s[i - pad];
+      }
     }
   }
   return DigitsToArray("BTC/SUPPLY", d);
