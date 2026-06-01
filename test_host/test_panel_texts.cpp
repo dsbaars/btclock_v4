@@ -278,6 +278,47 @@ TEST_CASE("panel_texts — V8 Moscow time fills trailing slot for large sats") {
   CHECK(out[7] == "0");
 }
 
+TEST_CASE("panel_texts — sats-per-XAU 7-digit overflow → suffix on 7 panels") {
+  // The reported XAU regression mirrored to /api/status. At ~$4600/oz
+  // gold, sats-per-XAU is a 7-digit number (1e8/16 = 6,250,000) that a
+  // 7-panel board's 6 digit slots can't hold. The mirror now emits the
+  // K/M suffix form ("6.25M") with the STS marker — matching what the
+  // EPD paints — instead of the truncated "261741" the old layout showed.
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "XAU";
+  in.price = "16.0";
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "SATS/XAU");
+  CHECK(out[1] == "STS");
+  CHECK(out[2] == "6");
+  CHECK(out[3] == ".");
+  CHECK(out[4] == "2");
+  CHECK(out[5] == "5");
+  CHECK(out[6] == "M");
+}
+
+TEST_CASE("panel_texts — sats-per-XAU 7-digit fits whole on 8 panels") {
+  // The 8-panel board's 7 digit slots hold the full 7-digit value, so the
+  // suffix path stays off — every digit shows (glyph dropped on the
+  // exact-width fit). data[] = ["SATS/XAU","6","2","5","0","0","0","0"].
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "XAU";
+  in.price = "16.0";
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "SATS/XAU");
+  CHECK(out[1] == "6");
+  CHECK(out[2] == "2");
+  CHECK(out[3] == "5");
+  CHECK(out[4] == "0");
+  CHECK(out[5] == "0");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "0");
+}
+
 TEST_CASE("panel_texts — Moscow time rounds half-up at the .5 sats boundary") {
   // Defensive guard against a v3 bug class (commit 132aa83 "Mow Units
   // no rounding!") where the sats-per-unit conversion truncated rather
@@ -477,21 +518,18 @@ TEST_CASE("panel_texts — BTC price sub-$100 emits 2 decimals") {
   CHECK(out[6] == "7");
 }
 
-TEST_CASE("panel_texts — V8 BTC price is integer-only (no trailing dot+0)") {
-  // Bug 2 — V8's 8-panel layout mirrors old firmware parsePriceData
-  // (useSuffixFormat=false, shareDot=false): integer digits + glyph,
-  // no '.' panel. The previous layout reused the Rev A/B sub-$100k
-  // decimal path, which on V8 filled the last two panels with ". 0"
-  // for integer-rounded prices.
+TEST_CASE("panel_texts — V8 BTC price keeps whole numbers clean (no dot+0)") {
+  // The Slots>=7 integer guard: a whole-number price must not gain a
+  // ".0" tail on the 8-panel board. Fiat always arrives whole upstream.
   PanelTextInputs in;
   in.kind = ScreenType::kBtcPrice;
   in.currency = "USD";
-  in.price = "7858.3";
+  in.price = "7858";
   const auto out = BuildPanelTexts(in, 8);
   REQUIRE(out.size() == 8);
   CHECK(out[0] == "BTC/USD");
-  // 4-digit rounded integer in 7 digit slots with the glyph: 2 leading
-  // pads, glyph, then 7858.
+  // 4-digit integer in 7 digit slots with the glyph: 2 leading pads,
+  // glyph, then 7858.
   CHECK(out[1] == "");
   CHECK(out[2] == "");
   CHECK(out[3] == "$");
@@ -500,6 +538,27 @@ TEST_CASE("panel_texts — V8 BTC price is integer-only (no trailing dot+0)") {
   CHECK(out[6] == "5");
   CHECK(out[7] == "8");
   for (const auto& s : out) CHECK(s != ".");
+}
+
+TEST_CASE("panel_texts — V8 BTC price emits decimals for fractional prices") {
+  // Low-magnitude pairs (gold ~16 BTC/XAU) arrive with decimals from the
+  // ws-node aggregator; the 8-panel board renders that precision instead
+  // of rounding to an integer. Uses USD so the "$" glyph is deterministic
+  // (the layout itself is currency-agnostic). 16.01 → "$16.01".
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "16.01";
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[1] == "");
+  CHECK(out[2] == "$");
+  CHECK(out[3] == "1");
+  CHECK(out[4] == "6");
+  CHECK(out[5] == ".");
+  CHECK(out[6] == "0");
+  CHECK(out[7] == "1");
 }
 
 TEST_CASE("panel_texts — V8 BTC price 6-digit integer keeps glyph") {

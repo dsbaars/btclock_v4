@@ -9,7 +9,14 @@
 //      USD, and the typical case for every other currency the v2 feed
 //      currently lists). Layout: integer sats right-justified across
 //      `Slots` cells with an optional sats glyph one slot before the
-//      first digit (use_symbol gates the glyph).
+//      first digit (use_symbol gates the glyph). When the integer is
+//      wider than the digit region — e.g. sats-per-XAU 6,261,741 (7
+//      digits) on a 7-panel board's 6 digit slots — it switches to the
+//      K/M/B/T suffix form ("6.26M") instead of dropping the leading
+//      digit (which silently misreported the value as "261741"). The
+//      8-panel board fits 7-digit sats outright, so it still shows every
+//      digit; the suffix only kicks in where the digits genuinely don't
+//      fit. Mirrors the BTC-price screen's overflow-to-suffix path.
 //
 //   2. < 1 sat per currency unit. Reachable for runtime-fetched codes
 //      from `/api/v2/currencies` whose 1-unit value exceeds 1 BTC's
@@ -41,6 +48,8 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+#include "screens/screen_math.hpp"  // FormatNumberWithSuffix
 
 namespace btclock {
 
@@ -89,13 +98,42 @@ inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
     char buf[24];
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(sats));
     const std::size_t len = std::strlen(buf);
-    if (len >= Slots) {
-      const std::size_t start = len - Slots;
-      for (std::size_t i = 0; i < Slots; ++i) {
-        l.cells[i].assign(1, buf[start + i]);
+    if (len > Slots) {
+      // Overflow — the integer is wider than the digit region. Dropping
+      // the leading digit (the old behaviour) silently changed the value:
+      // sats-per-XAU 6,261,741 became "261741" on a 7-panel board. Render
+      // the K/M/B/T suffix form instead, mirroring the BTC-price screen's
+      // overflow path. The 8-panel board fits 7-digit sats outright via
+      // the len<=Slots path below, so this only fires on the narrower
+      // 7-panel boards (or for 8+-digit sats on any board). The sats glyph
+      // sits one slot before the suffix number when use_symbol and there's
+      // room — the suffix's compression frees the cell the raw integer
+      // could not spare.
+      int budget = static_cast<int>(use_symbol ? Slots - 1 : Slots);
+      std::string suffix =
+          FormatNumberWithSuffix(static_cast<std::uint64_t>(sats), budget);
+      bool glyph = use_symbol;
+      // Defensive: the K..Q ladder always fits `budget >= 2`, but if the
+      // glyph can't sit beside the suffix string, drop it and re-pack at
+      // full width rather than overflow the cell array.
+      if (glyph && suffix.size() + 1 > Slots) {
+        glyph = false;
+        suffix = FormatNumberWithSuffix(static_cast<std::uint64_t>(sats),
+                                        static_cast<int>(Slots));
+      }
+      const std::size_t width = suffix.size() + (glyph ? 1u : 0u);
+      std::size_t i = width <= Slots ? Slots - width : 0;  // right-justify
+      if (glyph && i < Slots) {
+        l.is_sats[i++] = true;
+      }
+      for (std::size_t j = 0; j < suffix.size() && i < Slots; ++j) {
+        l.cells[i++].assign(1, suffix[j]);
       }
       return l;
     }
+    // Fits (exactly or with room) — right-justify across the digit cells.
+    // At an exact-width fit (pad == 0, e.g. 7-digit sats on the 8-panel
+    // board) every cell holds a digit and the glyph is simply dropped.
     const std::size_t pad = Slots - len;
     for (std::size_t i = 0; i < Slots; ++i) {
       if (i >= pad) l.cells[i].assign(1, buf[i - pad]);

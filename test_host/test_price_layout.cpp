@@ -130,20 +130,35 @@ TEST_CASE("price_layout — sub-dollar gets 3 decimals with symbol") {
   CHECK(digits[2] == '.');
 }
 
-TEST_CASE("price_layout — V8 8-panel is integer-only, no trailing dot+0") {
-  // V8 mirrors the old firmware's 8-panel `parsePriceData` behaviour
-  // (useSuffixFormat=false, shareDot=false): 7 integer digits + glyph,
-  // no '.' cell. Bug 2 — the previous layout reused Rev A/B sub-dollar
-  // decimal precision, which on V8 produced a ". 0" tail for integer-
-  // rounded prices (e.g. 7858.3 → "$7858.3" spanning two extra cells
-  // that the on-panel renderer filled with ". 0" artefacts).
+TEST_CASE("price_layout — V8 8-panel keeps whole-number prices clean (no .0)") {
+  // The Slots>=7 integer guard: a whole-number price must NOT gain a
+  // ".0" tail on the wider board (the artefact that originally drove the
+  // 8-panel integer-only path). Fiat always arrives whole from upstream,
+  // so this is the common case.
   std::array<char, kSlots8> digits;
   std::array<bool, kSlots8> is_sym;
-  btclock::LayoutBtcPrice<kSlots8>(7858.3, true, digits, is_sym);
+  btclock::LayoutBtcPrice<kSlots8>(7858.0, true, digits, is_sym);
   CHECK(Render(digits, is_sym) == "  $7858");
   CHECK(is_sym[2]);
   // No '.' cell anywhere in the layout.
   for (char c : digits) CHECK(c != '.');
+}
+
+TEST_CASE("price_layout — V8 8-panel emits decimals for fractional prices") {
+  // Low-magnitude pairs (gold ~16 BTC/XAU) arrive with decimals from the
+  // ws-node aggregator (AutoDecimals). The wider board now renders that
+  // precision instead of rounding it away — 16.01 → "$16.01", not "$16".
+  std::array<char, kSlots8> digits;
+  std::array<bool, kSlots8> is_sym;
+  btclock::LayoutBtcPrice<kSlots8>(16.01, true, digits, is_sym);
+  CHECK(Render(digits, is_sym) == " $16.01");
+  CHECK(is_sym[1]);
+  CHECK(digits[4] == '.');
+
+  // A 4-digit fractional value keeps 1 decimal and still fits with glyph.
+  btclock::LayoutBtcPrice<kSlots8>(7858.3, true, digits, is_sym);
+  CHECK(Render(digits, is_sym) == "$7858.3");
+  CHECK(is_sym[0]);
 }
 
 TEST_CASE("price_layout — V8 8-panel preserves 6-digit integer + glyph") {
@@ -155,16 +170,16 @@ TEST_CASE("price_layout — V8 8-panel preserves 6-digit integer + glyph") {
   CHECK(is_sym[0]);
 }
 
-TEST_CASE(
-    "price_layout — V8 8-panel sub-dollar rounds rather than emits decimals") {
-  // Altcoin-scale prices round to 0 on V8 (integer-only path). The old
-  // firmware parity's integer branch did the same: sub-$1 tickers got
-  // their value rounded away. V8 boards' 8-panel layout matches that.
+TEST_CASE("price_layout — V8 8-panel emits sub-dollar decimals") {
+  // Sub-$1 altcoin-scale prices are fractional, so the wider board now
+  // keeps 3 decimals instead of rounding to "$0" as the old integer-only
+  // path did. 0.45 → "$0.450".
   std::array<char, kSlots8> digits;
   std::array<bool, kSlots8> is_sym;
   btclock::LayoutBtcPrice<kSlots8>(0.45, true, digits, is_sym);
-  CHECK(Render(digits, is_sym) == "     $0");
-  for (char c : digits) CHECK(c != '.');
+  CHECK(Render(digits, is_sym) == " $0.450");
+  CHECK(is_sym[1]);
+  CHECK(digits[3] == '.');
 }
 
 TEST_CASE("price_layout — invalid / negative prices blank the cells") {

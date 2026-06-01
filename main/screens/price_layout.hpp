@@ -68,9 +68,10 @@ inline constexpr const char* kPriceDotRef = "0123456789.";
 
 // Maximum decimal places for a given integer-part value. The thresholds
 // are chosen so at least the "integer + '.' + decimals" width fits in a
-// 6-slot (7-panel) digit region. On an 8-panel board there's an extra
-// slot which is used to preserve the currency glyph, not to add more
-// decimals (the precision is already plenty at these ranges).
+// 6-slot (7-panel) digit region. An 8-panel board has an extra slot; it
+// uses this same count for fractional prices (so low-magnitude metals /
+// sub-dollar pairs keep their precision) and only suppresses decimals for
+// whole-number prices — see the Slots>=7 guard in LayoutBtcPrice.
 inline constexpr int PriceDecimalPlaces(double price) {
   if (!(price > 0.0)) return 0;
   if (price >= 100000.0) return 0;
@@ -105,16 +106,28 @@ inline bool LayoutBtcPrice(double price, bool use_symbol,
   }
   if (!(price >= 0.0)) return false;
 
-  // V8 (8-panel → 7 digit slots) mirrors the old firmware's integer-
-  // only 8-panel behaviour (`parsePriceData` with useSuffixFormat=false,
-  // shareDot=false): 7 integer digits + optional currency glyph. The
-  // sub-dollar decimal precision work applies
-  // to the 7-panel Rev A/B boards where 6 slots can't hold the glyph +
-  // integer alone. On V8 there's room for the glyph *and* the full
-  // integer, so emitting a '.' + '0' tail as this code did previously
-  // produced ". 0" artefacts on the last two panels for integer prices.
+  // Decimal count.
+  //
+  // 7-panel boards (Slots<7) always take the magnitude-based count: the
+  // 6-slot digit region can't hold a glyph + full integer for big prices
+  // anyway, and sub-dollar precision is the whole reason this path exists.
+  //
+  // 8-panel boards (Slots>=7) historically rendered integer-only: V8 has
+  // room for the glyph *and* the full integer, and reusing the decimal
+  // path produced a ". 0" tail on whole-number fiat prices (e.g. 7858 →
+  // "$7858.0" spilling artefacts across the spare cells). We keep that
+  // clean integer render for whole-number prices, but DO emit decimals
+  // when the value has a real fractional part — low-magnitude pairs like
+  // gold (~16 BTC/XAU) or a sub-dollar altcoin would otherwise lose all
+  // sub-unit precision to integer rounding on the wider board. The wire
+  // value drives it: fiat arrives whole, the demand-activated metals
+  // arrive with decimals (AutoDecimals in the ws-node aggregator), so
+  // this only widens precision where it actually exists.
   // See btc_price.cpp / parsePriceData parity in the v3 firmware.
-  const int decimals = (Slots >= 7) ? 0 : PriceDecimalPlaces(price);
+  int decimals = PriceDecimalPlaces(price);
+  if (Slots >= 7 && price == std::floor(price)) {
+    decimals = 0;
+  }
 
   // Build the textual form once, with rounding baked in. snprintf's %.*f
   // rounds half-to-even on most libcs; that matches the behaviour the

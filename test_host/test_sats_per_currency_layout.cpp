@@ -166,19 +166,62 @@ TEST_CASE("ComputeSatsPerCurrencyLayout: blank on zero / negative price") {
 }
 
 TEST_CASE(
-    "ComputeSatsPerCurrencyLayout: integer overflow into 6 slots truncates") {
+    "ComputeSatsPerCurrencyLayout: above the 4e9 clamp blanks the cells") {
   // 1 BTC at $0.01 → 1e10 sats per USD. Way above the int32 clamp
-  // (4e9) — layout returns blank rather than wrapping.
+  // (4e9) — layout returns blank rather than wrapping or suffixing.
   auto l = btclock::ComputeSatsPerCurrencyLayout<6>("0.01", true, false);
   CHECK_FALSE(l.fractional);
   CHECK(CellsAsString(l) == "_|_|_|_|_|_");
 }
 
 TEST_CASE(
-    "ComputeSatsPerCurrencyLayout: integer overflows digit slots truncates") {
-  // 1e8 / 0.5 = 200000000 → 9 digits; 6-slot board keeps the trailing 6.
+    "ComputeSatsPerCurrencyLayout: integer overflows digit slots → suffix") {
+  // 1e8 / 0.5 = 200000000 → 9 digits; a 6-slot board can't show them all.
+  // Old behaviour kept the trailing 6 ("000000") — a silent value change.
+  // Now it switches to the K/M/B/T suffix form: "200M" with the sats
+  // glyph one slot before it. [_, STS, "2", "0", "0", "M"].
   auto l = btclock::ComputeSatsPerCurrencyLayout<6>("0.50", true, false);
   CHECK_FALSE(l.fractional);
-  CHECK(CellsAsString(l) == "0|0|0|0|0|0");
+  CHECK(CellsAsString(l) == "_|_|2|0|0|M");
+  CHECK(l.is_sats[1]);
+  for (std::size_t i = 0; i < 6; ++i) {
+    if (i != 1) CHECK_FALSE(l.is_sats[i]);
+  }
+}
+
+TEST_CASE(
+    "ComputeSatsPerCurrencyLayout: 7-digit sats-per-XAU → suffix on 7-panel") {
+  // The reported XAU regression: at ~$4600/oz gold, sats-per-XAU is a
+  // 7-digit number (e.g. 1e8/16 = 6,250,000). A 7-panel board has 6 digit
+  // slots — too narrow for 7 digits — so the old layout dropped the
+  // leading '6' and showed "250000"/"261741". Now it shows the suffix
+  // form "6.25M" with the sats glyph: [STS, "6", ".", "2", "5", "M"].
+  auto l = btclock::ComputeSatsPerCurrencyLayout<6>("16.0", /*use_symbol=*/true,
+                                                    /*share_dot=*/false);
+  CHECK_FALSE(l.fractional);
+  CHECK(CellsAsString(l) == "_|6|.|2|5|M");
+  CHECK(l.is_sats[0]);
+  for (std::size_t i = 1; i < 6; ++i) CHECK_FALSE(l.is_sats[i]);
+}
+
+TEST_CASE("ComputeSatsPerCurrencyLayout: 7-digit sats fits whole on 8-panel") {
+  // The 8-panel board has 7 digit slots, so the same 7-digit XAU value
+  // fits outright with no suffix and no glyph (exact-width fit drops the
+  // glyph to keep every digit). [6,2,5,0,0,0,0].
+  auto l = btclock::ComputeSatsPerCurrencyLayout<7>("16.0", /*use_symbol=*/true,
+                                                    /*share_dot=*/false);
+  CHECK_FALSE(l.fractional);
+  CHECK(CellsAsString(l) == "6|2|5|0|0|0|0");
+  for (std::size_t i = 0; i < 7; ++i) CHECK_FALSE(l.is_sats[i]);
+}
+
+TEST_CASE(
+    "ComputeSatsPerCurrencyLayout: suffix overflow without glyph fills width") {
+  // use_symbol=false frees the glyph cell for one more suffix digit:
+  // 6,250,000 in 6 slots → "6.250M".
+  auto l = btclock::ComputeSatsPerCurrencyLayout<6>(
+      "16.0", /*use_symbol=*/false, /*share_dot=*/false);
+  CHECK_FALSE(l.fractional);
+  CHECK(CellsAsString(l) == "6|.|2|5|0|M");
   for (std::size_t i = 0; i < 6; ++i) CHECK_FALSE(l.is_sats[i]);
 }
