@@ -50,6 +50,37 @@ TEST_CASE("bitaxe::Parse — numeric bestDiff gets canonicalised") {
   CHECK(*p.best_diff == "1.6M");
 }
 
+TEST_CASE("bitaxe::Parse — bare-number string bestDiff is re-suffixed") {
+  // Some AxeOS forks emit bestDiff as a raw number *string* ("1560000")
+  // rather than a JSON number or a pre-suffixed token. Without this the
+  // 7-char value would get its leading digits truncated by the fixed-
+  // width digit area (RightJustifyCodepoints). The parser now re-suffixes
+  // a bare-number string so it reads "1.6M" like the numeric path.
+  constexpr const char* body = R"({
+    "hashRate": 450,
+    "bestDiff": "1560000"
+  })";
+  ParsedStats p;
+  CHECK(Parse(body, p));
+  REQUIRE(p.best_diff.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  CHECK(*p.best_diff == "1.6M");
+}
+
+TEST_CASE("bitaxe::Parse — pre-suffixed string bestDiff passes through") {
+  // A string that already carries a suffix letter (the normal AxeOS
+  // shape) must NOT be reinterpreted — it stays exactly as sent.
+  constexpr const char* body = R"({
+    "hashRate": 450,
+    "bestDiff": "2.5T"
+  })";
+  ParsedStats p;
+  CHECK(Parse(body, p));
+  REQUIRE(p.best_diff.has_value());
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+  CHECK(*p.best_diff == "2.5T");
+}
+
 TEST_CASE("bitaxe::Parse — missing fields leave optionals empty") {
   // Only hashRate present — older AxeOS fork response. Parser should
   // succeed and only populate what's there; the hub merge then leaves

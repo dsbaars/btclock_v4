@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "cJSON.h"
@@ -47,6 +48,32 @@ std::string FormatBestDiff(double raw) {
   return buf;
 }
 
+namespace {
+
+// True when `s` is a bare decimal number (digits with at most one '.',
+// no suffix letter / sign / exponent). AxeOS normally sends bestDiff
+// pre-suffixed ("1.5T"); some forks emit a raw integer string. A raw
+// number wider than the digit area would get leading-truncated by the
+// renderer's RightJustifyCodepoints, so we re-suffix bare numbers below.
+bool IsBareNumber(const std::string& s) {
+  if (s.empty()) return false;
+  bool seen_digit = false;
+  bool seen_dot = false;
+  for (const char c : s) {
+    if (c >= '0' && c <= '9') {
+      seen_digit = true;
+    } else if (c == '.') {
+      if (seen_dot) return false;
+      seen_dot = true;
+    } else {
+      return false;
+    }
+  }
+  return seen_digit;
+}
+
+}  // namespace
+
 bool Parse(const char* body, ParsedStats& out) {
   cJSON* root = cJSON_Parse(body);
   if (root == nullptr) return false;
@@ -62,7 +89,12 @@ bool Parse(const char* body, ParsedStats& out) {
 
   cJSON* bd = cJSON_GetObjectItemCaseSensitive(root, "bestDiff");
   if (cJSON_IsString(bd) && bd->valuestring && *bd->valuestring) {
-    out.best_diff = std::string(bd->valuestring);
+    const std::string s(bd->valuestring);
+    // Re-suffix a bare-number string so a long raw value can't get
+    // leading-truncated by the fixed-width digit area; pre-suffixed
+    // strings ("1.5T") pass through unchanged.
+    out.best_diff =
+        IsBareNumber(s) ? FormatBestDiff(std::strtod(s.c_str(), nullptr)) : s;
   } else if (cJSON_IsNumber(bd)) {
     out.best_diff = FormatBestDiff(bd->valuedouble);
   }
