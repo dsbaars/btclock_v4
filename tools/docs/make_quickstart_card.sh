@@ -21,6 +21,14 @@ mkdir -p "$OUT_DIR"
 
 SRC="tools/docs/quickstart-card.md"
 
+# Footer build stamp — UTC, injected as a LaTeX \renewcommand the header
+# reads. Done in the build (not LaTeX) because \year/\month/\day are local
+# time and don't expose a UTC offset.
+STAMP_TEX="$(mktemp)"
+trap 'rm -f "$STAMP_TEX"' EXIT
+printf '\\renewcommand{\\btBuildStamp}{%s}\n' "$(date -u '+%Y-%m-%d %H:%M UTC')" \
+  > "$STAMP_TEX"
+
 pandoc \
   --from markdown+yaml_metadata_block-implicit_figures \
   --pdf-engine=xelatex \
@@ -28,6 +36,7 @@ pandoc \
   --standalone \
   --metadata-file=tools/docs/quickstart-card.yaml \
   --include-in-header=tools/docs/quickstart-card-header.tex \
+  --include-in-header="$STAMP_TEX" \
   --top-level-division=section \
   -V documentclass=article \
   -V colorlinks=true \

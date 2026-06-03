@@ -29,7 +29,9 @@ de scope; behandel die als prototypes.
 
 ## 1. Aanzetten
 
-Steek de USB-C-kabel erin. Bij de eerste boot zie je de leds eerst een
+Steek de USB-C-kabel erin — bij **Rev B** zit de USB-C-poort aan de
+**achterkant**, bij **Rev A** aan de **zijkant**. Bij de eerste boot zie
+je de leds eerst een
 korte regenboog-zelftest doen, daarna tekenen de panelen het
 provisioning-scherm:
 
@@ -141,6 +143,50 @@ hoe elk scherm eruit ziet.
   waarin de leds donker blijven; handig in een slaapkamer. Het
   e-paper zelf geeft geen licht, dus de paneelinhoud blijft zichtbaar.
 
+## 9. Firmware updaten
+
+Twee manieren zonder toolchain om naar een nieuwere release te gaan
+zodra het apparaat draait:
+
+### Via de WebUI (over wifi)
+
+De **Firmware update**-kaart onderaan de **Control**-kolom toont de
+nieuwste release, met twee manieren om te updaten:
+
+- **Auto-update** — meldt de kaart een nieuwere versie, klik dan op
+  **Install update (experimental)**. De klok downloadt en flasht de
+  juiste build dan zelf — geen bestanden nodig. Dit pad is experimenteel
+  en lukt niet altijd: werkt het de eerste keer niet, probeer het dan
+  nog eens, en als het dan nóg niet lukt, gebruik de web-flasher
+  hieronder.
+- **Handmatige upload** — download de release voor jouw board, kies het
+  bestand onder **Firmware file** en klik op **Update firmware** (en
+  **WebUI file** → **Update WebUI** om de interface te verversen). Het
+  label van elk veld toont de exacte bestandsnaam voor jouw board — bv.
+  *Firmware file (`btclock_rev_b_ota.bin`)* — zodat je het juiste bestand
+  pakt. De firmware weigert een bestand dat niet bij het board past, dus
+  je kunt geen Rev B-build op een Rev A flashen.
+
+Hoe dan ook verschijnt er een voortgangsoverlay op de panelen tijdens de
+update, en herstart het apparaat in de nieuwe versie zodra de checksum
+klopt.
+
+### Via de web-flasher (over USB)
+
+Gebruik deze wanneer je maar wilt — voor een eerste flash, als een
+WebUI-update niet lukt, of om een apparaat te herstellen waarvan de
+WebUI onbereikbaar is. Hij praat via USB met het apparaat en heeft dus
+geen netwerk nodig:
+
+1. Sluit de BTClock met een USB-C-kabel aan op je computer. **Bij Rev B
+   zit de USB-C-poort aan de achterkant; bij Rev A aan de zijkant.**
+2. Open [**web-flasher-v4.btclock.dev**](https://web-flasher-v4.btclock.dev/)
+   in Chrome, Edge of Brave (WebSerial is vereist — Firefox en Safari
+   werken niet).
+3. Klik op **Connect** en kies de nieuwste release — de flasher
+   detecteert je variant (Rev A / Rev B / V8) automatisch en installeert
+   firmware + WebUI in één keer.
+
 ## Hoe nu verder
 
 - De volledige referentie — elk scherm, elke instelling, elk
@@ -153,9 +199,5 @@ hoe elk scherm eruit ziet.
   Entities voor elk datascherm en services voor scherm-push en
   led-besturing. Zie [`HOMEASSISTANT.md`](HOMEASSISTANT.md) voor de
   volledige installatiehandleiding.
-- Een browser-gebaseerde ESP-S3-flasher (geen toolchain nodig, alleen
-  Chrome) staat op [web-flasher.btclock.dev](https://web-flasher.btclock.dev/)
-  — de makkelijkste manier om een nieuwe printplaat te flashen of een
-  kapotte firmware te herstellen.
 - Wil je zelf firmware bouwen? Zie
   [`BUILD_FROM_SOURCE.md`](BUILD_FROM_SOURCE.md).

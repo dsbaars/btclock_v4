@@ -28,7 +28,8 @@ here; treat them as prototypes.
 
 ## 1. Power up
 
-Plug the USB-C cable in. On first boot you'll see the LEDs run a short
+Plug the USB-C cable in — on **Rev B** the USB-C port is on the **back**,
+on **Rev A** it's on the **side**. On first boot you'll see the LEDs run a short
 rainbow self-test, then the panels paint a provisioning screen showing:
 
 ![Provisioning first-boot screen](img/screens/provisioning_first_boot.png)
@@ -142,6 +143,46 @@ each screen looks like.
   where the LEDs stay dark; useful in a bedroom. The e-paper itself
   doesn't emit light, so panel content stays visible.
 
+## 9. Updating the firmware
+
+Two no-toolchain ways to move to a newer release once the device is up:
+
+### From the WebUI (over Wi-Fi)
+
+The **Firmware update** card at the bottom of the **Control** column
+shows the latest release, with two ways to update:
+
+- **Auto-update** — when the card reports a newer version, click
+  **Install update (experimental)**. The clock downloads and flashes the
+  matching build itself — no files to handle. This path is experimental
+  and doesn't always succeed: if it fails, try once more, and if it
+  still won't take, use the web flasher route below.
+- **Manual upload** — download the release for your board, then under
+  **Firmware file** pick the firmware and click **Update firmware** (and
+  **WebUI file** → **Update WebUI** to refresh the interface). Each
+  field's label shows the exact filename to use for your board — e.g.
+  *Firmware file (`btclock_rev_b_ota.bin`)* — so you grab the right one.
+  The firmware rejects a file that doesn't match the board, so you can't
+  flash a Rev B build onto a Rev A.
+
+Either way a progress overlay paints on the panels during the update,
+and the device reboots into the new version once the checksum verifies.
+
+### From the web flasher (over USB)
+
+Use this whenever you like — for a first flash, if a WebUI update won't
+go through, or to recover a board whose WebUI is unreachable. It talks
+to the device over USB, so it needs no network:
+
+1. Connect the BTClock to your computer with a USB-C cable. **On Rev B
+   the USB-C port is on the back; on Rev A it's on the side.**
+2. Open [**web-flasher-v4.btclock.dev**](https://web-flasher-v4.btclock.dev/)
+   in Chrome, Edge, or Brave (WebSerial is required — Firefox and Safari
+   won't work).
+3. Click **Connect** and pick the latest release — the flasher
+   auto-detects your board variant (Rev A / Rev B / V8) and installs
+   firmware + WebUI in one shot.
+
 ## What's next
 
 - The full reference — every screen, every setting, every API endpoint
@@ -154,10 +195,6 @@ each screen looks like.
   Entities for every data screen plus services for screen-push and
   LED control. See [`HOMEASSISTANT.md`](HOMEASSISTANT.md) for the full
   setup walkthrough.
-- A web-based ESP-S3 flasher (no toolchain, just Chrome) lives at
-  [web-flasher-v4.btclock.dev](https://web-flasher-v4.btclock.dev/) —
-  the easiest way to flash a fresh board or recover from a bad
-  firmware.
 - Questions, bug reports, show-and-tell on the Telegram support
   channel: [t.me/+oPT6SHAu-jA0Nzlk](https://t.me/+oPT6SHAu-jA0Nzlk).
 - Want to build firmware yourself? See

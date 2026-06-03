@@ -29,7 +29,9 @@ y sensor de luz ambiental). La V8 de 8 paneles y la Rev A con panel
 
 ## 1. Encender
 
-Conecta el cable USB-C. En el primer arranque verás los LED hacer un
+Conecta el cable USB-C — en la **Rev B** el puerto USB-C está en la
+**parte trasera**, y en la **Rev A** en el **lateral**. En el primer
+arranque verás los LED hacer un
 breve auto-test arcoíris; luego los paneles dibujan la pantalla de
 provisión:
 
@@ -146,6 +148,49 @@ cómo se ve cada pantalla.
   El e-paper en sí no emite luz, así que el contenido de los paneles
   sigue visible.
 
+## 9. Actualizar el firmware
+
+Dos formas sin toolchain de pasar a una versión más nueva una vez que el
+dispositivo está en marcha:
+
+### Desde el WebUI (por Wi-Fi)
+
+La tarjeta **Firmware update** al final de la columna **Control**
+muestra la última release, con dos formas de actualizar:
+
+- **Auto-actualización** — cuando la tarjeta indica una versión más
+  nueva, pulsa **Install update (experimental)**. El reloj descarga y
+  flashea él mismo la build correcta — sin manejar archivos. Esta vía es
+  experimental y no siempre funciona: si falla, inténtalo otra vez, y si
+  aún así no va, usa el web flasher de abajo.
+- **Subida manual** — descarga la release de tu placa, elige el archivo
+  en **Firmware file** y pulsa **Update firmware** (y **WebUI file** →
+  **Update WebUI** para refrescar la interfaz). La etiqueta de cada
+  campo muestra el nombre de archivo exacto para tu placa — p. ej.
+  *Firmware file (`btclock_rev_b_ota.bin`)* — para que cojas el correcto.
+  El firmware rechaza un archivo que no corresponde a la placa, así que
+  no puedes flashear una build de Rev B en una Rev A.
+
+En cualquier caso una superposición de progreso aparece en los paneles
+durante la actualización, y el dispositivo reinicia con la nueva versión
+cuando la suma de verificación es correcta.
+
+### Desde el web flasher (por USB)
+
+Úsalo cuando quieras — para un primer flasheo, si una actualización por
+WebUI no sale bien, o para recuperar una placa cuyo WebUI no responde.
+Habla con el dispositivo por USB, así que no necesita red:
+
+1. Conecta el BTClock a tu ordenador con un cable USB-C. **En la Rev B
+   el puerto USB-C está en la parte trasera; en la Rev A, en el
+   lateral.**
+2. Abre [**web-flasher-v4.btclock.dev**](https://web-flasher-v4.btclock.dev/)
+   en Chrome, Edge o Brave (se requiere WebSerial — Firefox y Safari no
+   funcionan).
+3. Pulsa **Connect** y elige la última release — el flasher detecta tu
+   variante (Rev A / Rev B / V8) automáticamente e instala firmware +
+   WebUI de una sola vez.
+
 ## Qué viene después
 
 - La referencia completa — cada pantalla, cada ajuste, cada endpoint
@@ -158,9 +203,5 @@ cómo se ve cada pantalla.
   Entidades para cada pantalla de datos y servicios para empujar
   texto y controlar los LED. Consulta [`HOMEASSISTANT.md`](HOMEASSISTANT.md)
   para el recorrido completo.
-- Un flasher de ESP-S3 basado en el navegador (sin toolchain, sólo
-  Chrome) en [web-flasher.btclock.dev](https://web-flasher.btclock.dev/)
-  — la forma más fácil de flashear una placa nueva o recuperar de un
-  firmware roto.
 - ¿Quieres compilar el firmware tú mismo? Mira
   [`BUILD_FROM_SOURCE.md`](BUILD_FROM_SOURCE.md).

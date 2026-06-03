@@ -15,6 +15,7 @@ geometry:
   - columnsep=6mm
   - headheight=14pt
   - headsep=4mm
+  - footskip=7mm
 mainfont: "Ubuntu"
 sansfont: "Ubuntu"
 monofont: "Ubuntu Mono"

@@ -15,22 +15,33 @@
 \definecolor{BTGold}{HTML}{D9AA2C}
 \definecolor{BTDark}{HTML}{0A0A0A}
 
-% --- Running header (no footer; this is a one-page print piece) -----------
+% --- Running header + footer ----------------------------------------------
+% The footer carries the PDF build stamp in UTC. make_quickstart_card.sh
+% injects the real `date -u` value via a second --include-in-header that
+% \renewcommands \btBuildStamp; the \providecommand fallback here (LaTeX's
+% local compile date, no time) only shows if pandoc runs without it.
 \usepackage{fancyhdr}
+\newcommand{\btTwoDigit}[1]{\ifnum#1<10 0\fi\number#1}
+\providecommand{\btBuildStamp}{\number\year-\btTwoDigit{\month}-\btTwoDigit{\day}}
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\footnotesize\textcolor{BTOrange}{\textbf{BTClock}} \textit{Quickstart}}
 \fancyhead[R]{\footnotesize\textit{docs.btclock.dev}}
+\fancyfoot[R]{\footnotesize\textcolor{BTDark!70}{\textit{\btBuildStamp}}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \headrulewidth\hfill}}
-\renewcommand{\footrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\renewcommand{\footrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \footrulewidth\hfill}}
 
 \fancypagestyle{plain}{%
   \fancyhf{}%
   \fancyhead[L]{\footnotesize\textcolor{BTOrange}{\textbf{BTClock}} \textit{Quickstart}}%
   \fancyhead[R]{\footnotesize\textit{docs.btclock.dev}}%
+  \fancyfoot[R]{\footnotesize\textcolor{BTDark!70}{\textit{\btBuildStamp}}}%
   \renewcommand{\headrulewidth}{0.4pt}%
   \renewcommand{\headrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \headrulewidth\hfill}}%
+  \renewcommand{\footrulewidth}{0.4pt}%
+  \renewcommand{\footrule}{\hbox to\headwidth{\color{BTOrange}\leaders\hrule height \footrulewidth\hfill}}%
 }
 
 % --- Section styling -------------------------------------------------------
