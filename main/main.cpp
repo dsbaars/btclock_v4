@@ -36,6 +36,7 @@
 #include "app/event_loop.hpp"
 #include "boot_spinner.hpp"
 #include "diag/heap_integrity.hpp"
+#include "diag/udp_log.hpp"
 #include "esp_app_desc.h"
 #include "esp_core_dump.h"
 #include "esp_log.h"
@@ -121,6 +122,12 @@ extern "C" void app_main() {
   // button isn't held.
   btclock::MaybeWifiResetAtBoot(ctx);
   btclock::InitNetwork(ctx);
+#if defined(BTCLOCK_DIAG_UDP_LOG) && BTCLOCK_DIAG_UDP_LOG
+  // Mirror esp_log over UDP:9999 — the USB-Serial-JTAG console is
+  // unreadable from the dev host, so route diagnostics over the LAN.
+  // No-op stub unless BTCLOCK_DIAG_UDP_LOG is set; see root CMakeLists.
+  btclock::InstallUdpLogSink(9999);
+#endif
   // Splash stayed painted through hardware bring-up + WiFi association.
   // Now that the network is up (STA only — AP mode keeps the splash
   // until DispatchBootPath repaints the provisioning UI), start the

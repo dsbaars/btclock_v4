@@ -21,6 +21,7 @@ idf_component_register(
          "app/event_loop.cpp"
          "app/control_command_drain.cpp"
          "diag/heap_integrity.cpp"
+         "diag/udp_log.cpp"
          "sources/sources.cpp"
          "sources/sources_uri.cpp"
          "sources/mempool_kraken_source.cpp"
@@ -62,7 +63,7 @@ idf_component_register(
              mining_pool_viabtc
              pool_logo_fetcher
              bitaxe mdns net_util esp_websocket_client esp-tls cjson
-             espcoredump queue_metrics tcp_transport proxy_transport
+             espcoredump queue_metrics tcp_transport proxy_transport lwip
 )
 
 target_compile_features(${COMPONENT_LIB} PRIVATE cxx_std_23)

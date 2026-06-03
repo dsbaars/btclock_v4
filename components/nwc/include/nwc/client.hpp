@@ -29,9 +29,11 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -192,6 +194,16 @@ class NwcClient {
   // synthetic boot-poll list_transactions entry.
   void ApplyPaymentToBalance(const PaymentNotification& pn);
 
+  // Dedup guard for ApplyPaymentToBalance. Alby Hub emits BOTH a legacy
+  // (23196 / NIP-04) AND a modern (23197 / NIP-44) notification for the
+  // same payment, and the boot-poll list_transactions replay can
+  // re-surface a just-notified one — all carrying the same
+  // payment_hash. Returns true (and records the hash) if this hash was
+  // already seen within the dedup window, so the caller drops the
+  // duplicate instead of double-firing on_payment_ (double frontlight
+  // flash / overlay) and double-counting the optimistic balance add.
+  bool IsDuplicatePayment(const std::string& payment_hash);
+
   // Derive seckey32 / pubkey32 from the URI. Cached on the instance
   // since they're needed on every send.
   bool LoadKeys();
@@ -234,6 +246,21 @@ class NwcClient {
   // post-queue. Atomic so the get-balance snapshot path is race-free.
   std::atomic<uint64_t> balance_msat_cache_{0};
   State state_ = State::kIdle;
+
+  // Recent-payment_hash ring for IsDuplicatePayment. Touched from both
+  // the worker task (live notifications) and the WS task (boot-poll
+  // list_transactions response), so it carries its own small mutex —
+  // the class is otherwise lock-free, but these two paths genuinely
+  // race for the duplicate-payment case.
+  struct SeenPayment {
+    std::string hash;
+    uint64_t ts_secs = 0;
+  };
+  static constexpr size_t kDedupRing = 8;
+  static constexpr uint64_t kDedupWindowSecs = 120;
+  std::array<SeenPayment, kDedupRing> dedup_ring_{};
+  size_t dedup_next_ = 0;
+  std::mutex dedup_mu_;
 
   RandomBytesFn random_;
   NowSecsFn now_;

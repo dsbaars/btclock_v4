@@ -290,8 +290,15 @@ void InitNwc(AppCtx& ctx) {
   ctx.nwc_client->SetOnPayment([hub_ptr, main_task, notify_pending](
                                    const nwc::PaymentNotification& p) {
     const int64_t sats = static_cast<int64_t>(p.amount_msat / 1000ULL);
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+    // WARN so it survives the WARN-max build log level; counts every
+    // on_payment_ fan-out (the dedup makes this fire once per payment).
+    ESP_LOGW(kTag, "nwc payment: dir=%u amount=%lld sats",
+             static_cast<unsigned>(p.direction), static_cast<long long>(sats));
+#else
     ESP_LOGI(kTag, "nwc payment: dir=%u amount=%lld sats",
              static_cast<unsigned>(p.direction), static_cast<long long>(sats));
+#endif
     if (hub_ptr) {
       DataSnapshot patch;
       patch.nwc_last_payment.direction = static_cast<uint8_t>(p.direction);

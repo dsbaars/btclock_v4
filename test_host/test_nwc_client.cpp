@@ -398,6 +398,66 @@ TEST_CASE("NwcClient: legacy kind 23196 notification decodes via NIP-04") {
   CHECK(f.last_payment.fees_paid_msat == 2u);
 }
 
+TEST_CASE(
+    "NwcClient: nip44 negotiated -> legacy 23196 notification discarded") {
+  // NIP-47 §Encryption: a wallet supporting nip44 publishes BOTH the
+  // legacy 23196 (NIP-04) and modern 23197 (NIP-44) twin for every
+  // payment. Once INFO confirms nip44, the client must listen only to
+  // the modern twin — processing both is the double-flash bug.
+  ClientFixture f;
+  f.client->Start();
+  f.client->HandleEvent(MakeInfoEvent("get_balance notifications", {"nip44_v2"},
+                                      {"payment_received"}));
+  REQUIRE(f.client->encryption() == nostr::EncryptionVariant::kNip44V2);
+
+  const std::string notif_json = R"({
+    "notification_type":"payment_received",
+    "notification":{"amount":12000,"payment_hash":"twin"}
+  })";
+  // Legacy twin arrives — must be dropped without firing the callback.
+  f.client->HandleEvent(MakeNotification(notif_json, 23196));
+  CHECK(f.payment_calls == 0);
+  // Modern twin of the same payment — this one fires.
+  f.client->HandleEvent(MakeNotification(notif_json, 23197));
+  CHECK(f.payment_calls == 1);
+  CHECK(f.last_payment.amount_msat == 12000u);
+}
+
+TEST_CASE("NwcClient: duplicate payment_hash fires on_payment once (dedup)") {
+  // Safety net for the boot-poll list_transactions path: a payment that
+  // was both live-notified and replayed in the recent-tx poll shares its
+  // payment_hash, so the second ApplyPaymentToBalance must be dropped —
+  // no double flash, no double optimistic balance add. Modelled here as
+  // two same-kind (23197) notifications carrying the same hash.
+  ClientFixture f;
+  f.client->Start();
+  const std::string notif_json = R"({
+    "notification_type":"payment_received",
+    "notification":{"amount":7000,"payment_hash":"deadbeef"}
+  })";
+  f.client->HandleEvent(MakeNotification(notif_json, 23197));
+  f.client->HandleEvent(MakeNotification(notif_json, 23197));
+  CHECK(f.payment_calls == 1);
+  CHECK(f.last_payment.amount_msat == 7000u);
+  CHECK(f.client->balance_msat_cache() == 7000u);
+}
+
+TEST_CASE("NwcClient: distinct payment_hashes are not deduped") {
+  // Guard against over-eager dedup collapsing two genuine payments.
+  ClientFixture f;
+  f.client->Start();
+  f.client->HandleEvent(MakeNotification(
+      R"({"notification_type":"payment_received",)"
+      R"("notification":{"amount":1000,"payment_hash":"aaa"}})",
+      23197));
+  f.client->HandleEvent(MakeNotification(
+      R"({"notification_type":"payment_received",)"
+      R"("notification":{"amount":2000,"payment_hash":"bbb"}})",
+      23197));
+  CHECK(f.payment_calls == 2);
+  CHECK(f.client->balance_msat_cache() == 3000u);
+}
+
 TEST_CASE("NwcClient: Stop fires unsubscribe + clears in-flight") {
   ClientFixture f;
   f.client->Start();

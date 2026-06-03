@@ -465,6 +465,14 @@ void FrontlightController::TaskLoop() {
         }
         case FrontlightEvent::kBlockFlash:
         case FrontlightEvent::kZapFlash:
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+          // pulse_active=1 ⇒ a previous flash animation was still running
+          // when this one arrived (the two would visually collapse).
+          ESP_LOGW(kTag, "flash recv ev=%u pulse_active=%d tick=%u",
+                   static_cast<unsigned>(cmd.event),
+                   pulse != PulsePhase::kIdle ? 1 : 0,
+                   static_cast<unsigned>(pulse_tick));
+#endif
           start_pulse(cmd.event);
           // Emit tick 0 immediately so the user sees the first phase
           // of the cascade on the same loop iteration the event arrived.

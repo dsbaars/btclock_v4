@@ -29,6 +29,9 @@
 #include <utility>
 #include <vector>
 
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+#include "esp_log.h"  // NWC double-flash diagnostic (gated; see root CMakeLists)
+#endif
 #include "nostr/event_sign.hpp"
 #include "nostr/json_emit.hpp"
 #include "nostr/subscription_manager.hpp"
@@ -36,6 +39,10 @@
 namespace btclock {
 namespace nwc {
 namespace {
+
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+constexpr const char* kNwcTag = "nwc";  // diagnostic log tag
+#endif
 
 // NIP-47 event kinds.
 constexpr uint32_t kKindInfo = 13194;
@@ -288,7 +295,21 @@ void NwcClient::HandleEvent(const nostr::Event& ev) {
       OnResponse(ev);
       return;
     case kKindNotifModern:
+      OnNotification(ev);
+      return;
     case kKindNotifLegacy:
+      // NIP-47 §Encryption: a wallet supporting nip44 publishes BOTH a
+      // legacy (23196 / NIP-04) and a modern (23197 / NIP-44)
+      // notification for every event, and the client should "listen to
+      // the appropriate notification event". Once INFO has confirmed
+      // nip44, drop the legacy twin rather than decrypt + dispatch it —
+      // that twin is the duplicate behind the double frontlight flash.
+      // Before INFO (kBootstrapping) keep 23196: a nip04-only wallet
+      // sends ONLY 23196, so dropping it then would lose the payment.
+      if (state_ == State::kReady &&
+          encryption_ == nostr::EncryptionVariant::kNip44V2) {
+        return;
+      }
       OnNotification(ev);
       return;
     default:
@@ -391,6 +412,13 @@ void NwcClient::OnResponse(const nostr::Event& ev) {
 }
 
 void NwcClient::ApplyPaymentToBalance(const PaymentNotification& pn) {
+  // Drop duplicates of the same payment. Two sources: (1) the boot-poll
+  // list_transactions replay of an already-live-notified payment, and
+  // (2) the legacy/modern (23196/23197) notification twin during the
+  // brief pre-INFO window before HandleEvent starts discarding 23196.
+  // Hash-less notifications skip the gate so distinct hash-less payments
+  // aren't collapsed.
+  if (!pn.payment_hash.empty() && IsDuplicatePayment(pn.payment_hash)) return;
   if (pn.direction == PaymentDirection::kIncoming) {
     // Optimistic CAS-free add — sole writer for kIncoming/kOutgoing.
     // The next OnResponse(get_balance) overwrites with the wallet's
@@ -403,6 +431,20 @@ void NwcClient::ApplyPaymentToBalance(const PaymentNotification& pn) {
     balance_msat_cache_.store(next);
   }
   if (on_payment_) on_payment_(pn);
+}
+
+bool NwcClient::IsDuplicatePayment(const std::string& payment_hash) {
+  const uint64_t now = now_ ? static_cast<uint64_t>(now_()) : 0;
+  std::lock_guard<std::mutex> lk(dedup_mu_);
+  for (const auto& e : dedup_ring_) {
+    if (e.ts_secs != 0 && e.hash == payment_hash &&
+        (now == 0 || now - e.ts_secs <= kDedupWindowSecs)) {
+      return true;
+    }
+  }
+  dedup_ring_[dedup_next_] = SeenPayment{payment_hash, now};
+  dedup_next_ = (dedup_next_ + 1) % kDedupRing;
+  return false;
 }
 
 void NwcClient::OnNotification(const nostr::Event& ev) {
@@ -432,6 +474,11 @@ void NwcClient::DispatchRawNotification(const RawNotification& raw) {
 }
 
 void NwcClient::DispatchHeavy(uint32_t kind, const std::string& content) {
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+  // Surfaces BOTH notif kinds (23196 legacy + 23197 modern) Alby emits
+  // per payment — the relay-level evidence behind the dedup below.
+  ESP_LOGW(kNwcTag, "dispatch kind=%lu", static_cast<unsigned long>(kind));
+#endif
   // Pick variant by kind — modern (23197) ⇒ NIP-44 v2, legacy
   // (23196) ⇒ NIP-04. The spec mandates the same encryption for both
   // sides of a conversation so this match is reliable.

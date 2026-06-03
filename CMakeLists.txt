@@ -69,6 +69,33 @@ elseif(BTCLOCK_PANEL STREQUAL "7_5")
     add_compile_definitions(BTCLOCK_PANEL_ASSET_SUFFIX="_75")
 endif()
 
+# --- Optional on-device diagnostics (all default OFF, zero-cost when OFF) ---
+#
+# BTCLOCK_DIAG_UDP_LOG (general): install an esp_log -> UDP:9999 broadcast
+# mirror after network bring-up so on-device logs are readable from the
+# host — the USB-Serial-JTAG console is unreadable from the dev machine,
+# so this is the go-to way to read ANY ESP_LOG* output live. Capture with
+# a UDP socket bound to :9999. Build is WARN-max, so only ESP_LOGW+ shows.
+#   idf.py -DBTCLOCK_DIAG_UDP_LOG=ON ... build
+option(BTCLOCK_DIAG_UDP_LOG
+    "Mirror esp_log over UDP:9999 (host-readable on-device diagnostics)" OFF)
+#
+# BTCLOCK_DIAG_NWC_FLASH (specific): compile in four ESP_LOGW trace points
+# for the NWC payment / frontlight double-flash path (notif dispatch kind,
+# on_payment fan-out, flash trigger, frontlight flash dequeue). Implies the
+# UDP log mirror so the trace is actually readable off-device.
+#   idf.py -DBTCLOCK_DIAG_NWC_FLASH=ON ... build
+option(BTCLOCK_DIAG_NWC_FLASH
+    "Compile in NWC payment / frontlight-flash trace points (implies UDP log)" OFF)
+
+if(BTCLOCK_DIAG_NWC_FLASH)
+    add_compile_definitions(BTCLOCK_DIAG_NWC_FLASH=1)
+    set(BTCLOCK_DIAG_UDP_LOG ON)
+endif()
+if(BTCLOCK_DIAG_UDP_LOG)
+    add_compile_definitions(BTCLOCK_DIAG_UDP_LOG=1)
+endif()
+
 # Base defaults first, per-variant overrides on top (later files win).
 set(SDKCONFIG_DEFAULTS
     "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults"

@@ -397,6 +397,9 @@ constexpr const char* kTag = "btclock";
       sm.Render(panels, fb_storage, fonts, hub->GetSnapshot());
       publish_status();
       if (nwc_flash_on_payment_enabled.load()) {
+#if defined(BTCLOCK_DIAG_NWC_FLASH) && BTCLOCK_DIAG_NWC_FLASH
+        ESP_LOGW(kTag, "nwc flash trigger (zap)");
+#endif
         PostLedEffect(LedEffect::kZap);
 #if BTCLOCK_HAS_FRONTLIGHT
         if (frontlight) frontlight->ZapFlash();
