@@ -12,9 +12,18 @@ on:
   push:
     branches:
       - main
+    # A commit that only re-pins the `data` WebUI submodule touches no
+    # C++ — clang-format / clang-tidy have nothing to check, so skip the
+    # gate. `paths-ignore` only skips a run when EVERY changed path
+    # matches, i.e. the submodule bump is the sole change; any
+    # accompanying source edit still triggers both jobs.
+    paths-ignore:
+      - "data"
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "data"
   workflow_dispatch:
 
 jobs:
