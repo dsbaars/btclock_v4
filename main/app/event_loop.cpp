@@ -176,6 +176,9 @@ constexpr const char* kTag = "btclock";
         case ButtonId::k0:
           // Pause / resume auto-rotate. The current slot stays up.
           sm.TogglePaused();
+          // Persist so the choice survives a reboot (Forgejo #3) — same
+          // NVS mirror the WebUI action endpoints write.
+          PersistTimerActive(sm.IsPaused());
           ESP_LOGI(kTag, "button: pause=%d", sm.IsPaused() ? 1 : 0);
           PostLedEffect(sm.IsPaused() ? LedEffect::kTimerPause
                                       : LedEffect::kTimerResume);

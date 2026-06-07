@@ -457,6 +457,10 @@ void InitControlApi(AppCtx& ctx) {
     // the physical pause button already triggers, so users get the same
     // visual confirmation regardless of which surface they used.
     ccfg.on_rotation_paused_changed = [](bool now_paused) {
+      // Persist run/pause across reboots (Forgejo #3) — fires on the
+      // httpd worker from both /api/action/pause and
+      // /api/action/timer_restart, but only on an actual transition.
+      PersistTimerActive(now_paused);
       PostLedEffect(now_paused ? LedEffect::kTimerPause
                                : LedEffect::kTimerResume);
     };

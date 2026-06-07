@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "net_util.hpp"
 #include "prefs.hpp"
+#include "settings/pref_keys.hpp"
 
 namespace btclock {
 namespace {
@@ -34,6 +35,12 @@ std::string MakeOrLoadApPassword(btclock::Prefs& prefs) {
   prefs.SetString("app", pw.c_str());
   prefs.Commit();
   return pw;
+}
+
+void PersistTimerActive(bool paused) {
+  Prefs p(prefs::kSettingsNs);
+  p.SetBool(prefs::kTimerActive, !paused);
+  p.Commit();
 }
 
 #ifdef CONFIG_BTCLOCK_LITTLEFS_SELFTEST

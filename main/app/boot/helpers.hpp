@@ -32,6 +32,15 @@ std::string MakeApSsid();
 // password from an ambiguity-free character set (see net_util.hpp).
 std::string MakeOrLoadApPassword(btclock::Prefs& prefs);
 
+// Persist the auto-rotate run/pause state so a stopped carousel stays
+// stopped across reboots (v3 parity, Forgejo #3). v3 stored the
+// settings-namespace bool `timerActive` with polarity "is the timer
+// running"; the v4 runtime models the inverse (ScreenManager's `paused`
+// flag), so this writes `timerActive = !paused`. Called from every
+// pause mutator — the WebUI action endpoints and the physical pause
+// button — and restored at boot in InitScreenManager.
+void PersistTimerActive(bool paused);
+
 #ifdef CONFIG_BTCLOCK_LITTLEFS_SELFTEST
 // Round-trip a known blob on the mounted LittleFS partition and log
 // the outcome. Swallows errors so a degraded partition never bricks

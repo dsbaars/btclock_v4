@@ -848,6 +848,33 @@ TEST_CASE("PATCH timePerScreen converts minutes to seconds") {
   CHECK(prefs.u32_["timerSeconds"] == 300u);
 }
 
+TEST_CASE("GET timerRunning reflects persisted timerActive (Forgejo #3)") {
+  // Fresh device (no key) → running, matching v3's default. A device
+  // where the user stopped the carousel persists timerActive=false and
+  // must report timerRunning=false so the WebUI toggle reads correctly
+  // after a reboot — the regression this fixes (always-true hard-code).
+  auto read_timer_running = [](FakePrefs& p) {
+    cJSON* root = btclock::settings::BuildGetResponse(p, DefaultCtx());
+    REQUIRE(root != nullptr);
+    cJSON* tr = cJSON_GetObjectItemCaseSensitive(root, "timerRunning");
+    REQUIRE(cJSON_IsBool(tr));
+    const bool v = cJSON_IsTrue(tr);
+    cJSON_Delete(root);
+    return v;
+  };
+
+  FakePrefs fresh;
+  CHECK(read_timer_running(fresh) == true);
+
+  FakePrefs paused;
+  paused.SetBool(btclock::prefs::kTimerActive, false);
+  CHECK(read_timer_running(paused) == false);
+
+  FakePrefs running;
+  running.SetBool(btclock::prefs::kTimerActive, true);
+  CHECK(read_timer_running(running) == true);
+}
+
 TEST_CASE("PATCH actCurrencies filters against available list") {
   FakePrefs prefs;
   auto ok = btclock::settings::ApplyPatch(

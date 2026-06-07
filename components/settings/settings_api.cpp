@@ -136,7 +136,11 @@ cJSON* BuildGetResponse(const PrefsReader& prefs, const DeviceContext& ctx) {
       prefs.GetU32(prefs::kTimerSeconds, prefs::kDefaultTimerSeconds);
   AddU32(root, "timerSeconds", timer_s);
   AddU32(root, "timePerScreen", (timer_s + 59u) / 60u);
-  AddBool(root, "timerRunning", true);  // runtime flag, not stored in NVS
+  // Auto-rotate run/pause state. Persisted under `timerActive` (v3 key,
+  // polarity "is the timer running") and kept in sync with the runtime
+  // `paused` flag on every toggle, so NVS is an accurate mirror. Default
+  // true (running) on a fresh device. Forgejo #3.
+  AddBool(root, "timerRunning", prefs.GetBool(prefs::kTimerActive, true));
 
   // Catalogue arrays — available fonts / pools / currencies are
   // firmware-fixed; active currencies come from NVS.

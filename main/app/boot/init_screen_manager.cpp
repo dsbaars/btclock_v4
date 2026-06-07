@@ -86,6 +86,17 @@ void InitScreenManager(AppCtx& ctx) {
   }
   ctx.sm = std::make_unique<ScreenManager>(MsNow(), ctx.currencies);
 
+  // Restore the auto-rotate run/pause state (Forgejo #3). v3 persisted
+  // `timerActive` (true = cycling) so a carousel the user stopped stayed
+  // stopped across reboots; the v4 runtime models the inverse (`paused`).
+  // Fresh device → default true (running). Kept in sync on every toggle
+  // by PersistTimerActive (WebUI actions + physical pause button).
+  {
+    Prefs settings(prefs::kSettingsNs);
+    const bool timer_active = settings.GetBool(prefs::kTimerActive, true);
+    ctx.sm->SetPaused(!timer_active);
+  }
+
   // Build the auto-rotate traversal sequence from the persisted
   // `screenOrder` CSV + `screen<id>Visible` toggles. When `screenOrder`
   // is unset (fresh device), the builder falls back to slot-index order
