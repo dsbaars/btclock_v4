@@ -15,7 +15,7 @@ namespace {
 using btclock::mining_pools::ParsedStats;
 using btclock::mining_pools::ocean::parse;
 
-TEST_CASE("ocean::parse — string hashrate, positive earn") {
+TEST_CASE("ocean::parse — string hashrate, numeric earn") {
   // hashrate_300s as a string (the shape ocean.xyz currently sends);
   // estimated_earn_next_block = 0.00000250 BTC -> 250 sats.
   constexpr const char* body = R"({
@@ -29,6 +29,23 @@ TEST_CASE("ocean::parse — string hashrate, positive earn") {
   CHECK(out.hashrate == "123456000000000");
   CHECK(out.has_daily_sats);
   CHECK(out.daily_sats == 250);
+}
+
+TEST_CASE("ocean::parse — string earn (current ocean.xyz shape)") {
+  // ocean.xyz now quotes estimated_earn_next_block as a string. This is
+  // the exact shape returned for 38Qkkei3SuF1Eo45BaYmRHUneRD54yyTFy:
+  // "0.00015180" BTC -> 15180 sats.
+  constexpr const char* body = R"({
+    "result": {
+      "hashrate_300s": "1407374883553280",
+      "estimated_earn_next_block": "0.00015180"
+    }
+  })";
+  ParsedStats out;
+  CHECK(parse(body, out));
+  CHECK(out.hashrate == "1407374883553280");
+  CHECK(out.has_daily_sats);
+  CHECK(out.daily_sats == 15180);
 }
 
 TEST_CASE("ocean::parse — numeric hashrate => stringified") {

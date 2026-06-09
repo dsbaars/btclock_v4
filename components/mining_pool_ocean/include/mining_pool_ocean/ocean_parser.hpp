@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #include "cJSON.h"
@@ -46,9 +47,16 @@ inline bool parse(const char* body, ParsedStats& out) {
     return false;
   }
 
+  // Ocean now quotes estimated_earn_next_block as a string
+  // (e.g. "0.00015180"); older responses sent it as a JSON number.
+  // Accept both, same as hashrate_300s above.
   cJSON* earn =
       cJSON_GetObjectItemCaseSensitive(result, "estimated_earn_next_block");
-  if (cJSON_IsNumber(earn)) {
+  if (cJSON_IsString(earn) && earn->valuestring != nullptr) {
+    out.has_daily_sats = true;
+    out.daily_sats = static_cast<int64_t>(
+        std::llround(std::strtod(earn->valuestring, nullptr) * 1e8));
+  } else if (cJSON_IsNumber(earn)) {
     out.has_daily_sats = true;
     out.daily_sats =
         static_cast<int64_t>(std::llround(earn->valuedouble * 1e8));
