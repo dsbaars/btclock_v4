@@ -24,4 +24,16 @@ struct AppCtx;
 
 void InitNetwork(AppCtx& ctx);
 
+// Bring up the SoftAP + captive provisioning portal + DNS hijack. Shared
+// by the empty-creds boot path and the APSTA fallback coordinator. When
+// `render` is true the provisioning UI is painted immediately (requires
+// fonts loaded); the boot path passes false because DispatchBootPath
+// paints it after InitScreenManager.
+void StartProvisioningPortal(AppCtx& ctx, bool render);
+
+// Tear the provisioning portal + DNS hijack down and return to STA-only,
+// repainting the normal screen. Used by the fallback coordinator when STA
+// reconnects to the saved network.
+void StopProvisioningPortal(AppCtx& ctx);
+
 }  // namespace btclock

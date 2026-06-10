@@ -9,15 +9,13 @@
 //   * (optional) Mining-pool HTTPS poller — selected pool only.
 //   * (optional) Bitaxe LAN poller.
 //
-// Also installs the SetOnUpdate → xTaskNotifyGive fan-in. The wait
-// for the first block-height snapshot, the first render, and the
-// button reader bring-up are split off into FinishWiringDataSources
-// so the HTTP control API can come up *before* the up-to-30-s data
-// wait — that wait used to gate the webserver behind first-data, and
-// users observed the device as "unresponsive over HTTP until the
-// screen lit up". WireDataSources now returns as soon as the source
-// tasks are spawned (fast); FinishWiringDataSources runs after
-// InitControlApi to finish the boot.
+// Also installs the SetOnUpdate → xTaskNotifyGive fan-in. WireDataSources
+// returns as soon as the source tasks are spawned (fast). The first
+// render and button bring-up live in FinishBoot, which runs
+// unconditionally at boot so the device is usable before/without a
+// connection; WireDataSources itself is deferred to the first STA connect
+// (NetworkCoordinator), since a non-blocking boot has no connection — and
+// no reachable upstream currency catalogue — until then.
 //
 // Zap listener lives in app/boot/init_zap_listener — separate WSS
 // connection from the Nostr DataSource so enabling/disabling one
@@ -35,20 +33,29 @@ namespace btclock {
 
 struct AppCtx;
 
-// Do nothing in AP (provisioning) mode — the provisioning render was
-// already painted by main. STA mode: build hub, attach sources, wire
-// the notify, kick off StartAll, return. No blocking wait, no first
-// render, no button bring-up — those are deferred to
-// FinishWiringDataSources so the webserver can start in between.
+// Build the hub, attach sources, wire the update notify, kick off
+// StartAll, return. No blocking wait. Called by NetworkCoordinator on the
+// first STA connect (boot is non-blocking, so there's no connection — and
+// no point fetching the upstream currency catalogue — until then). Bails
+// in AP mode as a safety net; the coordinator only calls it once STA holds
+// an IP and any fallback portal has been torn down.
 void WireDataSources(AppCtx& ctx);
 
-// STA-mode tail of the boot sequence. Blocks until the first
-// blockheight snapshot lands (or 30 s elapses, whichever first),
-// paints the first frame with whatever data is available, then
-// constructs and starts the button reader. Idempotent against
-// AP mode: returns immediately when ctx.hub is null (the AP boot
-// path skips WireDataSources, so hub stays unset).
-void FinishWiringDataSources(AppCtx& ctx);
+// Deferred companion to WireDataSources, called by NetworkCoordinator on
+// the first STA connect: fetches the upstream `/api/v2/currencies`
+// catalogue (a blocking HTTPS GET that can't run during the non-blocking
+// boot) and prunes the active currency rotation to what the backend
+// serves, re-subscribing the v2 source via SetCurrencies. No-op for
+// dataSource=1 (mempool+kraken) or when no v2 source is wired.
+void RefreshUpstreamCurrencies(AppCtx& ctx);
+
+// Unconditional tail of the boot sequence (replaces the old, hub-gated
+// FinishWiringDataSources). Drops the boot spinner, paints a first frame
+// (placeholders when the hub isn't wired yet), and brings up the button
+// reader so the device is usable even before — or without — a network
+// connection. Returns early in pure-provisioning mode (the portal UI owns
+// the panels and there are no buttons).
+void FinishBoot(AppCtx& ctx);
 
 // Pure helper exposed so host tests can pin the URI shape without
 // dragging in NVS. Maps the dataSource enum (shared with WebUI's

@@ -82,9 +82,8 @@ esp_err_t Wifi::Start() {
   return ESP_OK;
 }
 
-esp_err_t Wifi::Connect(const char* ssid, const char* password) {
-  if (!started_) ESP_RETURN_ON_ERROR(Start(), kTag, "auto-start");
-
+esp_err_t Wifi::ApplyStaConfigAndConnect(const char* ssid,
+                                         const char* password) {
   wifi_config_t cfg = {};
   std::strncpy(reinterpret_cast<char*>(cfg.sta.ssid), ssid,
                sizeof(cfg.sta.ssid) - 1);
@@ -108,33 +107,62 @@ esp_err_t Wifi::Connect(const char* ssid, const char* password) {
   return ESP_OK;
 }
 
+esp_err_t Wifi::Connect(const char* ssid, const char* password) {
+  if (!started_) ESP_RETURN_ON_ERROR(Start(), kTag, "auto-start");
+
+  // Record the persistent retry target so a TryConnect verify can restore
+  // it afterwards, then arm the background auto-reconnect.
+  retry_ssid_ = ssid ? ssid : "";
+  retry_pw_ = password ? password : "";
+  sta_auto_retry_.store(true);
+  return ApplyStaConfigAndConnect(ssid, password);
+}
+
 esp_err_t Wifi::TryConnect(const char* ssid, const char* password,
                            uint32_t timeout_ms) {
-  // APSTA is expected (portal keeps SoftAP up) but the function works in
-  // pure STA mode too. In APSTA the OnEvent auto-retry path is gated on
-  // !ap_mode_ so a failure here won't trigger background reconnection.
-  ESP_RETURN_ON_ERROR(Connect(ssid, password), kTag, "try_connect");
+  if (!started_) ESP_RETURN_ON_ERROR(Start(), kTag, "try_connect.start");
+
+  // Pause the background auto-reconnect for the duration of the verify so
+  // the candidate attempt doesn't race a retry of the saved network on
+  // the shared radio. We drive the candidate association directly (NOT via
+  // Connect) so retry_ssid_/retry_pw_ keep pointing at the saved network.
+  const bool had_retry_target = !retry_ssid_.empty();
+  sta_auto_retry_.store(false);
+  ESP_RETURN_ON_ERROR(ApplyStaConfigAndConnect(ssid, password), kTag,
+                      "try_connect");
+
+  // Restore the saved-network association and re-arm background retry —
+  // used on every non-success exit so a recovered saved network still
+  // auto-reconnects instead of the rejected candidate. No-op when there
+  // was no saved target (pure-provisioning boot with empty creds).
+  auto resume_saved = [this, had_retry_target]() {
+    esp_wifi_disconnect();
+    if (had_retry_target) {
+      sta_auto_retry_.store(true);
+      ApplyStaConfigAndConnect(retry_ssid_.c_str(), retry_pw_.c_str());
+    } else {
+      state_.store(State::kIdle);
+    }
+  };
 
   const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
   while (xTaskGetTickCount() < deadline) {
     if (state_.load() == State::kConnected) {
+      // Creds work. Leave the candidate associated — the caller saves the
+      // new creds and reboots, so resuming the old target would be wasted.
       return ESP_OK;
     }
     const uint8_t reason = last_reason_.load();
     const bool terminal = reason == 201 || reason == 202 || reason == 203 ||
                           reason == 204 || reason == 205;
     if (terminal) {
-      // Stop the STA machinery so the portal can retry from a clean state.
-      esp_wifi_disconnect();
-      state_.store(State::kIdle);
+      resume_saved();
       return ESP_ERR_INVALID_RESPONSE;
     }
     vTaskDelay(pdMS_TO_TICKS(100));
   }
-  // No conclusive result. Disconnect so background retries don't linger
-  // and the portal can present a fresh attempt.
-  esp_wifi_disconnect();
-  state_.store(State::kIdle);
+  // No conclusive result within the deadline.
+  resume_saved();
   return ESP_ERR_TIMEOUT;
 }
 
@@ -220,6 +248,17 @@ esp_err_t Wifi::StartSoftAp(const char* ssid, const char* password) {
   ESP_LOGI(kTag, "SoftAP up ssid='%s' auth=%s ip=%s", ssid,
            ap_cfg.ap.authmode == WIFI_AUTH_OPEN ? "open" : "WPA2-PSK",
            ap_ip().c_str());
+  return ESP_OK;
+}
+
+esp_err_t Wifi::StopSoftAp() {
+  if (!ap_mode_.load()) return ESP_OK;
+  // APSTA -> STA drops the AP beacon but keeps the STA association. The
+  // background auto-retry (sta_auto_retry_) is untouched, so a STA that
+  // wasn't yet connected keeps trying.
+  ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), kTag, "set STA");
+  ap_mode_.store(false);
+  ESP_LOGI(kTag, "SoftAP down, STA-only");
   return ESP_OK;
 }
 
@@ -422,9 +461,12 @@ void Wifi::OnEvent(esp_event_base_t base, int32_t id, void* data) {
     }
     state_.store(State::kDisconnected);
     ip_.store(0);
-    // Only auto-retry if we were actually trying to be a STA (not in
-    // provisioning-AP mode and not explicitly idle).
-    if (!ap_mode_.load()) {
+    // Auto-retry whenever a STA association is wanted. Gated on the
+    // explicit sta_auto_retry_ flag (NOT ap_mode_): in APSTA fallback the
+    // SoftAP is up yet we still want to keep retrying the saved network;
+    // during a portal verify TryConnect pauses this so the two attempts
+    // don't race on the shared radio.
+    if (sta_auto_retry_.load()) {
       vTaskDelay(pdMS_TO_TICKS(2000));
       state_.store(State::kConnecting);
       esp_wifi_connect();

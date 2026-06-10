@@ -12,19 +12,21 @@ namespace btclock {
 
 void DispatchBootPath(AppCtx& ctx) {
   if (ctx.wifi->is_ap_mode()) {
-    // No boot spinner in AP mode: splash stayed up through InitNetwork
-    // (which detected no STA creds), and the provisioning render below
-    // repaints every panel directly over the splash.
+    // Pure-provisioning boot (empty creds): the portal/DNS were already
+    // brought up in InitNetwork; paint the provisioning UI now that fonts
+    // are loaded, and hand the LEDs to the provisioning breathe.
     RenderProvisioningScreen(ctx.panels, AppCtx::fb_storage(), ctx.fonts,
                              ctx.ap_ssid, ctx.ap_pw);
-    // Hand the LEDs off to the provisioning breathe so the strip stops
-    // doing the boot rainbow and starts pulsing cyan in sync with the
-    // on-panel "connect to provisioning wifi" instructions. Queued
-    // behind the boot kPowerTest one-shot, so the rainbow runs to
-    // completion first.
     PostLedEffect(LedEffect::kSetProvisioning);
     return;
   }
+  // Have-creds boot: wire the data sources, zap listener and NWC now. They
+  // spawn async clients that retry until the network is up — the boot is
+  // non-blocking, so there may be no connection yet, but wiring them here
+  // (before InitControlApi) keeps the control API's hub/source back-refs
+  // and connection-status callbacks valid. The blocking pieces that truly
+  // need a live connection (SNTP, the upstream currency-catalogue fetch)
+  // are deferred to the first STA connect by NetworkCoordinator.
   WireDataSources(ctx);
   InitZapListener(ctx);
   InitNwc(ctx);

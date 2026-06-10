@@ -19,6 +19,7 @@ idf_component_register(
          "app/boot/init_wifi_reset_button.cpp"
          "app/boot/init_zap_listener.cpp"
          "app/event_loop.cpp"
+         "app/network_coordinator.cpp"
          "app/control_command_drain.cpp"
          "diag/heap_integrity.cpp"
          "diag/udp_log.cpp"

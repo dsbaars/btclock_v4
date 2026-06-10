@@ -13,7 +13,9 @@ NetworkLedWatchdog::Tier NetworkLedWatchdog::ClassifyFault() const {
   // STA disconnect dominates — without WiFi the data probes can't be
   // trusted (the WS callbacks may report "connected" right up until
   // the next failed I/O), and a red wifi indicator is the only useful
-  // signal anyway.
+  // signal anyway. (The connecting / waiting-for-data boot window never
+  // reaches here — the event loop only ticks this watchdog after the boot
+  // tail has finished; see the class comment.)
   if (wifi_ && wifi_->state() != Wifi::State::kConnected) return Tier::kWifi;
 
   // A missing probe is treated as "ok" — the fallback behaviour avoids

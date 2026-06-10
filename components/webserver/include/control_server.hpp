@@ -507,10 +507,18 @@ class ControlServer {
   ControlServer(const ControlServer&) = delete;
   ControlServer& operator=(const ControlServer&) = delete;
 
-  // Start listening on port 80. Must be called after WiFi STA is up
-  // (the server binds to all interfaces; calling it in AP mode would
-  // collide with ProvisioningServer).
+  // Start listening on port 80. Binds to all interfaces, so it collides
+  // with ProvisioningServer's port-80 httpd — the two must not run at
+  // once. Re-callable after StopHttpd() to resume serving (the command
+  // queue is created once and survives a stop/start cycle).
   esp_err_t Start();
+
+  // Stop the httpd listener and free port 80 WITHOUT tearing down the
+  // ControlServer object (command queue, adapters, SSE binding all stay).
+  // Used by the APSTA provisioning fallback to hand port 80 to the
+  // ProvisioningServer while the saved network is unreachable, then
+  // Start() again on reconnect. Idempotent.
+  void StopHttpd();
 
   // Pop one pending command into `out`. Non-blocking. The main task
   // calls this once per event-loop iteration.

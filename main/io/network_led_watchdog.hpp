@@ -3,9 +3,13 @@
 // the user can tell at a glance whether to power-cycle the router or
 // just wait for the upstream data to come back.
 //
-// Boot-time WiFi association is owned by wifi_guard::WaitForConnected;
-// this class only watches the post-boot steady-state. The OutageWatchdog
-// continues to handle the multi-minute brute-force reboot path
+// This watchdog is only ticked by the event loop AFTER the boot tail has
+// finished — i.e. once STA has connected AND the first data has landed
+// (the gate is `ctx.buttons`, which FinishBoot creates). So it never fires
+// during the non-blocking-boot "connecting" or "waiting for first data"
+// windows; those show the boot spinner + kWifiConnecting LED, and the
+// concurrent-provisioning fallback owns the LED via kSetProvisioning. The
+// OutageWatchdog handles the multi-minute brute-force reboot path
 // independently — they cooperate but don't share state.
 //
 // Tier precedence (most severe wins):

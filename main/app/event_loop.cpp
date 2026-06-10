@@ -27,6 +27,7 @@
 #if BTCLOCK_HAS_BH1750
 #include "io/light_sensor.hpp"
 #endif
+#include "app/network_coordinator.hpp"
 #include "io/network_led_watchdog.hpp"
 #include "io/wifi_guard.hpp"
 #include "lwip/sockets.h"
@@ -121,7 +122,12 @@ constexpr const char* kTag = "btclock";
     // drain Render and publish_status. Returning true means at least
     // one command was handled and the loop should `continue` to honour
     // the one-action-per-pass invariant.
-    if (DrainControlCommands(ctx)) {
+    //
+    // Gated on ctx.buttons (boot tail finished): a command that triggers
+    // a render before FinishBoot would race the still-running boot
+    // spinner's exclusive panel access. Commands just queue until boot
+    // finalizes (the data source's first push, or the timeout backstop).
+    if (ctx.buttons && DrainControlCommands(ctx)) {
       continue;
     }
 
@@ -219,6 +225,14 @@ constexpr const char* kTag = "btclock";
     const uint32_t got = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
     const int64_t now_ms = MsNow();
 
+    // Concurrent-provisioning fallback driver: grace -> portal up,
+    // first-connect -> wire internet services, reconnect -> portal down.
+    // Ticked in every mode (it manages the AP transitions itself); null
+    // in pure-provisioning boot, where there's no saved network to watch.
+    if (ctx.net_coordinator) {
+      ctx.net_coordinator->Tick(wifi, static_cast<uint32_t>(now_ms));
+    }
+
     // Soft watchdog pump — skipped in AP/provisioning mode, where the
     // whole point is that there's no STA connection to watch. Same
     // skip applies to the LED-indicator watchdog: AP mode already runs
@@ -226,7 +240,12 @@ constexpr const char* kTag = "btclock";
     // with a "wifi down" red breath.
     if (!wifi.is_ap_mode()) {
       outage_watchdog.Tick(wifi, static_cast<uint32_t>(now_ms));
-      if (ctx.network_led_watchdog) {
+      // Hold the LED fault indicator until the boot tail has finished
+      // (ctx.buttons exists only after FinishBoot, which runs once the
+      // first data has landed). Otherwise the window between STA-connect
+      // and the data source's first push would flash the red kMulti
+      // "both sources down" breath over the still-spinning boot spinner.
+      if (ctx.network_led_watchdog && ctx.buttons) {
         ctx.network_led_watchdog->Tick(static_cast<uint32_t>(now_ms));
       }
     }
@@ -289,6 +308,16 @@ constexpr const char* kTag = "btclock";
 #endif
       last_heartbeat_ms = now_ms;
     }
+
+    // Gate every render/notify path below on the boot tail having run.
+    // ctx.buttons is created by FinishBoot on the first STA connect, so a
+    // null handle means we're either still showing the connecting spinner
+    // (which owns the middle panel — painting now would race its exclusive
+    // EPD access) or the provisioning portal owns the panels (pure-
+    // provisioning or APSTA fallback, where a clock render would clobber
+    // the portal UI). The coordinator + watchdogs + heartbeat diag above
+    // still run, so connecting/fallback stays observable.
+    if (!ctx.buttons) continue;
 
     // Debug overlay auto-refresh: while the debug screen is up, repaint
     // every 10 s so uptime / free-heap / free-psram stay live without

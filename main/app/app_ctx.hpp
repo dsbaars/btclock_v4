@@ -50,6 +50,7 @@ class FrontlightController;
 #if BTCLOCK_HAS_BH1750
 class LightSensor;
 #endif
+class NetworkCoordinator;
 class NetworkLedWatchdog;
 class OutageWatchdog;
 class ProvisioningServer;
@@ -122,6 +123,9 @@ struct AppCtx {
   std::string sta_ssid;  // remembered for the debug screen
   std::unique_ptr<OutageWatchdog> outage_watchdog;
   std::unique_ptr<NetworkLedWatchdog> network_led_watchdog;
+  // Concurrent-provisioning fallback driver (have-creds boot only; null in
+  // pure-provisioning mode). Ticked by the event loop.
+  std::unique_ptr<NetworkCoordinator> net_coordinator;
 
   // Data pipeline — the hub aggregates every DataSource; the screen
   // manager owns rotation + render bookkeeping.

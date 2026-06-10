@@ -7,6 +7,7 @@
 
 #include "app/app_ctx.hpp"
 #include "app/boot/helpers.hpp"
+#include "app/boot/init_control_api.hpp"
 #include "app/screen_manager.hpp"
 #include "bitaxe/bitaxe_source.hpp"
 #include "board/board.hpp"
@@ -149,48 +150,18 @@ void WireDataSources(AppCtx& ctx) {
     ESP_LOGI(kTag, "btclock_ws connecting to: %s (dataSource=%d)", uri.c_str(),
              static_cast<int>(data_source));
 
-    // One-shot HTTPS GET on `/api/v2/currencies` so the available-
-    // currency drop-down (and actCurrencies filter) reflects what the
-    // backend actually serves — the static catalogue in catalogs.hpp
-    // can drift behind the upstream when new codes are added. Only the
-    // BTClock (ds=0) and custom-endpoint (ds=2) paths use the v2 API
-    // shape; ds=1 (mempool+kraken) keeps the catalogue. Failure is
-    // non-fatal — we keep the catalogue we seeded in InitScreenManager.
-    auto fetched = FetchAvailableCurrencies(uri);
-    if (!fetched.empty()) {
-      ctx.available_currencies = std::move(fetched);
-      // Filter the user's persisted active list to codes the upstream
-      // can actually serve. Without this, a code dropped by upstream
-      // would show in the rotation but never get a price tick. If the
-      // intersection is empty, fall back to the first available code so
-      // the rotation still has *something* to render.
-      std::vector<std::string> filtered;
-      filtered.reserve(ctx.currencies.size());
-      for (const auto& code : ctx.currencies) {
-        for (const auto& avail : ctx.available_currencies) {
-          if (code == avail) {
-            filtered.push_back(code);
-            break;
-          }
-        }
-      }
-      if (filtered.empty() && !ctx.available_currencies.empty()) {
-        filtered.push_back(ctx.available_currencies.front());
-      }
-      if (filtered != ctx.currencies) {
-        ESP_LOGI(kTag,
-                 "actCurrencies pruned to upstream catalogue (was %u, now %u)",
-                 static_cast<unsigned>(ctx.currencies.size()),
-                 static_cast<unsigned>(filtered.size()));
-        ctx.currencies = std::move(filtered);
-        if (ctx.sm) ctx.sm->SetCurrencies(ctx.currencies);
-      }
-    }
+    // The upstream `/api/v2/currencies` fetch + active-list prune is
+    // deferred to the first STA connect (RefreshUpstreamCurrencies): boot
+    // is non-blocking now, so there's no reachable upstream here, and a
+    // blocking HTTPS GET would just stall boot. The source subscribes to
+    // the user's configured currencies for now; RefreshUpstreamCurrencies
+    // re-subscribes via BtclockDataSource::SetCurrencies if the upstream
+    // catalogue prunes the list.
 
     // Keep a non-owning back-ref to the v2 WS source so the
-    // on_screens_changed hook in init_control_api can refresh its
-    // currency subscription list when the user PATCHes actCurrencies —
-    // without it the WS keeps streaming the old currencies until reboot.
+    // on_screens_changed hook in init_control_api (and the deferred
+    // currency refresh) can update its subscription list without poking
+    // through DataHub internals.
     auto btclock_ws = std::make_unique<BtclockDataSource>(
         uri.c_str(), ctx.currencies, block_fee_dec);
     ctx.btclock_ws = btclock_ws.get();
@@ -232,27 +203,73 @@ void WireDataSources(AppCtx& ctx) {
   }
 }
 
-void FinishWiringDataSources(AppCtx& ctx) {
-  // AP-mode boot path skips WireDataSources, so the hub never gets
-  // built. Detect that here and bail — the provisioning UI owns the
-  // panel + LEDs in that mode, and there are no buttons to wire.
-  if (!ctx.hub || !ctx.sm) return;
+void RefreshUpstreamCurrencies(AppCtx& ctx) {
+  // Deferred companion to WireDataSources, run on the first STA connect:
+  // fetch the upstream currency catalogue and prune the active rotation to
+  // what the backend actually serves. Only the v2 paths (ds=0/2) have a
+  // catalogue; ds=1 (mempool+kraken) and the no-source case are no-ops.
+  if (!ctx.btclock_ws) return;
 
-  // Block until the first blockheight arrives (or 30 s passes and we
-  // paint whatever — the event loop will catch up when data lands).
-  // The HTTP control API is already up at this point, so the device
-  // responds to /api/* while we wait.
-  ESP_LOGI(kTag, "waiting for first blockheight push …");
-  const int64_t deadline = MsNow() + 30'000;
-  while (!ctx.hub->GetSnapshot().block_height) {
-    const int64_t remain = deadline - MsNow();
-    if (remain <= 0) break;
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(remain));
+  std::uint8_t data_source = 0;
+  std::string ce_endpoint;
+  bool ce_disable_ssl = false;
+  {
+    Prefs settings(prefs::kSettingsNs);
+    data_source = static_cast<std::uint8_t>(
+        btclock::settings::ReadU32(settings, prefs::kDataSource));
+    ce_endpoint = btclock::settings::ReadString(settings, prefs::kCeEndpoint);
+    ce_disable_ssl =
+        btclock::settings::ReadBool(settings, prefs::kCeDisableSSL);
   }
-  // Hand the middle panel back before sm->Render repaints every panel.
+  if (data_source == 1) return;
+
+  const std::string uri =
+      BuildBtclockSourceUri(data_source, ce_endpoint, ce_disable_ssl);
+  auto fetched = FetchAvailableCurrencies(uri);
+  if (fetched.empty()) return;  // non-fatal: keep the seeded catalogue
+  ctx.available_currencies = std::move(fetched);
+
+  std::vector<std::string> filtered;
+  filtered.reserve(ctx.currencies.size());
+  for (const auto& code : ctx.currencies) {
+    for (const auto& avail : ctx.available_currencies) {
+      if (code == avail) {
+        filtered.push_back(code);
+        break;
+      }
+    }
+  }
+  if (filtered.empty() && !ctx.available_currencies.empty()) {
+    filtered.push_back(ctx.available_currencies.front());
+  }
+  if (filtered != ctx.currencies) {
+    ESP_LOGI(kTag,
+             "actCurrencies pruned to upstream catalogue (was %u, now %u)",
+             static_cast<unsigned>(ctx.currencies.size()),
+             static_cast<unsigned>(filtered.size()));
+    ctx.currencies = std::move(filtered);
+    if (ctx.sm) ctx.sm->SetCurrencies(ctx.currencies);
+    // The source already subscribed to the un-pruned list at boot, so
+    // re-subscribe it to the pruned set (same path as the live actCurrencies
+    // PATCH hook).
+    ctx.btclock_ws->SetCurrencies(ctx.currencies);
+  }
+}
+
+void FinishBoot(AppCtx& ctx) {
+  // Pure-provisioning boot (empty creds): the portal UI owns the panels +
+  // LEDs and there are no buttons. Nothing to finish.
+  if (!ctx.sm || ctx.wifi->is_ap_mode()) return;
+
+  // Non-blocking boot: the data hub is wired lazily on the first STA
+  // connect (NetworkCoordinator), so it's typically null here. Drop the
+  // boot spinner and paint a first frame — placeholders until the first
+  // data arrives — so the device is visibly up. The old "wait up to 30 s
+  // for the first blockheight" gate is gone: with a non-blocking connect
+  // there may be no network at all, and waiting would just stall boot.
   StopBootSpinner();
   ctx.sm->Render(ctx.panels, AppCtx::fb_storage(), ctx.fonts,
-                 ctx.hub->GetSnapshot());
+                 ctx.hub ? ctx.hub->GetSnapshot() : DataSnapshot{});
 
   // Buttons come up after first paint so early clicks don't race a
   // blank display.
@@ -272,6 +289,14 @@ void FinishWiringDataSources(AppCtx& ctx) {
   ESP_ERROR_CHECK(ctx.buttons->Start());
 
   PostLedEffect(LedEffect::kSetIdle);
+
+  // This first render ran outside the event loop's render paths (each of
+  // which publishes afterwards), so publish the live status now. Otherwise
+  // /api/status.data[] keeps the empty placeholder InitControlApi cached
+  // before any render until the next event-loop render — which, on a
+  // static screen with no new block or rotation, may not come for a long
+  // time (block height visible on the panels, data[] empty in the API).
+  PublishStatus(ctx);
 }
 
 }  // namespace btclock

@@ -23,7 +23,13 @@ struct WifiScanEntry {
 // Minimal WiFi STA client. Non-blocking Connect; poll state() or call
 // WaitConnected() from the caller. Caller owns reconnection policy via
 // Disconnect + Connect; the class handles transient WiFi disconnect
-// callbacks by auto-retrying every 5 s until stopped.
+// callbacks by auto-retrying every 2 s until stopped.
+//
+// Auto-retry is gated on an explicit sta_auto_retry_ flag (set by
+// Connect, paused by TryConnect during a verify), NOT on whether the
+// SoftAP is up. That decoupling is what lets the APSTA provisioning-
+// fallback keep retrying the saved network while the portal broadcasts
+// alongside it — see io/provisioning_fallback.hpp.
 class Wifi {
  public:
   enum class State : uint8_t {
@@ -89,6 +95,12 @@ class Wifi {
   // AP IP defaults to 192.168.4.1 (the ESP-IDF default).
   esp_err_t StartSoftAp(const char* ssid, const char* password = nullptr);
 
+  // Tear the SoftAP back down and return to STA-only (APSTA -> STA). The
+  // STA association is preserved. Used by the provisioning-fallback
+  // coordinator to drop the concurrent portal once STA reconnects to the
+  // saved network. No-op if the AP is not up.
+  esp_err_t StopSoftAp();
+
   // True while SoftAP mode is active.
   bool is_ap_mode() const { return ap_mode_.load(); }
 
@@ -125,14 +137,31 @@ class Wifi {
   void OnScanDone();
   esp_err_t TriggerScanLocked();
   static void ScanTimerTrampoline(void* arg);
+  // Build the STA wifi_config_t from creds and kick off an association.
+  // Shared by Connect (which also records the persistent retry target)
+  // and TryConnect (one-shot verify that must NOT clobber that target).
+  esp_err_t ApplyStaConfigAndConnect(const char* ssid, const char* password);
 
   esp_netif_t* netif_sta_ = nullptr;
   esp_netif_t* netif_ap_ = nullptr;
   std::atomic<State> state_{State::kIdle};
   std::atomic<uint32_t> ip_ = 0;
   std::atomic<bool> ap_mode_{false};
+  // Whether a STA disconnect should trigger a background auto-reconnect.
+  // Set true by Connect, paused (false) by TryConnect for the duration of
+  // a portal verify so the candidate attempt doesn't race the background
+  // retry of the saved network. Independent of ap_mode_ so APSTA fallback
+  // can broadcast the portal AND keep retrying the saved network.
+  std::atomic<bool> sta_auto_retry_{false};
   std::atomic<uint8_t> last_reason_{0};
   std::atomic<uint32_t> terminal_strikes_{0};
+  // Persistent STA target the background auto-retry reconnects to. Set by
+  // Connect; TryConnect restores it after a failed verify so a recovered
+  // saved network still auto-reconnects instead of the rejected candidate.
+  // Main-task only (Connect/TryConnect) — OnEvent's retry just calls
+  // esp_wifi_connect(), which reuses the driver's last set_config.
+  std::string retry_ssid_;
+  std::string retry_pw_;
   bool started_ = false;
   esp_event_handler_instance_t wifi_event_instance_ = nullptr;
   esp_event_handler_instance_t ip_event_instance_ = nullptr;

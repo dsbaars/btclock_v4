@@ -137,12 +137,10 @@ extern "C" void app_main() {
     btclock::StartBootSpinner(ctx);
   }
   btclock::InitScreenManager(ctx);
-  // DispatchBootPath kicks off the data sources but no longer blocks
-  // for the first snapshot — that wait used to gate InitControlApi
-  // behind ~3-30 s of "wait for first blockheight push", which made
-  // the device feel HTTP-dead until the screen lit up. We start the
-  // control API as soon as the source tasks are spawned so /api/* is
-  // responsive while the first data is still in flight.
+  // DispatchBootPath paints the provisioning UI in pure-provisioning mode;
+  // in have-creds mode it's a no-op (the data sources are wired lazily on
+  // the first STA connect by NetworkCoordinator, not at boot). The control
+  // API comes up next regardless so /api/* is responsive immediately.
   btclock::DispatchBootPath(ctx);
   btclock::InitControlApi(ctx);
   // Periodic heap integrity check task. Spawned after the heaviest
@@ -154,10 +152,14 @@ extern "C" void app_main() {
   // instead of a secondary-victim panic at the next unrelated
   // allocation. See bd btclock_v4-28n.
   btclock::InitHeapIntegrityMonitor();
-  // Tail of WireDataSources: blocking wait for first blockheight,
-  // first render, button bring-up. Idempotent in AP mode (skips when
-  // there's no hub).
-  btclock::FinishWiringDataSources(ctx);
+  // The boot tail (drop spinner, first render, buttons, LED idle) is NOT
+  // run here: with a non-blocking boot the STA usually isn't connected yet,
+  // and running it now would stop the "connecting" spinner immediately and
+  // paint a placeholder. NetworkCoordinator runs FinishBoot on the first
+  // STA connect instead, so the spinner keeps animating while connecting
+  // and the grace -> fallback path can take over the panels if the saved
+  // network is unreachable. (Pure-provisioning boot painted its portal UI
+  // in DispatchBootPath and has no coordinator.)
   btclock::InitMdns(ctx);
 
   btclock::RunEventLoop(ctx);

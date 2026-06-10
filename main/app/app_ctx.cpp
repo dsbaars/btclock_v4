@@ -9,6 +9,7 @@
 #include "app/app_ctx.hpp"
 
 #include "app/boot/adapters.hpp"
+#include "app/network_coordinator.hpp"
 #include "control_server.hpp"
 #include "esp_timer.h"
 #if BTCLOCK_HAS_FRONTLIGHT

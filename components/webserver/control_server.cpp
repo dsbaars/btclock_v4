@@ -617,9 +617,20 @@ esp_err_t ControlServer::TrampolineOptions(httpd_req_t* req) {
   return httpd_resp_send(req, nullptr, 0);
 }
 
+void ControlServer::StopHttpd() {
+  if (server_) {
+    httpd_stop(server_);
+    server_ = nullptr;
+  }
+}
+
 esp_err_t ControlServer::Start() {
-  cmd_queue_ = xQueueCreate(8, sizeof(ControlCommand));
-  if (!cmd_queue_) return ESP_ERR_NO_MEM;
+  // Created once; survives a StopHttpd()/Start() pause-resume cycle (the
+  // APSTA fallback path) so we don't leak a queue per resume.
+  if (!cmd_queue_) {
+    cmd_queue_ = xQueueCreate(8, sizeof(ControlCommand));
+    if (!cmd_queue_) return ESP_ERR_NO_MEM;
+  }
 
   httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
   cfg.server_port = 80;
