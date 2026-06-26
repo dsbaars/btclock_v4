@@ -71,19 +71,28 @@ void NetworkLedWatchdog::PostEffectFor(Tier t) {
 
 void NetworkLedWatchdog::Tick(uint32_t now_ms) {
   const Tier t = ClassifyFault();
-  if (t != current_tier_) {
+  const bool was_red = IsRedBreath(current_tier_);
+  const bool now_red = IsRedBreath(t);
+
+  // Seed the grace clock on the leading edge of the red-breath class. A
+  // kWifi<->kMulti hand-off stays "red" throughout, so it does NOT reseed
+  // — the window measures continuous red-fault presence, not the tier.
+  if (now_red && !was_red) red_fault_since_ms_ = now_ms;
+
+  const bool tier_changed = (t != current_tier_);
+  if (tier_changed) {
     if (t == Tier::kNone) {
       ESP_LOGI(kTag, "all clear");
     } else {
       ESP_LOGW(kTag, "fault tier=%u", static_cast<unsigned>(t));
     }
     current_tier_ = t;
-    last_post_ms_ = now_ms;
-    PostEffectFor(t);
-    return;
   }
+
   if (t == Tier::kNone) return;
-  if ((now_ms - last_post_ms_) >= CadenceMs(t)) {
+
+  if (ShouldPostIndicator(now_red, tier_changed, now_ms, red_fault_since_ms_,
+                          last_post_ms_, kRedBreathGraceMs, CadenceMs(t))) {
     last_post_ms_ = now_ms;
     PostEffectFor(t);
   }

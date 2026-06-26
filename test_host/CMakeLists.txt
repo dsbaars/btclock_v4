@@ -126,6 +126,7 @@ add_executable(btclock_host_tests
     test_sats_variant.cpp
     test_auth_gate_logic.cpp
     test_wifi_outage_watchdog.cpp
+    test_network_led_watchdog.cpp
     test_provisioning_fallback.cpp
     test_bh1750_math.cpp
     test_light_metrics.cpp

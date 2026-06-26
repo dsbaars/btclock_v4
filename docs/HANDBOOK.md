@@ -1221,7 +1221,7 @@ effects** is on or DND is active.
 | Soft cyan breathing, continuous | Provisioning portal active (SoftAP / captive-portal mode). | Connect to the BTClock's hotspot and finish setup — see [§2 Hardware tour](#2-hardware-tour) and [§4 WebUI tour](#4-webui-tour). |
 | Quick orange (or your chosen colour) pulse | A new Bitcoin block arrived. | Nothing. Toggle **LED flash on new block** off to silence it. |
 | Quick bright pulse | Nostr zap received (when LED flash on zap is enabled). | Background — see [§9 Nostr zap and Wallet Connect setup](#9-nostr-zap-and-wallet-connect-setup). |
-| Slow red breath, ~2 s, repeating every ~5 s | WiFi has dropped, **or** both upstream data feeds are stalled. | Check your WiFi router and the device's RSSI in [§4.2 Status card](#42-status-card-centre). |
+| Slow red breath, ~2 s, repeating every ~5 s | WiFi has dropped, **or** both upstream data feeds are stalled. Debounced ~5 s, so a brief blip that auto-reconnects never paints red. | Check your WiFi router and the device's RSSI in [§4.2 Status card](#42-status-card-centre). |
 | Two quick purple blinks every ~10 s | Block-source feed (Mempool) is stalled but WiFi is fine. | Usually self-recovers. The Status card's "Blocks" badge tells the same story. |
 | Two quick amber blinks every ~10 s | Price-source feed (Kraken) is stalled but WiFi is fine. | Usually self-recovers. Mirrored in the Status card's "Price" badge. |
 | Yellow-green blink | A data refresh just landed (any source). | Disable via **LED flash on update** if you find it distracting (`ledFlashOnUpd`). |
