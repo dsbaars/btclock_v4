@@ -90,6 +90,7 @@ BtclockDataSource::~BtclockDataSource() {
 }
 
 esp_err_t BtclockDataSource::Start(DataHub& hub) {
+  std::lock_guard<std::mutex> lk(lifecycle_mu_);
   hub_ = &hub;
 
   // Build the proxy-aware ext_transport chain. With proxyEnabled=false
@@ -211,6 +212,11 @@ void BtclockDataSource::SetBlockFeeDec(bool block_fee_dec) {
 }
 
 esp_err_t BtclockDataSource::Stop() {
+  // Serialize against a concurrent Stop()/Start() on another task (OTA
+  // quiesce, the restart-data-sources handler) — see lifecycle_mu_.
+  // Held across the whole teardown so the client is destroyed exactly
+  // once; a second caller blocks here, then sees client_ == nullptr.
+  std::lock_guard<std::mutex> lk(lifecycle_mu_);
   // Tear the watchdog down before the WS so a late-firing tick can't
   // race a half-destroyed client handle. Stop() is idempotent — a
   // SetCurrencies()/SetBlockFeeDec() bounce reaches Stop() then Start()

@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -146,6 +147,20 @@ class BtclockDataSource : public DataSource {
   bool block_fee_dec_ = true;
   DataHub* hub_ = nullptr;  // set in Start(); nulled in Stop()
   esp_websocket_client_handle_t client_ = nullptr;
+  // Serializes the whole Start()/Stop() lifecycle. Stop() is reachable
+  // from multiple tasks — the main event loop (SetSubscriptions /
+  // kStopDataSources / kRestartDataSources), the OTA-quiesce worker
+  // (DataHub::StopAll), and the destructor. Without this, two
+  // concurrent Stop()s race on the non-atomic `client_` capture-and-
+  // null and both call SafeShutdownWsClient on the same handle: the
+  // second esp_websocket_client_destroy() deletes the status_bits
+  // event group out from under the first's esp_websocket_client_stop(),
+  // whose portMAX_DELAY wait for STOPPED_BIT then never returns —
+  // wedging the main loop forever. The ws task (which stop() joins) and
+  // the watchdog/probe paths (serialized via probe_in_flight_) never
+  // take this lock, so holding it across the blocking teardown can't
+  // deadlock.
+  std::mutex lifecycle_mu_;
   // Proxy chain handed to client_ via cfg.ext_transport. The WS client
   // doesn't own ext_transport (esp_websocket_client.c skips its
   // transport_list build when ext_transport is set), so we destroy
