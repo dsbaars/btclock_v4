@@ -31,7 +31,7 @@ CONFIG_SPIRAM_USE_MALLOC=y
 # latency"). Dropped to 0 after a 10-min heap_trace on Rev A pinned a
 # slow ~3 KiB / 15 min internal-heap drift to esp_crt_bundle.c:489
 # (`esp_crt_ca_cb_callback` leaking 2–168 B X.509 fragments per HTTPS
-# handshake — IDF v6.0.1 issue, see comment in init_mbedtls_psram.cpp).
+# handshake — IDF v6.0.x issue, see comment in init_mbedtls_psram.cpp).
 # At 0 every default malloc tries PSRAM first; the leak still exists
 # but bleeds into the 1.95 MiB PSRAM pool instead of the 75 KiB
 # internal one — time-to-failure goes from ~5 h to weeks. Tiny per-

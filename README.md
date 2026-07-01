@@ -36,7 +36,7 @@ idf.py -B build-rev-b    -D BTCLOCK_BOARD=REV_B -D BTCLOCK_PANEL=2_13 -D SDKCONF
 idf.py -B build-v8       -D BTCLOCK_BOARD=V8    -D BTCLOCK_PANEL=2_13 -D SDKCONFIG=build-v8/sdkconfig       build
 ```
 
-Required toolchain: ESP-IDF v6.0.1 (v5.5.4 still works as a fallback).
+Required toolchain: ESP-IDF v6.0.2 (v5.5.4 still works as a fallback).
 
 ## Flash
 
@@ -233,7 +233,7 @@ gcc and clang.
   `manifest.json` (per-variant board / panel / firmware SHA / WebUI
   submodule SHA / IDF version / sha256s + md5s for esp-web-tools
   flash verify) to the Forgejo release. CI
-  currently pins `espressif/idf:v6.0.1`.
+  currently pins `espressif/idf:v6.0.2`.
 
 ## Documentation
 

@@ -11,7 +11,7 @@ CONFIG_SPIRAM_MODE_OCT=y
 # Repeated here as a tripwire after 2026-05-23: V8's build-v8/sdkconfig
 # was found persisting the IDF default (=16384) for 19 days because IDF
 # treats user sdkconfig as sticky once generated. The repo default had
-# been dropped to 0 by commit b681496 (mitigates the IDF v6.0.1
+# been dropped to 0 by commit b681496 (mitigates the IDF v6.0.x
 # esp_crt_bundle handshake leak by routing it to PSRAM), but V8's
 # build state never picked it up. Result: every alloc <= 16 KiB on V8
 # pinned to the 327 KiB internal SRAM, leaking ~140 B/handshake into it

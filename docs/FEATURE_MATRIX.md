@@ -19,7 +19,7 @@ features land._
 **State (2026-05-02):**
 
 Host tests: 763/763 passing (11 256 assertions). REV_A/REV_B/V8 all
-build clean on ESP-IDF v6.0.1 and both wired boards (Rev A + Rev B) have
+build clean on ESP-IDF v6.0.2 and both wired boards (Rev A + Rev B) have
 been flashed + photographed against the 4.0.0-beta.6 tag. Big landings
 since the 2026-04-26 snapshot:
 

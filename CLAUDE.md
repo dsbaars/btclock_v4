@@ -1,14 +1,16 @@
 # Project Instructions for AI Agents
 
-This is **btclock_v4** — an ESP-IDF v6.0.1 C++ firmware for BTClock.
+This is **btclock_v4** — an ESP-IDF v6.0.2 C++ firmware for BTClock.
 See the old repo at https://git.btclock.dev/btclock/btclock_v3 for
 Arduino-era history. The codebase was ported from ESP-IDF v5.5 to
-v6.0, and bumped to v6.0.1 on 2026-04-27 (the day v6.0.1 was
-released). v5.5.4 still works as a fallback but v6.0.1 is the
-supported toolchain. Local install paths in the snippets below
-stay at `~/esp/v6.0/esp-idf/` — refresh in place with
-`cd ~/esp/v6.0/esp-idf && git fetch && git checkout v6.0.1 &&
-./install.sh esp32s3`.
+v6.0, bumped to v6.0.1 on 2026-04-27 (the day v6.0.1 was released),
+and to v6.0.2 on 2026-07-01. v5.5.4 still works as a fallback but
+v6.0.2 is the supported toolchain. Note v6.0.2 does **not** drop the
+`tools/idf-patches/` crt-bundle leak patch — that fix is only on
+upstream `master`, not backported to any released v6.0.x. Local
+install paths in the snippets below stay at `~/esp/v6.0/esp-idf/` —
+refresh in place with `cd ~/esp/v6.0/esp-idf && git fetch &&
+git checkout v6.0.2 && ./install.sh esp32s3`.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker

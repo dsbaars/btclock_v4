@@ -1,7 +1,7 @@
 # BTClock — Build from source
 
 Three platforms are covered here: **macOS**, **Linux**, and **Windows**.
-On each, you'll install Espressif's ESP-IDF v6.0.1 toolchain, fetch the
+On each, you'll install Espressif's ESP-IDF v6.0.2 toolchain, fetch the
 btclock_v4 repository (with the WebUI submodule), build firmware for
 your variant, optionally rebuild the WebUI bundle, and flash the
 result over USB or OTA.
@@ -56,12 +56,12 @@ For the WASM screen previewer (optional — `tools/wasm/preview.html`):
 # Tools that don't ship with macOS by default.
 brew install cmake ninja dfu-util ccache
 
-# Clone ESP-IDF v6.0.1 into ~/esp/v6.0/. Tag v6.0.1 (not v6.0-rc1,
+# Clone ESP-IDF v6.0.2 into ~/esp/v6.0/. Tag v6.0.2 (not v6.0-rc1,
 # v6.0-beta2, etc.) is the supported release. Folder name stays at
 # `v6.0` — tracking the major.minor in the path keeps it stable as
 # patch releases land.
 mkdir -p ~/esp/v6.0
-git clone -b v6.0.1 --recurse-submodules \
+git clone -b v6.0.2 --recurse-submodules \
   https://github.com/espressif/esp-idf.git ~/esp/v6.0/esp-idf
 
 # Install the toolchain + Python deps. Picks Xtensa LX7 + RISC-V toolchains.
@@ -93,7 +93,7 @@ sudo apt install -y git wget flex bison gperf python3 python3-pip \
                     libssl-dev dfu-util libusb-1.0-0
 
 mkdir -p ~/esp/v6.0
-git clone -b v6.0.1 --recurse-submodules \
+git clone -b v6.0.2 --recurse-submodules \
   https://github.com/espressif/esp-idf.git ~/esp/v6.0/esp-idf
 
 ~/esp/v6.0/esp-idf/install.sh esp32s3
@@ -122,9 +122,9 @@ the same setup as Linux (and is what CI uses).
 
 ### 4a. Native ESP-IDF Windows installer (recommended for Windows-only)
 
-1. Download the **ESP-IDF v6.0.1 installer** for Windows from
+1. Download the **ESP-IDF v6.0.2 installer** for Windows from
    https://dl.espressif.com/dl/esp-idf/.
-2. Run it; pick the v6.0.1 release and the install path
+2. Run it; pick the v6.0.2 release and the install path
    `C:\Espressif\frameworks\esp-idf-v6.0`.
 3. The installer creates a Start-menu entry **"ESP-IDF v6.0 PowerShell"**.
    Open that — it's a PowerShell session with the IDF env pre-sourced.

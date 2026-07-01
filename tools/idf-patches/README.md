@@ -20,7 +20,7 @@ The script defaults `IDF_PATH` to `$HOME/esp/v6.0/esp-idf` if unset.
 
 | Patch | Upstream | Removed when |
 |---|---|---|
-| `0001-cross_signed_verify_memory_leak.patch` | [espressif/esp-idf#18512](https://github.com/espressif/esp-idf/issues/18512) (resolves [#18550](https://github.com/espressif/esp-idf/issues/18550)) | The fix lands in a released IDF v6.0.x and we bump to it |
+| `0001-cross_signed_verify_memory_leak.patch` | [espressif/esp-idf#18512](https://github.com/espressif/esp-idf/issues/18512) (resolves [#18550](https://github.com/espressif/esp-idf/issues/18550)) | The fix lands in a released IDF v6.0.x and we bump to it. **Still required as of v6.0.2** (checked 2026-07-01): `esp_crt_bundle.c` is byte-identical to v6.0.1 — the referencing fix is only on upstream `master`, not backported to `release/v6.0`. |
 
 ### 0001-cross_signed_verify_memory_leak.patch
 

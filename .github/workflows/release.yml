@@ -25,7 +25,7 @@ name: "Release pipeline"
 #     the Forgejo Gitea release REST API (different endpoint shape).
 #     Same action the proven-working v3 GitHub CI uses.
 #   - CCACHE_DIR points at /home/runner/.ccache outside containers and
-#     /root/.ccache inside the espressif/idf:v6.0.1 container (runs as
+#     /root/.ccache inside the espressif/idf:v6.0.2 container (runs as
 #     root).
 
 on:
@@ -79,7 +79,7 @@ jobs:
   webui_and_lfs:
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:v6.0.1
+      image: espressif/idf:v6.0.2
     needs: host_tests
     steps:
       - name: Install Node.js (for JS-based actions)
@@ -162,7 +162,7 @@ jobs:
   firmware:
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:v6.0.1
+      image: espressif/idf:v6.0.2
     needs: webui_and_lfs
     permissions:
       contents: write
@@ -221,7 +221,7 @@ jobs:
           submodules: recursive
 
       # GitHub mounts the workspace as the host runner user (UID 1001)
-      # but the espressif/idf:v6.0.1 container runs as root (UID 0).
+      # but the espressif/idf:v6.0.2 container runs as root (UID 0).
       # actions/checkout sets safe.directory for its own git calls, but
       # the value doesn't persist for the bash steps below. Without
       # this, `git rev-parse --short HEAD` in the next step fails

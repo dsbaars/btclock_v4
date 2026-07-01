@@ -15,7 +15,7 @@ project(btclock_host_tests CXX C)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-# Match the firmware build (ESP-IDF v6.0.1 defaults to C++23 for the
+# Match the firmware build (ESP-IDF v6.0.2 defaults to C++23 for the
 # device target). Keeping host on C++17 created a class of CI surprises:
 # designated initializers (`.field = v`) compile fine on the firmware
 # but warn under -std=c++17 with -Wpedantic. Aligning the standards
