@@ -2213,3 +2213,101 @@ TEST_CASE("LatestZap merge: newer received_ms wins") {
   CHECK(*cur.amount_sats == 500);
   CHECK(cur.message == "newer");
 }
+
+// --- Distributed-display strip widths (n_panels = summed peer panels) ---
+//
+// The master builds one logical screen across the summed panel count of
+// every peer and slices it per device. Two 7-panel boards → n_panels=14.
+// These three kinds used to be capped at n_panels∈{7,8}: BtcPrice and
+// FeeRate emitted label + blanks (so the slave slice was empty), and
+// MoscowTime read a fixed 6-slot layout array out of bounds and aborted
+// the firmware. They now lay out across the full strip.
+
+TEST_CASE("panel_texts — Moscow time distributes across a 14-panel strip") {
+  // Regression: kMoscowTime at n_panels=14 previously read a 6-element
+  // layout array with a 13-iteration loop → OOB → std::length_error →
+  // abort() (exceptions disabled). Must not crash and must right-justify.
+  PanelTextInputs in;
+  in.kind = ScreenType::kMoscowTime;
+  in.currency = "USD";
+  in.price = "2684";  // 1e8/2684 → 37258 sats (classic MSCW/TIME range).
+  const auto out = BuildPanelTexts(in, 14);
+  REQUIRE(out.size() == 14);
+  CHECK(out[0] == "MSCW/TIME");
+  // 5 digits right-justified in 13 slots; STS marker one slot ahead.
+  CHECK(out[8] == "STS");
+  CHECK(out[9] == "3");
+  CHECK(out[10] == "7");
+  CHECK(out[11] == "2");
+  CHECK(out[12] == "5");
+  CHECK(out[13] == "8");
+  // The leading (master) digit slots stay blank — value lives on the tail.
+  CHECK(out[1] == "");
+  CHECK(out[7] == "");
+}
+
+TEST_CASE("panel_texts — BTC price distributes onto the slave slice") {
+  // Regression: kBtcPrice at n_panels=14 emitted "BTC/USD" + 13 blanks,
+  // so the slave (cells 7..13) rendered empty. The digits must now land
+  // on the tail cells.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBtcPrice;
+  in.currency = "USD";
+  in.price = "64211.53";
+  const auto out = BuildPanelTexts(in, 14);
+  REQUIRE(out.size() == 14);
+  CHECK(out[0] == "BTC/USD");
+  CHECK(out[6] == "$");
+  CHECK(out[7] == "6");
+  CHECK(out[8] == "4");
+  CHECK(out[9] == "2");
+  CHECK(out[10] == "1");
+  CHECK(out[11] == "1");
+  CHECK(out[12] == ".");
+  CHECK(out[13] == "5");
+  // The reported bug: the slave slice (indices 7..13) is non-blank.
+  bool tail_has_content = false;
+  for (std::size_t i = 7; i < out.size(); ++i) {
+    if (!out[i].empty()) tail_has_content = true;
+  }
+  CHECK(tail_has_content);
+}
+
+TEST_CASE("panel_texts — fee rate distributes across a 14-panel strip") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockFeeRate;
+  in.block_fee_sats_vb = 12.75;
+  const auto out = BuildPanelTexts(in, 14);
+  REQUIRE(out.size() == 14);
+  CHECK(out[0] == "FEE/RATE");
+  CHECK(out[13] == "sat/vB");
+  // "12.75" right-justified in the 12 digit slots (indices 1..12).
+  CHECK(out[8] == "1");
+  CHECK(out[9] == "2");
+  CHECK(out[10] == ".");
+  CHECK(out[11] == "7");
+  CHECK(out[12] == "5");
+}
+
+TEST_CASE("panel_texts — clock distributes across a 14-panel strip") {
+  // Regression: kClock at n_panels=14 read the fixed char[8] ClockLayout
+  // across 13 digit slots → OOB read → garbage/blank clock cells.
+  PanelTextInputs in;
+  in.kind = ScreenType::kClock;
+  in.clock_valid = true;
+  in.hour = 13;
+  in.minute = 37;
+  in.mday = 9;
+  in.month = 5;
+  const auto out = BuildPanelTexts(in, 14);
+  REQUIRE(out.size() == 14);
+  CHECK(out[0] == "9/5");
+  // "HH:MM" right-justified in the last 5 of 13 digit slots (base=8),
+  // i.e. out indices 9..13. Earlier slots blank.
+  CHECK(out[9] == "1");
+  CHECK(out[10] == "3");
+  CHECK(out[11] == ":");
+  CHECK(out[12] == "3");
+  CHECK(out[13] == "7");
+  for (std::size_t i = 1; i <= 8; ++i) CHECK(out[i] == "");
+}

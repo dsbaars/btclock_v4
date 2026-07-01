@@ -37,56 +37,52 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "screens/screen_math.hpp"
 
 namespace btclock {
 
-template <std::size_t Panels>
-inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
+// Runtime-N core of LayoutBtcPriceSuffixStrings. The distributed-display
+// strip lays the suffix/MOW form across the summed panel count of every
+// peer, so the panel-text builder needs a layout that isn't fixed to a
+// compile-time panel count. The templated version below delegates here so
+// the on-device renderer and the wide-strip builder share one
+// implementation — parity at N=7/8 is pinned by the host tests.
+inline std::vector<std::string> LayoutBtcPriceSuffixStringsRuntime(
     std::uint64_t price_int, const std::string& currency,
-    const char* symbol_utf8, bool mow_mode, bool share_dot,
+    const char* symbol_utf8, std::size_t panels, bool mow_mode, bool share_dot,
     std::string& out_label) {
-  // share_dot bumps num_chars to Panels-1 (one more digit cell) and
-  // folds the '.' byte into the cell immediately before it. mow_mode
-  // already runs at Panels-1 because its M-suffix layout needs the
-  // extra width regardless; v3 parsePriceData treats the bump as
-  // either/or rather than additive. The fold applies to both modes —
-  // see test_datahandler_parity PriceSuffixModeMowCompact.
-  const int num_chars = (mow_mode || share_dot) ? static_cast<int>(Panels) - 1
-                                                : static_cast<int>(Panels) - 2;
+  // share_dot bumps num_chars to panels-1 (one more digit cell) and folds
+  // the '.' byte into the cell immediately before it. mow_mode already
+  // runs at panels-1 because its M-suffix layout needs the extra width;
+  // v3 parsePriceData treats the bump as either/or rather than additive.
+  const int num_chars = (mow_mode || share_dot) ? static_cast<int>(panels) - 1
+                                                : static_cast<int>(panels) - 2;
   const std::string num_str =
       FormatNumberWithSuffix(price_int, num_chars, mow_mode);
   const bool has_symbol = symbol_utf8 != nullptr && symbol_utf8[0] != '\0';
   // Treat the currency glyph as one cell regardless of its UTF-8 byte
-  // length. v3 composes "$" + num_str (single byte) and pads against
-  // NUM_SCREENS; pad at cell granularity here so multi-byte glyphs
-  // (€, £, ¥) stay in their own cell.
+  // length so multi-byte glyphs (€, £, ¥) stay in their own cell.
   const std::size_t raw_cells_len = (has_symbol ? 1u : 0u) + num_str.size();
-  // Compute the fold up front: the visual width drives the label-path
-  // guard, not the raw byte count. Without this the label path bails
-  // for cases like 78080 + share_dot (raw=7, visual=6) on a 7-panel.
   const std::size_t dot_pos = share_dot ? num_str.find('.') : std::string::npos;
   const std::size_t fold_savings =
       (dot_pos != std::string::npos && dot_pos > 0) ? 1u : 0u;
   const std::size_t cells_len = raw_cells_len - fold_savings;
 
-  std::array<std::string, Panels> out;
-  for (auto& s : out) s.clear();
+  std::vector<std::string> out(panels);
 
-  if (cells_len < Panels) {
+  if (cells_len < panels) {
     // Label path. Panel 0 stays empty in `out`; caller paints label.
-    // v3 swapped to "MOW/UNITS" on mow_mode; v4 keeps "BTC/<CCY>"
-    // regardless so the currency stays visible on the M-suffix form.
     out_label = std::string("BTC/") + currency;
-    const std::size_t digit_cells = Panels - 1;
+    const std::size_t digit_cells = panels - 1;
     const std::size_t pad =
         cells_len < digit_cells ? digit_cells - cells_len : 0u;
     std::size_t idx = 1 + pad;  // +1 skips panel 0 (label slot)
     if (has_symbol) {
       out[idx++] = symbol_utf8;
     }
-    for (std::size_t i = 0; i < num_str.size() && idx < Panels; ++i) {
+    for (std::size_t i = 0; i < num_str.size() && idx < panels; ++i) {
       if (fold_savings && i + 1 == dot_pos) {
         // Pack "X." into one cell, skip the raw dot byte.
         out[idx++] = std::string(1, num_str[i]) + ".";
@@ -98,20 +94,31 @@ inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
     return out;
   }
 
-  // Overflow path: priceString fills (or exceeds) all Panels cells.
-  // v3 drops the label and emits one char per panel from the head of
-  // priceString. If priceString exceeds Panels the tail is silently
-  // truncated, matching v3's `ret[i] = priceString[i]` loop that only
-  // writes NUM_SCREENS cells. share_dot does not apply here — the
-  // overflow path is char-per-cell by definition.
+  // Overflow path: priceString fills (or exceeds) all `panels` cells.
+  // Drop the label, one char per panel from the head; a longer string is
+  // silently truncated. share_dot does not apply here.
   out_label.clear();
   std::size_t idx = 0;
-  if (has_symbol && idx < Panels) {
+  if (has_symbol && idx < panels) {
     out[idx++] = symbol_utf8;
   }
-  for (std::size_t i = 0; i < num_str.size() && idx < Panels; ++i, ++idx) {
+  for (std::size_t i = 0; i < num_str.size() && idx < panels; ++i, ++idx) {
     out[idx].assign(1, num_str[i]);
   }
+  return out;
+}
+
+// Fixed-N façade over LayoutBtcPriceSuffixStringsRuntime for the on-device
+// renderer (btc_price.cpp), which consumes a std::array.
+template <std::size_t Panels>
+inline std::array<std::string, Panels> LayoutBtcPriceSuffixStrings(
+    std::uint64_t price_int, const std::string& currency,
+    const char* symbol_utf8, bool mow_mode, bool share_dot,
+    std::string& out_label) {
+  const std::vector<std::string> r = LayoutBtcPriceSuffixStringsRuntime(
+      price_int, currency, symbol_utf8, Panels, mow_mode, share_dot, out_label);
+  std::array<std::string, Panels> out;
+  for (std::size_t i = 0; i < Panels && i < r.size(); ++i) out[i] = r[i];
   return out;
 }
 

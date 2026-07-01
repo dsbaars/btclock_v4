@@ -48,6 +48,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "screens/screen_math.hpp"  // FormatNumberWithSuffix
 
@@ -77,11 +78,28 @@ struct SatsPerCurrencyLayout {
 // SatsPerUnit() helper applied.
 inline constexpr double kSatsPerCurrencyMax = 4e9;
 
-template <std::size_t Slots>
-inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
-    const std::string& price_str, bool use_symbol, bool share_dot) {
-  SatsPerCurrencyLayout<Slots> l;
-  if (Slots == 0 || price_str.empty()) return l;
+// Runtime-N sibling of the templated SatsPerCurrencyLayout below. The
+// distributed-display strip renders one logical screen across the summed
+// panel count of every peer (e.g. 13 digit slots for two 7-panel
+// boards), so the panel-text builder needs a layout that isn't fixed to
+// a compile-time slot count. The templated ComputeSatsPerCurrencyLayout
+// delegates here so the on-device renderer and the wide-strip builder
+// share one implementation — byte-for-byte parity, pinned by host tests
+// at N=7/8. `is_sats` is a 0/1 byte vector (not vector<bool>) so the
+// template wrapper can copy it element-wise into std::array<bool>.
+struct SatsPerCurrencyCells {
+  std::vector<std::string> cells;
+  std::vector<char> is_sats;
+  bool fractional = false;
+};
+
+inline SatsPerCurrencyCells ComputeSatsPerCurrencyCells(
+    const std::string& price_str, std::size_t slots, bool use_symbol,
+    bool share_dot) {
+  SatsPerCurrencyCells l;
+  l.cells.assign(slots, std::string());
+  l.is_sats.assign(slots, 0);
+  if (slots == 0 || price_str.empty()) return l;
 
   char* endp = nullptr;
   const double p = std::strtod(price_str.c_str(), &endp);
@@ -98,117 +116,99 @@ inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
     char buf[24];
     std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(sats));
     const std::size_t len = std::strlen(buf);
-    if (len > Slots) {
+    if (len > slots) {
       // Overflow — the integer is wider than the digit region. Dropping
       // the leading digit (the old behaviour) silently changed the value:
       // sats-per-XAU 6,261,741 became "261741" on a 7-panel board. Render
       // the K/M/B/T suffix form instead, mirroring the BTC-price screen's
-      // overflow path. The 8-panel board fits 7-digit sats outright via
-      // the len<=Slots path below, so this only fires on the narrower
-      // 7-panel boards (or for 8+-digit sats on any board). The sats glyph
-      // sits one slot before the suffix number when use_symbol and there's
-      // room — the suffix's compression frees the cell the raw integer
-      // could not spare.
-      int budget = static_cast<int>(use_symbol ? Slots - 1 : Slots);
+      // overflow path.
+      int budget = static_cast<int>(use_symbol ? slots - 1 : slots);
       std::string suffix =
           FormatNumberWithSuffix(static_cast<std::uint64_t>(sats), budget);
       bool glyph = use_symbol;
       // Defensive: the K..Q ladder always fits `budget >= 2`, but if the
       // glyph can't sit beside the suffix string, drop it and re-pack at
       // full width rather than overflow the cell array.
-      if (glyph && suffix.size() + 1 > Slots) {
+      if (glyph && suffix.size() + 1 > slots) {
         glyph = false;
         suffix = FormatNumberWithSuffix(static_cast<std::uint64_t>(sats),
-                                        static_cast<int>(Slots));
+                                        static_cast<int>(slots));
       }
       const std::size_t width = suffix.size() + (glyph ? 1u : 0u);
-      std::size_t i = width <= Slots ? Slots - width : 0;  // right-justify
-      if (glyph && i < Slots) {
-        l.is_sats[i++] = true;
+      std::size_t i = width <= slots ? slots - width : 0;  // right-justify
+      if (glyph && i < slots) {
+        l.is_sats[i++] = 1;
       }
-      for (std::size_t j = 0; j < suffix.size() && i < Slots; ++j) {
+      for (std::size_t j = 0; j < suffix.size() && i < slots; ++j) {
         l.cells[i++].assign(1, suffix[j]);
       }
       return l;
     }
     // Fits (exactly or with room) — right-justify across the digit cells.
-    // At an exact-width fit (pad == 0, e.g. 7-digit sats on the 8-panel
-    // board) every cell holds a digit and the glyph is simply dropped.
-    const std::size_t pad = Slots - len;
-    for (std::size_t i = 0; i < Slots; ++i) {
+    const std::size_t pad = slots - len;
+    for (std::size_t i = 0; i < slots; ++i) {
       if (i >= pad) l.cells[i].assign(1, buf[i - pad]);
     }
     if (use_symbol && pad > 0) {
-      l.is_sats[pad - 1] = true;
+      l.is_sats[pad - 1] = 1;
     }
     return l;
   }
 
-  // Fractional path — "0.dddd".
-  //
-  // share_dot=false (default): "0", ".", and the fractional digits each
-  // get their own cell.
-  //
-  // share_dot=true: the '.' folds into the leading cell as "0.", freeing
-  // one slot for an extra fractional digit. Mirrors the BTC-price suffix
-  // layout's shareDot branch so a user setting decimalShareDot=true gets
-  // a consistent look across every decimal layout.
-  //
-  // use_symbol=true reserves one leading cell for the sats glyph (cells[0]
-  // stays empty, is_sats[0] is set) so the screen still identifies the
-  // unit even when sats-per-currency drops below 1. The cost is one
-  // fractional digit; users who want maximum decimal precision can pair
-  // it with decimalShareDot=true to win one digit back.
-  //
-  // The format string fills any unused trailing slots with zeros (e.g.
-  // exactly 2 sats per 1e8 → "0.5000" on a 6-slot board) — that's a
-  // deliberate choice over rendering "0.5   " so the precision is
-  // unambiguous.
+  // Fractional path — "0.dddd". See the templated version's comments for
+  // the share_dot / use_symbol reservation rules.
   l.fractional = true;
-  // Layout budget — start with the cells the leading "0[.]" + optional
-  // '.' + optional sats-glyph slot consumes; whatever's left is the
-  // fractional-digit budget. Fall back to right-justified "0" if the
-  // panel can't fit even the minimum.
   const std::size_t reserved = (share_dot ? 1u : 2u) + (use_symbol ? 1u : 0u);
-  if (Slots <= reserved) {
-    l.cells[Slots - 1] = "0";
+  if (slots <= reserved) {
+    l.cells[slots - 1] = "0";
     return l;
   }
-  const int frac_digits = static_cast<int>(Slots - reserved);
+  const int frac_digits = static_cast<int>(slots - reserved);
   char buf[32];
   std::snprintf(buf, sizeof(buf), "%.*f", frac_digits, sats_d);
   // Defensive: rounding right-up to "1.0000" (sats_d just under 1.0
-  // rounding up) — fall back to integer cell '1' right-justified so
-  // the layout doesn't silently drop the leading digit.
+  // rounding up) — fall back to integer cell '1' right-justified so the
+  // layout doesn't silently drop the leading digit.
   if (buf[0] != '0') {
     l.fractional = false;
-    l.cells[Slots - 1] = "1";
-    if (use_symbol && Slots > 1) {
-      l.is_sats[Slots - 2] = true;
+    l.cells[slots - 1] = "1";
+    if (use_symbol && slots > 1) {
+      l.is_sats[slots - 2] = 1;
     }
     return l;
   }
-  // Walk `buf` (which is "0.<digits>") from left to right, mapping each
-  // character to a cell. share_dot=true emits "0." into a single cell
-  // at the same position the share_dot=false path would emit "0". When
-  // use_symbol=true, cells[0] stays empty and is_sats[0] flags the
-  // sats-glyph slot — same convention the integer path uses.
   std::size_t i = 0;  // cell index
   if (use_symbol) {
-    l.is_sats[i++] = true;
+    l.is_sats[i++] = 1;
   }
   if (share_dot) {
     l.cells[i++] = "0.";
     // Skip "0." in buf.
     std::size_t j = 2;
-    while (j < std::strlen(buf) && i < Slots) {
+    while (j < std::strlen(buf) && i < slots) {
       l.cells[i++].assign(1, buf[j++]);
     }
   } else {
     std::size_t j = 0;
-    while (buf[j] != '\0' && i < Slots) {
+    while (buf[j] != '\0' && i < slots) {
       l.cells[i++].assign(1, buf[j++]);
     }
+  }
+  return l;
+}
+
+// Fixed-N façade over ComputeSatsPerCurrencyCells for the on-device
+// renderer (moscow_time.cpp), which consumes a std::array-based layout.
+template <std::size_t Slots>
+inline SatsPerCurrencyLayout<Slots> ComputeSatsPerCurrencyLayout(
+    const std::string& price_str, bool use_symbol, bool share_dot) {
+  SatsPerCurrencyLayout<Slots> l;
+  const SatsPerCurrencyCells r =
+      ComputeSatsPerCurrencyCells(price_str, Slots, use_symbol, share_dot);
+  l.fractional = r.fractional;
+  for (std::size_t i = 0; i < Slots && i < r.cells.size(); ++i) {
+    l.cells[i] = r.cells[i];
+    l.is_sats[i] = r.is_sats[i] != 0;
   }
   return l;
 }

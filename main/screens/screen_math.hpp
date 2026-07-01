@@ -42,6 +42,17 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
                                size_t digit_panels,
                                bool hide_leading_zero = false);
 
+// Runtime-N sibling of ComputeClockLayout. Returns exactly `digit_panels`
+// cells ('0'..'9', ':' or ' ') with "HH:MM" right-justified in the last
+// five, earlier cells blank; all blank if !valid or digit_panels < 5. The
+// distributed-display strip drives this with digit_panels = summed peer
+// panel count (e.g. 13), which the fixed char[8] ClockLayout can't hold —
+// ComputeClockLayout is a fixed-N façade over this. Reading a char[8]
+// layout across 13 slots was an out-of-bounds read (garbage clock cells).
+std::vector<char> ComputeClockDigits(bool valid, int hour, int minute,
+                                     std::size_t digit_panels,
+                                     bool hide_leading_zero = false);
+
 // 3-digit-group layout shared by Market Cap (small-chars mode) and
 // Bitcoin Supply (small-chars mode). Splits `value` into groups of 3
 // digits right-aligned across the trailing slots, prepends the optional

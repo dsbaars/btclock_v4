@@ -400,39 +400,23 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
   const int32_t sats_int = SatsPerUnitLocal(price);
   const bool reserve_marker = use_sats_symbol || use_btc_symbol;
   const std::size_t digit_slots = (n_panels >= 1) ? n_panels - 1 : 0;
-  // Run the layout in the runtime size by constructing the appropriate
-  // template instantiation. n_panels is bounded to {7, 8} on every
-  // shipping board; the kDigit slot count is digit_slots == 6 or 7.
-  // Falling back to the 6-slot layout for any other size keeps the
-  // mirror non-empty rather than crashing.
-  bool fractional = false;
-  std::vector<std::string> cells(digit_slots);
-  std::vector<bool> is_sats(digit_slots, false);
-  auto fill_from_layout = [&](auto layout) {
-    fractional = layout.fractional;
-    for (std::size_t i = 0; i < digit_slots; ++i) {
-      cells[i] = layout.cells[i];
-      is_sats[i] = layout.is_sats[i];
-    }
-  };
-  if (digit_slots == 7) {
-    fill_from_layout(
-        ComputeSatsPerCurrencyLayout<7>(price, reserve_marker, share_dot));
-  } else if (digit_slots == 6) {
-    fill_from_layout(
-        ComputeSatsPerCurrencyLayout<6>(price, reserve_marker, share_dot));
-  } else if (digit_slots > 0) {
-    // Defensive fallback — shouldn't be hit on shipping boards.
-    fill_from_layout(
-        ComputeSatsPerCurrencyLayout<6>(price, reserve_marker, share_dot));
-  }
+  // Runtime-N layout: the distributed-display strip drives this with
+  // n_panels = summed peer panel count (e.g. 14 → 13 digit slots), so
+  // the value spreads across the whole strip. The old code selected a
+  // fixed-N template<6>/<7> and, on any other size, iterated `digit_slots`
+  // over a 6-element array — an out-of-bounds read that aborted the
+  // firmware (a garbage std::string length threw length_error with
+  // exceptions disabled). Parity with the on-device renderer at N=7/8 is
+  // pinned by test_sats_per_currency_layout / test_panel_texts.
+  const SatsPerCurrencyCells layout = ComputeSatsPerCurrencyCells(
+      price, digit_slots, reserve_marker, share_dot);
 
-  const bool moscow = use_mscw_time && currency == "USD" && !fractional &&
-                      sats_int > 0 && sats_int < 100000;
+  const bool moscow = use_mscw_time && currency == "USD" &&
+                      !layout.fractional && sats_int > 0 && sats_int < 100000;
   out.emplace_back(moscow ? std::string("MSCW/TIME") : ("SATS/" + currency));
 
   for (std::size_t i = 0; i < digit_slots; ++i) {
-    if (is_sats[i] && reserve_marker) {
+    if (layout.is_sats[i] && reserve_marker) {
       out.emplace_back(use_btc_symbol ? std::string(kPanelTextsBtcSignUtf8)
                                       : std::string("STS"));
     } else {
@@ -441,7 +425,7 @@ std::vector<std::string> BuildMoscowTime(const std::string& currency,
       // the EPD paints. The fractional path emits cells already
       // populated with "0", "0.", ".", or single digit chars; the
       // integer path emits single digit chars or "" for blank pad.
-      out.push_back(cells[i]);
+      out.push_back(layout.cells[i]);
     }
   }
   return out;
@@ -489,33 +473,25 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
     // in slot 0 while the EPD shows the € glyph. Fixes the Rev B
     // mowMode parity bug where `data[0]="BTC/EUR"` disagreed with the
     // physical "€" on panel 0.
-    if (n_panels == 7) {
-      constexpr std::size_t kPanels = 7;
-      auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode, share_dot,
-          label);
-      if (label.empty()) {
-        // Overflow: glyph is already in cells[0].
-        for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
-      } else {
-        // Label path: paint label on panel 0, digits follow.
-        out.emplace_back(label);
-        for (std::size_t i = 1; i < kPanels; ++i) out.push_back(cells[i]);
-      }
-    } else if (n_panels == 8) {
-      constexpr std::size_t kPanels = 8;
-      auto cells = LayoutBtcPriceSuffixStrings<kPanels>(
-          static_cast<uint64_t>(price_int), currency, sym, mow_mode, share_dot,
-          label);
-      if (label.empty()) {
-        for (std::size_t i = 0; i < kPanels; ++i) out.push_back(cells[i]);
-      } else {
-        out.emplace_back(label);
-        for (std::size_t i = 1; i < kPanels; ++i) out.push_back(cells[i]);
+    //
+    // Runtime-N so the distributed strip (n_panels = summed peer panel
+    // count) lays the price across the whole strip; the old n==7/8-only
+    // branches left every other width blank. Parity at N=7/8 is pinned by
+    // test_panel_texts.
+    const std::vector<std::string> cells = LayoutBtcPriceSuffixStringsRuntime(
+        static_cast<uint64_t>(price_int), currency, sym, n_panels, mow_mode,
+        share_dot, label);
+    if (label.empty()) {
+      // Overflow: glyph is already in cells[0].
+      for (std::size_t i = 0; i < n_panels && i < cells.size(); ++i) {
+        out.push_back(cells[i]);
       }
     } else {
-      out.emplace_back("BTC/" + currency);
-      for (std::size_t i = 1; i < n_panels; ++i) out.emplace_back();
+      // Label path: paint label on panel 0, digits follow.
+      out.emplace_back(label);
+      for (std::size_t i = 1; i < n_panels && i < cells.size(); ++i) {
+        out.push_back(cells[i]);
+      }
     }
     return out;
   }
@@ -523,18 +499,11 @@ std::vector<std::string> BuildBtcPrice(const std::string& currency,
   // Plain integer / sub-dollar-decimal path (v4 default). Also where we
   // land when `mow_mode=true && suffix_price=false` on a short price —
   // matches v3 parsePriceData which only consults `mowMode` inside the
-  // suffix branch.
+  // suffix branch. Runtime-N digit region (n_panels - 1 slots).
   out.emplace_back("BTC/" + currency);
-  if (n_panels == 7) {
-    constexpr std::size_t kSlots = 6;
-    auto cells = LayoutBtcPriceStrings<kSlots>(pd, sym);
-    for (const auto& s : cells) out.push_back(s);
-  } else if (n_panels == 8) {
-    constexpr std::size_t kSlots = 7;
-    auto cells = LayoutBtcPriceStrings<kSlots>(pd, sym);
-    for (const auto& s : cells) out.push_back(s);
-  } else {
-    for (std::size_t i = 1; i < n_panels; ++i) out.emplace_back();
+  const std::size_t price_slots = (n_panels >= 1) ? n_panels - 1 : 0;
+  for (const auto& s : LayoutBtcPriceStringsRuntime(pd, price_slots, sym)) {
+    out.push_back(s);
   }
   return out;
 }
@@ -553,19 +522,14 @@ std::vector<std::string> BuildFeeRate(const std::optional<double>& fee_opt,
   out.emplace_back("FEE/RATE");
   const std::size_t digit_slots = (n_panels >= 2) ? n_panels - 2 : 0;
   const double fee = (fee_opt && *fee_opt >= 0.0) ? *fee_opt : -1.0;
-  // LayoutFeeRate writes into a fixed-size array<char,Slots>. Go through
-  // the 5-slot (7-panel) and 6-slot (8-panel) cases directly — the
-  // firmware only ships these two topologies today.
-  if (digit_slots == 5) {
-    std::array<char, 5> digits{' ', ' ', ' ', ' ', ' '};
-    LayoutFeeRate(fee, digits);
-    for (const auto& s : FeeRateDigitCells(digits, share_dot)) out.push_back(s);
-  } else if (digit_slots == 6) {
-    std::array<char, 6> digits{' ', ' ', ' ', ' ', ' ', ' '};
-    LayoutFeeRate(fee, digits);
-    for (const auto& s : FeeRateDigitCells(digits, share_dot)) out.push_back(s);
-  } else {
-    for (std::size_t i = 0; i < digit_slots; ++i) out.emplace_back();
+  // Runtime-N: the distributed strip drives this with digit_slots =
+  // total_cells - 2, so the value spreads across the whole strip. The old
+  // 5/6-slot-only branches left every other width blank. Parity at the
+  // shipping 5/6-slot widths is pinned by test_fee_rate / test_panel_texts.
+  std::vector<char> digits;
+  LayoutFeeRateRuntime(fee, digit_slots, digits);
+  for (const auto& s : FeeRateDigitCellsRuntime(digits, share_dot)) {
+    out.push_back(s);
   }
   out.emplace_back("sat/vB");
   return out;
@@ -849,9 +813,14 @@ std::vector<std::string> BuildClock(bool valid, int hour, int minute, int mday,
   }
   out.emplace_back(label);
   const std::size_t digit_slots = n_panels - 1;
-  const ClockLayout layout =
-      ComputeClockLayout(valid, hour, minute, digit_slots, hide_lead_zero);
-  AppendDigits(layout.digits, digit_slots, out);
+  // Runtime-N: the distributed strip drives this with digit_slots up to
+  // total_cells-1. Reading the fixed char[8] ClockLayout across a wider
+  // digit region was an out-of-bounds read (garbage clock cells); the
+  // vector sizes to digit_slots so "HH:MM" right-justifies across the
+  // whole strip. Parity at the shipping widths is pinned by test_panel_texts.
+  const std::vector<char> digits =
+      ComputeClockDigits(valid, hour, minute, digit_slots, hide_lead_zero);
+  AppendDigits(digits.data(), digit_slots, out);
   return out;
 }
 

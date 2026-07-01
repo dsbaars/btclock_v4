@@ -53,6 +53,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace btclock {
 
@@ -96,107 +97,77 @@ inline constexpr int PriceDecimalPlaces(double price) {
 // Returns true on success (values populated). Returns false only on
 // invalid input (NaN / negative) and leaves all cells as ' ' in that
 // case.
-template <std::size_t Slots>
-inline bool LayoutBtcPrice(double price, bool use_symbol,
-                           std::array<char, Slots>& digits,
-                           std::array<bool, Slots>& is_sym) {
-  for (std::size_t i = 0; i < Slots; ++i) {
-    digits[i] = ' ';
-    is_sym[i] = false;
-  }
+// Runtime-N core of LayoutBtcPrice. The distributed-display strip lays a
+// price across the summed panel count of every peer, so the panel-text
+// builder needs a fit that isn't fixed to a compile-time slot count. The
+// templated LayoutBtcPrice below delegates here so the on-device renderer
+// and the wide-strip builder share one implementation — parity at N=6/7
+// slots is pinned by test_price_layout / test_panel_texts. `digits` gets
+// `slots` chars (' ' for blanks); `is_sym` is a 0/1 byte vector marking
+// the glyph cell.
+inline bool LayoutBtcPriceRuntime(double price, std::size_t slots,
+                                  bool use_symbol, std::vector<char>& digits,
+                                  std::vector<char>& is_sym) {
+  digits.assign(slots, ' ');
+  is_sym.assign(slots, 0);
   if (!(price >= 0.0)) return false;
 
-  // Decimal count.
-  //
-  // 7-panel boards (Slots<7) always take the magnitude-based count: the
-  // 6-slot digit region can't hold a glyph + full integer for big prices
-  // anyway, and sub-dollar precision is the whole reason this path exists.
-  //
-  // 8-panel boards (Slots>=7) historically rendered integer-only: V8 has
-  // room for the glyph *and* the full integer, and reusing the decimal
-  // path produced a ". 0" tail on whole-number fiat prices (e.g. 7858 →
-  // "$7858.0" spilling artefacts across the spare cells). We keep that
-  // clean integer render for whole-number prices, but DO emit decimals
-  // when the value has a real fractional part — low-magnitude pairs like
-  // gold (~16 BTC/XAU) or a sub-dollar altcoin would otherwise lose all
-  // sub-unit precision to integer rounding on the wider board. The wire
-  // value drives it: fiat arrives whole, the demand-activated metals
-  // arrive with decimals (AutoDecimals in the ws-node aggregator), so
-  // this only widens precision where it actually exists.
-  // See btc_price.cpp / parsePriceData parity in the v3 firmware.
+  // Decimal count. Wide boards (slots>=7) render whole-number prices as
+  // clean integers; every other case takes the magnitude-based count so
+  // sub-dollar precision survives. See the on-device parity comment on
+  // btc_price.cpp / v3 parsePriceData.
   int decimals = PriceDecimalPlaces(price);
-  if (Slots >= 7 && price == std::floor(price)) {
+  if (slots >= 7 && price == std::floor(price)) {
     decimals = 0;
   }
 
-  // Build the textual form once, with rounding baked in. snprintf's %.*f
-  // rounds half-to-even on most libcs; that matches the behaviour the
-  // user sees on the already-rounded integer path.
   char buf[32];
   std::snprintf(buf, sizeof(buf), "%.*f", decimals, price);
   std::size_t len = std::strlen(buf);
 
-  // If decimals were chosen but rounding produced a no-fractional-part
-  // result (e.g. 99.999 with 2 decimals → "100.00"), the string is still
-  // a valid decimal form; no need to strip the trailing zeros — having
-  // the ".00" visible signals "this is a precision-aware render" and
-  // matches how fee_rate.cpp presents integer-valued fractional inputs.
-
-  // Pick between "with glyph" (budget = Slots-1) and "without glyph".
-  // Prefer keeping the glyph if both fit; drop the glyph before we drop
-  // decimals. If even the integer-only form doesn't fit, fall back to
-  // the old firmware's overflow behaviour: truncate the *leading* digits
-  // (keep the low-order magnitude), no glyph.
+  // Prefer keeping the glyph if both fit; drop the glyph before decimals;
+  // on integer-only overflow truncate the leading digits (keep low-order
+  // magnitude), matching the old firmware.
   bool emit_symbol = false;
-  if (use_symbol && len + 1 <= Slots) {
+  if (use_symbol && len + 1 <= slots) {
     emit_symbol = true;
-  } else if (len <= Slots) {
+  } else if (len <= slots) {
     emit_symbol = false;
   } else {
-    // Too wide with chosen decimals — try integer-only (no dot).
     std::snprintf(buf, sizeof(buf), "%.0f", price);
     len = std::strlen(buf);
-    if (use_symbol && len + 1 <= Slots) {
+    if (use_symbol && len + 1 <= slots) {
       emit_symbol = true;
-    } else if (len > Slots) {
-      // Still too wide (price with 7+ integer digits on a 6-slot board).
-      // Matches parsePriceData's "integer >= NUM_SCREENS chars" branch:
-      // drop the glyph, one char per slot, truncating from the left.
-      const std::size_t start = len - Slots;
-      for (std::size_t i = 0; i < Slots; ++i) digits[i] = buf[start + i];
+    } else if (len > slots) {
+      const std::size_t start = len - slots;
+      for (std::size_t i = 0; i < slots; ++i) digits[i] = buf[start + i];
       return true;
     }
   }
 
-  // Right-justify `buf` into the cell array, reserving one leading slot
-  // for the glyph when `emit_symbol` is true.
-  const std::size_t content_slots = emit_symbol ? (Slots - 1) : Slots;
+  const std::size_t content_slots = emit_symbol ? (slots - 1) : slots;
   const std::size_t pad = content_slots - len;
   const std::size_t dst_base = emit_symbol ? 1 : 0;
   for (std::size_t i = 0; i < len; ++i) {
     digits[dst_base + pad + i] = buf[i];
   }
   if (emit_symbol) {
-    // Glyph sits immediately before the first character of the number.
-    is_sym[pad] = true;
+    is_sym[pad] = 1;
   }
   return true;
 }
 
-// Single-char-per-slot expansion for the WebUI panel-text builder. Same
-// layout as `LayoutBtcPrice` but returns the per-cell string (empty for
-// blanks, the UTF-8 glyph for the symbol cell, or a 1-char string for
-// each digit / '.'). Kept inline so panel_texts.cpp doesn't need to
-// duplicate the fit logic.
-template <std::size_t Slots>
-inline std::array<std::string, Slots> LayoutBtcPriceStrings(
-    double price, const char* symbol_utf8) {
-  std::array<char, Slots> d;
-  std::array<bool, Slots> s;
+// Runtime-N per-cell string expansion (panel-text builder / distributed
+// strip). Same layout as LayoutBtcPriceStrings but for an arbitrary slot
+// count.
+inline std::vector<std::string> LayoutBtcPriceStringsRuntime(
+    double price, std::size_t slots, const char* symbol_utf8) {
+  std::vector<char> d;
+  std::vector<char> s;
   const bool use_symbol = symbol_utf8 != nullptr && symbol_utf8[0] != '\0';
-  LayoutBtcPrice<Slots>(price, use_symbol, d, s);
-  std::array<std::string, Slots> out;
-  for (std::size_t i = 0; i < Slots; ++i) {
+  LayoutBtcPriceRuntime(price, slots, use_symbol, d, s);
+  std::vector<std::string> out(slots);
+  for (std::size_t i = 0; i < slots; ++i) {
     if (s[i]) {
       out[i] = symbol_utf8;
     } else if (d[i] != ' ') {
@@ -205,6 +176,46 @@ inline std::array<std::string, Slots> LayoutBtcPriceStrings(
       out[i].clear();
     }
   }
+  return out;
+}
+
+// Right-justify a BTC-price render across `Slots` char cells, with an
+// optional currency glyph placed one slot before the first non-blank
+// character. Fixed-N façade over LayoutBtcPriceRuntime for the on-device
+// renderer (btc_price.cpp), which consumes std::array out-params.
+//
+// `use_symbol` — caller asserts that a UTF-8 glyph exists for the
+// currency; the returned is_sym[k]=true marks the cell that should be
+// painted with the glyph instead of a literal character.
+//
+// Returns true on success (values populated). Returns false only on
+// invalid input (NaN / negative) and leaves all cells as ' ' in that
+// case.
+template <std::size_t Slots>
+inline bool LayoutBtcPrice(double price, bool use_symbol,
+                           std::array<char, Slots>& digits,
+                           std::array<bool, Slots>& is_sym) {
+  std::vector<char> d;
+  std::vector<char> s;
+  const bool ok = LayoutBtcPriceRuntime(price, Slots, use_symbol, d, s);
+  for (std::size_t i = 0; i < Slots; ++i) {
+    digits[i] = d[i];
+    is_sym[i] = s[i] != 0;
+  }
+  return ok;
+}
+
+// Single-char-per-slot expansion for the WebUI panel-text builder. Same
+// layout as `LayoutBtcPrice` but returns the per-cell string (empty for
+// blanks, the UTF-8 glyph for the symbol cell, or a 1-char string for
+// each digit / '.').
+template <std::size_t Slots>
+inline std::array<std::string, Slots> LayoutBtcPriceStrings(
+    double price, const char* symbol_utf8) {
+  std::array<std::string, Slots> out;
+  const std::vector<std::string> r =
+      LayoutBtcPriceStringsRuntime(price, Slots, symbol_utf8);
+  for (std::size_t i = 0; i < Slots && i < r.size(); ++i) out[i] = r[i];
   return out;
 }
 

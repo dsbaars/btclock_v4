@@ -40,14 +40,11 @@ std::vector<std::string> SmallCharsGroups(uint64_t value,
   return out;
 }
 
-ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
-                               std::size_t digit_panels,
-                               bool hide_leading_zero) {
-  ClockLayout l;
-  for (std::size_t i = 0; i < sizeof(l.digits); ++i) l.digits[i] = ' ';
-  if (!valid || digit_panels < 5 || digit_panels > sizeof(l.digits)) {
-    return l;
-  }
+std::vector<char> ComputeClockDigits(bool valid, int hour, int minute,
+                                     std::size_t digit_panels,
+                                     bool hide_leading_zero) {
+  std::vector<char> d(digit_panels, ' ');
+  if (!valid || digit_panels < 5) return d;
   const int h = hour < 0 ? 0 : (hour > 23 ? 23 : hour);
   const int m = minute < 0 ? 0 : (minute > 59 ? 59 : minute);
   const std::size_t base = digit_panels - 5;
@@ -58,11 +55,30 @@ ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
   // layout width stays constant — only the glyph in the leading slot
   // changes. Matches the user-visible "7:00" example in the setting
   // description: minute stays two-digit ("7:05", not "7:5").
-  l.digits[base + 0] = (hide_leading_zero && h < 10) ? ' ' : tens;
-  l.digits[base + 1] = static_cast<char>('0' + (h % 10));
-  l.digits[base + 2] = ':';
-  l.digits[base + 3] = static_cast<char>('0' + (m / 10));
-  l.digits[base + 4] = static_cast<char>('0' + (m % 10));
+  d[base + 0] = (hide_leading_zero && h < 10) ? ' ' : tens;
+  d[base + 1] = static_cast<char>('0' + (h % 10));
+  d[base + 2] = ':';
+  d[base + 3] = static_cast<char>('0' + (m / 10));
+  d[base + 4] = static_cast<char>('0' + (m % 10));
+  return d;
+}
+
+// Fixed-N façade over ComputeClockDigits for the on-device renderer
+// (clock.cpp), which consumes a char[8]. Preserves the historical guard:
+// widths outside [5, 8] render all-blank.
+ClockLayout ComputeClockLayout(bool valid, int hour, int minute,
+                               std::size_t digit_panels,
+                               bool hide_leading_zero) {
+  ClockLayout l;
+  for (std::size_t i = 0; i < sizeof(l.digits); ++i) l.digits[i] = ' ';
+  if (!valid || digit_panels < 5 || digit_panels > sizeof(l.digits)) {
+    return l;
+  }
+  const std::vector<char> d =
+      ComputeClockDigits(valid, hour, minute, digit_panels, hide_leading_zero);
+  for (std::size_t i = 0; i < digit_panels && i < sizeof(l.digits); ++i) {
+    l.digits[i] = d[i];
+  }
   return l;
 }
 
