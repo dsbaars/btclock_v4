@@ -575,6 +575,16 @@ class ControlServer {
   // shape rather than the old.
   void SetCurrencies(std::vector<std::string> currencies);
 
+  // Refresh the upstream currency *catalogue* exposed as
+  // /api/settings.availableCurrencies. Seeded from the compile-time set at
+  // construction, then replaced once RefreshUpstreamCurrencies fetches the
+  // real /api/v2/currencies list on the first STA connect — without this
+  // the WebUI dropdown was stuck on the seeded subset because
+  // BuildDeviceContext copies cfg_.available_currencies per request and the
+  // fetch only updated the AppCtx vector. Same main-task-writes /
+  // httpd-reads shape as SetCurrencies above.
+  void SetAvailableCurrencies(std::vector<std::string> currencies);
+
   // 1-bit EPD framebuffer snapshot publisher used by the live WebUI
   // preview websocket (`/api/preview/ws`). The caller (main task)
   // passes one entry per active panel after a render completes.

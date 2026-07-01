@@ -983,6 +983,13 @@ void ControlServer::SetCurrencies(std::vector<std::string> currencies) {
           : static_cast<int32_t>(1 + 2 * cfg_.currencies.size());
 }
 
+void ControlServer::SetAvailableCurrencies(
+    std::vector<std::string> currencies) {
+  // BuildDeviceContext reads cfg_.available_currencies per request, so this
+  // is all the propagation the next GET /api/settings needs.
+  cfg_.available_currencies = std::move(currencies);
+}
+
 std::string ControlServer::BuildStatusJson() const {
   cJSON* root = cJSON_CreateObject();
   if (!root) return {};

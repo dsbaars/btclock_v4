@@ -15,6 +15,7 @@
 #include "btclock_currencies_fetch.hpp"
 #include "btclock_data.hpp"
 #include "buttons.hpp"
+#include "control_server.hpp"
 #include "data_core/hub.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -228,6 +229,12 @@ void RefreshUpstreamCurrencies(AppCtx& ctx) {
   auto fetched = FetchAvailableCurrencies(uri);
   if (fetched.empty()) return;  // non-fatal: keep the seeded catalogue
   ctx.available_currencies = std::move(fetched);
+  // Propagate the fetched catalogue to the control server so
+  // /api/settings.availableCurrencies (the WebUI currency dropdown)
+  // reflects the upstream set — BuildDeviceContext copies from the
+  // control server's config, not the AppCtx vector, so without this the
+  // dropdown stays stuck on the seeded subset.
+  if (ctx.ctrl) ctx.ctrl->SetAvailableCurrencies(ctx.available_currencies);
 
   std::vector<std::string> filtered;
   filtered.reserve(ctx.currencies.size());
