@@ -96,6 +96,16 @@ if(BTCLOCK_DIAG_UDP_LOG)
     add_compile_definitions(BTCLOCK_DIAG_UDP_LOG=1)
 endif()
 
+# BTCLOCK_EPD_SPI3 (opt-in): move the EPD SPI bus from SPI2_HOST to SPI3_HOST.
+# Default OFF, so the shipping build is unchanged. Frees SPI2 for the ESP32-C5
+# WiFi co-processor path — esp_hosted's SPI is SPI2-only on the S3, so the EPD
+# must vacate SPI2. GP-SPI3 drives the same panel with no regression.
+#   idf.py -DBTCLOCK_BOARD=REV_B -DBTCLOCK_EPD_SPI3=ON ... build
+option(BTCLOCK_EPD_SPI3 "Move the EPD SPI bus to SPI3_HOST (frees SPI2 for the C5 co-processor)" OFF)
+if(BTCLOCK_EPD_SPI3)
+    add_compile_definitions(BTCLOCK_EPD_SPI3=1)
+endif()
+
 # Base defaults first, per-variant overrides on top (later files win).
 set(SDKCONFIG_DEFAULTS
     "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults"

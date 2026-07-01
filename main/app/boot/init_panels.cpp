@@ -47,7 +47,16 @@ void InitPanelsAndSplash(AppCtx& ctx) {
   // `busy stuck` log. If signal integrity regresses on a longer V8
   // bus (8 panels' worth of trace capacitance), drop this back per-
   // board via a board.hpp constant.
-  ctx.epd_bus.emplace(SPI2_HOST, kEpdSpiSclk, kEpdSpiMosi, kEpdDc,
+  // -DBTCLOCK_EPD_SPI3=ON moves the EPD to SPI3_HOST to free SPI2 for the
+  // ESP32-C5 WiFi co-processor path (esp_hosted's SPI is SPI2-only on the S3).
+  // GP-SPI3 drives the same FD write master; only the host enum changes.
+  // Default builds keep the EPD on SPI2.
+#if defined(BTCLOCK_EPD_SPI3) && BTCLOCK_EPD_SPI3
+  constexpr spi_host_device_t kEpdSpiHost = SPI3_HOST;
+#else
+  constexpr spi_host_device_t kEpdSpiHost = SPI2_HOST;
+#endif
+  ctx.epd_bus.emplace(kEpdSpiHost, kEpdSpiSclk, kEpdSpiMosi, kEpdDc,
                       10 * 1000 * 1000, 16 * 296 + 64);
   // Driver dispatch is compile-time inside epd::CreatePanel — the
   // factory keys off BTCLOCK_PANEL_<X> from the top-level CMakeLists.
