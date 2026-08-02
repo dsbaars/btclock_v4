@@ -137,7 +137,36 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # than embedding a specific root, so the client keeps working if the
 # upstream cert is rotated under an existing trusted CA.
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# CMN (40 roots) instead of FULL (144). The embedded x509_crt_bundle blob
+# is the single largest data object in the image — measured 66699 B on
+# FULL vs 15905 B on CMN, i.e. **~50 KiB of app partition back** on every
+# variant. That is decisive on Rev A, which linked at 0.55% free on this
+# commit (bd btclock_v4-33h); CMN takes it to ~3.6%.
+#
+# Applied to all three variants deliberately, NOT just the tight one: the
+# bundle decides *which hosts the firmware can reach*, so a per-variant
+# split would mean a Rev A owner's custom relay works on their friend's
+# Rev B and not on theirs. Uniform trust store, uniform behaviour.
+#
+# What CMN drops: the regional/national CAs — Buypass, Certum, Actalis,
+# D-TRUST, SwissSign, TWCA, HARICA, Telia, QuoVadis, Entrust. What it
+# keeps covers every endpoint this firmware ships with, verified against
+# the live chains on 2026-08-02:
+#
+#   ws.btclock.dev, relay.primal.net, ws.kraken.com  -> GTS Root R4
+#   mempool.space                                    -> Sectigo Public
+#                                                       Server Auth Root R46
+#
+# Both roots are explicit rows in IDF's cmn_crt_authorities.csv, and
+# Let's Encrypt (ISRG Root X1/X2) is in there too — that is what most
+# self-hosters terminate on.
+#
+# The residual risk is a user-configured endpoint (custom mempoolInstance,
+# arbitrary nostrRelay / nwcUri) sitting behind one of the dropped CAs;
+# that host stops verifying and the handshake fails. If a report like
+# that lands, flip this back to _DEFAULT_FULL=y and re-check the Rev A
+# partition budget — the two are coupled.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
 # IDF v6 split cross-signed chain handling behind a new Kconfig
 # (mbedTLS 4.x no longer auto-walks alternate trust paths). Both
 # ws.btclock.dev and relay.primal.net present chains that terminate
