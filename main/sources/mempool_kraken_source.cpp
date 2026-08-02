@@ -19,6 +19,7 @@
 #include "proxy_transport/proxy_transport.hpp"
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
+#include "sources/mempool_parse.hpp"
 
 namespace btclock {
 namespace {
@@ -324,8 +325,8 @@ void MempoolKrakenSource::HandleMempoolFrame(const char* data, size_t len) {
   bool reported = false;
 
   // `block` (singular) — single new confirmed block. `blocks` (plural)
-  // arrives in the initial snapshot as an array of recent blocks; we
-  // take the first/newest as the current tip.
+  // arrives in the initial snapshot as an array of recent blocks, ordered
+  // oldest-first; TipHeightFromBlocksArray picks the tip out of it.
   cJSON* block = cJSON_GetObjectItemCaseSensitive(root, "block");
   if (cJSON_IsObject(block)) {
     cJSON* h = cJSON_GetObjectItemCaseSensitive(block, "height");
@@ -333,15 +334,10 @@ void MempoolKrakenSource::HandleMempoolFrame(const char* data, size_t len) {
       partial.block_height = static_cast<uint32_t>(h->valuedouble);
     }
   }
-  cJSON* blocks = cJSON_GetObjectItemCaseSensitive(root, "blocks");
-  if (cJSON_IsArray(blocks)) {
-    cJSON* first = cJSON_GetArrayItem(blocks, 0);
-    if (cJSON_IsObject(first)) {
-      cJSON* h = cJSON_GetObjectItemCaseSensitive(first, "height");
-      if (cJSON_IsNumber(h) && !partial.block_height) {
-        partial.block_height = static_cast<uint32_t>(h->valuedouble);
-      }
-    }
+  if (!partial.block_height) {
+    cJSON* blocks = cJSON_GetObjectItemCaseSensitive(root, "blocks");
+    uint32_t tip = 0;
+    if (TipHeightFromBlocksArray(blocks, &tip)) partial.block_height = tip;
   }
 
   // `fees` — recommended fee estimator. Map to block_fee/_precise so

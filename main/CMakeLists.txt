@@ -25,6 +25,7 @@ idf_component_register(
          "diag/udp_log.cpp"
          "sources/sources.cpp"
          "sources/sources_uri.cpp"
+         "sources/mempool_parse.cpp"
          "sources/mempool_kraken_source.cpp"
          "io/frontlight_controller.cpp"
          "io/led_controller.cpp"

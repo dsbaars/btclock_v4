@@ -143,6 +143,7 @@ add_executable(btclock_host_tests
     ../components/data_core/hub.cpp
     test_vertical_desc.cpp
     test_sources_uri.cpp
+    test_mempool_parse.cpp
     test_btclock_lastblock_uri.cpp
     ../components/btclock_data/btclock_lastblock_uri.cpp
     test_btclock_currencies_uri.cpp
@@ -155,6 +156,7 @@ add_executable(btclock_host_tests
     ../components/proxy_transport/src/proxy_framing.cpp
     ../components/proxy_transport/src/proxy_bypass.cpp
     ../main/sources/sources_uri.cpp
+    ../main/sources/mempool_parse.cpp
     ../components/refresh_policy/refresh_policy.cpp
     ../components/frontlight_logic/frontlight_fader.cpp
     ../components/frontlight_logic/frontlight_ambient_policy.cpp
