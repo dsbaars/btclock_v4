@@ -230,13 +230,17 @@ void RenderMiningPoolEstimatedEarningsScreen(
 // as a blank panel. A first paint of this screen always does a full
 // refresh; subsequent paints diff against `prev_cells` and only repaint
 // panels whose string changed.
+//
+// `digit_px > 0` overrides the codepoint-length auto-sizing for
+// single-glyph cells (POST /api/show/custom `digitPx`); 0 keeps auto.
 template <size_t N>
 void RenderCustomScreen(std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
                         uint8_t (&fb_storage)[N][16 * 296],
                         const AppFonts& fonts,
                         const std::array<std::string, N>& cells,
                         const std::array<std::string, N>& prev_cells,
-                        bool cell_diff_reset, bool full_refresh_mode);
+                        bool cell_diff_reset, bool full_refresh_mode,
+                        float digit_px = 0.0f);
 
 // --- Diagnostic screen ---
 // Off-rotation debug screen driven by the on-device button 4. Shows

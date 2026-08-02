@@ -119,11 +119,20 @@ ShowTextParseResult ParseShowCustomBody(std::string_view body,
   // Dual-shape: bare array (old-firmware wire format) or
   // {"cells":[...]} wrapper. Normalise to a cJSON array pointer.
   cJSON* arr = nullptr;
+  float digit_px = 0.0f;
   if (cJSON_IsArray(root)) {
     arr = root;
   } else if (cJSON_IsObject(root)) {
     cJSON* cells = cJSON_GetObjectItemCaseSensitive(root, "cells");
     if (cJSON_IsArray(cells)) arr = cells;
+    // Optional digit pixel-height override. Clamp to the digitFontPx
+    // range so a stray value can't blow past the panel; out-of-range or
+    // non-numeric silently falls back to auto-sizing (0).
+    const cJSON* px = cJSON_GetObjectItemCaseSensitive(root, "digitPx");
+    if (cJSON_IsNumber(px)) {
+      const double v = px->valuedouble;
+      if (v >= 20.0 && v <= 220.0) digit_px = static_cast<float>(v);
+    }
   }
   if (arr == nullptr) {
     cJSON_Delete(root);
@@ -132,6 +141,7 @@ ShowTextParseResult ParseShowCustomBody(std::string_view body,
 
   ShowTextParseResult r;
   r.ok = true;
+  r.digit_px = digit_px;
   r.cells.resize(n_panels);
   const int n = cJSON_GetArraySize(arr);
   const int take =

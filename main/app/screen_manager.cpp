@@ -413,7 +413,7 @@ bool ScreenManager::SetCurrency(const std::string& ccy, int64_t now_ms) {
 }
 
 void ScreenManager::SetCustomCells(std::vector<std::string> cells,
-                                   int64_t now_ms) {
+                                   int64_t now_ms, float digit_px) {
   // Copy up to 8 entries (static upper bound in custom_cells_). Shorter
   // inputs leave trailing cells empty so the renderer blanks those
   // panels rather than leaving them showing stale content from the
@@ -421,6 +421,7 @@ void ScreenManager::SetCustomCells(std::vector<std::string> cells,
   for (std::size_t i = 0; i < custom_cells_.size(); ++i) {
     custom_cells_[i] = (i < cells.size()) ? std::move(cells[i]) : std::string();
   }
+  custom_digit_px_ = digit_px;
   custom_active_ = true;
   zap_active_ = false;
   nwc_notify_active_ = false;
@@ -998,7 +999,7 @@ void ScreenManager::Render(
         prev[i] = last_rendered_custom_cells_[i];
       }
       RenderCustomScreen(panels, fb, fonts, live, prev, force_repaint,
-                         force_full);
+                         force_full, custom_digit_px_);
       for (std::size_t i = 0; i < N; ++i) {
         last_rendered_custom_cells_[i] = custom_cells_[i];
       }

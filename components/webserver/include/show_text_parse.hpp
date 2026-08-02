@@ -27,6 +27,12 @@ struct ShowTextParseResult {
   // One string per panel. Length is always == n_panels on success, with
   // trailing empty strings when the caller provided fewer characters.
   std::vector<std::string> cells;
+  // Optional digit pixel-height override for single-glyph cells (the
+  // wrapper-object `{"cells":[...],"digitPx":N}` form of
+  // /api/show/custom). 0 means "unset" -> the renderer keeps its
+  // codepoint-length auto-sizing. Clamped to the digitFontPx range
+  // (20..220) on parse.
+  float digit_px = 0.0f;
   // Valid iff `ok`. When false, the handler should respond 400 and
   // include `error` in the body so operators can distinguish "bad JSON"
   // from "empty text".
