@@ -125,9 +125,12 @@ ShowTextParseResult ParseShowCustomBody(std::string_view body,
   } else if (cJSON_IsObject(root)) {
     cJSON* cells = cJSON_GetObjectItemCaseSensitive(root, "cells");
     if (cJSON_IsArray(cells)) arr = cells;
-    // Optional digit pixel-height override. Clamp to the digitFontPx
-    // range so a stray value can't blow past the panel; out-of-range or
-    // non-numeric silently falls back to auto-sizing (0).
+    // Optional digit pixel-height override, accepted range 20..220 so a
+    // stray value can't blow past the panel. Out-of-range or non-numeric
+    // silently falls back to auto-sizing (0) instead of failing the
+    // request — an unknown/garbage field must not break a body that is
+    // otherwise valid. Wider than the digitFontPx setting (80..220) on
+    // purpose; that knob sizes the data screens, this one a pushed cell.
     const cJSON* px = cJSON_GetObjectItemCaseSensitive(root, "digitPx");
     if (cJSON_IsNumber(px)) {
       const double v = px->valuedouble;

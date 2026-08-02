@@ -30,8 +30,11 @@ struct ShowTextParseResult {
   // Optional digit pixel-height override for single-glyph cells (the
   // wrapper-object `{"cells":[...],"digitPx":N}` form of
   // /api/show/custom). 0 means "unset" -> the renderer keeps its
-  // codepoint-length auto-sizing. Clamped to the digitFontPx range
-  // (20..220) on parse.
+  // codepoint-length auto-sizing. Accepted range is 20..220; anything
+  // outside it, or non-numeric, is silently ignored (falls back to 0)
+  // rather than failing the request. Note this is deliberately WIDER
+  // than the digitFontPx *setting*, which is bounded 80..220 — the two
+  // are separate knobs and should not be conflated.
   float digit_px = 0.0f;
   // Valid iff `ok`. When false, the handler should respond 400 and
   // include `error` in the body so operators can distinguish "bad JSON"
