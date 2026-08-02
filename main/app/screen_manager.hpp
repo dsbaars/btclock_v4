@@ -116,7 +116,11 @@ class ScreenManager {
   // instead of the rotation's current slot. Until the user navigates
   // off it (button press, /api/screen/next, auto-rotate tick) the screen
   // stays latched — mirrors the old firmware's SCREEN_CUSTOM latch.
-  void SetCustomCells(std::vector<std::string> cells, int64_t now_ms);
+  // `digit_px > 0` forces single-glyph cells to that pixel height instead
+  // of the codepoint-length auto-sizing (POST /api/show/custom `digitPx`);
+  // 0 keeps auto.
+  void SetCustomCells(std::vector<std::string> cells, int64_t now_ms,
+                      float digit_px = 0.0f);
 
   // Push the transient Nostr-zap overlay on top of the current slot.
   // `now_ms` stamps the arrival; the deadline is `now_ms + timeout_ms`
@@ -397,6 +401,8 @@ class ScreenManager {
   // the board's actual panel count.
   bool custom_active_ = false;
   std::array<std::string, 8> custom_cells_{};
+  // Digit pixel-height override for the latched custom cells (0 = auto).
+  float custom_digit_px_ = 0.0f;
   std::array<std::string, 8> last_rendered_custom_cells_{};
   // Zap-notification overlay latch. `zap_active_` flips Render() into
   // the kNostrZap dispatch. When `zap_auto_restore_` is true the overlay

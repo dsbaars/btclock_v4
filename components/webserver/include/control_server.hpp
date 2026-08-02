@@ -535,7 +535,10 @@ class ControlServer {
   // with a `kShowCustom` command. Returns true iff a payload was
   // waiting; `*out` gets one string per panel (caller-sized view of the
   // board's panel count). Safe to call concurrently with the HTTP task.
-  bool TakePendingCustomCells(std::vector<std::string>* out);
+  // `digit_px` (optional out) receives the /api/show/custom digitPx
+  // override, 0 when the caller didn't send one.
+  bool TakePendingCustomCells(std::vector<std::string>* out,
+                              float* digit_px = nullptr);
 
   // Snapshot of live status emitted by the main task so /api/status
   // responses reflect the actual screen state without poking the
@@ -727,6 +730,7 @@ class ControlServer {
   mutable std::mutex pending_custom_mu_;
   bool pending_custom_valid_ = false;
   std::vector<std::string> pending_custom_cells_;
+  float pending_custom_px_ = 0.0f;
 
   struct PreviewClientState {
     int fd = -1;

@@ -413,7 +413,7 @@ bool ScreenManager::SetCurrency(const std::string& ccy, int64_t now_ms) {
 }
 
 void ScreenManager::SetCustomCells(std::vector<std::string> cells,
-                                   int64_t now_ms) {
+                                   int64_t now_ms, float digit_px) {
   // Copy up to 8 entries (static upper bound in custom_cells_). Shorter
   // inputs leave trailing cells empty so the renderer blanks those
   // panels rather than leaving them showing stale content from the
@@ -421,6 +421,7 @@ void ScreenManager::SetCustomCells(std::vector<std::string> cells,
   for (std::size_t i = 0; i < custom_cells_.size(); ++i) {
     custom_cells_[i] = (i < cells.size()) ? std::move(cells[i]) : std::string();
   }
+  custom_digit_px_ = digit_px;
   custom_active_ = true;
   zap_active_ = false;
   nwc_notify_active_ = false;
@@ -734,6 +735,86 @@ bool ScreenManager::ConsumeNewBlock(const DataSnapshot& snap,
   return is_new;
 }
 
+// Build the panel-text inputs for the current screen from the live
+// snapshot + render prefs. Extracted from Render so the body isn't
+// duplicated into every per-N Render instantiation (N=7 and N=8
+// today). Non-template / file-local by design.
+static PanelTextInputs MakePti(ScreenType kind, const std::string& ccy,
+                               const DataSnapshot& snap,
+                               const RenderPrefs& rp) {
+  PanelTextInputs pti;
+  pti.kind = kind;
+  pti.currency = ccy;
+  pti.block_height = snap.block_height;
+  // Mirror the fee-source selection the EPD renderer just used so the
+  // /api/status data[] integer cells line up with what the panels paint.
+  if (rp.block_fee_dec && snap.block_fee_precise) {
+    pti.block_fee_sats_vb = *snap.block_fee_precise;
+  } else if (snap.block_fee) {
+    pti.block_fee_sats_vb = static_cast<double>(*snap.block_fee);
+  } else if (snap.block_fee_precise) {
+    pti.block_fee_sats_vb = *snap.block_fee_precise;
+  }
+  if (const auto* p = snap.PriceOf(ccy)) pti.price = *p;
+  // Mirror the active mining-pool snapshot so /api/status data[] matches
+  // what the renderer just painted on the mining-pool slots. Fields are
+  // no-ops for the non-pool screen kinds.
+  pti.pool.name = snap.pool.name;
+  pti.pool.hashrate = snap.pool.hashrate;
+  pti.pool.daily_sats = snap.pool.daily_sats;
+  pti.pool.estimated_sats = snap.pool.estimated_sats;
+  // Decoration flags: read per-render (cheap) so a PATCH lands live.
+  pti.halving_as_blocks = rp.use_blk_countdown;
+  pti.supply_big_chars = rp.mcap_big_char;
+  pti.supply_percent = rp.supply_percent;
+  pti.mcap_big_chars = rp.mcap_big_char;
+  pti.use_sats_symbol = rp.use_sats_symbol;
+  pti.use_btc_symbol = rp.use_btc_symbol;
+  pti.use_mscw_time = rp.use_mscw_time;
+  pti.suffix_price = rp.suffix_price;
+  pti.mow_mode = rp.mow_mode;
+  pti.share_dot = rp.decimal_share_dot;
+  pti.hide_lead_zero = rp.hide_lead_zero;
+  // Bitaxe mirror fields. pti copies the raw snapshot values so the
+  // panel_texts builder formats identically to what the EPD renderer
+  // just painted; both share FormatBitaxeHashrate.
+  pti.bitaxe_hostname = snap.bitaxe.hostname;
+  pti.bitaxe_hashrate_ghs = snap.bitaxe.hashrate_ghs;
+  pti.bitaxe_best_diff = snap.bitaxe.best_diff;
+  if (kind == ScreenType::kClock) {
+    // Match the renderer's clock-time source: localtime at render.
+    // Guards against the unsynced-NTP fallback are done inside
+    // BuildPanelTexts → ComputeClockLayout.
+    time_t t;
+    std::time(&t);
+    pti.clock_valid = (t >= kMinPlausibleEpoch);
+    if (pti.clock_valid) {
+      struct tm tm_now{};
+      localtime_r(&t, &tm_now);
+      pti.hour = tm_now.tm_hour;
+      pti.minute = tm_now.tm_min;
+      pti.mday = tm_now.tm_mday;
+      pti.month = tm_now.tm_mon + 1;
+    }
+  }
+  // Zap + NWC mirror inputs — populated unconditionally so the
+  // /api/status data[] is correct regardless of which of the
+  // BuildPanelTexts cases the switch lands on. msat→sats happens here
+  // so the host-test side of panel_texts stays integer-only.
+  // Previously the population sat inside an `else if (kind ==
+  // kNostrZap)` branch, which left pti.nwc_balance_sats nullopt on
+  // kNwcBalance / kNwcPaymentNotify and produced "?" in /api/status
+  // even though the EPD painted the real balance.
+  pti.zap_amount_sats = snap.latest_zap.amount_sats;
+  pti.zap_message = snap.latest_zap.message;
+  if (snap.nwc_balance_msat) {
+    pti.nwc_balance_sats = *snap.nwc_balance_msat / 1000;
+  }
+  pti.nwc_payment_amount_sats = snap.nwc_last_payment.amount_sats;
+  pti.nwc_payment_direction = snap.nwc_last_payment.direction;
+  return pti;
+}
+
 template <size_t N>
 void ScreenManager::Render(
     std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
@@ -998,7 +1079,7 @@ void ScreenManager::Render(
         prev[i] = last_rendered_custom_cells_[i];
       }
       RenderCustomScreen(panels, fb, fonts, live, prev, force_repaint,
-                         force_full);
+                         force_full, custom_digit_px_);
       for (std::size_t i = 0; i < N; ++i) {
         last_rendered_custom_cells_[i] = custom_cells_[i];
       }
@@ -1047,76 +1128,7 @@ void ScreenManager::Render(
   // the mirror read it via last_panel_texts(). The real wall-clock
   // is re-sampled inside here for the clock screen so the mirror
   // matches what the renderer just painted.
-  PanelTextInputs pti;
-  pti.kind = kind;
-  pti.currency = ccy;
-  pti.block_height = snap.block_height;
-  // Mirror the fee-source selection the EPD renderer just used so the
-  // /api/status data[] integer cells line up with what the panels paint.
-  if (rp.block_fee_dec && snap.block_fee_precise) {
-    pti.block_fee_sats_vb = *snap.block_fee_precise;
-  } else if (snap.block_fee) {
-    pti.block_fee_sats_vb = static_cast<double>(*snap.block_fee);
-  } else if (snap.block_fee_precise) {
-    pti.block_fee_sats_vb = *snap.block_fee_precise;
-  }
-  if (const auto* p = snap.PriceOf(ccy)) pti.price = *p;
-  // Mirror the active mining-pool snapshot so /api/status data[] matches
-  // what the renderer just painted on the mining-pool slots. Fields are
-  // no-ops for the non-pool screen kinds.
-  pti.pool.name = snap.pool.name;
-  pti.pool.hashrate = snap.pool.hashrate;
-  pti.pool.daily_sats = snap.pool.daily_sats;
-  pti.pool.estimated_sats = snap.pool.estimated_sats;
-  // Decoration flags: read per-render (cheap) so a PATCH lands live.
-  pti.halving_as_blocks = rp.use_blk_countdown;
-  pti.supply_big_chars = rp.mcap_big_char;
-  pti.supply_percent = rp.supply_percent;
-  pti.mcap_big_chars = rp.mcap_big_char;
-  pti.use_sats_symbol = rp.use_sats_symbol;
-  pti.use_btc_symbol = rp.use_btc_symbol;
-  pti.use_mscw_time = rp.use_mscw_time;
-  pti.suffix_price = rp.suffix_price;
-  pti.mow_mode = rp.mow_mode;
-  pti.share_dot = rp.decimal_share_dot;
-  pti.hide_lead_zero = rp.hide_lead_zero;
-  // Bitaxe mirror fields. pti copies the raw snapshot values so the
-  // panel_texts builder formats identically to what the EPD renderer
-  // just painted; both share FormatBitaxeHashrate.
-  pti.bitaxe_hostname = snap.bitaxe.hostname;
-  pti.bitaxe_hashrate_ghs = snap.bitaxe.hashrate_ghs;
-  pti.bitaxe_best_diff = snap.bitaxe.best_diff;
-  if (kind == ScreenType::kClock) {
-    // Match the renderer's clock-time source: localtime at render.
-    // Guards against the unsynced-NTP fallback are done inside
-    // BuildPanelTexts → ComputeClockLayout.
-    time_t t;
-    std::time(&t);
-    pti.clock_valid = (t >= kMinPlausibleEpoch);
-    if (pti.clock_valid) {
-      struct tm tm_now{};
-      localtime_r(&t, &tm_now);
-      pti.hour = tm_now.tm_hour;
-      pti.minute = tm_now.tm_min;
-      pti.mday = tm_now.tm_mday;
-      pti.month = tm_now.tm_mon + 1;
-    }
-  }
-  // Zap + NWC mirror inputs — populated unconditionally so the
-  // /api/status data[] is correct regardless of which of the
-  // BuildPanelTexts cases the switch lands on. msat→sats happens here
-  // so the host-test side of panel_texts stays integer-only.
-  // Previously the population sat inside an `else if (kind ==
-  // kNostrZap)` branch, which left pti.nwc_balance_sats nullopt on
-  // kNwcBalance / kNwcPaymentNotify and produced "?" in /api/status
-  // even though the EPD painted the real balance.
-  pti.zap_amount_sats = snap.latest_zap.amount_sats;
-  pti.zap_message = snap.latest_zap.message;
-  if (snap.nwc_balance_msat) {
-    pti.nwc_balance_sats = *snap.nwc_balance_msat / 1000;
-  }
-  pti.nwc_payment_amount_sats = snap.nwc_last_payment.amount_sats;
-  pti.nwc_payment_direction = snap.nwc_last_payment.direction;
+  const PanelTextInputs pti = MakePti(kind, ccy, snap, rp);
 
   if (kind == ScreenType::kCustom) {
     // The custom screen's panels show caller-supplied strings verbatim;

@@ -94,8 +94,9 @@ bool DrainControlCommands(AppCtx& ctx) {
         // a concurrent second request can't slip its payload between
         // the pull and the apply.
         std::vector<std::string> cells;
-        if (ctrl->TakePendingCustomCells(&cells)) {
-          sm.SetCustomCells(std::move(cells), MsNow());
+        float digit_px = 0.0f;
+        if (ctrl->TakePendingCustomCells(&cells, &digit_px)) {
+          sm.SetCustomCells(std::move(cells), MsNow(), digit_px);
           re_render = true;
         }
         break;

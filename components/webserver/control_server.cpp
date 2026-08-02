@@ -590,12 +590,15 @@ bool ControlServer::PostCommand(const ControlCommand& cmd) {
   return xQueueSend(cmd_queue_, &cmd, pdMS_TO_TICKS(50)) == pdTRUE;
 }
 
-bool ControlServer::TakePendingCustomCells(std::vector<std::string>* out) {
+bool ControlServer::TakePendingCustomCells(std::vector<std::string>* out,
+                                           float* digit_px) {
   if (!out) return false;
   std::lock_guard<std::mutex> lk(pending_custom_mu_);
   if (!pending_custom_valid_) return false;
   *out = std::move(pending_custom_cells_);
   pending_custom_cells_.clear();
+  if (digit_px) *digit_px = pending_custom_px_;
+  pending_custom_px_ = 0.0f;
   pending_custom_valid_ = false;
   return true;
 }
@@ -1803,6 +1806,7 @@ esp_err_t ControlServer::HandleShowText(httpd_req_t* req) {
   {
     std::lock_guard<std::mutex> lk(pending_custom_mu_);
     pending_custom_cells_ = std::move(parsed.cells);
+    pending_custom_px_ = parsed.digit_px;
     pending_custom_valid_ = true;
   }
   ControlCommand cmd{ControlCommand::Kind::kShowCustom};
@@ -1836,6 +1840,7 @@ esp_err_t ControlServer::HandleShowCustom(httpd_req_t* req) {
   {
     std::lock_guard<std::mutex> lk(pending_custom_mu_);
     pending_custom_cells_ = std::move(parsed.cells);
+    pending_custom_px_ = parsed.digit_px;
     pending_custom_valid_ = true;
   }
   ControlCommand cmd{ControlCommand::Kind::kShowCustom};

@@ -203,3 +203,25 @@ TEST_CASE("ParseShowCustomBody: 8-panel V8 device gets all 8 cells") {
   REQUIRE(r.cells.size() == 8);
   CHECK(r.cells[7] == "H");
 }
+
+TEST_CASE("ParseShowCustomBody: digitPx override parsed and clamped") {
+  // In-range digitPx is carried through for the renderer.
+  auto r = ParseShowCustomBody(R"({"cells":["7","0"],"digitPx":180})", 7);
+  REQUIRE(r.ok);
+  CHECK(r.cells[0] == "7");
+  CHECK(r.digit_px == 180.0f);
+
+  // Bare-array form has no digitPx -> stays 0 (auto-size).
+  auto bare = ParseShowCustomBody(R"(["7","0"])", 7);
+  REQUIRE(bare.ok);
+  CHECK(bare.digit_px == 0.0f);
+
+  // Out-of-range (too big / too small / non-number) silently falls back
+  // to 0 rather than failing the parse.
+  CHECK(ParseShowCustomBody(R"({"cells":["7"],"digitPx":999})", 7).digit_px ==
+        0.0f);
+  CHECK(ParseShowCustomBody(R"({"cells":["7"],"digitPx":5})", 7).digit_px ==
+        0.0f);
+  CHECK(ParseShowCustomBody(R"({"cells":["7"],"digitPx":"big"})", 7).digit_px ==
+        0.0f);
+}
