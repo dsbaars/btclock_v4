@@ -171,6 +171,34 @@ std::vector<std::string> BuildBlockHeight(uint32_t h, std::size_t n_panels) {
   return out;
 }
 
+// Mirror of RenderBlockHeightSplitScreen. Each digit cell is the pair
+// "<top>/<bottom>" — the same "TOP/BOTTOM" shape the label cells and the
+// PaintSlot::kDigitStack payload use, so a WebUI consumer can split on
+// '/' uniformly. An absent BIP-110 sample leaves the bottom half empty
+// ("9/"), matching the blank bottom row the panels paint.
+std::vector<std::string> BuildBlockHeightSplit(uint32_t h,
+                                               std::optional<uint32_t> bip110,
+                                               std::size_t n_panels) {
+  std::vector<std::string> out;
+  out.reserve(n_panels);
+  out.emplace_back("BTC/BIP110");
+  const std::size_t digit_slots = n_panels - 1;
+  std::vector<char> top(digit_slots);
+  std::vector<char> bot(digit_slots, ' ');
+  FormatDigits64(static_cast<uint64_t>(h), top.data(), digit_slots);
+  if (bip110 && *bip110 != 0) {
+    FormatDigits64(static_cast<uint64_t>(*bip110), bot.data(), digit_slots);
+  }
+  for (std::size_t i = 0; i < digit_slots; ++i) {
+    std::string cell;
+    if (top[i] != ' ') cell.push_back(top[i]);
+    cell.push_back('/');
+    if (bot[i] != ' ') cell.push_back(bot[i]);
+    out.push_back(std::move(cell));
+  }
+  return out;
+}
+
 std::vector<std::string> BuildHalving(uint32_t h, std::size_t n_panels,
                                       bool as_blocks) {
   std::vector<std::string> out;
@@ -832,6 +860,9 @@ std::vector<std::string> BuildPanelTexts(const PanelTextInputs& in,
   switch (in.kind) {
     case ScreenType::kBlockHeight:
       return BuildBlockHeight(in.block_height.value_or(0), n_panels);
+    case ScreenType::kBlockHeightSplit:
+      return BuildBlockHeightSplit(in.block_height.value_or(0),
+                                   in.bip110_block_height, n_panels);
     case ScreenType::kHalving:
       return BuildHalving(in.block_height.value_or(0), n_panels,
                           in.halving_as_blocks);

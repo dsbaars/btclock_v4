@@ -176,6 +176,30 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
                    const char* ref_chars, const Font& font, float pixel_height,
                    bool white_text, int fit_target_w_override = -1);
 
+// Two-line layout for a strip of panels that together form two rows:
+// each line is centred inside its own half of the panel against the
+// shared `ref_chars` baseline, with an optional edge-to-edge separator
+// rule at the panel's vertical centre.
+//
+// Distinct from DrawSplitText, which sizes its divider to the narrower
+// of the two ink widths and hugs it with a fixed gap. That shape reads
+// well on a single label panel, but repeated across a whole strip it
+// produces ragged per-cell dashes at different widths. Here the rule
+// spans the full panel width so adjacent panels' rules line up into one
+// continuous horizontal band across the display — which is what makes
+// "these are two separate chains" legible at a glance.
+//
+// `pixel_height` is an upper bound: both halves are auto-fit down until
+// the wider one clears the panel (same rule as DrawSplitText), and the
+// smaller of the two fits wins so the rows stay size-matched.
+//
+// Empty / null halves paint nothing (the caller has already cleared).
+void DrawStackedText(LandscapeFb& fb, int panel_w, int panel_h,
+                     const char* top_text, const char* bottom_text,
+                     const char* ref_chars, const Font& font,
+                     float pixel_height, bool white_text,
+                     bool draw_separator = true);
+
 // Render one glyph (by raw codepoint) centred on the panel, sized via
 // its own bitmap bbox rather than the digit-ref baseline — MDI icons
 // live in the Private Use Area so `kDigitRef` contains none of their

@@ -63,6 +63,10 @@ struct PanelTextInputs {
   ScreenType kind = ScreenType::kBlockHeight;
   std::string currency;  // "" for currency-agnostic slots
   std::optional<uint32_t> block_height;
+  // BIP-110 chain tip — only kBlockHeightSplit reads it. nullopt (or 0)
+  // renders as blank bottom cells, matching the EPD renderer's
+  // "no sample yet" behaviour.
+  std::optional<uint32_t> bip110_block_height;
   std::optional<double> block_fee_sats_vb;  // -1 / nullopt → "not yet"
   // Price is the raw string the data hub stores (e.g. "64211.53").
   // Empty = no price yet.

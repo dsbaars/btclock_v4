@@ -820,4 +820,52 @@ void DrawSplitText(LandscapeFb& fb, int panel_w, int panel_h,
   }
 }
 
+void DrawStackedText(LandscapeFb& fb, int panel_w, int panel_h,
+                     const char* top_text, const char* bottom_text,
+                     const char* ref_chars, const Font& font,
+                     float pixel_height, bool white_text, bool draw_separator) {
+  constexpr int kSidePadding = 4;
+  constexpr float kMinPixelHeight = 16.0f;
+  // Rule weight matches DrawSplitText's divider so the two label shapes
+  // read as the same design element at a glance.
+  constexpr int kLineThickness = 6;
+
+  // Auto-fit both halves to the panel and take the smaller result, so a
+  // long bottom row ("BIP110") shrinks its short top row ("BTC") with it
+  // rather than leaving mismatched type sizes stacked on one panel.
+  // Single-digit cells clear the target at any sane size — this is a
+  // no-op there.
+  const int target_w = panel_w - 2 * kSidePadding;
+  if (target_w > 0) {
+    const float top_fit =
+        FitTextPx(top_text, font, pixel_height, kMinPixelHeight, target_w);
+    const float bot_fit =
+        FitTextPx(bottom_text, font, pixel_height, kMinPixelHeight, target_w);
+    pixel_height = top_fit < bot_fit ? top_fit : bot_fit;
+  }
+
+  // One shared reference box for both halves (unlike DrawSplitText's
+  // per-string extents): the two rows carry digits from two independent
+  // chains, so their baselines must not drift apart just because one row
+  // happens to hold a '1' and the other an '8'.
+  const auto rb = font.GetReferenceBox(ref_chars, pixel_height);
+  const int half = panel_h / 2;
+  if (top_text != nullptr && top_text[0] != '\0') {
+    DrawLineCentered(fb, panel_w, /*y_top=*/0, /*region_h=*/half, top_text, rb,
+                     font, pixel_height, white_text);
+  }
+  if (bottom_text != nullptr && bottom_text[0] != '\0') {
+    DrawLineCentered(fb, panel_w, /*y_top=*/half, /*region_h=*/panel_h - half,
+                     bottom_text, rb, font, pixel_height, white_text);
+  }
+
+  // Edge-to-edge, so the rule continues into the next panel's rule
+  // instead of stopping short of the bezel. Square ends for the same
+  // reason — a pill cap would read as a gap at every panel seam.
+  if (draw_separator) {
+    FillRect(fb, /*x=*/0, /*y=*/half - kLineThickness / 2, panel_w,
+             kLineThickness, white_text);
+  }
+}
+
 }  // namespace btclock

@@ -30,21 +30,27 @@ namespace btclock {
 // api_id 90 = NWC wallet balance — leaves a 9-slot gap after the
 // Bitaxe pair (80/81) so future NWC-adjacent screens (channels list,
 // payment history) can slot cleanly without renumbering.
-#define BTCLOCK_SCREEN_KIND_LIST(X)                              \
-  X(kBlockHeight, 0, "block", "Block Height")                    \
-  X(kClock, 3, "clock", "Time")                                  \
-  X(kHalving, 4, "halving", "Halving countdown")                 \
-  X(kBlockFeeRate, 6, "fee", "Block Fee Rate")                   \
-  X(kMoscowTime, 10, "moscow", "Sats per dollar")                \
-  X(kBtcPrice, 20, "price", "Ticker")                            \
-  X(kMarketCap, 30, "mcap", "Market Cap")                        \
-  X(kBitcoinSupply, 40, "supply", "Bitcoin Supply")              \
-  X(kMiningPoolHashrate, 70, "poolhash", "Mining Pool Hashrate") \
-  X(kMiningPoolEarnings, 71, "poolearn", "Mining Pool Earnings") \
-  X(kMiningPoolEstimatedEarnings, 72, "poolest",                 \
-    "Mining Pool Estimated Earnings")                            \
-  X(kBitaxeHashrate, 80, "bxhash", "Bitaxe Hashrate")            \
-  X(kBitaxeBestDiff, 81, "bxdiff", "Bitaxe Best Difficulty")     \
+// api_id 100 = dual block height (canonical tip over BIP-110 tip).
+// Picked above the 90 NWC entry rather than filling the 1/2 gap next to
+// kBlockHeight: ids 0..6 are the old Arduino firmware's ScreenMapping
+// range, and reusing an id it once owned would make a v3 user's
+// persisted `screenOrder` resolve to the wrong screen on upgrade.
+#define BTCLOCK_SCREEN_KIND_LIST(X)                               \
+  X(kBlockHeight, 0, "block", "Block Height")                     \
+  X(kBlockHeightSplit, 100, "blocksplit", "Block Height BIP-110") \
+  X(kClock, 3, "clock", "Time")                                   \
+  X(kHalving, 4, "halving", "Halving countdown")                  \
+  X(kBlockFeeRate, 6, "fee", "Block Fee Rate")                    \
+  X(kMoscowTime, 10, "moscow", "Sats per dollar")                 \
+  X(kBtcPrice, 20, "price", "Ticker")                             \
+  X(kMarketCap, 30, "mcap", "Market Cap")                         \
+  X(kBitcoinSupply, 40, "supply", "Bitcoin Supply")               \
+  X(kMiningPoolHashrate, 70, "poolhash", "Mining Pool Hashrate")  \
+  X(kMiningPoolEarnings, 71, "poolearn", "Mining Pool Earnings")  \
+  X(kMiningPoolEstimatedEarnings, 72, "poolest",                  \
+    "Mining Pool Estimated Earnings")                             \
+  X(kBitaxeHashrate, 80, "bxhash", "Bitaxe Hashrate")             \
+  X(kBitaxeBestDiff, 81, "bxdiff", "Bitaxe Best Difficulty")      \
   X(kNwcBalance, 90, "nwcbal", "NWC Balance")
 
 // Which top-level screen is currently being displayed. Screen rotation
@@ -74,6 +80,7 @@ namespace btclock {
 // rotatable counterpart that shows the cached balance.
 enum class ScreenType : uint8_t {
   kBlockHeight,
+  kBlockHeightSplit,
   kMoscowTime,
   kBtcPrice,
   kBlockFeeRate,

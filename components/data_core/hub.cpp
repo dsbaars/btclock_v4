@@ -33,6 +33,12 @@ bool DataSnapshot::Merge(const DataSnapshot& other) {
                static_cast<unsigned>(*other.block_height));
     }
   }
+  if (other.bip110_block_height &&
+      (!bip110_block_height ||
+       *bip110_block_height != *other.bip110_block_height)) {
+    bip110_block_height = other.bip110_block_height;
+    changed = true;
+  }
   if (other.block_fee && (!block_fee || *block_fee != *other.block_fee)) {
     block_fee = other.block_fee;
     changed = true;

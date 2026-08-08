@@ -22,6 +22,18 @@ struct DataSnapshot {
   std::optional<int32_t> block_fee;         // rounded sats/vB
   std::optional<double> block_fee_precise;  // sats/vB with decimals
 
+  // Tip height of a second, BIP-110-enforcing chain, polled from its own
+  // mempool instance (components-free source in main/sources/). Kept
+  // separate from `block_height` on purpose: the two chains can diverge,
+  // and every existing screen, the new-block LED/frontlight event and
+  // the halving / supply math must keep following the canonical tip
+  // alone. Only the dual block-height screen reads this.
+  //
+  // Deliberately NOT run through BlockHeightValidator like `block_height`
+  // is — a fork chain legitimately regresses (reorg) or sits still, and
+  // this field drives no side effects, only a digit row.
+  std::optional<uint32_t> bip110_block_height;
+
   // --- Prices ---
   // Currency code ("USD","EUR","GBP","JPY","AUD","CAD",…) → formatted
   // price string. Sources that publish strings (server-side precision)

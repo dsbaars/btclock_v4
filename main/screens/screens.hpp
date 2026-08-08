@@ -54,6 +54,26 @@ void RenderBlockHeightScreen(
     uint32_t block_height, uint32_t prev_height = 0,
     bool full_refresh_mode = true, bool vertical_desc = false);
 
+// --- Dual block height (canonical tip over BIP-110 tip) ---
+// Panel 0 = "BTC/BIP110" split-text label; panels 1..N-1 each carry two
+// stacked digits — top row = `block_height` (the canonical chain every
+// other screen follows), bottom row = `bip110_height` (the tip reported
+// by the BIP-110-enforcing node). Both are right-justified across the
+// same N-1 cells so the two chains' digits line up column-by-column and
+// a divergence reads as a mismatch in the low-order cells.
+//
+// `bip110_height == 0` means "no sample yet" — the bottom row paints
+// blank rather than a bogus 0, so a screen up before the first poll
+// lands still shows the canonical height. Same sentinel on the `prev_*`
+// arguments forces a cell-diff reset (see the block-height screen).
+template <size_t N>
+void RenderBlockHeightSplitScreen(
+    std::array<std::unique_ptr<epd::IEpdPanel>, N>& panels,
+    uint8_t (&fb_storage)[N][16 * 296], const AppFonts& fonts,
+    uint32_t block_height, uint32_t bip110_height, uint32_t prev_height = 0,
+    uint32_t prev_bip110_height = 0, bool full_refresh_mode = true,
+    bool vertical_desc = false);
+
 // --- Moscow time (sats/USD as HH:MM-style digits) ---
 // `price` and `prev_price` are the raw price strings from the data
 // source (e.g. "64211.53"). Pass an empty `prev_price` to force full

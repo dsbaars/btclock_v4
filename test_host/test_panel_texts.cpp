@@ -35,6 +35,80 @@ TEST_CASE("panel_texts — block height, 7 panels") {
   CHECK(out[6] == "9");
 }
 
+TEST_CASE("panel_texts — dual block height, both chains in sync") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockHeightSplit;
+  in.block_height = 961634u;
+  in.bip110_block_height = 961634u;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/BIP110");
+  CHECK(out[1] == "9/9");
+  CHECK(out[6] == "4/4");
+}
+
+TEST_CASE("panel_texts — dual block height surfaces the divergence") {
+  // The whole point of the screen: when the chains disagree the mismatch
+  // has to be visible in the cells, not averaged away.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockHeightSplit;
+  in.block_height = 961634u;
+  in.bip110_block_height = 961632u;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[5] == "3/3");
+  CHECK(out[6] == "4/2");
+}
+
+TEST_CASE("panel_texts — dual block height blanks the unsampled row") {
+  // No BIP-110 poll has landed yet: the bottom half stays empty rather
+  // than rendering a bogus 0 under the canonical tip. Same for an
+  // explicit 0, which is the renderer's no-sample sentinel.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockHeightSplit;
+  in.block_height = 961634u;
+  SUBCASE("nullopt") {
+    in.bip110_block_height = std::nullopt;
+  }
+  SUBCASE("zero sentinel") {
+    in.bip110_block_height = 0u;
+  }
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[0] == "BTC/BIP110");
+  CHECK(out[1] == "9/");
+  CHECK(out[6] == "4/");
+}
+
+TEST_CASE("panel_texts — dual block height right-justifies a shorter row") {
+  // A BIP-110 chain far behind the tip must stay column-aligned with it
+  // (leading cells blank on top), not left-shifted into a false match.
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockHeightSplit;
+  in.block_height = 961634u;
+  in.bip110_block_height = 61634u;
+  const auto out = BuildPanelTexts(in, 7);
+  REQUIRE(out.size() == 7);
+  CHECK(out[1] == "9/");
+  CHECK(out[2] == "6/6");
+  CHECK(out[6] == "4/4");
+}
+
+TEST_CASE("panel_texts — dual block height keeps the label on 8 panels") {
+  PanelTextInputs in;
+  in.kind = ScreenType::kBlockHeightSplit;
+  in.block_height = 961634u;
+  in.bip110_block_height = 961632u;
+  const auto out = BuildPanelTexts(in, 8);
+  REQUIRE(out.size() == 8);
+  CHECK(out[0] == "BTC/BIP110");
+  // Eight panels → seven digit cells, so a 6-digit height leaves the
+  // leading cell blank on both rows.
+  CHECK(out[1] == "/");
+  CHECK(out[2] == "9/9");
+  CHECK(out[7] == "4/2");
+}
+
 TEST_CASE("panel_texts — block height overflow drops label") {
   // 7-digit height on a 7-panel board: old firmware dropped the label
   // and filled every slot with a digit. Match that.

@@ -29,6 +29,7 @@
 #include "settings/nvs_store.hpp"
 #include "settings/pref_keys.hpp"
 #include "settings/schema.hpp"
+#include "sources/bip110_source.hpp"
 #include "sources/mempool_kraken_source.hpp"
 #include "wifi.hpp"
 
@@ -186,6 +187,13 @@ void WireDataSources(AppCtx& ctx) {
   // first poll lands.
   if (auto bitaxe_src = bitaxe::MakeBitaxeSource()) {
     ctx.hub->AddSource(std::move(bitaxe_src));
+  }
+
+  // BIP-110 chain-tip poller for the dual block-height screen. Gated on
+  // that screen being visible (see MakeBip110Source) so a device that
+  // never shows it doesn't poll a third-party mempool instance.
+  if (auto bip110_src = bip110::MakeBip110Source()) {
+    ctx.hub->AddSource(std::move(bip110_src));
   }
 
   TaskHandle_t task = ctx.main_task;

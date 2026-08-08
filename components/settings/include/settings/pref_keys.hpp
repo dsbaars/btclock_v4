@@ -259,6 +259,14 @@ inline constexpr const char* kLastBlockHeight = "lastBlockHt";
 // orphan it, and so it never round-trips through /api/settings.
 inline constexpr const char* kNwcLastBalSat = "nwcLastBalSat";
 
+// WebSocket URI of the mempool.space-compatible instance the dual
+// block-height screen (api_id 100) follows for the BIP-110 chain tip —
+// a full ws:// or wss:// URI, e.g.
+// "wss://mempool.kilombino.com/api/v1/ws". Empty falls back to
+// bip110::kDefaultUri; the source is additionally gated on
+// `screen100Visible` so hiding the screen drops the connection.
+inline constexpr const char* kBip110Endpoint = "bip110Endpoint";
+
 // Compile-time guard: NVS keys must be <= 15 chars. Enforced once here
 // so a future rename can't silently truncate on-flash.
 constexpr bool FitsNvsLimit(const char* s) {
@@ -276,6 +284,7 @@ BTCLOCK_PREF_KEY_ASSERT(kBgColor);
 BTCLOCK_PREF_KEY_ASSERT(kBitaxeEnabled);
 BTCLOCK_PREF_KEY_ASSERT(kBitaxeHostname);
 BTCLOCK_PREF_KEY_ASSERT(kBitaxePollSec);
+BTCLOCK_PREF_KEY_ASSERT(kBip110Endpoint);
 BTCLOCK_PREF_KEY_ASSERT(kBlockFeeDec);
 BTCLOCK_PREF_KEY_ASSERT(kBlockFlashColor);
 BTCLOCK_PREF_KEY_ASSERT(kBlockHeight);

@@ -201,6 +201,22 @@ struct PaintSlot {
     // `text` contains the glyph — typically one char but multi-byte
     // UTF-8 is fine (currency symbols round-trip as 2-3 byte strings).
     kDigit,
+    // Two digit cells stacked vertically, "TOP/BOTTOM" in `text` with
+    // the first '/' as separator (an empty half paints nothing). Digit
+    // font role at half-panel size, over an edge-to-edge divider rule —
+    // see DrawStackedText in font.hpp for why kLabelSplit's ink-width
+    // divider is wrong here. Used by the dual block-height screen to
+    // show two chains' tips at once.
+    kDigitStack,
+    // Label-font counterpart of kDigitStack: the row legend that sits at
+    // the head of a stacked-row strip. Same "TOP/BOTTOM" payload and the
+    // same edge-to-edge rule, so the legend's two lines land on the same
+    // rows as the digit cells beside it and the divider carries through
+    // the whole strip. Unlike kLabelSplit this deliberately ignores
+    // `vertical_desc`: rotating the legend 90° would put its rows on the
+    // panel's short axis and break the row alignment the screen exists
+    // to show.
+    kLabelStack,
     // 3-digit small-chars group at the small_chars font role, 90pt.
     // Used by the bitcoin_supply / market_cap small-chars layouts.
     kSmallGroup,

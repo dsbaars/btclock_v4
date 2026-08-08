@@ -357,7 +357,11 @@ class ScreenManager {
   RotationTimer rot_;
   uint32_t last_seen_height_ = 0;      // snapshot-side tracking (LED flash)
   uint32_t last_rendered_height_ = 0;  // screen-side tracking (digit diff)
-  std::string last_rendered_price_;    // shared Moscow-time + price diff
+  // Dual block-height screen: the BIP-110 row advances independently of
+  // the canonical tip, so it needs its own diff anchor. 0 = "not yet
+  // rendered", which is also the renderer's blank-row sentinel.
+  uint32_t last_rendered_bip110_height_ = 0;
+  std::string last_rendered_price_;  // shared Moscow-time + price diff
   // minSecPriceUpd (seconds): monotonic-ms timestamp of the last price-
   // bearing screen paint (kMoscowTime / kBtcPrice / kMarketCap). Read
   // by ShouldRender to throttle EPD writes when the WS pushes prices

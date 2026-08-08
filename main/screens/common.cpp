@@ -27,6 +27,12 @@ constexpr float kLabelPx = 54.0f;
 constexpr float kDigitPxDefault = 180.0f;
 float g_digit_px = kDigitPxDefault;
 constexpr float kSmallGroupPx = 90.0f;
+// Stacked-digit rows: each row owns half of the 250 px panel height, so
+// the digit size has to come down from the full-panel 180 px baseline.
+// 118 px puts ~85 px of digit ink in each 125 px half, leaving ~20 px
+// margins at the panel edges and a ~40 px channel between the rows —
+// enough separation to read as two values without a divider rule.
+constexpr float kDigitStackPx = 118.0f;
 // The Satoshi Symbol font fills its em-box (ink width ≈ em-width), so
 // rendering it at the digit pixel-height would leave much less visual
 // margin around the glyph than Antonio digits get. 130 keeps the glyph
@@ -154,6 +160,22 @@ void PaintSlotIntoFb(LandscapeFb& lfb, const AppFonts& fonts,
                        slot.ref_override ? slot.ref_override : kDigitRef,
                        fonts.digit(), px(g_digit_px), /*white_text=*/false);
       return;
+    case PaintSlot::kDigitStack: {
+      std::string top, bottom;
+      SplitOnSlash(slot.text, top, bottom);
+      DrawStackedText(lfb, w, h, top.c_str(), bottom.c_str(),
+                      slot.ref_override ? slot.ref_override : kDigitRef,
+                      fonts.digit(), px(kDigitStackPx), /*white_text=*/false);
+      return;
+    }
+    case PaintSlot::kLabelStack: {
+      std::string top, bottom;
+      SplitOnSlash(slot.text, top, bottom);
+      DrawStackedText(lfb, w, h, top.c_str(), bottom.c_str(),
+                      slot.ref_override ? slot.ref_override : kLabelRef,
+                      fonts.label(), px(kLabelPx), /*white_text=*/false);
+      return;
+    }
     case PaintSlot::kSmallGroup:
       if (slot.text.empty() || slot.text == " ") return;
       DrawTextCentered(lfb, w, h, slot.text.c_str(),

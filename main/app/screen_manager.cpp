@@ -112,6 +112,8 @@ const char* KindName(ScreenType k) {
   switch (k) {
     case ScreenType::kBlockHeight:
       return "block";
+    case ScreenType::kBlockHeightSplit:
+      return "blocksplit";
     case ScreenType::kMoscowTime:
       return "moscow";
     case ScreenType::kBtcPrice:
@@ -169,8 +171,8 @@ ScreenType ScreenManager::KindForSlot(size_t slot) const {
   // btclock_v4-oni (NWC balance shifted the per-currency block but
   // ScreenManager's local kAgnosticSlots constant stayed at 8) is the
   // motivating regression.
-  static_assert(kAgnosticSlots == 10,
-                "KindForSlot agnostic switch covers slots 0..9; bump it "
+  static_assert(kAgnosticSlots == 11,
+                "KindForSlot agnostic switch covers slots 0..10; bump it "
                 "alongside slot_map::kAgnosticSlots.");
   if (slot == slot_count() - 1) return ScreenType::kBlockFeeRate;
   switch (slot) {
@@ -194,6 +196,8 @@ ScreenType ScreenManager::KindForSlot(size_t slot) const {
       return ScreenType::kNwcBalance;
     case 9:
       return ScreenType::kMiningPoolEstimatedEarnings;
+    case 10:
+      return ScreenType::kBlockHeightSplit;
     default:
       break;
   }
@@ -612,6 +616,13 @@ bool ScreenManager::ShouldRender(const DataSnapshot& snap) const {
   switch (current_kind()) {
     case ScreenType::kBlockHeight:
       return snap.block_height && *snap.block_height != last_rendered_height_;
+    case ScreenType::kBlockHeightSplit:
+      // Either row moving is reason enough to repaint — the BIP-110
+      // poll and the canonical block feed land independently.
+      return (snap.block_height &&
+              *snap.block_height != last_rendered_height_) ||
+             (snap.bip110_block_height &&
+              *snap.bip110_block_height != last_rendered_bip110_height_);
     case ScreenType::kMoscowTime:
     case ScreenType::kBtcPrice: {
       const auto* p = snap.PriceOf(current_currency());
@@ -746,6 +757,7 @@ static PanelTextInputs MakePti(ScreenType kind, const std::string& ccy,
   pti.kind = kind;
   pti.currency = ccy;
   pti.block_height = snap.block_height;
+  pti.bip110_block_height = snap.bip110_block_height;
   // Mirror the fee-source selection the EPD renderer just used so the
   // /api/status data[] integer cells line up with what the panels paint.
   if (rp.block_fee_dec && snap.block_fee_precise) {
@@ -906,6 +918,18 @@ void ScreenManager::Render(
                                 force_repaint ? 0 : last_rendered_height_,
                                 force_full, rp.vertical_desc);
         last_rendered_height_ = *snap.block_height;
+      }
+      break;
+    case ScreenType::kBlockHeightSplit:
+      if (snap.block_height) {
+        const uint32_t bip110 = snap.bip110_block_height.value_or(0);
+        RenderBlockHeightSplitScreen(
+            panels, fb, fonts, *snap.block_height, bip110,
+            force_repaint ? 0 : last_rendered_height_,
+            force_repaint ? 0 : last_rendered_bip110_height_, force_full,
+            rp.vertical_desc);
+        last_rendered_height_ = *snap.block_height;
+        last_rendered_bip110_height_ = bip110;
       }
       break;
     case ScreenType::kMoscowTime:
@@ -1216,6 +1240,7 @@ void ScreenManager::RenderDebug(
   // debug layout.
   dirty_ = true;
   last_rendered_height_ = 0;
+  last_rendered_bip110_height_ = 0;
   last_rendered_price_.clear();
   last_rendered_fee_ = -1.0;
   last_rendered_cap_height_ = 0;

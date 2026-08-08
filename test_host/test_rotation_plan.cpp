@@ -197,10 +197,11 @@ TEST_CASE(
     return true;
   };
   const auto seq = rp::BuildRotationSequence("", enabled, 1);
-  // BlockHeight + Clock + Halving + BitcoinSupply + NwcBalance kept;
-  // mining-pool family + bitaxe family dropped; per-currency (Moscow,
-  // Price, MarketCap) for the one currency; trailing BlockFeeRate.
-  REQUIRE(seq.size() == 9);
+  // BlockHeight + Clock + Halving + BitcoinSupply + NwcBalance +
+  // BlockHeightSplit kept; mining-pool family + bitaxe family dropped;
+  // per-currency (Moscow, Price, MarketCap) for the one currency;
+  // trailing BlockFeeRate.
+  REQUIRE(seq.size() == 10);
   CHECK(seq[0] == Slot(sm::kApiIdBlockHeight, 1));
   CHECK(seq[1] == Slot(sm::kApiIdClock, 1));
   CHECK(seq[2] == Slot(sm::kApiIdHalving, 1));
@@ -209,10 +210,11 @@ TEST_CASE(
   // (the production predicate checks nwc.enabled — exercised in
   // test_screen_rotation).
   CHECK(seq[4] == Slot(sm::kApiIdNwcBalance, 1));
-  CHECK(seq[5] == Slot(sm::kApiIdMoscowTime, 1));
-  CHECK(seq[6] == Slot(sm::kApiIdBtcPrice, 1));
-  CHECK(seq[7] == Slot(sm::kApiIdMarketCap, 1));
-  CHECK(seq[8] == Slot(sm::kApiIdBlockFeeRate, 1));
+  CHECK(seq[5] == Slot(sm::kApiIdBlockHeightSplit, 1));
+  CHECK(seq[6] == Slot(sm::kApiIdMoscowTime, 1));
+  CHECK(seq[7] == Slot(sm::kApiIdBtcPrice, 1));
+  CHECK(seq[8] == Slot(sm::kApiIdMarketCap, 1));
+  CHECK(seq[9] == Slot(sm::kApiIdBlockFeeRate, 1));
   const std::size_t gated[] = {
       Slot(sm::kApiIdMiningPoolHashrate, 1),
       Slot(sm::kApiIdMiningPoolEarnings, 1),

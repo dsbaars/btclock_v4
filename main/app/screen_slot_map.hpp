@@ -14,9 +14,10 @@
 //   slot 7          : kBitaxeBestDiff              api_id 81
 //   slot 8          : kNwcBalance                  api_id 90
 //   slot 9          : kMiningPoolEstimatedEarnings api_id 72
-//   slot 10 + 3k    : kMoscowTime                  api_id 10  for currencies[k]
-//   slot 11 + 3k    : kBtcPrice                    api_id 20  for currencies[k]
-//   slot 12 + 3k    : kMarketCap                   api_id 30  for currencies[k]
+//   slot 10         : kBlockHeightSplit            api_id 100
+//   slot 11 + 3k    : kMoscowTime                  api_id 10  for currencies[k]
+//   slot 12 + 3k    : kBtcPrice                    api_id 20  for currencies[k]
+//   slot 13 + 3k    : kMarketCap                   api_id 30  for currencies[k]
 //   slot last       : kBlockFeeRate                api_id 6
 //
 // The api_id ↔ slot relationship is many-to-one for per-currency screens
@@ -65,6 +66,7 @@ inline constexpr int kApiIdMiningPoolEstimatedEarnings = 72;
 inline constexpr int kApiIdBitaxeHashrate = 80;
 inline constexpr int kApiIdBitaxeBestDiff = 81;
 inline constexpr int kApiIdNwcBalance = 90;
+inline constexpr int kApiIdBlockHeightSplit = 100;
 
 // Default value for `screen<id>Visible` when the NVS key is absent.
 // Most screens default ON so a fresh device shows the full rotation;
@@ -82,13 +84,13 @@ inline constexpr bool DefaultScreenVisible(int api_id) {
 //   0=block, 1=clock, 2=halving, 3=supply,
 //   4=mining-pool-hashrate, 5=mining-pool-earnings,
 //   6=bitaxe-hashrate, 7=bitaxe-best-diff, 8=nwc-balance,
-//   9=mining-pool-estimated-earnings.
+//   9=mining-pool-estimated-earnings, 10=block-height-split.
 // Mining-pool + bitaxe + NWC slots stay in the rotation whether or
 // not the user has the feature enabled; the renderers paint an
 // OFFLINE / placeholder frame when no data has arrived so slot_count
 // stays stable across pref flips — persisted screenOrder keeps
 // working.
-inline constexpr std::size_t kAgnosticSlots = 10;
+inline constexpr std::size_t kAgnosticSlots = 11;
 inline constexpr std::size_t kPerCurrencySlots = 3;
 
 inline std::size_t SlotCount(std::size_t currency_count) {
@@ -123,6 +125,8 @@ inline int ApiIdForSlot(std::size_t slot, std::size_t currency_count) {
       return kApiIdNwcBalance;
     case 9:
       return kApiIdMiningPoolEstimatedEarnings;
+    case 10:
+      return kApiIdBlockHeightSplit;
     default:
       break;
   }
@@ -198,6 +202,8 @@ inline int SlotForApiId(int api_id, std::size_t currency_count,
       return 8;
     case kApiIdMiningPoolEstimatedEarnings:
       return 9;
+    case kApiIdBlockHeightSplit:
+      return 10;
     case kApiIdBlockFeeRate:
       return static_cast<int>(total - 1);
     case kApiIdMoscowTime:
