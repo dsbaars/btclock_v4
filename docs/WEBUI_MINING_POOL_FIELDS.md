@@ -39,6 +39,7 @@ presentation does.
 | `eu_ckpool` | "BTC address" | no | "Worker name (optional)" | show |
 | `nerdminers_org` | "BTC address" | no | — | hide |
 | `nerdminer_io` | "BTC address" | no | — | hide |
+| `sololuck` | "BTC address" | no | "Worker name (optional)" | show |
 | `viabtc` | "API key" | **yes** | — | hide |
 | `foundry_usa` | "API key" | **yes** | "Subaccount name" | show |
 
