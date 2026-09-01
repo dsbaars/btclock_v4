@@ -1008,7 +1008,7 @@ WASM bundle, then `python3 -m http.server 8000 --directory tools/wasm`).
 
 ![Settings → Mining Pool stats subsection](img/webui/settings-mining-pool.png)
 
-The BTClock supports 13 pools:
+The BTClock supports 14 pools:
 
 | `miningPoolName` | Display | Notes |
 |---|---|---|
@@ -1021,6 +1021,7 @@ The BTClock supports 13 pools:
 | `blitzpool` | Blitzpool | Public-pool fork with PPLNS / Stratum V2. Surfaces an Estimated Earnings screen on top of the regular Earnings panel. |
 | `ckpool` / `eu_ckpool` | CKPool / EU CKPool | Worker name based. |
 | `nerdminers_org` / `nerdminer_io` | NerdMiner.org / NerdMiner.io | BTC-address based. |
+| `sololuck` | SoloLuck | BTC-address based; ckpool fork, worker name optional. |
 | `viabtc` | ViaBTC | **API-key pool** — `miningPoolUser` is a secret; GET emits `miningPoolUserSet` instead of the raw value. |
 | `foundry_usa` | Foundry USA | API-key pool — same as ViaBTC. The `poolWorker` field is the subaccount path segment. |
 
