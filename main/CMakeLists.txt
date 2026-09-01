@@ -61,6 +61,7 @@ idf_component_register(
              mining_pool_foundry mining_pool_nerdminer
              mining_pool_noderunners mining_pool_ocean
              mining_pool_public_pool mining_pool_satoshi_radio
+             mining_pool_sololuck
              mining_pool_viabtc
              pool_logo_fetcher
              bitaxe mdns net_util esp_websocket_client esp-tls cjson

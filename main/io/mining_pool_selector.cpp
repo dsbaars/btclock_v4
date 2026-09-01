@@ -13,6 +13,7 @@
 #include "mining_pool_ocean/ocean.hpp"
 #include "mining_pool_public_pool/public_pool.hpp"
 #include "mining_pool_satoshi_radio/satoshi_radio.hpp"
+#include "mining_pool_sololuck/sololuck.hpp"
 #include "mining_pool_viabtc/viabtc.hpp"
 #include "pool_logo_fetcher/pool_logo_fetcher.hpp"
 #include "prefs.hpp"
@@ -74,6 +75,7 @@ std::unique_ptr<DataSource> BuildByName(const std::string& name) {
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
   if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
   if (name == "nerdminer_io") return std::make_unique<NerdMinerIoPool>();
+  if (name == "sololuck") return std::make_unique<SoloLuckPool>();
   if (name == "foundry_usa") return std::make_unique<FoundryPool>();
   if (name == "viabtc") return std::make_unique<ViaBtcPool>();
   return nullptr;
@@ -96,6 +98,7 @@ std::unique_ptr<PoolDataSource> BuildPoolByName(const std::string& name) {
   if (name == "eu_ckpool") return std::make_unique<EUCKPool>();
   if (name == "nerdminers_org") return std::make_unique<NerdMinersOrgPool>();
   if (name == "nerdminer_io") return std::make_unique<NerdMinerIoPool>();
+  if (name == "sololuck") return std::make_unique<SoloLuckPool>();
   if (name == "foundry_usa") return std::make_unique<FoundryPool>();
   if (name == "viabtc") return std::make_unique<ViaBtcPool>();
   return nullptr;
@@ -110,6 +113,8 @@ std::vector<std::string> AvailablePoolNames() {
   // entries to keep the existing pool order stable.
   // Blitzpool is a public-pool fork (PPLNS / group-solo / Stratum V2);
   // grouped next to public_pool to keep family ordering.
+  // SoloLuck is another ckpool fork, so it follows the NerdMiner entries
+  // for the same reason.
   // gobrrr_pool was dropped in 2026-05 after the upstream migration to
   // ckpool-solo behind a per-instance API-token wall — a BTClock can't
   // legally obtain that token (it's regenerated on every WebUI restart
@@ -118,8 +123,8 @@ std::vector<std::string> AvailablePoolNames() {
   // render the offline placeholder until the user picks another pool.
   return {"ocean",       "noderunners",       "satoshi_radio", "braiins",
           "public_pool", "local_public_pool", "blitzpool",     "ckpool",
-          "eu_ckpool",   "nerdminers_org",    "nerdminer_io",  "foundry_usa",
-          "viabtc"};
+          "eu_ckpool",   "nerdminers_org",    "nerdminer_io",  "sololuck",
+          "foundry_usa", "viabtc"};
 }
 
 std::unique_ptr<DataSource> MakeActivePoolSource() {
